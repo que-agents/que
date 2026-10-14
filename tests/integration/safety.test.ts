@@ -8,6 +8,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DaemonClient } from '@shared/client'
 import { quePaths } from '@shared/paths'
+import { type MethodName, QUIET_REFUSED_METHODS } from '@shared/protocol'
 import { bundleEntry } from '../../src/testing/bundle'
 import { startTestDaemon, type TestDaemon } from '../../src/testing/daemon-harness'
 import { FAKES_BIN } from '../../src/testing/fakes'
@@ -69,6 +70,7 @@ describe('safety', () => {
   describe('daemon process', () => {
     let fakeHome: string
     let queHome: string
+    let configDir: string
     let realQueBefore: { mtimeMs: number } | null
     let client: DaemonClient | null
     let daemonPid: number | null
@@ -77,6 +79,10 @@ describe('safety', () => {
       realQueBefore = statOrNull(REAL_QUE_HOME)
       fakeHome = fs.realpathSync(fs.mkdtempSync(join(os.tmpdir(), 'que-safety-home-')))
       queHome = fs.realpathSync(fs.mkdtempSync(join(os.tmpdir(), 'que-safety-qh-')))
+      // Never the user's config, and quiet hours off so the suite runs at any hour.
+      configDir = fs.realpathSync(fs.mkdtempSync(join(os.tmpdir(), 'que-safety-cfg-')))
+      fs.writeFileSync(join(configDir, 'config.toml'), '[quiet_hours]\nenabled = false\n')
+      vi.stubEnv('QUE_CONFIG', join(configDir, 'config.toml'))
       vi.stubEnv('HOME', fakeHome)
       vi.stubEnv('QUE_HOME', queHome)
       vi.stubEnv('PATH', `${FAKES_BIN}:${process.env.PATH}`)
@@ -98,6 +104,7 @@ describe('safety', () => {
       vi.unstubAllEnvs()
       fs.rmSync(fakeHome, { recursive: true, force: true })
       fs.rmSync(queHome, { recursive: true, force: true })
+      fs.rmSync(configDir, { recursive: true, force: true })
     }, 20_000)
 
     it('runs as its own process and records its pid in QUE_HOME', () => {
@@ -163,6 +170,88 @@ describe('safety', () => {
       expect(fs.existsSync(join(queHome, 'daemon.sock'))).toBe(false)
     }, 30_000)
   })
+})
+
+/**
+ * Every daemon method, and whether quiet hours (locked) refuse it. A Record
+ * over MethodName, so a new method does not compile until it is classified.
+ */
+const QUIET_POLICY: Record<MethodName, 'refused' | 'allowed'> = {
+  'term.attach': 'refused',
+  'term.snapshot': 'refused',
+  'term.create': 'refused',
+  'workspace.openTerminal': 'refused',
+  'workspace.createPr': 'refused',
+  'report.get': 'refused',
+  'handoff.create': 'refused',
+  'task.add': 'refused',
+  'queue.open': 'refused',
+  'daemon.ping': 'allowed',
+  'daemon.shutdown': 'allowed',
+  'term.list': 'allowed',
+  'term.detach': 'allowed',
+  'term.write': 'allowed',
+  'term.resize': 'allowed',
+  'term.kill': 'allowed',
+  'project.add': 'allowed',
+  'project.list': 'allowed',
+  'project.remove': 'allowed',
+  'workspace.create': 'allowed',
+  'workspace.list': 'allowed',
+  'workspace.get': 'allowed',
+  'workspace.remove': 'allowed',
+  'hook.event': 'allowed',
+  'task.list': 'allowed',
+  'task.get': 'allowed',
+  'task.stop': 'allowed',
+  'task.remove': 'allowed',
+  'queue.close': 'allowed',
+  'queue.state': 'allowed',
+  'quiet.state': 'allowed',
+  'quiet.unlock': 'allowed',
+  'quiet.lock': 'allowed',
+  'quiet.log': 'allowed',
+  'config.get': 'allowed',
+  'config.set': 'allowed'
+}
+
+describe('safety: quiet hours', () => {
+  let daemon: TestDaemon
+
+  beforeEach(async () => {
+    // Wed 14 Oct 2026, 02:00 (shifted real time): inside the 19:00-07:00 window.
+    const offset = new Date(2026, 9, 14, 2, 0).getTime() - Date.now()
+    daemon = await startTestDaemon({
+      config: '[quiet_hours]\nenabled = true\ndefault = ["19:00", "07:00"]\n',
+      now: () => Date.now() + offset
+    })
+  })
+
+  afterEach(async () => {
+    await daemon.close()
+  })
+
+  it('refuses exactly the detail methods', () => {
+    const refused = Object.entries(QUIET_POLICY)
+      .filter(([, p]) => p === 'refused')
+      .map(([m]) => m)
+
+    expect([...QUIET_REFUSED_METHODS].sort()).toEqual(refused.sort())
+  })
+
+  it.each(Object.entries(QUIET_POLICY).filter(([m]) => m !== 'daemon.shutdown'))(
+    '%s is %s while quiet and locked',
+    async (method, policy) => {
+      // Placeholder params: a refused method must fail before it looks at them.
+      // Each case gets its own daemon, so an unlock here cannot leak into another.
+      const outcome = await daemon.client.request(method as MethodName, {} as never).then(
+        () => 'ok',
+        (e: { code?: string }) => e.code ?? 'error'
+      )
+
+      expect(outcome === 'quiet_hours' ? 'refused' : 'allowed').toBe(policy)
+    }
+  )
 })
 
 describe('safety: hooks wrapper', () => {

@@ -4,15 +4,20 @@
 // else talks to window.que except Terminal.tsx's attach/detach.
 import { createContext, useContext, useSyncExternalStore } from 'react'
 import type {
+  ConfigGetResult,
+  ConfigSetParams,
   Project,
   QueApi,
   QueueState,
+  QuietState,
+  QuietUnlock,
   Report,
   Task,
   TaskAddParams,
   TermInfo,
   Workspace
 } from '../../preload/index.d'
+import { chime, shouldChime } from './sound'
 
 const DEFAULT_COLS = 80
 const DEFAULT_ROWS = 24
@@ -32,7 +37,7 @@ export interface TermTab {
   createdAt: string
 }
 
-export type View = { kind: 'terminals'; key: string } | { kind: 'report' }
+export type View = { kind: 'terminals'; key: string } | { kind: 'report' } | { kind: 'settings' }
 
 export type DialogState =
   | { kind: 'new-workspace'; projectId: string }
@@ -55,6 +60,20 @@ export interface QueState {
   /** The selected tab per terminal key. */
   activeTerm: Record<string, string>
   dialog: DialogState | null
+  /** The daemon's quiet-hours state; null until loaded. */
+  quiet: QuietState | null
+  /** The user config (config.get); null until loaded. */
+  config: ConfigGetResult | null
+}
+
+export interface StoreOptions {
+  /** The quiet board window: never opens terminals, never chimes. */
+  board?: boolean
+}
+
+/** Quiet hours are on and detail is not unlocked: terminals and reports are refused. */
+export function isLocked(q: QuietState | null): boolean {
+  return Boolean(q?.inQuietHours && !q.unlockedUntil)
 }
 
 function toTab(t: TermInfo, reattached: boolean): TermTab {
@@ -94,7 +113,9 @@ export class QueStore {
     queue: null,
     view: { kind: 'terminals', key: SCRATCH },
     activeTerm: {},
-    dialog: null
+    dialog: null,
+    quiet: null,
+    config: null
   }
   private listeners = new Set<() => void>()
   private offs: Array<() => void> = []
@@ -102,7 +123,10 @@ export class QueStore {
   /** Terminal keys that already had their first-visit terminal opened. */
   private autoOpened = new Set<string>()
 
-  constructor(private api: QueApi) {}
+  constructor(
+    private api: QueApi,
+    private options: StoreOptions = {}
+  ) {}
 
   // ---- external store plumbing ----------------------------------------------
 
@@ -134,17 +158,21 @@ export class QueStore {
 
   private async load(): Promise<void> {
     try {
-      const [projects, workspaces, terms, tasks, queue] = await Promise.all([
+      const [projects, workspaces, terms, tasks, queue, quiet, config] = await Promise.all([
         this.api.project.list(),
         this.api.workspace.list(),
         this.api.term.list(),
         this.api.task.list(),
-        this.api.queue.state()
+        this.api.queue.state(),
+        this.api.quiet.state(),
+        this.api.config.get()
       ])
       const live = terms.filter((t) => t.alive)
       this.set((s) => ({
         loaded: true,
-        projects,
+        quiet: s.quiet ?? quiet,
+        config: s.config ?? config,
+        projects: mergeProjects(projects, s.projects),
         workspaces: { ...byId(workspaces), ...s.workspaces },
         tasks: { ...byId(tasks), ...s.tasks },
         queue: s.queue ?? queue,
@@ -161,8 +189,21 @@ export class QueStore {
 
   private subscribeEvents(): void {
     if (this.offs.length > 0) return
-    const { term, workspace, task, queue } = this.api
+    const { term, workspace, task, queue, project, quiet, config } = this.api
     this.offs.push(
+      quiet.on('quiet.changed', (q) => {
+        const was = isLocked(this.state.quiet)
+        this.set({ quiet: q })
+        // Unlocked (or morning): open the current view's first terminal if it has none.
+        if (was && !isLocked(q)) void this.visit(this.currentKey())
+      }),
+      config.on('config.changed', (c) => this.set({ config: c })),
+      project.on('project.added', (p) =>
+        this.set((s) => ({ projects: mergeProjects(s.projects, [p]) }))
+      ),
+      project.on('project.removed', ({ id }) =>
+        this.set((s) => ({ projects: s.projects.filter((p) => p.id !== id) }))
+      ),
       term.on('term.created', ({ id }) => void this.addTerminal(id)),
       term.on('term.killed', ({ id }) =>
         this.set((s) => ({ terminals: s.terminals.filter((t) => t.id !== id) }))
@@ -181,17 +222,23 @@ export class QueStore {
           view: s.view.kind === 'terminals' && s.view.key === id ? scratchView() : s.view
         }))
       ),
-      workspace.on('workspace.status', (e) =>
+      workspace.on('workspace.status', (e) => {
+        const prev = this.state.workspaces[e.id]?.status
         this.set((s) => {
           const ws = s.workspaces[e.id]
           if (!ws) return {}
           const next = { ...ws, status: e.status, statusReason: e.reason ?? null, statusAt: e.at }
           return { workspaces: { ...s.workspaces, [e.id]: next } }
         })
-      ),
+        if (prev !== e.status) this.maybeChime({ state: e.status, reason: e.reason })
+      }),
       task.on('task.created', (t) => this.set((s) => ({ tasks: { ...s.tasks, [t.id]: t } }))),
       task.on('task.updated', (t) => this.set((s) => ({ tasks: { ...s.tasks, [t.id]: t } }))),
       task.on('task.status', (e) => {
+        const prev = this.state.tasks[e.id]
+        if (prev?.state !== e.state || prev?.reason !== (e.reason ?? null)) {
+          this.maybeChime({ state: e.state, reason: e.reason })
+        }
         this.set((s) => {
           const t = s.tasks[e.id]
           if (!t) return {}
@@ -209,10 +256,17 @@ export class QueStore {
     )
   }
 
+  /** A short chime for a finished task (or one needing input), in work hours only. */
+  private maybeChime(event: { state: string; reason?: string | null }): void {
+    if (this.options.board) return
+    const kind = shouldChime(event, this.state.quiet, this.state.config?.config.notifications)
+    if (kind) chime(kind)
+  }
+
   private upsertWorkspace(ws: Workspace): void {
     this.set((s) => ({ workspaces: { ...s.workspaces, [ws.id]: ws } }))
     if (!this.state.projects.some((p) => p.id === ws.projectId)) {
-      // A project added elsewhere (the CLI) has no event of its own.
+      // A project.added that raced the workspace event; fetch the list.
       void this.api.project.list().then(
         (projects) => this.set({ projects }),
         () => {}
@@ -237,6 +291,8 @@ export class QueStore {
   /** Opens the first terminal of a key that has none, once per key. */
   private async visit(key: string | null): Promise<void> {
     if (key === null || !this.state.loaded || this.autoOpened.has(key)) return
+    // The board never opens terminals; during quiet hours nothing may.
+    if (this.options.board || isLocked(this.state.quiet)) return
     this.autoOpened.add(key)
     if (this.state.terminals.some((t) => t.key === key && t.alive)) return
     await this.newTerminal(key)
@@ -267,6 +323,37 @@ export class QueStore {
 
   showReport(): void {
     this.set({ view: { kind: 'report' } })
+  }
+
+  showSettings(): void {
+    this.set({ view: { kind: 'settings' } })
+  }
+
+  async unlock(): Promise<void> {
+    try {
+      this.set({ quiet: await this.api.quiet.unlock() })
+    } catch (err) {
+      this.fail(err)
+    }
+  }
+
+  async lock(): Promise<void> {
+    try {
+      this.set({ quiet: await this.api.quiet.lock() })
+    } catch (err) {
+      this.fail(err)
+    }
+  }
+
+  fetchUnlocks(since?: string): Promise<QuietUnlock[]> {
+    return this.api.quiet.log(since ? { since } : undefined)
+  }
+
+  /** Saves config changes; throws for the settings view to show. */
+  async saveConfig(p: ConfigSetParams): Promise<ConfigGetResult> {
+    const config = await this.api.config.set(p)
+    this.set({ config })
+    return config
   }
 
   selectTerminal(key: string, id: string): void {
@@ -402,6 +489,14 @@ export class QueStore {
       this.fail(err)
     }
   }
+}
+
+/** Projects in creation order, without duplicates (the first copy wins). */
+function mergeProjects(a: readonly Project[], b: readonly Project[]): Project[] {
+  const seen = new Set(a.map((p) => p.id))
+  return [...a, ...b.filter((p) => !seen.has(p.id))].sort((x, y) =>
+    x.createdAt.localeCompare(y.createdAt)
+  )
 }
 
 function scratchView(): View {

@@ -3,12 +3,19 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import { join } from 'node:path'
-import { parse as parseToml } from 'smol-toml'
+import { parse as parseToml, stringify as stringifyToml } from 'smol-toml'
+import {
+  type DayWindow,
+  type NotificationsConfig,
+  type PermissionMode,
+  type QuietHoursConfig,
+  type QuietWindow,
+  type UserConfig,
+  WEEKDAYS,
+  type Weekday
+} from './types'
 
-export interface RepoEntry {
-  path: string
-  defaultBranch?: string
-}
+export type { PermissionMode, RepoEntry, UserConfig } from './types'
 
 /** Claude Code permission modes que may pass with --permission-mode. */
 export const PERMISSION_MODES = [
@@ -18,27 +25,7 @@ export const PERMISSION_MODES = [
   'bypassPermissions',
   'dontAsk',
   'auto'
-] as const
-export type PermissionMode = (typeof PERMISSION_MODES)[number]
-
-export interface UserConfig {
-  worktreeRoot: string
-  stallTimeoutMinutes: number
-  statusPollSeconds: number
-  /** Named repositories, so `que work -r <name>` can resolve a name. */
-  repos: Record<string, RepoEntry>
-  /** How many tasks run at once while the queue is open. */
-  concurrency: number
-  /** Default caps for a task that does not set its own. */
-  maxTurns: number
-  maxBudgetUsd: number
-  /** Used when a repo's que.toml sets no permission_mode. */
-  defaultPermissionMode?: PermissionMode
-  /** Required (with the repo opting in) before a task may run with bypassPermissions. */
-  allowBypassPermissions: boolean
-  /** Branches the finisher never pushes, besides each project's default branch. */
-  protectedBranches: string[]
-}
+] as const satisfies readonly PermissionMode[]
 
 export interface ConfigError {
   /** Dotted key path, or '' for a syntax error. */
@@ -63,8 +50,18 @@ export function defaultConfig(env: ConfigEnv): UserConfig {
     maxTurns: 50,
     maxBudgetUsd: 5,
     allowBypassPermissions: false,
-    protectedBranches: ['main', 'master', 'release']
+    protectedBranches: ['main', 'master', 'release'],
+    quietHours: defaultQuietHours(),
+    notifications: defaultNotifications()
   }
+}
+
+export function defaultQuietHours(): QuietHoursConfig {
+  return { enabled: true, default: { start: '19:00', end: '07:00' }, days: {}, unlockMinutes: 20 }
+}
+
+export function defaultNotifications(): NotificationsConfig {
+  return { chimeOnComplete: true, chimeOnNeedsInput: false, morningSummary: false }
 }
 
 function parseTable(text: string): ConfigResult<Record<string, unknown>> {
@@ -146,6 +143,73 @@ function permissionMode(
   return v as PermissionMode
 }
 
+const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/
+
+/** `["19:00", "07:00"]` → a window; reports bad times and start == end. */
+function quietWindow(v: unknown, key: string, errors: ConfigError[]): QuietWindow | undefined {
+  if (!Array.isArray(v) || v.length !== 2 || !v.every((x) => typeof x === 'string')) {
+    errors.push({ key, message: 'must be ["HH:MM", "HH:MM"] (start, end)' })
+    return undefined
+  }
+  const [start, end] = v as string[]
+  const bad = [start, end].filter((t) => !HHMM.test(t))
+  if (bad.length > 0) {
+    errors.push({ key, message: `${bad.join(', ')} is not a 24-hour HH:MM time` })
+    return undefined
+  }
+  if (start === end) {
+    errors.push({ key, message: 'start and end must differ' })
+    return undefined
+  }
+  return { start, end }
+}
+
+const QUIET_KEYS = new Set<string>(['enabled', 'default', 'unlock_minutes', ...WEEKDAYS])
+
+function parseQuietHours(v: unknown, errors: ConfigError[]): QuietHoursConfig {
+  const q = defaultQuietHours()
+  if (v === undefined) return q
+  if (typeof v !== 'object' || v === null || Array.isArray(v)) {
+    errors.push({ key: 'quiet_hours', message: 'must be a table' })
+    return q
+  }
+  const t = v as Record<string, unknown>
+  const sub: ConfigError[] = []
+  for (const k of Object.keys(t)) {
+    if (!QUIET_KEYS.has(k)) sub.push({ key: k, message: 'is not a quiet_hours key' })
+  }
+  q.enabled = optionalBool(t, 'enabled', sub) ?? q.enabled
+  if (t.default !== undefined) q.default = quietWindow(t.default, 'default', sub) ?? q.default
+  q.unlockMinutes = positive(t, 'unlock_minutes', sub) ?? q.unlockMinutes
+  for (const day of WEEKDAYS) {
+    const d = t[day]
+    if (d === undefined) continue
+    if (d === 'none') q.days[day] = 'none'
+    else {
+      const w = quietWindow(d, day, sub)
+      if (w) q.days[day] = w
+    }
+  }
+  for (const e of sub) errors.push({ key: `quiet_hours.${e.key}`, message: e.message })
+  return q
+}
+
+function parseNotifications(v: unknown, errors: ConfigError[]): NotificationsConfig {
+  const n = defaultNotifications()
+  if (v === undefined) return n
+  if (typeof v !== 'object' || v === null || Array.isArray(v)) {
+    errors.push({ key: 'notifications', message: 'must be a table' })
+    return n
+  }
+  const t = v as Record<string, unknown>
+  const sub: ConfigError[] = []
+  n.chimeOnComplete = optionalBool(t, 'chime_on_complete', sub) ?? n.chimeOnComplete
+  n.chimeOnNeedsInput = optionalBool(t, 'chime_on_needs_input', sub) ?? n.chimeOnNeedsInput
+  n.morningSummary = optionalBool(t, 'morning_summary', sub) ?? n.morningSummary
+  for (const e of sub) errors.push({ key: `notifications.${e.key}`, message: e.message })
+  return n
+}
+
 function expandHome(p: string): string {
   return p === '~' || p.startsWith('~/') ? join(os.homedir(), p.slice(1)) : p
 }
@@ -175,6 +239,8 @@ export function parseConfig(text: string, env: ConfigEnv): ConfigResult<UserConf
   config.allowBypassPermissions =
     optionalBool(t, 'allow_bypass_permissions', errors) ?? config.allowBypassPermissions
   config.protectedBranches = stringList(t, 'protected_branches', errors) ?? config.protectedBranches
+  config.quietHours = parseQuietHours(t.quiet_hours, errors)
+  config.notifications = parseNotifications(t.notifications, errors)
 
   if (t.repos !== undefined) {
     if (typeof t.repos !== 'object' || t.repos === null || Array.isArray(t.repos)) {
@@ -217,6 +283,94 @@ export function loadConfig(env: ConfigEnv, path: string = configPath()): ConfigR
 
 export function formatConfigErrors(errors: ConfigError[]): string {
   return errors.map((e) => (e.key ? `${e.key}: ${e.message}` : e.message)).join('; ')
+}
+
+/** The config file as a plain TOML table; a missing file is an empty table. */
+export function readRawConfig(path: string = configPath()): ConfigResult<Record<string, unknown>> {
+  let text: string
+  try {
+    text = fs.readFileSync(path, 'utf8')
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return { ok: true, config: {} }
+    return { ok: false, errors: [{ key: '', message: (err as Error).message }] }
+  }
+  return parseTable(text)
+}
+
+function isTable(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v) && !(v instanceof Date)
+}
+
+/**
+ * Deep-merges a patch into a TOML table without touching the input: tables
+ * merge key by key, anything else replaces, and `null` removes the key.
+ */
+export function mergeConfigPatch(
+  raw: Record<string, unknown>,
+  patch: Record<string, unknown>
+): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...raw }
+  for (const [k, v] of Object.entries(patch)) {
+    if (v === null) delete out[k]
+    else if (isTable(v) && isTable(out[k])) out[k] = mergeConfigPatch(out[k], v)
+    else if (isTable(v)) out[k] = mergeConfigPatch({}, v)
+    else out[k] = v
+  }
+  return out
+}
+
+/** TOML text for a table. Comments in the original file are not preserved. */
+export function stringifyConfig(raw: Record<string, unknown>): string {
+  return stringifyToml(raw)
+}
+
+/** Keys whose value is a list even when `que config set` is given one item. */
+const LIST_KEYS = new Set(['protected_branches', 'quiet_hours.default'])
+
+/**
+ * `que config set key=value`: a dotted key into a nested patch, the value read
+ * as a boolean, a number, `null` (remove), a comma list, or else a string.
+ */
+export function parseConfigAssignment(arg: string): Record<string, unknown> {
+  const eq = arg.indexOf('=')
+  if (eq <= 0) throw new Error(`expected key=value, got ${JSON.stringify(arg)}`)
+  const key = arg.slice(0, eq).trim()
+  const text = arg.slice(eq + 1).trim()
+  const parts = key.split('.')
+  if (parts.some((p) => p === '')) throw new Error(`invalid key ${JSON.stringify(key)}`)
+  const scalar = (s: string): unknown => {
+    if (s === 'true') return true
+    if (s === 'false') return false
+    if (s !== '' && Number.isFinite(Number(s))) return Number(s)
+    return s
+  }
+  let value: unknown
+  if (text === 'null') value = null
+  else if (text.includes(',')) value = text.split(',').map((x) => x.trim())
+  else if (LIST_KEYS.has(key)) value = [text]
+  else value = scalar(text)
+  const patch: Record<string, unknown> = {}
+  let at = patch
+  for (const p of parts.slice(0, -1)) {
+    const next: Record<string, unknown> = {}
+    at[p] = next
+    at = next
+  }
+  at[parts[parts.length - 1]] = value
+  return patch
+}
+
+/** A one-line summary of the quiet-hours config for `que doctor` and `que quiet status`. */
+export function describeQuietHours(q: QuietHoursConfig): string {
+  if (!q.enabled) return 'off'
+  const days = (Object.entries(q.days) as Array<[Weekday, DayWindow]>).map(([d, w]) =>
+    w === 'none' ? `${d} none` : `${d} ${w.start}-${w.end}`
+  )
+  return [
+    `${q.default.start}-${q.default.end}`,
+    ...(days.length > 0 ? [`overrides: ${days.join(', ')}`] : []),
+    `unlock ${q.unlockMinutes} min`
+  ].join(' · ')
 }
 
 // ---- que.toml ---------------------------------------------------------------

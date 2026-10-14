@@ -28,7 +28,7 @@ export interface TestDaemon {
   ghLog: string
   codeLog: string
   caffeinateLog: string
-  /** QUE_CONFIG for this daemon (written only when `config` was passed). */
+  /** QUE_CONFIG for this daemon (always written; see withQuietOff). */
   configPath: string
   /**
    * Tears down client, terminals, task runs, server, env, and home; fails on
@@ -37,11 +37,27 @@ export interface TestDaemon {
   close(opts?: { keepHome?: boolean }): Promise<void>
 }
 
+/**
+ * Quiet hours default to on (19:00-07:00), which would refuse terminal detail
+ * whenever a suite runs in the evening. Test daemons turn them off unless a
+ * test's own config has a [quiet_hours] table.
+ */
+export const QUIET_OFF = '\n[quiet_hours]\nenabled = false\n'
+
+/** A test config with quiet hours off unless it sets its own [quiet_hours]. */
+export function withQuietOff(config = ''): string {
+  return config.includes('[quiet_hours]') ? config : `${config}${QUIET_OFF}`
+}
+
 export interface TestDaemonOptions {
   /** Called after daemon.shutdown's response is flushed. */
   onShutdown?: () => void
-  /** config.toml contents, written before the daemon starts. */
+  /** config.toml contents, written before the daemon starts (quiet hours off unless set). */
   config?: string
+  /** The clock quiet hours read (e.g. real time shifted to just before a boundary). */
+  now?: () => number
+  /** Quiet-hours re-evaluation interval. Default 200 ms (the daemon's is 15 s). */
+  quietTickMs?: number
   /** Status engine stall-check interval. Default 200 ms (the daemon's is 5 s). */
   statusTickMs?: number
   /** Reuse this QUE_HOME (from a daemon closed with keepHome) instead of a fresh one. */
@@ -69,7 +85,7 @@ export async function startTestDaemon(opts: TestDaemonOptions = {}): Promise<Tes
   const configPath = join(home, 'config.toml')
   vi.stubEnv('QUE_CONFIG', configPath)
   vi.stubEnv('QUE_NODE', process.execPath)
-  if (opts.config !== undefined) fs.writeFileSync(configPath, opts.config)
+  fs.writeFileSync(configPath, withQuietOff(opts.config))
 
   const paths = ensureDirs(quePaths())
   const host = new LeakCheckedPtyHost()
@@ -80,7 +96,9 @@ export async function startTestDaemon(opts: TestDaemonOptions = {}): Promise<Tes
     cliScript: bundleEntry('src/cli/index.ts'),
     statusTickMs: opts.statusTickMs ?? 200,
     queueTickMs: 100,
-    dispatchMs: 100
+    dispatchMs: 100,
+    quietTickMs: opts.quietTickMs ?? 200,
+    now: opts.now
   })
   await server.listen(paths.socket)
   const client = new DaemonClient(paths.socket)

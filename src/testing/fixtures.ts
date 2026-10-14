@@ -1,7 +1,8 @@
 // Fixture factories for node-side tests (logic and daemon integration).
 // Realistic values, opaque ids, typed against the real shared types.
 import type { HookEvent, HookEventName, StreamResult } from '@shared/protocol'
-import type { QueConfig, Task, Workspace } from '@shared/types'
+import { defaultConfig, defaultQuietHours } from '@shared/config'
+import type { QuietHoursConfig, Task, UserConfig, Workspace } from '@shared/types'
 
 let sessionCounter = 0
 let wsCounter = 0
@@ -40,14 +41,14 @@ export function makeStreamResult(overrides: Partial<StreamResult> = {}): StreamR
   }
 }
 
-/** A fully-defaulted config: quiet 22:00-07:00, caps, a five-minute stall timeout. */
-export function makeConfig(overrides: Partial<QueConfig> = {}): QueConfig {
-  return {
-    quiet: { start: '22:00', end: '07:00' },
-    caps: { maxTurns: 40, maxCostUsd: 5 },
-    stallTimeoutMs: 300_000,
-    ...overrides
-  }
+/** A fully-defaulted user config (quiet hours 19:00-07:00, caps, a five-minute stall timeout). */
+export function makeConfig(overrides: Partial<UserConfig> = {}): UserConfig {
+  return { ...defaultConfig({ queHome: '/Users/dev/.que' }), ...overrides }
+}
+
+/** Quiet hours as configured: the defaults with overrides. */
+export function makeQuietHours(overrides: Partial<QuietHoursConfig> = {}): QuietHoursConfig {
+  return { ...defaultQuietHours(), ...overrides }
 }
 
 /** A workspace whose branch and worktree path derive from its name, status idle. */

@@ -6,11 +6,14 @@ import {
   NewWorkspaceDialog,
   RemoveWorkspaceDialog
 } from './components/dialogs'
+import { hhmm } from '../../daemon/quiet-hours'
+import QuietBoard from './components/QuietBoard'
 import ReportView from './components/ReportView'
+import SettingsView from './components/SettingsView'
 import Sidebar from './components/Sidebar'
 import TerminalTabs from './components/TerminalTabs'
 import TopBar from './components/TopBar'
-import { QueStore, StoreContext, useQue, useStore } from './store'
+import { isLocked, QueStore, StoreContext, useQue, useStore } from './store'
 
 function Dialogs(): React.JSX.Element | null {
   const store = useStore()
@@ -34,10 +37,24 @@ function Dialogs(): React.JSX.Element | null {
   }
 }
 
+/** What the (hidden) main window shows while quiet hours are locked: no detail at all. */
+function Locked(): React.JSX.Element {
+  const { quiet } = useQue()
+  return (
+    <section className="locked" data-testid="quiet-locked" aria-label="Quiet hours">
+      <p>
+        Quiet hours. Detail unlocks at{' '}
+        {quiet?.windowEnd ? hhmm(Date.parse(quiet.windowEnd)) : '--:--'}.
+      </p>
+    </section>
+  )
+}
+
 function Shell(): React.JSX.Element {
   const store = useStore()
-  const { view, error, dialog, connected } = useQue()
-  const termKey = view.kind === 'terminals' ? view.key : null
+  const { view, error, dialog, connected, quiet } = useQue()
+  const locked = isLocked(quiet)
+  const termKey = view.kind === 'terminals' && !locked ? view.key : null
 
   // Cmd+T / Cmd+W manage the terminal tabs; captured before xterm sees them.
   useEffect(() => {
@@ -81,11 +98,15 @@ function Shell(): React.JSX.Element {
             </div>
           )
         )}
-        {termKey !== null ? (
+        {locked ? (
+          <Locked />
+        ) : termKey !== null ? (
           <>
             <TopBar termKey={termKey} />
             <TerminalTabs termKey={termKey} />
           </>
+        ) : view.kind === 'settings' ? (
+          <SettingsView />
         ) : (
           <ReportView />
         )}
@@ -95,8 +116,18 @@ function Shell(): React.JSX.Element {
   )
 }
 
-export default function App(): React.JSX.Element {
-  const [store] = useState(() => new QueStore(window.que))
+/** The board window loads the renderer with `#board`. */
+function isBoardWindow(): boolean {
+  return window.location.hash === '#board'
+}
+
+export default function App({
+  board = isBoardWindow()
+}: {
+  /** Render the quiet board (its own window) instead of the app. */
+  board?: boolean
+}): React.JSX.Element {
+  const [store] = useState(() => new QueStore(window.que, { board }))
 
   useEffect(() => {
     store.start()
@@ -105,7 +136,7 @@ export default function App(): React.JSX.Element {
 
   return (
     <StoreContext.Provider value={store}>
-      <Shell />
+      {board ? <QuietBoard /> : <Shell />}
     </StoreContext.Provider>
   )
 }

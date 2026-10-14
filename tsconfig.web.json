@@ -23,6 +23,7 @@
   "include": [
     "src/renderer/src/**/*",
     "src/preload/index.d.ts",
+    "src/daemon/quiet-hours.ts",
     "src/shared/protocol.ts",
     "src/shared/slug.ts",
     "src/shared/types.ts"

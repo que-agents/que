@@ -2,18 +2,25 @@
 // same QueApi the preload exposes, emitting the events the daemon would.
 // setup.ts installs `fakeBridge.api` as window.que and resets it after each test.
 import type {
+  ConfigGetResult,
+  ConfigSetParams,
   Events,
   Project,
   QueApi,
   QueueState,
+  QuietState,
+  QuietUnlock,
   Report,
   Task,
   TaskState,
   TermInfo,
+  UserConfig,
   Workspace,
   WorkspaceStatus
 } from '../../../preload/index.d'
+import { QUIET_REFUSED_METHODS } from '../../../shared/protocol'
 import { workspaceSlug } from '../../../shared/slug'
+import { makeQuietState, makeUserConfig } from './fixtures'
 
 export type FakeQueApi = QueApi
 
@@ -56,16 +63,63 @@ class FakeBridge {
   private tray = '● 0 ▸ 0 ✕ 0'
   private editorCalls: string[] = []
   private prCalls: Array<{ id: string; title: string }> = []
+  private quiet: QuietState = makeQuietState()
+  private unlocks: QuietUnlock[] = []
+  private unlockRequests: Array<{ minutes?: number; why?: string }> = []
+  private configBook: ConfigGetResult = defaultConfigBook()
+  private configSets: ConfigSetParams[] = []
 
   constructor() {
     this.api = {
+      quiet: {
+        state: async () => ({ ...this.quiet }),
+        unlock: async (p) => {
+          this.unlockRequests.push({ ...p })
+          if (!this.quiet.inQuietHours) return { ...this.quiet }
+          const minutes = p?.minutes ?? this.quiet.unlockMinutes
+          const now = Date.now()
+          this.unlocks.push({
+            at: new Date(now).toISOString(),
+            minutes,
+            why: p?.why ?? null,
+            endedAt: null
+          })
+          this.setQuietState({
+            ...this.quiet,
+            unlockedUntil: new Date(now + minutes * 60_000).toISOString()
+          })
+          return { ...this.quiet }
+        },
+        lock: async () => {
+          const open = this.unlocks.find((u) => u.endedAt === null)
+          if (open) open.endedAt = new Date().toISOString()
+          this.setQuietState({ ...this.quiet, unlockedUntil: null })
+          return { ...this.quiet }
+        },
+        log: async () => this.unlocks.map((u) => ({ ...u })),
+        on: (event, cb) => this.subscribe(event, cb as Listener)
+      },
+      config: {
+        get: async () => structuredClone(this.configBook),
+        set: async (p) => {
+          this.configSets.push(structuredClone(p))
+          this.configBook = { ...this.configBook, raw: mergePatch(this.configBook.raw, p.patch) }
+          this.emit('config.changed', structuredClone(this.configBook))
+          return structuredClone(this.configBook)
+        },
+        on: (event, cb) => this.subscribe(event, cb as Listener)
+      },
       term: {
-        create: async (p) => this.createTerminal(p),
+        create: async (p) => {
+          this.refuseIfQuiet('term.create')
+          return this.createTerminal(p)
+        },
         list: async (p) =>
           [...this.terminals.values()]
             .filter((t) => !p?.workspaceId || t.workspaceId === p.workspaceId)
             .map(toInfo),
         attach: async ({ id, cols, rows }) => {
+          this.refuseIfQuiet('term.attach')
           const t = this.terminal(id)
           Object.assign(t, { cols, rows })
           return { snapshot: t.screen, cols, rows }
@@ -86,6 +140,7 @@ class FakeBridge {
           return { ok: true }
         },
         snapshot: async ({ id }) => {
+          this.refuseIfQuiet('term.snapshot')
           const t = this.terminal(id)
           return { serialized: t.screen, text: t.screen }
         },
@@ -117,6 +172,7 @@ class FakeBridge {
             createdAt: new Date().toISOString()
           }
           this.projects.set(project.id, project)
+          this.emit('project.added', { ...project })
           return { ...project }
         },
         list: async () => [...this.projects.values()].map((p) => ({ ...p })),
@@ -126,11 +182,14 @@ class FakeBridge {
           if (open.length > 0 && !force) throw rpcError('conflict', `project ${id} has workspaces`)
           for (const w of open) this.removeWorkspace(w.id)
           this.projects.delete(id)
+          this.emit('project.removed', { id })
           return { ok: true }
-        }
+        },
+        on: (event, cb) => this.subscribe(event, cb as Listener)
       },
       task: {
         add: async (p) => {
+          this.refuseIfQuiet('task.add')
           const projectId = p.workspaceId ? this.workspace(p.workspaceId).projectId : p.projectId
           if (!projectId || !this.projects.has(projectId)) {
             throw notFound('project', projectId ?? '(none)')
@@ -190,6 +249,7 @@ class FakeBridge {
       },
       queue: {
         open: async (p) => {
+          this.refuseIfQuiet('queue.open')
           this.setQueueState({
             ...this.queue,
             open: true,
@@ -206,10 +266,14 @@ class FakeBridge {
         on: (event, cb) => this.subscribe(event, cb as Listener)
       },
       report: {
-        get: async (p) => this.report(p?.since)
+        get: async (p) => {
+          this.refuseIfQuiet('report.get')
+          return this.report(p?.since)
+        }
       },
       handoff: {
         create: async ({ workspaceId, brief }) => {
+          this.refuseIfQuiet('handoff.create')
           const ws = this.workspace(workspaceId)
           if (!ws.sessionId) throw rpcError('bad_request', `workspace ${ws.name} has no session`)
           return this.api.task.add({
@@ -258,10 +322,12 @@ class FakeBridge {
           return { ok: true }
         },
         openTerminal: async ({ id, cols, rows }) => {
+          this.refuseIfQuiet('workspace.openTerminal')
           const ws = this.workspace(id)
           return this.createTerminal({ cwd: ws.path, cols, rows, name: ws.name }, ws.id)
         },
         createPr: async ({ id, title }) => {
+          this.refuseIfQuiet('workspace.createPr')
           const ws = this.workspace(id)
           if (!title.trim()) throw rpcError('bad_request', 'title is required')
           this.prCalls.push({ id, title })
@@ -272,6 +338,42 @@ class FakeBridge {
         },
         on: (event, cb) => this.subscribe(event, cb as Listener)
       }
+    }
+  }
+
+  // ---- quiet hours and config ------------------------------------------------
+
+  /** Replaces the quiet state and emits quiet.changed, as the daemon's clock would. */
+  setQuietState(q: Partial<QuietState>): void {
+    this.quiet = { ...this.quiet, ...q }
+    this.emit('quiet.changed', { ...this.quiet })
+  }
+
+  /** Every quiet.unlock call's params, in order. */
+  unlockCalls(): Array<{ minutes?: number; why?: string }> {
+    return this.unlockRequests.map((c) => ({ ...c }))
+  }
+
+  /** Puts unlocks in the quiet log silently. Call before render(). */
+  seedUnlocks(unlocks: QuietUnlock[]): void {
+    this.unlocks = unlocks.map((u) => ({ ...u }))
+  }
+
+  /** Puts a config in the book silently (what config.get answers). Call before render(). */
+  setConfig(config: Partial<UserConfig>, raw: Record<string, unknown> = {}): void {
+    this.configBook = { ...this.configBook, config: makeUserConfig(config), raw }
+  }
+
+  /** Every config.set call's params, in order. */
+  configSetCalls(): ConfigSetParams[] {
+    return this.configSets.map((c) => structuredClone(c))
+  }
+
+  /** The daemon's refusal of detail while quiet hours are locked. */
+  private refuseIfQuiet(method: (typeof QUIET_REFUSED_METHODS)[number]): void {
+    if (!QUIET_REFUSED_METHODS.includes(method)) return
+    if (this.quiet.inQuietHours && !this.quiet.unlockedUntil) {
+      throw rpcError('quiet_hours', 'quiet hours until 07:00; run `que unlock` for 20 minutes')
     }
   }
 
@@ -395,6 +497,11 @@ class FakeBridge {
     this.tray = '● 0 ▸ 0 ✕ 0'
     this.editorCalls = []
     this.prCalls = []
+    this.quiet = makeQuietState()
+    this.unlocks = []
+    this.unlockRequests = []
+    this.configBook = defaultConfigBook()
+    this.configSets = []
   }
 
   private workspace(id: string): Workspace {
@@ -516,6 +623,28 @@ const LIVE: ReadonlySet<TaskState> = new Set([
   'paused',
   'finishing'
 ])
+
+function defaultConfigBook(): ConfigGetResult {
+  return { path: '/Users/dev/.config/que/config.toml', config: makeUserConfig(), raw: {} }
+}
+
+function isTable(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v)
+}
+
+/** config.set's merge: tables merge, anything else replaces, null removes. */
+function mergePatch(
+  raw: Record<string, unknown>,
+  patch: Record<string, unknown>
+): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...raw }
+  for (const [k, v] of Object.entries(patch)) {
+    if (v === null) delete out[k]
+    else if (isTable(v)) out[k] = mergePatch(isTable(out[k]) ? out[k] : {}, v)
+    else out[k] = v
+  }
+  return out
+}
 
 function closedQueue(): QueueState {
   return { open: false, concurrency: 2, running: 0, queued: 0, paused: 0, openedAt: null }

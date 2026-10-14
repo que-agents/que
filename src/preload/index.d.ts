@@ -1,10 +1,14 @@
 import type {
+  ConfigGetResult,
+  ConfigSetParams,
   Events,
   HandoffCreateParams,
   ProjectAddParams,
   ProjectRemoveParams,
   QueueOpenParams,
   QueueState,
+  QuietLogParams,
+  QuietUnlockParams,
   Report,
   ReportParams,
   TaskAddParams,
@@ -25,11 +29,31 @@ import type {
   WorkspaceRemoveParams,
   WorkspaceStatusEvent
 } from '../shared/protocol'
-import type { Project, Task, TaskState, Workspace, WorkspaceStatus } from '../shared/types'
+import type {
+  NotificationsConfig,
+  Project,
+  QuietHoursConfig,
+  QuietState,
+  QuietUnlock,
+  Task,
+  TaskState,
+  UserConfig,
+  Weekday,
+  Workspace,
+  WorkspaceStatus
+} from '../shared/types'
 
 export type {
+  ConfigGetResult,
+  ConfigSetParams,
   Events,
+  NotificationsConfig,
   Project,
+  QuietHoursConfig,
+  QuietState,
+  QuietUnlock,
+  UserConfig,
+  Weekday,
   QueueState,
   Report,
   ReportEntry,
@@ -75,11 +99,14 @@ export interface AppApi {
   e2e: boolean
 }
 
-/** Mirrors the daemon's project.* methods. */
+export type ProjectEventName = 'project.added' | 'project.removed'
+
+/** Mirrors the daemon's project.* methods and events. */
 export interface ProjectApi {
   add(params: ProjectAddParams): Promise<Project>
   list(): Promise<Project[]>
   remove(params: ProjectRemoveParams): Promise<{ ok: true }>
+  on<E extends ProjectEventName>(event: E, cb: (data: Events[E]) => void): () => void
 }
 
 export type WorkspaceEventName =
@@ -132,7 +159,27 @@ export interface HandoffApi {
   create(params: HandoffCreateParams): Promise<Task>
 }
 
+/** Mirrors the daemon's quiet.* methods and the quiet.changed event. */
+export interface QuietApi {
+  state(): Promise<QuietState>
+  /** Unlocks detail for `minutes` (default: the configured unlock length). */
+  unlock(params?: QuietUnlockParams): Promise<QuietState>
+  /** Ends an unlock early. */
+  lock(): Promise<QuietState>
+  log(params?: QuietLogParams): Promise<QuietUnlock[]>
+  on(event: 'quiet.changed', cb: (data: QuietState) => void): () => void
+}
+
+/** Mirrors the daemon's config.* methods and the config.changed event. */
+export interface ConfigApi {
+  get(): Promise<ConfigGetResult>
+  set(params: ConfigSetParams): Promise<ConfigGetResult>
+  on(event: 'config.changed', cb: (data: ConfigGetResult) => void): () => void
+}
+
 export interface QueApi {
+  quiet: QuietApi
+  config: ConfigApi
   term: TermApi
   project: ProjectApi
   workspace: WorkspaceApi
