@@ -23,15 +23,8 @@ interface Form {
   chimeComplete: boolean
   chimeNeedsInput: boolean
   morningSummary: boolean
-  concurrency: string
-  maxTurns: string
-  maxBudget: string
-  permissionMode: string
   protectedBranches: string
 }
-
-/** Every permission mode except bypassPermissions, which only the config file can set. */
-const PERMISSION_MODES = ['default', 'acceptEdits', 'plan', 'dontAsk', 'auto'] as const
 
 /** Monday first, as people read a week. */
 const WEEK: Weekday[] = [...WEEKDAYS.slice(1), WEEKDAYS[0]]
@@ -61,10 +54,6 @@ function toForm(c: UserConfig): Form {
     chimeComplete: c.notifications.chimeOnComplete,
     chimeNeedsInput: c.notifications.chimeOnNeedsInput,
     morningSummary: c.notifications.morningSummary,
-    concurrency: String(c.concurrency),
-    maxTurns: String(c.maxTurns),
-    maxBudget: String(c.maxBudgetUsd),
-    permissionMode: c.defaultPermissionMode ?? '',
     protectedBranches: c.protectedBranches.join(', ')
   }
 }
@@ -80,16 +69,10 @@ function validate(f: Form): string[] {
   for (const d of WEEK) {
     if (f.days[d].mode === 'custom') window(capital(d), f.days[d].start, f.days[d].end)
   }
-  const positive = (label: string, v: string, int: boolean): void => {
-    const n = Number(v)
-    if (v.trim() === '' || !Number.isFinite(n) || n <= 0 || (int && !Number.isInteger(n))) {
-      errors.push(`${label} must be a positive ${int ? 'whole number' : 'number'}`)
-    }
+  const minutes = Number(f.unlockMinutes)
+  if (f.unlockMinutes.trim() === '' || !Number.isFinite(minutes) || minutes <= 0) {
+    errors.push('Unlock minutes must be a positive number')
   }
-  positive('Unlock minutes', f.unlockMinutes, false)
-  positive('Concurrency', f.concurrency, true)
-  positive('Max turns', f.maxTurns, true)
-  positive('Max budget', f.maxBudget, false)
   return errors
 }
 
@@ -130,10 +113,6 @@ function patchOf(f: Form): Record<string, unknown> {
       chime_on_needs_input: f.chimeNeedsInput,
       morning_summary: f.morningSummary
     },
-    concurrency: Number(f.concurrency),
-    max_turns: Number(f.maxTurns),
-    max_budget_usd: Number(f.maxBudget),
-    default_permission_mode: f.permissionMode === '' ? null : f.permissionMode,
     protected_branches: f.protectedBranches
       .split(',')
       .map((b) => b.trim())
@@ -141,7 +120,7 @@ function patchOf(f: Form): Record<string, unknown> {
   }
 }
 
-/** Quiet hours, notifications and the queue's defaults, saved to the config file. */
+/** Quiet hours, notifications and the pull-request guard, saved to the config file. */
 export default function SettingsView(): React.JSX.Element {
   const store = useStore()
   const { config, quiet, connected } = useQue()
@@ -325,55 +304,7 @@ export default function SettingsView(): React.JSX.Element {
           </label>
         </fieldset>
         <fieldset>
-          <legend>Overnight tasks</legend>
-          <div className="row">
-            <label>
-              Concurrency
-              <input
-                type="number"
-                min="1"
-                data-testid="settings-concurrency"
-                value={form.concurrency}
-                onChange={(e) => update({ concurrency: e.target.value })}
-              />
-            </label>
-            <label>
-              Max turns
-              <input
-                type="number"
-                min="1"
-                data-testid="settings-max-turns"
-                value={form.maxTurns}
-                onChange={(e) => update({ maxTurns: e.target.value })}
-              />
-            </label>
-            <label>
-              Max budget (USD)
-              <input
-                type="number"
-                min="0.01"
-                step="0.01"
-                data-testid="settings-max-budget"
-                value={form.maxBudget}
-                onChange={(e) => update({ maxBudget: e.target.value })}
-              />
-            </label>
-          </div>
-          <label>
-            Default permission mode
-            <select
-              data-testid="settings-permission-mode"
-              value={form.permissionMode}
-              onChange={(e) => update({ permissionMode: e.target.value })}
-            >
-              <option value="">Repo default</option>
-              {PERMISSION_MODES.map((m) => (
-                <option key={m} value={m}>
-                  {m}
-                </option>
-              ))}
-            </select>
-          </label>
+          <legend>Pull requests</legend>
           <label>
             Protected branches
             <input
@@ -382,6 +313,10 @@ export default function SettingsView(): React.JSX.Element {
               onChange={(e) => update({ protectedBranches: e.target.value })}
             />
           </label>
+          <p className="hint">
+            Never pushed to by Create draft PR or by an overnight task, besides each project&apos;s
+            default branch. Comma-separated.
+          </p>
         </fieldset>
         {errors.length > 0 && (
           <ul className="form-error" role="alert" data-testid="settings-error">
