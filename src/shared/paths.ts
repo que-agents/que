@@ -17,8 +17,12 @@ export interface QuePaths {
   db: string
   /** The wrappers that sit first on PATH in workspace terminals (claude, que). */
   binDir: string
+  /** Per-task run logs (stream messages, stderr, finisher output). */
+  taskLogsDir: string
   /** Hook settings passed to Claude Code with --settings. */
   hooksJson: string
+  /** The system prompt appended to every headless task run. */
+  systemPrompt: string
   /** Shell startup files for workspace terminals (zsh ZDOTDIR). */
   shellDir: string
   /** Set when the socket had to move to /tmp because the home path is too long. */
@@ -49,7 +53,9 @@ export function quePaths(): QuePaths {
     workspaceLogsDir: join(logsDir, 'workspaces'),
     db: join(home, 'que.db'),
     binDir: join(home, 'bin'),
+    taskLogsDir: join(logsDir, 'tasks'),
     hooksJson: join(home, 'hooks.json'),
+    systemPrompt: join(home, 'system.md'),
     shellDir: join(home, 'shell'),
     socketFallback
   }

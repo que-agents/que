@@ -20,12 +20,19 @@ function readStdin(): Promise<string> {
 }
 
 /** Connects, sends one hook.event request, and waits for its reply. */
-function deliver(socketPath: string, workspaceId: string, payload: unknown): Promise<void> {
+function deliver(
+  socketPath: string,
+  workspaceId: string,
+  taskId: string | undefined,
+  payload: unknown
+): Promise<void> {
   return new Promise((resolve) => {
     const socket = net.connect(socketPath)
     socket.setEncoding('utf8')
     socket.once('connect', () => {
-      socket.write(encode({ id: 1, method: 'hook.event', params: { workspaceId, payload } }))
+      // Hooks only see the environment: a headless task run sets QUE_TASK_ID.
+      const params = taskId ? { workspaceId, taskId, payload } : { workspaceId, payload }
+      socket.write(encode({ id: 1, method: 'hook.event', params }))
     })
     // Any reply (result or error) ends the exchange.
     socket.once('data', () => {
@@ -49,7 +56,12 @@ export async function runHook(): Promise<void> {
       return
     }
     if (typeof payload !== 'object' || payload === null) return
-    await deliver(process.env.QUE_SOCKET || quePaths().socket, workspaceId, payload)
+    await deliver(
+      process.env.QUE_SOCKET || quePaths().socket,
+      workspaceId,
+      process.env.QUE_TASK_ID || undefined,
+      payload
+    )
   })()
   await Promise.race([work.catch(() => {}), new Promise((r) => setTimeout(r, BUDGET_MS).unref())])
 }

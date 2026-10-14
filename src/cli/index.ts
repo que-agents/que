@@ -8,6 +8,7 @@ import { attach } from './attach'
 import { CliError, printTable, withClient } from './common'
 import { runDoctor } from './doctor'
 import { runHook } from './hook'
+import { registerTaskCommands } from './tasks'
 import { registerWorkspaceCommands } from './workspaces'
 
 declare const __QUE_VERSION__: string
@@ -160,6 +161,7 @@ async function main(): Promise<void> {
     .action((id: string) => attach(id))
 
   registerWorkspaceCommands(program)
+  registerTaskCommands(program, daemon)
 
   program
     .command('hook')
@@ -170,7 +172,9 @@ async function main(): Promise<void> {
 
   program
     .command('doctor')
-    .description('check the daemon, claude, gh, git, node, config, and the hooks wrapper')
+    .description(
+      'check the daemon, claude, gh, git, caffeinate, node, config, and the hooks wrapper'
+    )
     .action(async () => {
       process.exitCode = await runDoctor()
     })

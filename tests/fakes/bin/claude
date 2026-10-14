@@ -305,6 +305,15 @@ function resultMessage(fields) {
 
 // ---- helpers -------------------------------------------------------------------
 
+/** QUE_FAKE_CLAUDE_COMMIT=1: the agent commits its own change, as asked to. */
+function commitChange(filePath) {
+  const git = (...args) =>
+    spawnSync('git', ['-c', 'commit.gpgsign=false', ...args], { cwd, encoding: 'utf8' })
+  git('add', filePath)
+  const r = git('commit', '-m', 'Add que-fake-change.txt')
+  if (r.status !== 0) process.stderr.write(`fake claude: git commit failed: ${r.stderr}\n`)
+}
+
 function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms))
 }
@@ -359,7 +368,7 @@ async function headless(prompt) {
       type: 'rate_limit_event',
       rate_limit_info: {
         status: 'rejected',
-        resetsAt: Math.floor(Date.now() / 1000) + 3600,
+        resetsAt: Math.floor(Date.now() / 1000) + Number(process.env.QUE_FAKE_CLAUDE_RESET_SECONDS ?? 3600),
         rateLimitType: 'five_hour',
         overageStatus: 'rejected',
         isUsingOverage: false
@@ -435,6 +444,7 @@ async function headless(prompt) {
     emit(toolResultMessage(toolUseId, 'Blocked by PreToolUse hook', true))
   } else {
     fs.writeFileSync(filePath, prompt)
+    if (process.env.QUE_FAKE_CLAUDE_COMMIT === '1') commitChange(filePath)
     const toolResponse = { type: 'create', filePath, content: prompt, structuredPatch: [] }
     runHooks('PostToolUse', {
       tool_name: 'Write',

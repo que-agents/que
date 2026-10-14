@@ -136,7 +136,8 @@ describe('safety', () => {
         join('shell', 'zsh', '.zlogin'),
         join('shell', 'zsh', '.zprofile'),
         join('shell', 'zsh', '.zshenv'),
-        join('shell', 'zsh', '.zshrc')
+        join('shell', 'zsh', '.zshrc'),
+        'system.md'
       ])
       expect(fs.statSync(join(queHome, 'bin', 'claude')).mode & 0o777).toBe(0o755)
       expect(fs.statSync(join(queHome, 'bin', 'que')).mode & 0o777).toBe(0o755)
