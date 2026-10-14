@@ -6,6 +6,7 @@ import { expect, type Locator, type Page } from '@playwright/test'
 export class SidebarPage {
   page: Page
   root: Locator
+  resizer: Locator
   emptyState: Locator
   addProjectButton: Locator
   scratchButton: Locator
@@ -29,6 +30,7 @@ export class SidebarPage {
   constructor(page: Page) {
     this.page = page
     this.root = page.getByTestId('sidebar')
+    this.resizer = page.getByTestId('sidebar-resizer')
     this.emptyState = page.getByTestId('sidebar-empty')
     this.addProjectButton = page.getByTestId('sidebar-add-project')
     this.scratchButton = page.getByTestId('sidebar-scratch')

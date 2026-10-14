@@ -41,4 +41,5 @@ afterEach(() => {
   cleanup()
   fakeBridge.reset()
   setChimePlayer(silent)
+  localStorage.clear()
 })
