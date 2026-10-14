@@ -9,6 +9,7 @@ import type { DaemonClient } from '@shared/client'
 import type { Events } from '@shared/protocol'
 import type { Workspace } from '@shared/types'
 import { runCliWith } from '../../src/testing/cli'
+import { FAKE_WRAPPERS, FAKES_BIN, readFakeLog, readWrapperLog } from '../../src/testing/fakes'
 import {
   startTestDaemon,
   type TestDaemon,
@@ -81,6 +82,39 @@ describe('hook delivery', () => {
       .poll(screen, { timeout: 10_000 })
       .toContain('Claude needs your permission to use Bash')
     expect(await screen()).toContain('Claude Code v2.1.0 (fake)')
+  }, 45_000)
+
+  it('reaches claude through another claude wrapper ahead of it on PATH', async () => {
+    // A machine where some other tool's wrapper sits in front of claude: the
+    // daemon pins QUE_REAL_CLAUDE to that wrapper, and the wrapper looks past
+    // its own directory and hands the command back to que's. The session must
+    // start once, with hooks, rather than the two wrappers looping.
+    const { d, ws } = await idleWorkspace({ pathPrefix: [FAKE_WRAPPERS] })
+    const { id } = await d.client.request('workspace.openTerminal', {
+      id: ws.id,
+      cols: 100,
+      rows: 30
+    })
+
+    await d.client.request('term.write', {
+      id,
+      data: `PATH="$QUE_HOME/bin:${FAKE_WRAPPERS}:${FAKES_BIN}:$PATH" claude\r`
+    })
+
+    await expect
+      .poll(async () => (await d.client.request('workspace.get', { id: ws.id })).sessionId, {
+        timeout: 20_000
+      })
+      .toMatch(/^[0-9a-f-]{36}$/)
+    await expect
+      .poll(async () => (await d.client.request('term.snapshot', { id })).text, {
+        timeout: 10_000
+      })
+      .toContain('Claude Code v2.1.0 (fake)')
+    const claudeCalls = readFakeLog(d.claudeLog)
+    expect(claudeCalls).toHaveLength(1)
+    expect(claudeCalls[0].argv.filter((a) => a === '--settings')).toEqual(['--settings'])
+    expect(readWrapperLog(d.wrapperLog)).toHaveLength(1)
   }, 45_000)
 
   it('accepts hook JSON from `que hook` on stdin, printing nothing', async () => {
