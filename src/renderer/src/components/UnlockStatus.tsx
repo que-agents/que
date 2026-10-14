@@ -19,7 +19,7 @@ export default function UnlockStatus(): React.JSX.Element | null {
   return (
     <div className="unlock-status" role="status">
       <span data-testid="topbar-unlock-countdown">
-        🔓 unlocked · {formatCountdown(until - Date.now())} left
+        🔓 unlocked · {formatCountdown(until - store.now())} left
       </span>
       <button
         type="button"

@@ -73,7 +73,7 @@ export function NewWorkspaceDialog({
             data-testid={`${id}-name`}
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="HA-1432 retry logic"
+            placeholder="APP-1432 retry logic"
             autoComplete="off"
             spellCheck={false}
           />

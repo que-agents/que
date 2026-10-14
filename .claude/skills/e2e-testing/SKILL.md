@@ -45,7 +45,7 @@ Pattern: `{component}-{entity-id?}-{element}`
 
 ### Which ID to use for dynamic testids
 
-Workspaces, terminals, and tasks all carry an **opaque id minted by the daemon**. **Use that id for every dynamic testid.** Do **not** use the workspace name or branch — two projects can each have a `HA-1432-retry-logic`, names can contain characters that are awkward in selectors, and a rename would silently break the locator. Never key by row position either: the sidebar sorts by activity, so position changes as statuses change.
+Workspaces, terminals, and tasks all carry an **opaque id minted by the daemon**. **Use that id for every dynamic testid.** Do **not** use the workspace name or branch — two projects can each have a `APP-1432-retry-logic`, names can contain characters that are awkward in selectors, and a rename would silently break the locator. Never key by row position either: the sidebar sorts by activity, so position changes as statuses change.
 
 ### Real Examples (target state — apply when touching these components)
 
@@ -384,7 +384,7 @@ test('a queued task runs headless and ends as a draft PR in the morning report',
       launched.queHome,
       'add',
       '--project', repo,
-      '--name', 'HA-1432-retry-logic',
+      '--name', 'APP-1432-retry-logic',
       '--json',
       'Add retry logic to the uploader'
     )
@@ -614,7 +614,7 @@ Most specs need nothing beyond `makeRepo()` and `launchApp()`. The fake `claude`
 test('a session asking for permission shows needs input in the sidebar', async () => {
   const repo = makeRepo()
   launched = await launchApp({ env: { QUE_FAKE_CLAUDE_SCENARIO: 'needs_input' } })
-  const ws = queJson<{ id: string }>(launched.queHome, 'work', repo, 'HA-1440-quiet-board', '--json')
+  const ws = queJson<{ id: string }>(launched.queHome, 'work', repo, 'APP-1440-quiet-board', '--json')
   // ...open the workspace, assert sidebar.workspaceStatus(ws.id) reaches needs_input...
 })
 ```

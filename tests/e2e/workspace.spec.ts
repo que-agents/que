@@ -46,15 +46,15 @@ test('a claude session in a workspace terminal reports needs input to que status
     workspace = queJson<Workspace>(
       launched.queHome,
       'work',
-      'HA-1432 retry logic',
+      'APP-1432 retry logic',
       '-r',
       repo,
       '--json'
     )
     expect(workspace).toMatchObject({
       projectId: project.id,
-      name: 'ha-1432-retry-logic',
-      branch: 'ha-1432-retry-logic',
+      name: 'app-1432-retry-logic',
+      branch: 'app-1432-retry-logic',
       status: 'idle'
     })
   })

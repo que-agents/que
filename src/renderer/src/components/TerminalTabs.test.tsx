@@ -5,8 +5,8 @@ import { fakeBridge } from '@renderer/testing/fake-bridge'
 import { makeProject, makeTermInfo, makeWorkspace } from '@renderer/testing/fixtures'
 import App from '../App'
 
-const retry = makeWorkspace({ id: 'ws_01hzx3k9c2qf', name: 'ha-1432-retry-logic' })
-const board = makeWorkspace({ id: 'ws_01hzx4m1p8rt', name: 'ha-1440-quiet-board' })
+const retry = makeWorkspace({ id: 'ws_01hzx3k9c2qf', name: 'app-1432-retry-logic' })
+const board = makeWorkspace({ id: 'ws_01hzx4m1p8rt', name: 'app-1440-quiet-board' })
 const shell = makeTermInfo({ name: 'zsh', cwd: '/Users/dev' })
 const retryTerm = makeTermInfo({ name: retry.name, cwd: retry.path, workspaceId: retry.id })
 
@@ -31,7 +31,7 @@ describe('TerminalTabs', () => {
 
       expect(await screen.findByTestId(`terminal-tab-${retryTerm.id}`)).toBeInTheDocument()
       expect(screen.queryByTestId(`terminal-tab-${shell.id}`)).not.toBeInTheDocument()
-      expect(screen.getByTestId('topbar-title')).toHaveTextContent('ha-1432-retry-logic')
+      expect(screen.getByTestId('topbar-title')).toHaveTextContent('app-1432-retry-logic')
       expect(screen.getAllByRole('tab')).toHaveLength(1)
     })
   })

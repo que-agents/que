@@ -273,6 +273,15 @@ describe('fake claude', () => {
       expect(hookNames()).toEqual(['SessionStart'])
     }, 20_000)
 
+    it('takes the scenario from a [que-fake-scenario:…] marker in the prompt over the env', async () => {
+      const r = await run(CLAUDE, headless('Refactor the queue [que-fake-scenario:crash]'), {
+        QUE_FAKE_CLAUDE_SCENARIO: 'success'
+      })
+
+      expect(r.code).toBe(1)
+      expect(r.stderr).toContain('fake claude: simulated crash')
+    }, 20_000)
+
     it('needs_input: fires a permission_prompt Notification, then hangs', async () => {
       start(headless('Run the migrations'), { QUE_FAKE_CLAUDE_SCENARIO: 'needs_input' })
 

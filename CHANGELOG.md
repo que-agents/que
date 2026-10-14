@@ -1,0 +1,37 @@
+# Changelog
+
+All notable changes to que are recorded here. The format follows
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and que uses
+[semantic versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+## [0.1.0] - 2026-10-14
+
+The first release.
+
+### Added
+
+- A daemon that owns every terminal (node-pty with a headless mirror for
+  reattach), project, workspace, and task, on a unix socket in `~/.que`; the
+  app and the CLI are clients, so sessions outlive the app.
+- Workspaces: git worktrees on their own branch, with per-repo setup and
+  teardown from `que.toml` and `.worktreeinclude`.
+- A status engine fed by Claude Code hooks through a per-session wrapper (the
+  user's settings are never written): working, idle, needs input, stuck.
+- The work-mode app: a sidebar of projects and workspaces with live status,
+  terminal tabs, a tasks panel, and a menu-bar title.
+- Overnight tasks: `que add` and `que run` queue briefs that run headless in
+  their own workspaces with turn and dollar caps, a stall timeout, rate-limit
+  pauses, and a keep-awake; the finisher pushes the branch and opens a draft
+  pull request; `que report` and the app show the morning report.
+- Quiet mode: quiet hours enforced by the daemon, a quiet board that only says
+  what is running and whether it is stuck, unlocks with a reason log, chimes,
+  a morning summary, and settings.
+- The `que` CLI, `que doctor`, and an opt-in launchd agent.
+- Packaging: an unsigned macOS app (DMG and zip) with the daemon, CLI and
+  node-pty outside the asar, an "Install 'que' command in PATH" menu item, and
+  a daily check for a newer release.
+
+[Unreleased]: https://github.com/rquellh/que/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/rquellh/que/releases/tag/v0.1.0

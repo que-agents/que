@@ -3,7 +3,7 @@ import { slugify, workspaceSlug } from './slug'
 
 describe('slugify', () => {
   it.each([
-    ['HA-1432 retry logic', 'ha-1432-retry-logic'],
+    ['APP-1432 retry logic', 'app-1432-retry-logic'],
     ['quiet_board  v2', 'quiet-board-v2'],
     ['  Fix: uploader (retries)! ', 'fix-uploader-retries'],
     ['release/2.1', 'release2.1'],
@@ -15,7 +15,7 @@ describe('slugify', () => {
 
 describe('workspaceSlug', () => {
   it('accepts names that slug to a valid workspace name', () => {
-    expect(workspaceSlug('HA-1432 retry logic')).toBe('ha-1432-retry-logic')
+    expect(workspaceSlug('APP-1432 retry logic')).toBe('app-1432-retry-logic')
     expect(workspaceSlug('a'.repeat(64))).toBe('a'.repeat(64))
   })
 

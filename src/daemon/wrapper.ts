@@ -4,6 +4,7 @@
 // user's own Claude Code settings are never touched.
 import fs from 'node:fs'
 import { delimiter, join } from 'node:path'
+import { appExecutable, cliScriptFrom, packagedResourcesDir } from '../shared/packaged'
 import { HOOK_EVENT_NAMES } from '../shared/protocol'
 import type { QuePaths } from '../shared/paths'
 
@@ -11,6 +12,8 @@ export interface WrapperOptions {
   paths: QuePaths
   /** Node used by bin/que; null falls back to `/usr/bin/env node`. */
   nodePath: string | null
+  /** nodePath is the app binary, which runs scripts only with ELECTRON_RUN_AS_NODE=1. */
+  runAsNode?: boolean
   /** The bundled CLI (out/cli/index.js). */
   cliScript: string
 }
@@ -59,10 +62,27 @@ export function resolveNode(): string | null {
   return process.env.QUE_NODE || findOnPath('node', process.env.PATH)
 }
 
-/** The bundled CLI next to the daemon bundle (out/daemon → out/cli). */
+/** The bundled CLI: Resources/cli/index.js in a packaged app, else out/cli/index.js. */
 export function defaultCliScript(): string {
-  // TODO(packaging): a packaged app ships the CLI elsewhere; point at it.
-  return join(__dirname, '..', 'cli', 'index.js')
+  return cliScriptFrom(__dirname)
+}
+
+/**
+ * What bin/que runs the CLI with. In a packaged app: the app's own binary as
+ * Node, so no separate Node install is needed. In development: $QUE_NODE or
+ * the first `node` on PATH.
+ */
+export function cliRunnerFrom(
+  dir: string,
+  node: () => string | null = resolveNode
+): { nodePath: string | null; runAsNode: boolean } {
+  const res = packagedResourcesDir(dir)
+  if (res) return { nodePath: appExecutable(res), runAsNode: true }
+  return { nodePath: node(), runAsNode: false }
+}
+
+export function resolveCliRunner(): { nodePath: string | null; runAsNode: boolean } {
+  return cliRunnerFrom(__dirname)
 }
 
 export function hooksSettings(): { hooks: Record<string, unknown[]> } {
@@ -108,12 +128,12 @@ exec "$REAL" "$@"
 `
 }
 
-function queScript(opts: WrapperOptions): string {
+export function queScript(opts: WrapperOptions): string {
   const runner = opts.nodePath ? shQuote(opts.nodePath) : '/usr/bin/env node'
+  const env = opts.runAsNode ? 'ELECTRON_RUN_AS_NODE=1 ' : ''
   return `#!/bin/sh
 # que CLI launcher for workspace terminals and hooks.
-# TODO(packaging): point at the CLI and runtime shipped inside the app bundle.
-exec ${runner} ${shQuote(opts.cliScript)} "$@"
+${env}exec ${runner} ${shQuote(opts.cliScript)} "$@"
 `
 }
 
