@@ -6,6 +6,14 @@ All notable changes to que are recorded here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- The `claude` wrapper in workspace terminals no longer hangs when another
+  `claude` wrapper on `PATH` hands the command back to it. The chain now ends
+  at the real executable with `--settings` added once, and a wrapper that
+  keeps spawning instead fails with a message. `QUE_REAL_CLAUDE` pins the
+  executable when `PATH` resolution is not what you want.
+
 ## [0.1.0] - 2026-10-14
 
 The first release.

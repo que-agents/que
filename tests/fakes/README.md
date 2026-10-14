@@ -52,7 +52,9 @@ SessionEnd and exits 0.
 Other knobs: `QUE_FAKE_CLAUDE_TRANSCRIPT_DIR` (where `<session_id>.jsonl`
 transcripts go; default under the OS temp dir), `QUE_FAKE_CLAUDE_AGENTS_JSON` (a
 file whose contents `agents --json` prints instead of `[]`),
-`QUE_FAKE_CLAUDE_VERSION`.
+`QUE_FAKE_CLAUDE_VERSION`. With `QUE_FAKE_CLAUDE_LOG` set, every invocation
+first appends one JSON line `{ "argv": [...], "cwd": "...", "pid": <n>, "ts": "..." }`
+to it, as `gh` and `code` do.
 
 ## `gh` and `code`
 
@@ -68,3 +70,15 @@ already in the log. Everything else exits 0 silently. Read the logs back with
 Appends `{ "argv": [...], "cwd": "...", "pid": <n>, "ts": "..." }` to
 `$QUE_FAKE_CAFFEINATE_LOG` when set, then sleeps until it gets SIGTERM/SIGINT or
 the process named by `-w <pid>` exits, as the real one does.
+
+## `wrappers/claude`
+
+Not a fake of a program que spawns but of something found on a user's machine:
+another tool's `claude` wrapper, the kind that runs the next `claude` on `PATH`
+outside its own directory. Tests put `tests/fakes/wrappers` **ahead of**
+`tests/fakes/bin` (`FAKE_WRAPPERS` in `src/testing/fakes.ts`, or the harness's
+`pathPrefix`) to check that que's own wrapper composes with it instead of the two
+handing the command back and forth. It appends `<pid>\t<arguments>` to
+`$QUE_FAKE_WRAPPER_LOG` when set (read with `readWrapperLog()`), and with
+`QUE_FAKE_WRAPPER_STYLE=spawn` it runs the next `claude` as a child instead of
+exec'ing it.
