@@ -6,6 +6,14 @@ All notable changes to que are recorded here. The format follows
 
 ## [Unreleased]
 
+### Removed
+
+- The Tonight panel in the sidebar (add task, queue control, task list) and
+  the hand-off of a live session to the queue (`que handoff`, the Hand off…
+  actions, `handoff.create`). Sessions keep running in their own worktrees;
+  overnight tasks are queued and run with `que add` and `que run`, show in
+  the sidebar as the workspaces they run in, and in the report.
+
 ### Fixed
 
 - The `claude` wrapper in workspace terminals no longer hangs when another

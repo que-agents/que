@@ -205,11 +205,6 @@ export interface Report {
   totals: { tasks: number; prs: number; turns: number; costUsd: number; durationMs: number }
 }
 
-export interface HandoffCreateParams {
-  workspaceId: string
-  brief: string
-}
-
 export interface TaskStatusEvent {
   id: string
   state: TaskState
@@ -282,7 +277,6 @@ export interface Methods {
   'queue.close': { params: Record<string, never> | undefined; result: QueueState }
   'queue.state': { params: Record<string, never> | undefined; result: QueueState }
   'report.get': { params: ReportParams | undefined; result: Report }
-  'handoff.create': { params: HandoffCreateParams; result: Task }
   'quiet.state': { params: Record<string, never> | undefined; result: QuietState }
   'quiet.unlock': { params: QuietUnlockParams | undefined; result: QuietState }
   'quiet.lock': { params: Record<string, never> | undefined; result: QuietState }
@@ -302,7 +296,6 @@ export const QUIET_REFUSED_METHODS = [
   'workspace.openTerminal',
   'workspace.createPr',
   'report.get',
-  'handoff.create',
   'task.add',
   'queue.open'
 ] as const satisfies readonly MethodName[]

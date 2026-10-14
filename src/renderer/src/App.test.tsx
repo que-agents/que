@@ -134,11 +134,10 @@ describe('App', () => {
       await waitFor(() => {
         expect(screen.getByRole('button', { name: 'Create draft PR' })).toBeDisabled()
       })
-      for (const name of ['Open in editor', 'Hand off…', 'New terminal', 'Add project', 'Run']) {
+      for (const name of ['Open in editor', 'New terminal', 'Add project']) {
         expect(screen.getByRole('button', { name })).toBeDisabled()
       }
       expect(screen.getByRole('button', { name: 'New workspace in uploader' })).toBeDisabled()
-      expect(screen.getByRole('button', { name: '+ Task' })).toBeDisabled()
     })
   })
 })

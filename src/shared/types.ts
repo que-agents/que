@@ -48,7 +48,7 @@ export type TaskState =
   | 'stopped'
 
 /** Where a task's brief came from. */
-export type TaskSource = 'prompt' | 'file' | 'handoff'
+export type TaskSource = 'prompt' | 'file'
 
 /** An overnight task: a brief run headless by claude in its own workspace. */
 export interface Task {
@@ -59,7 +59,7 @@ export interface Task {
   title: string
   brief: string
   source: TaskSource
-  /** The session the next run resumes (hand-off, crash retry, rate-limit pause). */
+  /** The session the next run resumes (crash retry, rate-limit pause). */
   resumeSessionId: string | null
   state: TaskState
   /**

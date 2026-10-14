@@ -18,6 +18,7 @@ export class SidebarPage {
   workspace: (id: string) => Locator
   workspaceOpen: (id: string) => Locator
   workspaceStatus: (id: string) => Locator
+  workspacePr: (id: string) => Locator
   workspaceMenu: (id: string) => Locator
 
   constructor(page: Page) {
@@ -37,6 +38,7 @@ export class SidebarPage {
     this.workspace = (id: string) => page.getByTestId(`sidebar-workspace-${id}`)
     this.workspaceOpen = (id: string) => page.getByTestId(`sidebar-workspace-${id}-open`)
     this.workspaceStatus = (id: string) => page.getByTestId(`sidebar-workspace-${id}-status`)
+    this.workspacePr = (id: string) => page.getByTestId(`sidebar-workspace-${id}-pr`)
     this.workspaceMenu = (id: string) => page.getByTestId(`sidebar-workspace-${id}-menu`)
   }
 

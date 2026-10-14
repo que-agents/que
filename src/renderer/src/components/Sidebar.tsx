@@ -3,7 +3,6 @@ import type { Task, Workspace } from '../../../preload/index.d'
 import { isLiveTask } from '../format'
 import { SCRATCH, useQue, useStore } from '../store'
 import { StatusBadge, TaskBadge } from './StatusBadge'
-import TasksPanel from './TasksPanel'
 
 function WorkspaceMenu({
   workspace,
@@ -50,9 +49,6 @@ function WorkspaceMenu({
   return (
     <div className="menu" role="menu" aria-label={`Actions for ${workspace.name}`} ref={ref}>
       {item('Open in editor', 'open-editor', () => void store.openInEditor(workspace.path))}
-      {item('Hand off…', 'handoff', () =>
-        store.openDialog({ kind: 'handoff', workspaceId: workspace.id })
-      )}
       {item('Remove…', 'remove', () =>
         store.openDialog({ kind: 'remove-workspace', workspaceId: workspace.id })
       )}
@@ -205,7 +201,6 @@ export default function Sidebar(): React.JSX.Element {
           )
         })}
       </nav>
-      <TasksPanel />
       <button
         type="button"
         className="row-button report-entry"
