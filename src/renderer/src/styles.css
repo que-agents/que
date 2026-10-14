@@ -144,6 +144,22 @@ button.ghost:hover:not(:disabled) {
   color: var(--fg);
 }
 
+/* A line icon alone: a square ghost button, faint until used. */
+button.icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  color: var(--fg-faint);
+}
+
+button.icon:hover:not(:disabled),
+button.icon:focus-visible {
+  color: var(--fg);
+}
+
 button.primary {
   background: var(--inverse);
   border-color: var(--inverse);
@@ -669,7 +685,6 @@ body.resizing {
 
 .new-tab {
   margin: 3px 0 3px 4px;
-  padding: 0 7px;
 }
 
 .short-id {
