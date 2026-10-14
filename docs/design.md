@@ -70,6 +70,10 @@ remove. The quiet board uses the same tones as plain text.
   (`--radius`) on rows and menus. Nothing is a pill except the status dot.
 - Borders are 1px. Shadows appear only under things that float (menus, dialogs).
 - Dialogs carry four small corner points, the marks of a drawing's frame.
+- Icons are 16px line drawings at a 1.5px stroke, inline SVG from
+  `components/icons.tsx`, drawn in the current text colour: faint in a ghost
+  button, bright on hover. The button carries the accessible name. No icon
+  font or library.
 - Row actions (the ⋯ button) show on hover, focus, or while their menu is open.
 - The window has no native title bar. The traffic lights sit in the 40px strip
   above the sidebar's content; that strip and the top bar's empty space drag
