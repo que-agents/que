@@ -118,13 +118,14 @@ function WorkspaceBadge({ w, task }: { w: Workspace; task?: Task }): React.JSX.E
 
 export default function Sidebar(): React.JSX.Element {
   const store = useStore()
-  const { projects, workspaces, terminals, view, connected, loaded, tasks } = useQue()
+  const { projects, workspaces, view, connected, loaded, tasks } = useQue()
   const owned = latestTasks(tasks)
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set())
   const [menu, setMenu] = useState<OpenMenu | null>(null)
   const closeMenu = useRef(() => setMenu(null)).current
   const selected = view.kind === 'terminals' ? view.key : null
-  const scratchCount = terminals.filter((t) => t.key === SCRATCH && t.alive).length
+  const sessions = store.tabs(SCRATCH)
+  const activeSession = selected === SCRATCH ? store.activeTab(SCRATCH) : null
 
   const toggle = (id: string): void =>
     setCollapsed((prev) => {
@@ -179,7 +180,59 @@ export default function Sidebar(): React.JSX.Element {
 
   return (
     <aside className="sidebar" data-testid="sidebar" aria-label="Sidebar">
-      <nav aria-label="Workspaces">
+      <nav aria-label="Sessions" data-testid="sidebar-sessions">
+        <div className="section-head">
+          <h2>Sessions</h2>
+          <button
+            type="button"
+            className="ghost"
+            data-testid="sidebar-sessions-add"
+            aria-label="New session"
+            title="A terminal outside any workspace (⌘T)"
+            disabled={!connected}
+            onClick={() => {
+              store.showTerminals(SCRATCH)
+              void store.newTerminal(SCRATCH)
+            }}
+          >
+            +
+          </button>
+        </div>
+        {sessions.length === 0 ? (
+          <p className="empty-note" data-testid="sidebar-sessions-empty">
+            No sessions. Press + to open a terminal.
+          </p>
+        ) : (
+          <ul>
+            {sessions.map((t) => (
+              <li key={t.id} className="session" data-testid={`sidebar-session-${t.id}`}>
+                <button
+                  type="button"
+                  className="row-button"
+                  data-testid={`sidebar-session-${t.id}-open`}
+                  aria-current={activeSession?.id === t.id ? 'page' : undefined}
+                  title={t.cwd}
+                  onClick={() => {
+                    store.showTerminals(SCRATCH)
+                    store.selectTerminal(SCRATCH, t.id)
+                  }}
+                >
+                  <span className="glyph" aria-hidden="true">
+                    ›_
+                  </span>
+                  <span className="name">{t.name}</span>
+                  {!t.alive && (
+                    <span className="badge exited" data-testid={`sidebar-session-${t.id}-exited`}>
+                      exited
+                    </span>
+                  )}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </nav>
+      <nav aria-label="Projects">
         <div className="section-head">
           <h2>Projects</h2>
           <button
@@ -194,16 +247,6 @@ export default function Sidebar(): React.JSX.Element {
             + Project
           </button>
         </div>
-        <button
-          type="button"
-          className="row-button"
-          data-testid="sidebar-scratch"
-          aria-current={selected === SCRATCH ? 'page' : undefined}
-          onClick={() => store.showTerminals(SCRATCH)}
-        >
-          <span className="name">Terminals</span>
-          <span className="count">{scratchCount}</span>
-        </button>
         {loaded && projects.length === 0 && (
           <p className="empty-note" data-testid="sidebar-empty">
             Add a git repository to start a workspace.
