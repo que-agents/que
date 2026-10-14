@@ -16,8 +16,12 @@ const GIT_ENV = {
   GIT_CONFIG_NOSYSTEM: '1'
 }
 
-/** Two commits on main and a que.toml with a trivial setup command. */
-export function makeRepo(): string {
+/**
+ * Two commits on main and a que.toml with a trivial setup command. With
+ * `origin`, a bare clone next to it becomes `origin`, so the finisher's
+ * pushes land somewhere real.
+ */
+export function makeRepo(opts: { origin?: boolean } = {}): string {
   const dir = mkdtempSync(join(os.tmpdir(), 'que-e2e-repo-'))
   const git = (...args: string[]) =>
     execFileSync('git', ['-c', 'commit.gpgsign=false', ...args], {
@@ -32,5 +36,14 @@ export function makeRepo(): string {
   writeFileSync(join(dir, 'que.toml'), 'setup = "true"\n')
   git('add', '.')
   git('commit', '-m', 'Add que.toml')
+  if (opts.origin) {
+    const bare = `${dir}.git`
+    execFileSync('git', ['clone', '--bare', '--quiet', dir, bare], {
+      env: GIT_ENV,
+      stdio: 'ignore'
+    })
+    git('remote', 'add', 'origin', bare)
+    git('fetch', '--quiet', 'origin')
+  }
   return dir
 }

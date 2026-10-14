@@ -1,7 +1,7 @@
 // The status engine's rules, as pure functions: hook events, terminal exits,
 // clock ticks, and `claude agents --json` entries in; a workspace status out.
 // Time is always passed in (`now`, epoch ms); nothing here reads the clock.
-import type { StatusSummary, WorkspaceStatus } from '../shared/types'
+import type { StatusSummary, TaskState, WorkspaceStatus } from '../shared/types'
 
 export interface StatusState {
   status: WorkspaceStatus
@@ -165,4 +165,30 @@ export function summarize(workspaces: ReadonlyArray<{ status: WorkspaceStatus }>
 /** The menu-bar title: working, needing input, stuck. */
 export function trayTitle(s: StatusSummary): string {
   return `● ${s.working} ▸ ${s.needs_input} ✕ ${s.stuck}`
+}
+
+const TASK_WORKING: ReadonlySet<TaskState> = new Set(['preparing', 'running', 'finishing'])
+
+/**
+ * Workspace counts for the tray, with overnight tasks folded in: a task that is
+ * running counts its workspace as working (or itself, before it has one), and
+ * a stuck task counts its workspace as stuck. Each workspace counts once.
+ */
+export function traySummary(
+  workspaces: ReadonlyArray<{ id: string; status: WorkspaceStatus }>,
+  tasks: ReadonlyArray<{ workspaceId: string | null; state: TaskState }>
+): StatusSummary {
+  const effective = new Map(workspaces.map((w) => [w.id, w.status]))
+  const unplaced: WorkspaceStatus[] = []
+  for (const t of tasks) {
+    const status: WorkspaceStatus | null = TASK_WORKING.has(t.state)
+      ? 'working'
+      : t.state === 'stuck'
+        ? 'stuck'
+        : null
+    if (!status) continue
+    if (t.workspaceId && effective.has(t.workspaceId)) effective.set(t.workspaceId, status)
+    else if (status === 'working') unplaced.push(status)
+  }
+  return summarize([...effective.values(), ...unplaced].map((status) => ({ status })))
 }

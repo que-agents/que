@@ -7,8 +7,9 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { DaemonClient } from '@shared/client'
 import type { Events } from '@shared/protocol'
 import { startTestDaemon, type TestDaemon } from '../../src/testing/daemon-harness'
+import { readFakeLog } from '../../src/testing/fakes'
 import { pidAlive } from '../../src/testing/leak-check'
-import { gitIn, makeTempRepo } from '../../src/testing/temp-repo'
+import { addBareOrigin, gitIn, makeTempRepo } from '../../src/testing/temp-repo'
 
 let daemon: TestDaemon
 let client: DaemonClient
@@ -222,4 +223,70 @@ worktree_include = ["config/local", "missing.json"]
       })
     }, 20_000)
   })
+})
+
+describe('workspace.createPr', () => {
+  async function workspaceWithOrigin(branch?: string) {
+    const repo = makeTempRepo(daemon.home)
+    const origin = addBareOrigin(repo)
+    const { id: projectId } = await client.request('project.add', { path: repo })
+    const ws = await client.request('workspace.create', {
+      projectId,
+      name: 'HA-1432 retry logic',
+      ...(branch ? { branch } : {})
+    })
+    return { origin, ws }
+  }
+
+  it('commits the uncommitted work as the title, pushes, and opens a draft PR', async () => {
+    const { origin, ws } = await workspaceWithOrigin()
+    const updates = record(client, 'workspace.updated')
+    fs.writeFileSync(join(ws.path, 'retry.ts'), 'export const retries = 3\n')
+
+    const result = await client.request('workspace.createPr', {
+      id: ws.id,
+      title: 'Add retry logic to the uploader'
+    })
+
+    expect(result.prUrl).toMatch(/^https:\/\/github\.com\/.+\/pull\/\d+$/)
+    expect(gitIn(ws.path, 'log', '-1', '--format=%s')).toBe('Add retry logic to the uploader')
+    expect(gitIn(origin, 'rev-parse', 'ha-1432-retry-logic')).toBe(
+      gitIn(ws.path, 'rev-parse', 'HEAD')
+    )
+    const pr = readFakeLog(daemon.ghLog).find((c) => c.argv[0] === 'pr')
+    expect(pr?.argv).toEqual(
+      expect.arrayContaining(['create', '--draft', '--title', 'Add retry logic to the uploader'])
+    )
+    expect(pr?.cwd).toBe(ws.path)
+    expect((await client.request('workspace.get', { id: ws.id })).prUrl).toBe(result.prUrl)
+    await expect.poll(() => updates.map((w) => w.prUrl)).toContain(result.prUrl)
+  }, 30_000)
+
+  it('refuses a protected branch before committing anything', async () => {
+    const { origin, ws } = await workspaceWithOrigin('release')
+    fs.writeFileSync(join(ws.path, 'hotfix.ts'), 'export const hotfix = true\n')
+
+    await expect(
+      client.request('workspace.createPr', { id: ws.id, title: 'Hotfix the release' })
+    ).rejects.toMatchObject({ code: 'conflict', message: expect.stringContaining('protected') })
+    expect(gitIn(ws.path, 'status', '--porcelain')).toContain('hotfix.ts')
+    expect(gitIn(origin, 'for-each-ref', '--format=%(refname:short)', 'refs/heads')).toBe('main')
+    expect(readFakeLog(daemon.ghLog)).toEqual([])
+  }, 30_000)
+
+  it('answers structured errors for nothing to push, a blank title, and an unknown id', async () => {
+    const { ws } = await workspaceWithOrigin()
+
+    await expect(
+      client.request('workspace.createPr', { id: ws.id, title: 'Nothing here yet' })
+    ).rejects.toMatchObject({ code: 'conflict', message: expect.stringContaining('no commits') })
+    await expect(
+      client.request('workspace.createPr', { id: ws.id, title: '  ' })
+    ).rejects.toMatchObject({ code: 'bad_request' })
+    await expect(
+      client.request('workspace.createPr', { id: 'ws_01hzx9nope00', title: 'Anything' })
+    ).rejects.toMatchObject({ code: 'not_found' })
+    expect((await client.request('workspace.get', { id: ws.id })).prUrl).toBeNull()
+    expect(readFakeLog(daemon.ghLog)).toEqual([])
+  }, 30_000)
 })

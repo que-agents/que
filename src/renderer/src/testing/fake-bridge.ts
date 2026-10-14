@@ -13,6 +13,7 @@ import type {
   Workspace,
   WorkspaceStatus
 } from '../../../preload/index.d'
+import { workspaceSlug } from '../../../shared/slug'
 
 export type FakeQueApi = QueApi
 
@@ -41,15 +42,6 @@ function fakeId(prefix: 'prj_' | 'ws_' | 'tsk_'): string {
   return `${prefix}fake${idCounter.toString(36).padStart(8, '0')}`
 }
 
-/** Same rule as the daemon's slugify (src/shared/slug.ts). */
-function slug(name: string): string {
-  return name
-    .trim()
-    .toLowerCase()
-    .replace(/[\s_]+/g, '-')
-    .replace(/[^a-z0-9._-]/g, '')
-}
-
 class FakeBridge {
   readonly api: FakeQueApi
   private projects = new Map<string, Project>()
@@ -61,6 +53,9 @@ class FakeBridge {
   private queue: QueueState = closedQueue()
   private home = '/Users/dev'
   private folder: string | null = null
+  private tray = '● 0 ▸ 0 ✕ 0'
+  private editorCalls: string[] = []
+  private prCalls: Array<{ id: string; title: string }> = []
 
   constructor() {
     this.api = {
@@ -103,6 +98,11 @@ class FakeBridge {
       app: {
         homedir: async () => this.home,
         openFolder: async () => this.folder,
+        openInEditor: async ({ path }) => {
+          this.editorCalls.push(path)
+          return { ok: true }
+        },
+        trayTitle: async () => this.tray,
         e2e: false
       },
       project: {
@@ -224,10 +224,8 @@ class FakeBridge {
         create: async ({ projectId, name, baseRef, branch }) => {
           const project = this.projects.get(projectId)
           if (!project) throw notFound('project', projectId)
-          const s = slug(name)
-          if (!/^[a-z0-9][a-z0-9._-]{0,63}$/.test(s)) {
-            throw rpcError('bad_request', `invalid workspace name ${name}`)
-          }
+          const s = workspaceSlug(name)
+          if (!s) throw rpcError('bad_request', `invalid workspace name ${name}`)
           const now = new Date().toISOString()
           const ws: Workspace = {
             id: fakeId('ws_'),
@@ -242,7 +240,8 @@ class FakeBridge {
             lastActivityAt: null,
             sessionId: null,
             createdAt: now,
-            archivedAt: null
+            archivedAt: null,
+            prUrl: null
           }
           this.workspaces.set(ws.id, ws)
           this.emit('workspace.created', { ...ws })
@@ -261,6 +260,15 @@ class FakeBridge {
         openTerminal: async ({ id, cols, rows }) => {
           const ws = this.workspace(id)
           return this.createTerminal({ cwd: ws.path, cols, rows, name: ws.name }, ws.id)
+        },
+        createPr: async ({ id, title }) => {
+          const ws = this.workspace(id)
+          if (!title.trim()) throw rpcError('bad_request', 'title is required')
+          this.prCalls.push({ id, title })
+          const prUrl = `https://github.com/rquellh/que/pull/${40 + this.prCalls.length}`
+          this.workspaces.set(id, { ...ws, prUrl })
+          this.emit('workspace.updated', { ...ws, prUrl })
+          return { prUrl }
         },
         on: (event, cb) => this.subscribe(event, cb as Listener)
       }
@@ -347,6 +355,28 @@ class FakeBridge {
     this.folder = dir
   }
 
+  /** What app.trayTitle() resolves to. */
+  setTrayTitle(title: string): void {
+    this.tray = title
+  }
+
+  /** Every path app.openInEditor was asked to open, in order. */
+  openInEditorCalls(): string[] {
+    return [...this.editorCalls]
+  }
+
+  /** Every workspace.createPr call, in order. */
+  createPrCalls(): Array<{ id: string; title: string }> {
+    return this.prCalls.map((c) => ({ ...c }))
+  }
+
+  /** Replaces a task in the book and emits task.updated (cost, turns, PR changed). */
+  updateTask(id: string, changes: Partial<Task>): void {
+    const t = { ...this.task(id), ...changes, updatedAt: new Date().toISOString() }
+    this.tasks.set(id, t)
+    this.emit('task.updated', { ...t })
+  }
+
   /** Drops the daemon connection: every onDisconnect listener fires. */
   disconnect(): void {
     for (const cb of this.disconnectListeners) cb()
@@ -362,6 +392,9 @@ class FakeBridge {
     this.listeners.clear()
     this.disconnectListeners.clear()
     this.folder = null
+    this.tray = '● 0 ▸ 0 ✕ 0'
+    this.editorCalls = []
+    this.prCalls = []
   }
 
   private workspace(id: string): Workspace {
