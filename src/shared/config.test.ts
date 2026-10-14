@@ -11,7 +11,13 @@ describe('parseConfig', () => {
         worktreeRoot: '/Users/dev/.que/worktrees',
         stallTimeoutMinutes: 5,
         statusPollSeconds: 10,
-        repos: {}
+        repos: {},
+        concurrency: 2,
+        maxTurns: 50,
+        maxBudgetUsd: 5,
+        defaultPermissionMode: undefined,
+        allowBypassPermissions: false,
+        protectedBranches: ['main', 'master', 'release']
       }
     })
   })
@@ -22,6 +28,12 @@ describe('parseConfig', () => {
 stall_timeout_minutes = 0.5
 status_poll_seconds = 30
 theme = "dark"
+concurrency = 3
+max_turns = 80
+max_budget_usd = 12.5
+default_permission_mode = "plan"
+allow_bypass_permissions = true
+protected_branches = ["main", "production"]
 
 [repos.uploader]
 path = "/Users/dev/code/uploader"
@@ -42,7 +54,13 @@ path = "/Users/dev/code/api"
         repos: {
           uploader: { path: '/Users/dev/code/uploader', defaultBranch: 'develop' },
           api: { path: '/Users/dev/code/api', defaultBranch: undefined }
-        }
+        },
+        concurrency: 3,
+        maxTurns: 80,
+        maxBudgetUsd: 12.5,
+        defaultPermissionMode: 'plan',
+        allowBypassPermissions: true,
+        protectedBranches: ['main', 'production']
       }
     })
   })
@@ -67,6 +85,30 @@ default_branch = "main"
     })
   })
 
+  it('reports bad task settings by key', () => {
+    const r = parseConfig(
+      `concurrency = 1.5
+default_permission_mode = "yolo"
+allow_bypass_permissions = "yes"
+protected_branches = "main"
+`,
+      env
+    )
+
+    expect(r).toEqual({
+      ok: false,
+      errors: [
+        { key: 'concurrency', message: 'must be a whole number' },
+        {
+          key: 'default_permission_mode',
+          message: 'must be one of default, acceptEdits, plan, bypassPermissions, dontAsk, auto'
+        },
+        { key: 'allow_bypass_permissions', message: 'must be true or false' },
+        { key: 'protected_branches', message: 'must be a list of strings' }
+      ]
+    })
+  })
+
   it('reports a TOML syntax error without a key', () => {
     const r = parseConfig('stall_timeout_minutes = = 3', env)
 
@@ -82,6 +124,10 @@ describe('parseRepoConfig', () => {
 teardown = "docker compose down"
 default_branch = "trunk"
 worktree_include = [".env", "config/local"]
+permission_mode = "bypassPermissions"
+instructions = "Follow docs/STYLE.md."
+test = "npm test"
+allowed_tools = ["Bash(npm test)", "Edit"]
 `,
       '# local secrets\n.env\n\n.npmrc\n'
     )
@@ -92,7 +138,11 @@ worktree_include = [".env", "config/local"]
         setup: 'npm ci',
         teardown: 'docker compose down',
         defaultBranch: 'trunk',
-        worktreeInclude: ['.env', 'config/local', '.npmrc']
+        worktreeInclude: ['.env', 'config/local', '.npmrc'],
+        permissionMode: 'bypassPermissions',
+        instructions: 'Follow docs/STYLE.md.',
+        test: 'npm test',
+        allowedTools: ['Bash(npm test)', 'Edit']
       }
     })
   })

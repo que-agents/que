@@ -22,6 +22,8 @@ export interface CliRunOptions {
   input?: string
   /** Merged over process.env. */
   env?: Record<string, string>
+  /** Working directory. Default: the test process's. */
+  cwd?: string
 }
 
 export function runCliWith(opts: CliRunOptions, ...args: string[]): Promise<CliResult> {
@@ -30,7 +32,7 @@ export function runCliWith(opts: CliRunOptions, ...args: string[]): Promise<CliR
     const child = execFile(
       process.execPath,
       [cli, ...args],
-      { env: { ...process.env, ...opts.env }, encoding: 'utf8', timeout: 15_000 },
+      { env: { ...process.env, ...opts.env }, cwd: opts.cwd, encoding: 'utf8', timeout: 15_000 },
       (err, stdout, stderr) => {
         const code = err ? (typeof err.code === 'number' ? err.code : 1) : 0
         resolve({ code, stdout, stderr })

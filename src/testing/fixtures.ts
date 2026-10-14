@@ -72,17 +72,36 @@ export function makeWorkspace(overrides: Partial<Workspace> = {}): Workspace {
   }
 }
 
-/** A queued task with a real title and an opaque id. */
+/** A queued task with a real brief, the default caps, and an opaque id. */
 export function makeTask(overrides: Partial<Task> = {}): Task {
   taskCounter += 1
   return {
-    id: `task_01hzy${taskCounter.toString(36).padStart(7, '0')}`,
+    id: `tsk_01hzy${taskCounter.toString(36).padStart(7, '0')}`,
+    projectId: 'prj_01hzw7q2m4nb',
     workspaceId: 'ws_01hzx3k9c2qf',
     title: 'Add retry logic to the uploader and cover it with tests',
+    brief: 'Add retry logic to the uploader and cover it with tests.\nUse exponential backoff.',
+    source: 'prompt',
+    resumeSessionId: null,
     state: 'queued',
-    cost: 0,
+    reason: null,
+    sessionId: null,
+    pid: null,
+    attempts: 0,
+    costUsd: 0,
     turns: 0,
+    maxTurns: 50,
+    maxBudgetUsd: 5,
+    permissionMode: null,
+    branch: null,
+    prUrl: null,
+    resultText: null,
+    lastActivityAt: null,
+    startedAt: null,
+    finishedAt: null,
+    pausedUntil: null,
     createdAt: '2026-10-13T21:05:00.000Z',
+    updatedAt: '2026-10-13T21:05:00.000Z',
     ...overrides
   }
 }

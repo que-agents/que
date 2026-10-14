@@ -10,12 +10,34 @@ export interface RepoEntry {
   defaultBranch?: string
 }
 
+/** Claude Code permission modes que may pass with --permission-mode. */
+export const PERMISSION_MODES = [
+  'default',
+  'acceptEdits',
+  'plan',
+  'bypassPermissions',
+  'dontAsk',
+  'auto'
+] as const
+export type PermissionMode = (typeof PERMISSION_MODES)[number]
+
 export interface UserConfig {
   worktreeRoot: string
   stallTimeoutMinutes: number
   statusPollSeconds: number
   /** Named repositories, so `que work -r <name>` can resolve a name. */
   repos: Record<string, RepoEntry>
+  /** How many tasks run at once while the queue is open. */
+  concurrency: number
+  /** Default caps for a task that does not set its own. */
+  maxTurns: number
+  maxBudgetUsd: number
+  /** Used when a repo's que.toml sets no permission_mode. */
+  defaultPermissionMode?: PermissionMode
+  /** Required (with the repo opting in) before a task may run with bypassPermissions. */
+  allowBypassPermissions: boolean
+  /** Branches the finisher never pushes, besides each project's default branch. */
+  protectedBranches: string[]
 }
 
 export interface ConfigError {
@@ -36,7 +58,12 @@ export function defaultConfig(env: ConfigEnv): UserConfig {
     worktreeRoot: join(env.queHome, 'worktrees'),
     stallTimeoutMinutes: 5,
     statusPollSeconds: 10,
-    repos: {}
+    repos: {},
+    concurrency: 2,
+    maxTurns: 50,
+    maxBudgetUsd: 5,
+    allowBypassPermissions: false,
+    protectedBranches: ['main', 'master', 'release']
   }
 }
 
@@ -77,6 +104,48 @@ function optionalString(
   return v
 }
 
+function optionalBool(
+  table: Record<string, unknown>,
+  key: string,
+  errors: ConfigError[]
+): boolean | undefined {
+  const v = table[key]
+  if (v === undefined) return undefined
+  if (typeof v !== 'boolean') {
+    errors.push({ key, message: 'must be true or false' })
+    return undefined
+  }
+  return v
+}
+
+function stringList(
+  table: Record<string, unknown>,
+  key: string,
+  errors: ConfigError[]
+): string[] | undefined {
+  const v = table[key]
+  if (v === undefined) return undefined
+  if (!Array.isArray(v) || !v.every((x) => typeof x === 'string')) {
+    errors.push({ key, message: 'must be a list of strings' })
+    return undefined
+  }
+  return v
+}
+
+function permissionMode(
+  table: Record<string, unknown>,
+  key: string,
+  errors: ConfigError[]
+): PermissionMode | undefined {
+  const v = table[key]
+  if (v === undefined) return undefined
+  if (typeof v !== 'string' || !(PERMISSION_MODES as readonly string[]).includes(v)) {
+    errors.push({ key, message: `must be one of ${PERMISSION_MODES.join(', ')}` })
+    return undefined
+  }
+  return v as PermissionMode
+}
+
 function expandHome(p: string): string {
   return p === '~' || p.startsWith('~/') ? join(os.homedir(), p.slice(1)) : p
 }
@@ -94,6 +163,18 @@ export function parseConfig(text: string, env: ConfigEnv): ConfigResult<UserConf
   config.stallTimeoutMinutes =
     positive(t, 'stall_timeout_minutes', errors) ?? config.stallTimeoutMinutes
   config.statusPollSeconds = positive(t, 'status_poll_seconds', errors) ?? config.statusPollSeconds
+  const concurrency = positive(t, 'concurrency', errors)
+  if (concurrency !== undefined && !Number.isInteger(concurrency)) {
+    errors.push({ key: 'concurrency', message: 'must be a whole number' })
+  } else if (concurrency !== undefined) {
+    config.concurrency = concurrency
+  }
+  config.maxTurns = positive(t, 'max_turns', errors) ?? config.maxTurns
+  config.maxBudgetUsd = positive(t, 'max_budget_usd', errors) ?? config.maxBudgetUsd
+  config.defaultPermissionMode = permissionMode(t, 'default_permission_mode', errors)
+  config.allowBypassPermissions =
+    optionalBool(t, 'allow_bypass_permissions', errors) ?? config.allowBypassPermissions
+  config.protectedBranches = stringList(t, 'protected_branches', errors) ?? config.protectedBranches
 
   if (t.repos !== undefined) {
     if (typeof t.repos !== 'object' || t.repos === null || Array.isArray(t.repos)) {
@@ -148,6 +229,14 @@ export interface RepoConfig {
   defaultBranch?: string
   /** Gitignored paths copied from the main checkout into new worktrees. */
   worktreeInclude: string[]
+  /** Permission mode for headless task runs. */
+  permissionMode?: PermissionMode
+  /** Extra instructions appended to every task brief for this repo. */
+  instructions?: string
+  /** The repo's test command, which a task must make pass. */
+  test?: string
+  /** Passed to claude as --allowedTools. */
+  allowedTools: string[]
 }
 
 /** Parses a .worktreeinclude file: one path per line, `#` comments, blanks skipped. */
@@ -167,7 +256,11 @@ export function parseRepoConfig(text: string, includeFile = ''): ConfigResult<Re
     setup: optionalString(t, 'setup', '', errors),
     teardown: optionalString(t, 'teardown', '', errors),
     defaultBranch: optionalString(t, 'default_branch', '', errors),
-    worktreeInclude: []
+    worktreeInclude: [],
+    permissionMode: permissionMode(t, 'permission_mode', errors),
+    instructions: optionalString(t, 'instructions', '', errors),
+    test: optionalString(t, 'test', '', errors),
+    allowedTools: stringList(t, 'allowed_tools', errors) ?? []
   }
   const inc = t.worktree_include
   if (inc !== undefined) {
