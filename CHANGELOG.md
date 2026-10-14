@@ -20,6 +20,10 @@ All notable changes to que are recorded here. The format follows
 
 ### Added
 
+- The sidebar is resizable: drag the divider (180 to 520px), double-click it
+  to reset, or use the arrow keys when it has focus. The width is remembered.
+  The app's own data (such as this) now lives under `QUE_HOME/app`, so a test
+  `QUE_HOME` isolates it too.
 - Right-click a project or a workspace in the sidebar for its actions (the ⋯
   button offers the same). Projects can now be removed from the app; their
   workspaces go with them, worktrees deleted and branches kept.

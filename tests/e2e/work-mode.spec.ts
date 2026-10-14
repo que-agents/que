@@ -97,6 +97,19 @@ test('a workspace made in the sidebar runs claude, shows needs input, opens in t
     expect(statusOf()?.status).toBe('needs_input')
   })
 
+  await test.step('Drag the divider; the sidebar widens by the same amount', async () => {
+    const box = await sidebar.resizer.boundingBox()
+    expect(box).not.toBeNull()
+    const x = (box as { x: number; width: number }).x + (box as { width: number }).width / 2
+    const y = (box as { y: number; height: number }).y + 200
+    await launched.window.mouse.move(x, y)
+    await launched.window.mouse.down()
+    await launched.window.mouse.move(x + 100, y, { steps: 5 })
+    await launched.window.mouse.up()
+    await expect(sidebar.resizer).toHaveAttribute('aria-valuenow', '356')
+    expect((await sidebar.root.boundingBox())?.width).toBe(356)
+  })
+
   await test.step('Open in editor launches the editor on the worktree', async () => {
     await topbar.openEditorButton.click()
     await expect.poll(() => launched.codeCalls()).toContainEqual(['-n', workspace.path])

@@ -24,6 +24,9 @@ let client: DaemonClient | null = null
 let connecting: Promise<DaemonClient> | null = null
 let tray: QueTray | null = null
 const e2e = process.env.QUE_E2E === '1'
+// Everything que keeps lives under QUE_HOME, the app's own data (window
+// storage, caches) included, so a test QUE_HOME isolates all of it.
+app.setPath('userData', join(queHome(), 'app'))
 /** A newer release, once the update check has found one. */
 let update: UpdateInfo | null = null
 
