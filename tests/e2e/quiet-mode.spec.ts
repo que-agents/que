@@ -33,7 +33,7 @@ test('quiet hours show only the board; an unlock brings detail back until it run
   let board: QuietBoardPage
 
   await test.step('Create a workspace with a running terminal with the CLI', async () => {
-    workspace = queJson<Workspace>(queHome, 'work', 'ha-1500-quiet-board', '-r', repo, '--json')
+    workspace = queJson<Workspace>(queHome, 'work', 'app-1500-quiet-board', '-r', repo, '--json')
     expect(que(queHome, 'ws', 'terminal', workspace.id).trim()).toMatch(/^[0-9a-f-]{36}$/)
   })
 
@@ -66,7 +66,7 @@ test('quiet hours show only the board; an unlock brings detail back until it run
     )
     await expect(board.counts).toContainText('0 running · 0 paused · 0 stuck · 0 done')
     await expect(board.counts).toContainText('1 workspace · 0 working · 0 needs input')
-    await expect(board.row(workspace.id)).toContainText('ha-1500-quiet-board')
+    await expect(board.row(workspace.id)).toContainText('app-1500-quiet-board')
     await expect(board.row(workspace.id)).toHaveAttribute('data-state', 'idle')
     await expect(board.unlockButton).toHaveText('Unlock 0.1 min')
     await board.page.screenshot({ path: 'test-results/wp5-quiet-board.png' })

@@ -47,17 +47,17 @@ test('a workspace made in the sidebar runs claude, shows needs input, and opens 
 
   await test.step('Create a workspace from the dialog', async () => {
     await sidebar.projectAddWorkspace(project.id).click()
-    await sidebar.newWorkspaceName.fill('HA-1432 retry logic')
-    await expect(sidebar.newWorkspaceSlug).toHaveText('Branch and folder: ha-1432-retry-logic')
+    await sidebar.newWorkspaceName.fill('APP-1432 retry logic')
+    await expect(sidebar.newWorkspaceSlug).toHaveText('Branch and folder: app-1432-retry-logic')
     await sidebar.newWorkspaceSubmit.click()
     await expect(sidebar.newWorkspaceDialog).toHaveCount(0)
     const created = queJson<Workspace[]>(queHome, 'ws', 'list', '--json').find(
-      (w) => w.name === 'ha-1432-retry-logic'
+      (w) => w.name === 'app-1432-retry-logic'
     )
     expect(created).toBeDefined()
     workspace = created as Workspace
     await expect(sidebar.workspace(workspace.id)).toBeVisible()
-    await expect(topbar.title).toHaveText('ha-1432-retry-logic')
+    await expect(topbar.title).toHaveText('app-1432-retry-logic')
   })
 
   await test.step('Its first terminal opens as a tab, in the worktree', async () => {

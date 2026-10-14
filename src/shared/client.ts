@@ -4,7 +4,7 @@ import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import net from 'node:net'
 import os from 'node:os'
-import { join } from 'node:path'
+import { daemonScriptFrom, runtimeFrom } from './packaged'
 import { ensureDirs, quePaths, type QuePaths } from './paths'
 import {
   MessageDecoder,
@@ -197,24 +197,19 @@ export class DaemonClient {
   }
 }
 
-/** The Electron binary, used as a Node runtime for the daemon. */
+/**
+ * The Electron binary, used as a Node runtime for the daemon: the current
+ * executable inside Electron (the app, or a bundle the app binary runs as
+ * Node), the app binary when this bundle sits in a packaged que.app, else the
+ * binary of the `electron` dev dependency (CLI and scripts under plain Node).
+ */
 export function resolveRuntime(): string {
-  if (process.versions.electron) {
-    // Inside Electron (main process) the current executable is the runtime.
-    // TODO(packaging): in a packaged app, process.execPath is the app binary;
-    // the daemon script must live outside the asar (or in app.asar.unpacked)
-    // along with node-pty, and this path needs to point at it.
-    return process.execPath
-  }
-  // Under plain Node (CLI, scripts) the `electron` npm package exports the
-  // path to its binary. TODO(packaging): the CLI shipped with a packaged app
-  // must instead locate the installed app's binary.
-  return require('electron') as unknown as string
+  return runtimeFrom(__dirname, process) ?? (require('electron') as unknown as string)
 }
 
-/** out/daemon/index.js, relative to any sibling bundle in out/. */
+/** que.app/Contents/Resources/daemon/index.js when packaged, else out/daemon/index.js. */
 export function resolveDaemonScript(): string {
-  return join(__dirname, '..', 'daemon', 'index.js')
+  return daemonScriptFrom(__dirname)
 }
 
 function startDaemon(paths: QuePaths, opts: StartOptions): void {

@@ -1,13 +1,16 @@
 import { spawn } from 'node:child_process'
 import os from 'node:os'
 import { join } from 'node:path'
-import { app, BrowserWindow, dialog, ipcMain, Menu, Notification, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, Notification, shell } from 'electron'
 import { formatCost } from '../daemon/report'
 import { DaemonClient } from '../shared/client'
+import { queHome } from '../shared/paths'
 import type { EventName, MethodName, Report } from '../shared/protocol'
-import type { QuietState } from '../shared/types'
+import type { QuietState, UpdateInfo } from '../shared/types'
 import { createBoardWindow } from './board'
+import { installMenu } from './menu'
 import { createTray, type QueTray } from './tray'
+import { checkForUpdate } from './update-check'
 
 // The daemon owns every terminal and workspace. This process only proxies the
 // allowed calls and their events between the renderer and the daemon;
@@ -21,6 +24,8 @@ let client: DaemonClient | null = null
 let connecting: Promise<DaemonClient> | null = null
 let tray: QueTray | null = null
 const e2e = process.env.QUE_E2E === '1'
+/** A newer release, once the update check has found one. */
+let update: UpdateInfo | null = null
 
 /** Methods the renderer may call through the preload bridge. */
 const ALLOWED: ReadonlySet<MethodName> = new Set<MethodName>([
@@ -233,20 +238,16 @@ function showWindow(): void {
   if (!e2e) app.focus({ steal: true })
 }
 
-/** The default menus, minus Cmd+T / Cmd+W, which the renderer uses for terminal tabs. */
-function installMenu(): void {
-  Menu.setApplicationMenu(
-    Menu.buildFromTemplate([
-      { role: 'appMenu' },
-      {
-        label: 'File',
-        submenu: [{ role: 'close', accelerator: 'Shift+CommandOrControl+W' }]
-      },
-      { role: 'editMenu' },
-      { role: 'viewMenu' },
-      { role: 'windowMenu' }
-    ])
-  )
+/** Once per launch (and at most once a day, see update-check.ts): is there a newer release? */
+function startUpdateCheck(): void {
+  if (e2e || process.env.QUE_UPDATE_CHECK === '0') return
+  void checkForUpdate({
+    currentVersion: app.getVersion(),
+    statePath: join(queHome(), 'state', 'update-check.json')
+  }).then((info) => {
+    update = info
+    if (info) sendToRenderer('que:update', info)
+  })
 }
 
 function sendToRenderer(channel: string, ...args: unknown[]): void {
@@ -279,6 +280,14 @@ function registerIpc(): void {
     const child = spawn('code', ['-n', path], { detached: true, stdio: 'ignore' })
     child.on('error', (err) => console.error(`code -n ${path} failed: ${err.message}`))
     child.unref()
+    return { ok: true }
+  })
+
+  ipcMain.handle('app:update', () => update)
+
+  // Opens only the release page the check found; the renderer cannot pass a URL.
+  ipcMain.handle('app:openUpdate', () => {
+    if (update) void shell.openExternal(update.url)
     return { ok: true }
   })
 
@@ -328,6 +337,7 @@ app.whenReady().then(async () => {
     console.error('failed to reach que daemon:', err)
   }
   if (!mainWindow) createWindow()
+  startUpdateCheck()
   app.on('activate', () => {
     if (!mainWindow) createWindow()
     showApp()

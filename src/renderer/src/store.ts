@@ -15,6 +15,7 @@ import type {
   Task,
   TaskAddParams,
   TermInfo,
+  UpdateInfo,
   Workspace
 } from '../../preload/index.d'
 import { chime, shouldChime } from './sound'
@@ -69,6 +70,8 @@ export interface QueState {
 export interface StoreOptions {
   /** The quiet board window: never opens terminals, never chimes. */
   board?: boolean
+  /** The clock for ages, countdowns and windows. Default Date.now. */
+  now?: () => number
 }
 
 /** Quiet hours are on and detail is not unlocked: terminals and reports are refused. */
@@ -131,6 +134,21 @@ export class QueStore {
   // ---- external store plumbing ----------------------------------------------
 
   getState = (): QueState => this.state
+
+  /** The current time, from the injected clock. */
+  now = (): number => (this.options.now ?? Date.now)()
+
+  // ---- app update ----------------------------------------------------------
+
+  /** A newer release, if the main process's daily check found one. */
+  fetchUpdate = (): Promise<UpdateInfo | null> => this.api.app.update()
+
+  onUpdate = (cb: (info: UpdateInfo) => void): (() => void) => this.api.app.onUpdate(cb)
+
+  /** Opens the newer release's page in the browser. */
+  openUpdate = (): void => {
+    void this.api.app.openUpdate().catch(() => {})
+  }
 
   subscribe = (cb: () => void): (() => void) => {
     this.listeners.add(cb)

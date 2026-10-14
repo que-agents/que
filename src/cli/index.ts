@@ -34,6 +34,9 @@ function printTerms(terms: TermInfo[]): void {
 }
 
 async function main(): Promise<void> {
+  // Set when the app binary runs the CLI as Node; it has done its job and must
+  // not reach programs started from here (an editor would start as plain Node).
+  delete process.env.ELECTRON_RUN_AS_NODE
   // `que hook` runs inside Claude Code for every hook event: answer before
   // loading the rest of the CLI, and never fail.
   if (process.argv[2] === 'hook') {
@@ -82,25 +85,44 @@ async function main(): Promise<void> {
   daemon
     .command('status')
     .description('show whether the daemon is running')
-    .action(async () => {
+    .option('--json', 'print JSON')
+    .action(async (opts: { json?: boolean }) => {
       const paths = quePaths()
       const c = await DaemonClient.tryConnect(paths)
       if (!c) {
-        console.log(`daemon not running (socket ${paths.socket})`)
+        if (opts.json) console.log(JSON.stringify({ running: false, socket: paths.socket }))
+        else console.log(`daemon not running (socket ${paths.socket})`)
         process.exitCode = 3
         return
       }
       try {
         const info = await c.request('daemon.ping')
         const terms = await c.request('term.list')
+        const alive = terms.filter((t) => t.alive).length
+        if (opts.json) {
+          console.log(
+            JSON.stringify(
+              {
+                running: true,
+                pid: info.pid,
+                version: info.version,
+                nodeVersion: info.nodeVersion,
+                startedAt: info.startedAt,
+                socket: paths.socket,
+                terminals: { alive, total: terms.length }
+              },
+              null,
+              2
+            )
+          )
+          return
+        }
         console.log(
           `daemon running pid=${info.pid} version=${info.version} node=${info.nodeVersion}`
         )
         console.log(`started ${info.startedAt}`)
         console.log(`socket ${paths.socket}`)
-        console.log(
-          `terminals ${terms.filter((t) => t.alive).length} alive / ${terms.length} total`
-        )
+        console.log(`terminals ${alive} alive / ${terms.length} total`)
       } finally {
         c.close()
       }
@@ -121,15 +143,16 @@ async function main(): Promise<void> {
   term
     .command('new')
     .description('create a terminal running a login shell')
-    .option('--cwd <dir>', 'working directory', process.cwd())
+    .option('--cwd <dir>', 'working directory (default: the current directory)')
     .option('--name <name>', 'display name')
-    .action((opts: { cwd: string; name?: string }) =>
+    .action((opts: { cwd?: string; name?: string }) =>
       withClient(async (c) => {
-        if (!fs.existsSync(opts.cwd)) throw new Error(`no such directory: ${opts.cwd}`)
+        const cwd = opts.cwd ?? process.cwd()
+        if (!fs.existsSync(cwd)) throw new Error(`no such directory: ${cwd}`)
         const cols = process.stdout.columns || 80
         const rows = process.stdout.rows || 24
         const { id } = await c.request('term.create', {
-          cwd: opts.cwd,
+          cwd,
           name: opts.name,
           cols,
           rows

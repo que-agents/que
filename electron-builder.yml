@@ -1,0 +1,81 @@
+# electron-builder config for que.app. `npm run package` builds an unpacked
+# app in release/mac-arm64; `npm run dist` builds the DMG and zip.
+appId: dev.que.app
+productName: que
+copyright: Copyright © 2026 Ryan Quellhorst
+
+# release/que-0.1.0-arm64.dmg and release/que-0.1.0-arm64.zip
+artifactName: ${productName}-${version}-${arch}.${ext}
+
+directories:
+  output: release
+  buildResources: build
+
+# What goes into app.asar: the Electron main, preload and renderer bundles.
+# They need no node_modules at runtime (everything is bundled), and node-pty
+# must not be inside the asar, so node_modules stays out entirely.
+files:
+  - package.json
+  - out/main/**
+  - out/preload/**
+  - out/renderer/**
+  - '!**/node_modules/**'
+  - '!**/*.map'
+
+# node-pty is prepared by `electron-builder install-app-deps` (postinstall)
+# and copied below; nothing to rebuild at package time.
+npmRebuild: false
+
+# Outside the asar, in que.app/Contents/Resources:
+#   daemon/index.js, cli/index.js, client/index.js   (esbuild bundles; only node-pty is external)
+#   cli/que                                           (the POSIX launcher for PATH)
+#   daemon/node_modules/node-pty                      (so the daemon's require('node-pty') resolves)
+extraResources:
+  - from: out/daemon
+    to: daemon
+    filter: ['*.js']
+  - from: out/cli
+    to: cli
+    filter: ['*.js']
+  - from: out/client
+    to: client
+    filter: ['*.js']
+  - from: scripts/cli-launcher.sh
+    to: cli/que
+  - from: node_modules/node-pty
+    to: daemon/node_modules/node-pty
+    filter:
+      - package.json
+      - LICENSE
+      - lib/**/*.js
+      - '!lib/**/*.test.js'
+      - '!lib/**/windows*.js'
+      - '!lib/conpty*.js'
+      # The build made for Electron's ABI by install-app-deps, and the
+      # prebuilt fallback for this platform.
+      - build/Release/pty.node
+      - build/Release/spawn-helper
+      - prebuilds/darwin-${arch}/**
+
+# Restores the execute bit on node-pty's spawn-helper (and the CLI launcher).
+afterPack: scripts/after-pack.cjs
+
+# The daemon and the CLI run as `ELECTRON_RUN_AS_NODE=1 que.app/Contents/MacOS/que
+# <script>`, which needs this fuse. Never disable it.
+electronFuses:
+  runAsNode: true
+
+mac:
+  category: public.app-category.developer-tools
+  icon: build/icon.icns
+  target:
+    - dmg
+    - zip
+  hardenedRuntime: true
+  # Unsigned for now. To sign and notarize later:
+  #   1. set `identity` to the "Developer ID Application: …" certificate name (or
+  #      remove this line and provide CSC_LINK / CSC_KEY_PASSWORD in the env);
+  #   2. add `notarize: true` and provide APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD
+  #      and APPLE_TEAM_ID in the env (see .github/workflows/release.yml);
+  #   3. drop CSC_IDENTITY_AUTO_DISCOVERY=false from the package scripts.
+  identity: null

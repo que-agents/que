@@ -18,7 +18,7 @@ export default function ReportView(): React.JSX.Element {
     try {
       const r = await store.fetchReport()
       setReport(r)
-      setUnlocks(formatUnlocks(await store.fetchUnlocks(r.since), Date.now()))
+      setUnlocks(formatUnlocks(await store.fetchUnlocks(r.since), store.now()))
       setError(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))

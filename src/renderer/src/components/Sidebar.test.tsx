@@ -9,19 +9,19 @@ const uploader = makeProject()
 const api = makeProject({ id: 'prj_01hzw9c4v7kd', name: 'api', path: '/Users/dev/code/api' })
 const retry = makeWorkspace({
   id: 'ws_01hzx3k9c2qf',
-  name: 'ha-1432-retry-logic',
+  name: 'app-1432-retry-logic',
   status: 'working'
 })
 const board = makeWorkspace({
   id: 'ws_01hzx4m1p8rt',
-  name: 'ha-1440-quiet-board',
+  name: 'app-1440-quiet-board',
   status: 'stuck',
   statusReason: 'no_heartbeat'
 })
 const auth = makeWorkspace({
   id: 'ws_01hzx5t6y2wa',
   projectId: api.id,
-  name: 'ha-1451-token-refresh',
+  name: 'app-1451-token-refresh',
   status: 'needs_input'
 })
 
@@ -40,11 +40,11 @@ describe('Sidebar', () => {
       render(<App />)
 
       const project = await screen.findByTestId(`sidebar-project-${uploader.id}`)
-      expect(within(project).getByText('ha-1432-retry-logic')).toBeInTheDocument()
-      expect(within(project).getByText('ha-1440-quiet-board')).toBeInTheDocument()
-      expect(within(project).queryByText('ha-1451-token-refresh')).not.toBeInTheDocument()
+      expect(within(project).getByText('app-1432-retry-logic')).toBeInTheDocument()
+      expect(within(project).getByText('app-1440-quiet-board')).toBeInTheDocument()
+      expect(within(project).queryByText('app-1451-token-refresh')).not.toBeInTheDocument()
       expect(
-        within(screen.getByTestId(`sidebar-project-${api.id}`)).getByText('ha-1451-token-refresh')
+        within(screen.getByTestId(`sidebar-project-${api.id}`)).getByText('app-1451-token-refresh')
       ).toBeInTheDocument()
       expect(screen.getByTestId(`sidebar-workspace-${retry.id}-status`)).toHaveTextContent(
         'working'
@@ -64,7 +64,7 @@ describe('Sidebar', () => {
 
       await user.click(await screen.findByRole('button', { name: /api/, expanded: true }))
 
-      expect(screen.queryByText('ha-1451-token-refresh')).not.toBeInTheDocument()
+      expect(screen.queryByText('app-1451-token-refresh')).not.toBeInTheDocument()
       expect(screen.getByRole('button', { name: /api/, expanded: false })).toBeInTheDocument()
     })
 
@@ -98,7 +98,7 @@ describe('Sidebar', () => {
 
       const created = await window.que.workspace.create({
         projectId: uploader.id,
-        name: 'HA-1460 upload resume'
+        name: 'APP-1460 upload resume'
       })
       await window.que.workspace.remove({ id: board.id })
 
@@ -203,10 +203,10 @@ describe('Sidebar', () => {
       render(<App />)
 
       await user.click(
-        await screen.findByRole('button', { name: 'More actions for ha-1440-quiet-board' })
+        await screen.findByRole('button', { name: 'More actions for app-1440-quiet-board' })
       )
       await user.click(screen.getByRole('menuitem', { name: 'Remove…' }))
-      const dialog = screen.getByRole('dialog', { name: 'Remove ha-1440-quiet-board?' })
+      const dialog = screen.getByRole('dialog', { name: 'Remove app-1440-quiet-board?' })
       await user.click(within(dialog).getByRole('checkbox', { name: /delete the branch/ }))
       await user.click(within(dialog).getByRole('button', { name: 'Remove' }))
 
@@ -223,7 +223,7 @@ describe('Sidebar', () => {
       render(<App />)
 
       await user.click(
-        await screen.findByRole('button', { name: 'More actions for ha-1432-retry-logic' })
+        await screen.findByRole('button', { name: 'More actions for app-1432-retry-logic' })
       )
       await user.click(screen.getByRole('menuitem', { name: 'Open in editor' }))
 

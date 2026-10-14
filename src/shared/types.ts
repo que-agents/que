@@ -166,6 +166,14 @@ export interface UserConfig {
   notifications: NotificationsConfig
 }
 
+/** A newer que release, found by the app's daily update check. */
+export interface UpdateInfo {
+  /** The newer version, without a leading v. */
+  version: string
+  /** Its release page. */
+  url: string
+}
+
 /** What the daemon says about quiet hours (quiet.state and the quiet.changed event). */
 export interface QuietState {
   enabled: boolean
