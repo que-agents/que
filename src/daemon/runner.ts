@@ -3,6 +3,7 @@
 // task machine (through `apply`), kills the run when the machine says so, and
 // hands a finished run to the finisher.
 import { type ChildProcess, execFileSync, spawn } from 'node:child_process'
+import { cleanSpawnEnv } from '../shared/env'
 import { randomUUID } from 'node:crypto'
 import fs from 'node:fs'
 import { join } from 'node:path'
@@ -335,8 +336,9 @@ export class TaskRunner {
         cwd: ws.path,
         detached: true,
         stdio: ['ignore', 'pipe', logFd],
+        // A fresh top-level session: no markers of whatever shell started the daemon.
         env: {
-          ...process.env,
+          ...cleanSpawnEnv(process.env),
           QUE_WORKSPACE_ID: ws.id,
           QUE_TASK_ID: id,
           QUE_SOCKET: this.o.socket(),

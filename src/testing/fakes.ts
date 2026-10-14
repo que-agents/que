@@ -13,6 +13,8 @@ export interface FakeCall {
   cwd: string
   /** Recorded by the fake `claude` (and `caffeinate`). */
   pid?: number
+  /** Recorded by the fake `claude`: the CLAUDE*, TERM* and QUE_* variable names it saw. */
+  env?: string[]
   ts: string
 }
 
