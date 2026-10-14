@@ -190,7 +190,8 @@ npm run dist      # the DMG and zip
 | `tests/` | daemon integration tests, Playwright specs, subprocess fakes |
 | `scripts/` | build, smoke, packaged smoke, soak, flake hunt, docs, release |
 
-How the pieces fit: [docs/architecture.md](docs/architecture.md). Tests follow the
+How the pieces fit: [docs/architecture.md](docs/architecture.md). How it looks and why:
+[docs/design.md](docs/design.md). Tests follow the
 three guides in `.claude/skills/` (`test-planning`, `vitest-testing`,
 `e2e-testing`); see [CONTRIBUTING.md](CONTRIBUTING.md). What is next:
 [ROADMAP.md](ROADMAP.md).

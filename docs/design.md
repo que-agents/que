@@ -1,0 +1,82 @@
+# Design
+
+que is a tool you look at all day and glance at all night, so it is drawn like a
+technical drawing: black and dark grey surfaces, hairline borders, dashed guide
+lines between regions, small mono labels in brackets, and one warm accent.
+Nothing shouts, and nothing is tinted: the greys are neutral. Status is a dot and
+a word, not a coloured block.
+
+The tokens live in `src/renderer/src/styles.css` under `:root`. Components use
+them; nothing sets a colour, font, or radius inline.
+
+## Surfaces
+
+| Token             | Value     | Use                                                   |
+| ----------------- | --------- | ----------------------------------------------------- |
+| `--bg-side`       | `#111111` | The sidebar.                                          |
+| `--bg`            | `#181818` | The main area, the terminal, the quiet board, windows. |
+| `--bg-input`      | `#0e0e0e` | Text fields.                                          |
+| `--bg-raised`     | `#202020` | Buttons, menus, dialogs, banners.                     |
+| `--bg-hover`      | `#262626` | Hover on rows, buttons, menu items.                   |
+| `--bg-active`     | `#2c2c2c` | The selected row; scrollbar thumbs.                   |
+| `--border`        | `#272727` | Hairlines and dashed guides.                          |
+| `--border-strong` | `#363636` | Menus, dialogs, hovered buttons.                      |
+
+Surfaces step up by one token per layer: the sidebar is darker than the main
+area, raised things (menus, dialogs) sit one step above it. Regions are divided
+by a 1px hairline; the top bar and the sidebar's lower entries use the dashed
+guide (`--dash`, 6px on, 6px off) instead, so the eye reads them as sections of
+one drawing rather than separate panels.
+
+## Text
+
+| Token            | Value     | Use                                                   |
+| ---------------- | --------- | ----------------------------------------------------- |
+| `--fg`           | `#eeeeee` | Names, titles, the selected row, anything primary.    |
+| `--fg-secondary` | `#c9c9c9` | Rows at rest, buttons, menu items.                    |
+| `--fg-muted`     | `#9b9b9b` | Hints, form labels, totals, the branch.               |
+| `--fg-faint`     | `#6f6f6f` | Section labels, paths, counts, breadcrumbs, empties.  |
+
+Body text is the system sans at 13px. Anything that is a label, an identifier,
+or a measurement is mono at 10–11px: section labels, branch names, paths,
+counts, short ids, costs, the unlock countdown. Section labels are uppercase,
+letter-spaced, and bracketed (`[ PROJECTS ]`), drawn with `::before`/`::after`
+so the DOM keeps the plain word.
+
+## Accent and tones
+
+| Token              | Value     | Use                                                                   |
+| ------------------ | --------- | --------------------------------------------------------------------- |
+| `--accent`         | `#c26157` | Links, the active tab's underline, focus rings, the terminal cursor.  |
+| `--accent-2`       | `#ffb162` | Quiet-hours state: the unlock countdown, paused, needs input on the board. |
+| `--inverse`        | `#e6e6e6` | The one primary button on a screen, light on dark.                    |
+| `--tone-busy`      | `#4f8cf5` | working, running, preparing.                                          |
+| `--tone-attention` | `#f99c00` | needs input, paused.                                                  |
+| `--tone-bad`       | `#fb2c36` | stuck, failed, exited badly; the danger button.                       |
+| `--tone-good`      | `#34c26b` | done, idle after work.                                                |
+| `--tone-neutral`   | `#7a7a7a` | idle, queued.                                                         |
+| `--tone-muted`     | `#5a5a5a` | stopped, exited.                                                      |
+
+The accent is the only warm colour and it is used sparingly, so it keeps
+meaning "this is the thing" (the active tab, a link, the cursor). A status
+badge (`.status.tone-*`) is a 5px dot and a mono word, tinted at 12% with a
+32% border of its tone. It never fills with colour: at a glance the dot tells
+the story, and a wall of filled pills is exactly the noise que exists to
+remove. The quiet board uses the same tones as plain text.
+
+## Shapes
+
+- Corners are nearly square: 2px on buttons, inputs, dialogs and fieldsets; 4px
+  (`--radius`) on rows and menus. Nothing is a pill except the status dot.
+- Borders are 1px. Shadows appear only under things that float (menus, dialogs).
+- Dialogs carry four small corner points, the marks of a drawing's frame.
+- Row actions (the ⋯ button) show on hover, focus, or while their menu is open.
+- The top bar reads `project / workspace`, with the branch after it only when
+  the branch is not the workspace's own name.
+
+## Adding something
+
+Pick the surface by layer, the text colour by role, and the tone by meaning.
+If a new element needs a colour that is not a token, the design is probably
+wrong rather than the palette. Check the screenshots the e2e specs leave in
+`test-results/` after `npm run e2e`.
