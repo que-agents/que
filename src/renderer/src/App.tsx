@@ -84,6 +84,7 @@ function Shell(): React.JSX.Element {
       data-testid="app-shell"
       style={{ '--sidebar-width': `${sidebarWidth}px` } as React.CSSProperties}
     >
+      <div className="window-drag" aria-hidden="true" />
       <Sidebar />
       <SidebarResizer width={sidebarWidth} onChange={setSidebarWidth} />
       <main className="main">

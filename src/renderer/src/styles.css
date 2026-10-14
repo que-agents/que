@@ -237,9 +237,22 @@ h2 {
 }
 
 .app {
+  position: relative;
   display: flex;
   height: 100%;
   background: var(--bg);
+}
+
+/* The window has no title bar. The traffic lights sit in the strip above the
+ * sidebar's content; that strip and the top bar's empty space drag the window. */
+.window-drag {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: calc(var(--sidebar-width, 256px) - 4px);
+  height: 40px;
+  z-index: 6;
+  -webkit-app-region: drag;
 }
 
 /* ---- sidebar ------------------------------------------------------------ */
@@ -251,7 +264,7 @@ h2 {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 10px 8px;
+  padding: 40px 8px 10px;
   background: var(--bg-side);
   border-right: 1px solid var(--border);
   overflow-y: auto;
@@ -529,11 +542,21 @@ body.resizing {
 
 .topbar {
   position: relative;
+  box-sizing: border-box;
   display: flex;
   align-items: center;
   gap: 8px;
+  min-height: 40px;
   padding: 8px 12px;
   flex: none;
+  -webkit-app-region: drag;
+}
+
+.topbar button,
+.topbar a,
+.topbar input,
+.topbar select {
+  -webkit-app-region: no-drag;
 }
 
 .topbar::after {
