@@ -12,7 +12,7 @@ const appWidth = (): string =>
 async function openApp(): Promise<void> {
   fakeBridge.seedProject(makeProject())
   render(<App />)
-  await screen.findByTestId('sidebar-scratch')
+  await screen.findByTestId('sidebar-sessions-add')
 }
 
 describe('SidebarResizer', () => {
