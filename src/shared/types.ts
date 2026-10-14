@@ -1,17 +1,39 @@
-// Domain types shared by the daemon, CLI, and renderer. Placeholders until the
-// workspace and task features land; shaped for what the tests need today.
+// Domain types shared by the daemon, CLI, and renderer. Tasks and quiet hours
+// are placeholders until those features land.
 
-export type WorkspaceStatus = 'working' | 'idle' | 'needs_input' | 'done' | 'stuck'
+export type WorkspaceStatus = 'preparing' | 'idle' | 'working' | 'needs_input' | 'stuck' | 'exited'
 
+/** A git repository registered with que. */
+export interface Project {
+  id: string
+  name: string
+  /** The main checkout (git toplevel). */
+  path: string
+  defaultBranch: string
+  createdAt: string
+}
+
+/** A git worktree on its own branch, with its own terminals and status. */
 export interface Workspace {
   id: string
   projectId: string
   name: string
   branch: string
   path: string
+  baseRef: string
   status: WorkspaceStatus
+  /** Why it is stuck: `no_heartbeat`, `setup_failed`, `error:<kind>`. */
+  statusReason: string | null
+  statusAt: string
+  lastActivityAt: string | null
+  /** The Claude Code session last seen reporting from this workspace. */
+  sessionId: string | null
   createdAt: string
+  archivedAt: string | null
 }
+
+/** Workspace counts per status, for the tray and `que status`. */
+export type StatusSummary = Record<WorkspaceStatus, number>
 
 export type TaskState =
   | 'queued'

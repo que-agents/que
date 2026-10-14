@@ -1,6 +1,8 @@
 // What que guarantees about the machine it runs on: an owner-only socket,
 // nothing written outside QUE_HOME, and no processes left behind.
+import { execFile } from 'node:child_process'
 import fs from 'node:fs'
+import net from 'node:net'
 import os from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -9,6 +11,7 @@ import { quePaths } from '@shared/paths'
 import { bundleEntry } from '../../src/testing/bundle'
 import { startTestDaemon, type TestDaemon } from '../../src/testing/daemon-harness'
 import { FAKES_BIN } from '../../src/testing/fakes'
+import { runCliWith } from '../../src/testing/cli'
 import { assertPidsGone, pidAlive } from '../../src/testing/leak-check'
 
 // Captured before any test stubs HOME. Only ever read, never written.
@@ -120,7 +123,23 @@ describe('safety', () => {
 
       expect(walk(fakeHome)).toEqual([])
       expect(statOrNull(REAL_QUE_HOME)).toEqual(realQueBefore)
-      expect(walk(queHome)).toEqual(['logs', join('logs', 'daemon.log')])
+      expect(walk(queHome)).toEqual([
+        'bin',
+        join('bin', 'claude'),
+        join('bin', 'que'),
+        'hooks.json',
+        'logs',
+        join('logs', 'daemon.log'),
+        'que.db',
+        'shell',
+        join('shell', 'zsh'),
+        join('shell', 'zsh', '.zlogin'),
+        join('shell', 'zsh', '.zprofile'),
+        join('shell', 'zsh', '.zshenv'),
+        join('shell', 'zsh', '.zshrc')
+      ])
+      expect(fs.statSync(join(queHome, 'bin', 'claude')).mode & 0o777).toBe(0o755)
+      expect(fs.statSync(join(queHome, 'bin', 'que')).mode & 0o777).toBe(0o755)
     }, 30_000)
 
     it('is gone after daemon.shutdown, and so are its terminals', async () => {
@@ -143,4 +162,87 @@ describe('safety', () => {
       expect(fs.existsSync(join(queHome, 'daemon.sock'))).toBe(false)
     }, 30_000)
   })
+})
+
+describe('safety: hooks wrapper', () => {
+  let dir: string
+
+  beforeEach(() => {
+    dir = fs.realpathSync(fs.mkdtempSync(join(os.tmpdir(), 'que-safety-hook-')))
+  })
+
+  afterEach(() => {
+    fs.rmSync(dir, { recursive: true, force: true })
+  })
+
+  const hookJson = JSON.stringify({
+    hook_event_name: 'PermissionRequest',
+    session_id: '7d0c5b2a-0000-4000-8000-3e4f5a6b7c8d',
+    cwd: '/Users/dev/.que/worktrees/uploader/ha-1432-retry-logic',
+    tool_name: 'Bash'
+  })
+
+  it('`que hook` exits 0 silently when no daemon is listening', async () => {
+    const r = await runCliWith(
+      {
+        input: hookJson,
+        env: {
+          QUE_HOME: dir,
+          QUE_WORKSPACE_ID: 'ws_a2b3c4d5e6f7',
+          QUE_SOCKET: join(dir, 'none.sock')
+        }
+      },
+      'hook'
+    )
+
+    expect(r).toEqual({ code: 0, stdout: '', stderr: '' })
+    expect(fs.readdirSync(dir)).toEqual([])
+  }, 20_000)
+
+  it('`que hook` gives up within its budget when the daemon never answers', async () => {
+    const socket = join(dir, 'mute.sock')
+    // Reads requests and never answers.
+    const mute = net.createServer((conn) => conn.resume())
+    await new Promise<void>((r) => mute.listen(socket, r))
+    const started = Date.now()
+
+    const r = await runCliWith(
+      {
+        input: hookJson,
+        env: { QUE_HOME: dir, QUE_WORKSPACE_ID: 'ws_a2b3c4d5e6f7', QUE_SOCKET: socket }
+      },
+      'hook'
+    )
+
+    const elapsed = Date.now() - started
+    await new Promise<void>((r) => mute.close(() => r()))
+    expect(r).toEqual({ code: 0, stdout: '', stderr: '' })
+    expect(elapsed).toBeLessThan(5_000)
+  }, 20_000)
+
+  it('the claude wrapper refuses (127) rather than run itself when no real claude is on PATH', async () => {
+    const daemon = await startTestDaemon()
+    try {
+      const wrapper = join(daemon.home, 'bin', 'claude')
+      const r = await new Promise<{ code: number | null; stderr: string }>((resolve) => {
+        execFile(
+          wrapper,
+          ['--version'],
+          {
+            env: {
+              PATH: `${join(daemon.home, 'bin')}:/usr/bin:/bin`,
+              QUE_WORKSPACE_ID: 'ws_a2b3c4d5e6f7'
+            }
+          },
+          (err, _stdout, stderr) =>
+            resolve({ code: err ? (typeof err.code === 'number' ? err.code : null) : 0, stderr })
+        )
+      })
+
+      expect(r.code).toBe(127)
+      expect(r.stderr).toContain('que: could not find the claude executable')
+    } finally {
+      await daemon.close()
+    }
+  }, 20_000)
 })
