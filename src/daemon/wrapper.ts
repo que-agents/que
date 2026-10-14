@@ -93,14 +93,41 @@ export function hooksSettings(): { hooks: Record<string, unknown[]> } {
   return { hooks }
 }
 
+/**
+ * Another claude wrapper on PATH (one that looks past its own directory and
+ * runs the next claude it finds) can hand the command straight back to this
+ * script, in the same process, since wrappers exec. The script notices that
+ * re-entry by its pid, skips every claude it already handed off to, and adds
+ * --settings only on the first pass, so the chain ends at the real executable.
+ * The depth cap turns a wrapper that spawns instead of exec'ing into an error
+ * rather than an endless loop.
+ */
+const MAX_WRAPPER_DEPTH = 16
+
 function claudeScript(paths: QuePaths): string {
   return `#!/bin/sh
 # que wrapper for Claude Code. Inside a que workspace terminal it adds que's
-# hook settings for this session only; anywhere else it is transparent.
+# hook settings for this session only; anywhere else it is transparent. When
+# another claude wrapper on PATH hands the command back here (same pid: they
+# exec), the claude already tried is skipped and --settings is not added twice.
 QUE_BIN=${shQuote(paths.binDir)}
 QUE_HOOKS=${shQuote(paths.hooksJson)}
+QUE_CLAUDE_DEPTH=$((\${QUE_CLAUDE_DEPTH:-0} + 1))
+export QUE_CLAUDE_DEPTH
+if [ "$QUE_CLAUDE_DEPTH" -gt ${MAX_WRAPPER_DEPTH} ]; then
+  echo "que: $QUE_CLAUDE_DEPTH claude wrappers have handed off to each other without reaching Claude Code; set QUE_REAL_CLAUDE to the real executable" >&2
+  exit 127
+fi
+if [ "\${QUE_CLAUDE_PID-}" = "$$" ]; then
+  REENTERED=1
+else
+  REENTERED=""
+  QUE_CLAUDE_TRIED=""
+fi
+QUE_CLAUDE_PID=$$
+export QUE_CLAUDE_PID
 REAL=""
-if [ -n "$QUE_REAL_CLAUDE" ] && [ -x "$QUE_REAL_CLAUDE" ]; then
+if [ -z "$REENTERED" ] && [ -n "$QUE_REAL_CLAUDE" ] && [ -x "$QUE_REAL_CLAUDE" ]; then
   REAL="$QUE_REAL_CLAUDE"
 else
   set -f
@@ -109,9 +136,18 @@ else
   for d in $PATH; do
     [ -n "$d" ] || continue
     [ "$d" = "$QUE_BIN" ] && continue
-    [ -f "$d/claude" ] && [ -x "$d/claude" ] || continue
-    [ "$d/claude" -ef "$0" ] && continue
-    REAL="$d/claude"
+    c="$d/claude"
+    [ -f "$c" ] && [ -x "$c" ] || continue
+    [ "$c" -ef "$0" ] && continue
+    SKIP=""
+    for t in $QUE_CLAUDE_TRIED; do
+      if [ "$c" -ef "$t" ]; then
+        SKIP=1
+        break
+      fi
+    done
+    [ -n "$SKIP" ] && continue
+    REAL="$c"
     break
   done
   IFS=$OLD_IFS
@@ -121,7 +157,9 @@ if [ -z "$REAL" ]; then
   echo "que: could not find the claude executable on PATH (outside $QUE_BIN)" >&2
   exit 127
 fi
-if [ -n "$QUE_WORKSPACE_ID" ]; then
+QUE_CLAUDE_TRIED="\${QUE_CLAUDE_TRIED:+$QUE_CLAUDE_TRIED:}$REAL"
+export QUE_CLAUDE_TRIED
+if [ -n "$QUE_WORKSPACE_ID" ] && [ -z "$REENTERED" ]; then
   exec "$REAL" --settings "$QUE_HOOKS" "$@"
 fi
 exec "$REAL" "$@"

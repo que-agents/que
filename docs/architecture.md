@@ -67,9 +67,13 @@ own branch under `worktree_root`, with the repo's `que.toml` setup command run
 inside it. Workspace terminals start with `<QUE_HOME>/bin` first on `PATH`.
 That directory holds two small scripts the daemon writes at startup:
 
-- `claude` finds the real `claude` further down `PATH` and, inside a que
-  workspace, adds `--settings <QUE_HOME>/hooks.json`. Outside one it is
-  transparent. The user's own settings files are never written.
+- `claude` runs the `claude` the daemon resolved (`QUE_REAL_CLAUDE`, else the
+  next one down `PATH`) and, inside a que workspace, adds
+  `--settings <QUE_HOME>/hooks.json`. Outside one it is transparent. The
+  user's own settings files are never written. If what it runs is another
+  tool's wrapper that hands the command back (wrappers exec, so the pid is the
+  same), it skips what it already tried and does not add `--settings` twice;
+  a chain that keeps going fails with a message instead of looping.
 - `que` runs the bundled CLI (with the app's own binary in a packaged build).
 
 `hooks.json` registers `que hook` for every hook event, so each event a session

@@ -1,0 +1,28 @@
+#!/bin/sh
+# A claude wrapper from some other tool on the user's PATH: it runs the next
+# `claude` on PATH outside its own directory, arguments passed through. Tests
+# put this directory ahead of tests/fakes/bin to check that que's own wrapper
+# composes with it instead of the two handing the command back and forth.
+#
+# QUE_FAKE_WRAPPER_LOG: append one line per run, "<pid>\t<arguments>".
+# QUE_FAKE_WRAPPER_STYLE=spawn: run the next claude as a child process and
+# exit with its status, instead of exec'ing it.
+self=$(cd "$(dirname "$0")" && pwd -P)
+if [ -n "$QUE_FAKE_WRAPPER_LOG" ]; then
+  printf '%s\t%s\n' "$$" "$*" >>"$QUE_FAKE_WRAPPER_LOG"
+fi
+set -f
+IFS=:
+for d in $PATH; do
+  [ -n "$d" ] || continue
+  case "$d" in "$self" | "$self/") continue ;; esac
+  next="$d/claude"
+  [ -f "$next" ] && [ -x "$next" ] || continue
+  if [ "$QUE_FAKE_WRAPPER_STYLE" = "spawn" ]; then
+    "$next" "$@"
+    exit $?
+  fi
+  exec "$next" "$@"
+done
+echo "fake wrapper: claude not found on PATH" >&2
+exit 127

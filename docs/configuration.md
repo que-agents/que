@@ -96,4 +96,5 @@ allowed_tools = ["Bash(npm test)"]     # passed to claude as --allowedTools
 | `QUE_HOME` | que's state directory (default `~/.que`): socket, database, logs, worktrees, the hooks wrapper. |
 | `QUE_CONFIG` | The user config path (default `~/.config/que/config.toml`). |
 | `QUE_NODE` | The `node` that the hooks wrapper's `que` runs in development builds. |
+| `QUE_REAL_CLAUDE` | The `claude` executable workspace terminals run. The daemon sets it to the first `claude` on its own `PATH`; set it in the daemon's environment when that is not the one you want. |
 | `QUE_UPDATE_CHECK` | `0` turns off the app's daily check for a newer release. |
