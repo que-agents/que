@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { cleanSpawnEnv } from '../shared/env'
 import os from 'node:os'
 import * as pty from 'node-pty'
 import { Terminal as HeadlessTerminal } from '@xterm/headless'
@@ -165,12 +166,9 @@ export class HostedTerminal {
   }
 }
 
+/** The environment of a terminal: the daemon's, cleaned (see shared/env.ts), as an xterm. */
 export function spawnEnv(): Record<string, string> {
-  const env: Record<string, string> = {}
-  for (const [k, v] of Object.entries(process.env)) {
-    if (v !== undefined) env[k] = v
-  }
-  delete env.ELECTRON_RUN_AS_NODE
+  const env = cleanSpawnEnv(process.env)
   env.TERM = 'xterm-256color'
   env.COLORTERM = 'truecolor'
   return env
