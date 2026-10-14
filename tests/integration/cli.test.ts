@@ -1,8 +1,15 @@
 // The real `que` CLI as a subprocess against the in-process daemon.
+import fs from 'node:fs'
+import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { TermInfo } from '@shared/protocol'
+import type { Workspace } from '@shared/types'
+import type { StatusJson } from '../../src/cli/workspaces'
 import { runCli } from '../../src/testing/cli'
 import { startTestDaemon, type TestDaemon } from '../../src/testing/daemon-harness'
+import { readFakeLog } from '../../src/testing/fakes'
+import { makeHookEvent } from '../../src/testing/fixtures'
+import { gitIn, makeTempRepo } from '../../src/testing/temp-repo'
 
 let daemon: TestDaemon
 
@@ -39,6 +46,7 @@ describe('que term list', () => {
       alive: true,
       createdAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/)
     })
+    expect(terms[0]).not.toHaveProperty('workspaceId')
   }, 30_000)
 
   it('says so when there are no terminals', async () => {
@@ -55,5 +63,136 @@ describe('que term list', () => {
 
     expect(r.code).toBe(1)
     expect(r.stderr).toContain('que: daemon is not running')
+  }, 30_000)
+})
+
+describe('que work and que ws', () => {
+  it('creates a workspace from a repo path, waits for setup, and prints its path', async () => {
+    const repo = makeTempRepo(daemon.home, { queToml: 'setup = "printf ok > .setup-done"\n' })
+
+    const r = await runCli('work', 'HA-1432 retry logic', '-r', repo)
+
+    expect(r.code).toBe(0)
+    const path = join(daemon.home, 'worktrees', 'uploader', 'ha-1432-retry-logic')
+    expect(r.stdout.trim()).toBe(path)
+    expect(fs.readFileSync(join(path, '.setup-done'), 'utf8')).toBe('ok')
+    expect(gitIn(path, 'rev-parse', '--abbrev-ref', 'HEAD')).toBe('ha-1432-retry-logic')
+    const listed = JSON.parse((await runCli('ws', 'list', '--json')).stdout) as Workspace[]
+    expect(listed).toEqual([expect.objectContaining({ path, status: 'idle' })])
+  }, 30_000)
+
+  it('resolves -r through the config registry and fails when setup fails', async () => {
+    const repo = makeTempRepo(daemon.home, { queToml: 'setup = "exit 4"\n' })
+    fs.writeFileSync(daemon.configPath, `[repos.uploader-api]\npath = "${repo}"\n`)
+
+    const r = await runCli('work', 'ha-1433-broken-setup', '-r', 'uploader-api')
+
+    expect(r.code).toBe(1)
+    expect(r.stderr).toContain('setup failed for ha-1433-broken-setup')
+    const [project] = await daemon.client.request('project.list')
+    expect(project).toMatchObject({ name: 'uploader-api', path: repo })
+  }, 30_000)
+
+  it('removes a workspace by name and deletes its branch', async () => {
+    const repo = makeTempRepo(daemon.home)
+    await runCli('work', 'ha-1470-cleanup', '-r', repo)
+
+    const r = await runCli('ws', 'remove', 'ha-1470-cleanup', '--delete-branch')
+
+    expect(r.code).toBe(0)
+    expect(r.stdout).toMatch(/^removed ws_[a-z2-7]{12} \(ha-1470-cleanup\)/)
+    expect(await daemon.client.request('workspace.list')).toEqual([])
+    expect(gitIn(repo, 'branch', '--list', 'ha-1470-cleanup')).toBe('')
+  }, 30_000)
+
+  it('opens a workspace with code -n', async () => {
+    const repo = makeTempRepo(daemon.home)
+    const path = (await runCli('work', 'ha-1480-editor', '-r', repo)).stdout.trim()
+
+    const r = await runCli('open', 'ha-1480-editor')
+
+    expect(r.code).toBe(0)
+    expect(readFakeLog(daemon.codeLog).map((c) => c.argv)).toEqual([['-n', path]])
+  }, 30_000)
+})
+
+describe('que status', () => {
+  it('reports the summary and each workspace as JSON', async () => {
+    const project = await daemon.client.request('project.add', {
+      path: makeTempRepo(daemon.home)
+    })
+    const ws = await daemon.client.request('workspace.create', {
+      projectId: project.id,
+      name: 'ha-1432-retry-logic'
+    })
+    await expect
+      .poll(async () => (await daemon.client.request('workspace.get', { id: ws.id })).status, {
+        timeout: 10_000
+      })
+      .toBe('idle')
+    await daemon.client.request('hook.event', {
+      workspaceId: ws.id,
+      payload: makeHookEvent('Notification', {
+        session_id: '7d0c5b2a-0000-4000-8000-3e4f5a6b7c8d',
+        notification_type: 'permission_prompt',
+        message: 'Claude needs your permission to use Bash'
+      })
+    })
+
+    const r = await runCli('status', '--json')
+
+    expect(r.code).toBe(0)
+    const status = JSON.parse(r.stdout) as StatusJson
+    expect(status.summary).toEqual({
+      working: 0,
+      idle: 0,
+      needs_input: 1,
+      stuck: 0,
+      exited: 0,
+      preparing: 0
+    })
+    expect(status.tray).toBe('● 0 ▸ 1 ✕ 0')
+    expect(status.workspaces).toEqual([
+      {
+        id: ws.id,
+        name: 'ha-1432-retry-logic',
+        project: 'uploader',
+        projectId: project.id,
+        branch: 'ha-1432-retry-logic',
+        path: ws.path,
+        status: 'needs_input',
+        reason: null,
+        lastActivityAt: null,
+        sessionId: '7d0c5b2a-0000-4000-8000-3e4f5a6b7c8d'
+      }
+    ])
+  }, 30_000)
+})
+
+describe('que doctor', () => {
+  it('passes when the daemon, claude, git, config, and wrapper are all there', async () => {
+    const r = await runCli('doctor')
+
+    expect(r.code).toBe(0)
+    const lines = r.stdout.trim().split('\n')
+    expect(lines.map((l) => l.split(/\s+/).slice(0, 2).join(' '))).toEqual([
+      'ok daemon',
+      'ok claude',
+      'ok gh',
+      'ok git',
+      'ok node',
+      'ok config',
+      'ok wrapper'
+    ])
+    expect(r.stdout).toContain('2.1.0 (Claude Code)')
+  }, 30_000)
+
+  it('fails on an invalid config file and names the key', async () => {
+    fs.writeFileSync(daemon.configPath, 'stall_timeout_minutes = "soon"\n')
+
+    const r = await runCli('doctor')
+
+    expect(r.code).toBe(1)
+    expect(r.stdout).toMatch(/FAIL\s+config\s+.*stall_timeout_minutes: must be a positive number/)
   }, 30_000)
 })

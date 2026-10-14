@@ -1,36 +1,48 @@
 import type {
   Events,
+  ProjectAddParams,
+  ProjectRemoveParams,
   TermAttachResult,
   TermCreateParams,
   TermInfo,
-  TermSnapshotResult
+  TermListParams,
+  TermSnapshotResult,
+  WorkspaceCreateParams,
+  WorkspaceListParams,
+  WorkspaceOpenTerminalParams,
+  WorkspaceRemoveParams,
+  WorkspaceStatusEvent
 } from '../shared/protocol'
-import type { Task, Workspace, WorkspaceStatus } from '../shared/types'
+import type { Project, Task, Workspace, WorkspaceStatus } from '../shared/types'
 
 export type {
   Events,
+  Project,
   Task,
   TermAttachResult,
   TermCreateParams,
   TermInfo,
   TermSnapshotResult,
   Workspace,
-  WorkspaceStatus
+  WorkspaceStatus,
+  WorkspaceStatusEvent
 }
 
 /** Mirrors the daemon's term.* protocol methods and events. */
 export interface TermApi {
   create(params: TermCreateParams): Promise<{ id: string }>
-  list(): Promise<TermInfo[]>
+  list(params?: TermListParams): Promise<TermInfo[]>
   attach(params: { id: string; cols: number; rows: number }): Promise<TermAttachResult>
   detach(params: { id: string }): Promise<{ ok: true }>
   write(params: { id: string; data: string }): void
   resize(params: { id: string; cols: number; rows: number }): Promise<{ ok: true }>
   kill(params: { id: string }): Promise<{ ok: true }>
   snapshot(params: { id: string }): Promise<TermSnapshotResult>
-  on<E extends keyof Events>(event: E, cb: (data: Events[E]) => void): () => void
+  on<E extends TermEventName>(event: E, cb: (data: Events[E]) => void): () => void
   onDisconnect(cb: () => void): () => void
 }
+
+export type TermEventName = 'term.data' | 'term.exit' | 'term.created' | 'term.killed'
 
 export interface AppApi {
   homedir(): Promise<string>
@@ -40,23 +52,36 @@ export interface AppApi {
   e2e: boolean
 }
 
-export interface WorkspaceEvents {
-  'workspace.status': { id: string; status: WorkspaceStatus }
+/** Mirrors the daemon's project.* methods. */
+export interface ProjectApi {
+  add(params: ProjectAddParams): Promise<Project>
+  list(): Promise<Project[]>
+  remove(params: ProjectRemoveParams): Promise<{ ok: true }>
 }
 
-/**
- * The workspace surface the renderer will get once the daemon owns
- * workspaces. Not exposed by the preload yet; the fake bridge implements it
- * so renderer tests can be written against it.
- */
+export type WorkspaceEventName =
+  | 'workspace.created'
+  | 'workspace.updated'
+  | 'workspace.removed'
+  | 'workspace.status'
+
+export type WorkspaceEvents = Pick<Events, WorkspaceEventName>
+
+/** Mirrors the daemon's workspace.* methods and events. */
 export interface WorkspaceApi {
-  list(): Promise<Workspace[]>
+  create(params: WorkspaceCreateParams): Promise<Workspace>
+  list(params?: WorkspaceListParams): Promise<Workspace[]>
   get(params: { id: string }): Promise<Workspace>
-  on<E extends keyof WorkspaceEvents>(event: E, cb: (data: WorkspaceEvents[E]) => void): () => void
+  remove(params: WorkspaceRemoveParams): Promise<{ ok: true }>
+  /** Opens a terminal in the worktree with the hooks wrapper on PATH. */
+  openTerminal(params: WorkspaceOpenTerminalParams): Promise<{ id: string }>
+  on<E extends WorkspaceEventName>(event: E, cb: (data: Events[E]) => void): () => void
 }
 
 export interface QueApi {
   term: TermApi
+  project: ProjectApi
+  workspace: WorkspaceApi
   app: AppApi
 }
 

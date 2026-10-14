@@ -4,8 +4,9 @@ import { app, BrowserWindow, dialog, ipcMain } from 'electron'
 import { DaemonClient } from '../shared/client'
 import type { EventName, MethodName } from '../shared/protocol'
 
-// The daemon owns every terminal. This process only proxies term.* calls and
-// events between the renderer and the daemon; quitting leaves terminals alive.
+// The daemon owns every terminal and workspace. This process only proxies the
+// allowed calls and their events between the renderer and the daemon;
+// quitting leaves terminals alive.
 
 let mainWindow: BrowserWindow | null = null
 let client: DaemonClient | null = null
@@ -20,9 +21,26 @@ const ALLOWED: ReadonlySet<MethodName> = new Set<MethodName>([
   'term.write',
   'term.resize',
   'term.kill',
-  'term.snapshot'
+  'term.snapshot',
+  'project.add',
+  'project.list',
+  'project.remove',
+  'workspace.create',
+  'workspace.list',
+  'workspace.get',
+  'workspace.remove',
+  'workspace.openTerminal'
 ])
-const FORWARDED_EVENTS: EventName[] = ['term.data', 'term.exit', 'term.created', 'term.killed']
+const FORWARDED_EVENTS: EventName[] = [
+  'term.data',
+  'term.exit',
+  'term.created',
+  'term.killed',
+  'workspace.created',
+  'workspace.updated',
+  'workspace.removed',
+  'workspace.status'
+]
 
 function getClient(): Promise<DaemonClient> {
   if (client?.connected) return Promise.resolve(client)

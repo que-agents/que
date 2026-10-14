@@ -22,7 +22,7 @@ function subscribe(event: string, cb: (data: unknown) => void): () => void {
 const api: QueApi = {
   term: {
     create: (p) => call('term.create', p),
-    list: () => call('term.list'),
+    list: (p) => call('term.list', p),
     attach: (p) => call('term.attach', p),
     detach: (p) => call('term.detach', p),
     write: (p) => ipcRenderer.send('que:write', p.id, p.data),
@@ -31,6 +31,19 @@ const api: QueApi = {
     snapshot: (p) => call('term.snapshot', p),
     on: (event, cb) => subscribe(event, cb as (data: unknown) => void),
     onDisconnect: (cb) => subscribe('daemon.disconnected', cb)
+  },
+  project: {
+    add: (p) => call('project.add', p),
+    list: () => call('project.list'),
+    remove: (p) => call('project.remove', p)
+  },
+  workspace: {
+    create: (p) => call('workspace.create', p),
+    list: (p) => call('workspace.list', p),
+    get: (p) => call('workspace.get', p),
+    remove: (p) => call('workspace.remove', p),
+    openTerminal: (p) => call('workspace.openTerminal', p),
+    on: (event, cb) => subscribe(event, cb as (data: unknown) => void)
   },
   app: {
     homedir: () => ipcRenderer.invoke('app:homedir'),
