@@ -1,35 +1,60 @@
-// Headless launch check: runs the built app with QUE_SMOKE=1, which makes the
-// main process spawn a PTY via PtyManager and print a marker line.
-import { spawn } from 'node:child_process'
-import { dirname, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
-import electron from 'electron'
+// Daemon smoke check: with a fresh QUE_HOME, start the daemon through the
+// client, run a one-shot PTY, wait for its marker, then shut the daemon down.
+import { mkdtempSync } from 'node:fs'
+import { createRequire } from 'node:module'
+import os from 'node:os'
+import { join } from 'node:path'
 
-const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-const env = { ...process.env, QUE_SMOKE: '1' }
-delete env.ELECTRON_RUN_AS_NODE
+process.env.QUE_HOME = mkdtempSync(join(os.tmpdir(), 'que-smoke-'))
+const require = createRequire(import.meta.url)
+const { DaemonClient } = require('../out/client/index.js')
 
-const child = spawn(electron, [root], { cwd: root, env, stdio: ['ignore', 'pipe', 'pipe'] })
-let out = ''
-let done = false
+let client = null
+const timer = setTimeout(() => {
+  console.log('smoke: timed out after 15s')
+  void shutdown().finally(() => process.exit(1))
+}, 15_000)
 
-function finish(code, msg) {
-  if (done) return
-  done = true
-  clearTimeout(timer)
-  if (msg) console.log(msg)
-  child.kill()
-  process.exit(code)
+async function shutdown() {
+  if (!client?.connected) return
+  try {
+    await client.request('daemon.shutdown')
+  } catch {
+    // Connection may close before the reply is read.
+  }
+  client.close()
 }
 
-const timer = setTimeout(() => finish(1, 'smoke: timed out after 15s'), 15_000)
+client = await DaemonClient.connectOrStart()
+const ping = await client.request('daemon.ping')
+console.log(`smoke: daemon pid=${ping.pid} node=${ping.nodeVersion} home=${process.env.QUE_HOME}`)
 
-child.stdout.on('data', (d) => {
-  out += d.toString()
-  const line = out.split('\n').find((l) => l.includes('QUE_SMOKE_OK'))
-  if (line) finish(0, `smoke: ${line.trim()}`)
+let buf = ''
+let done = false
+const { id } = await client.request('term.create', {
+  file: '/bin/sh',
+  args: ['-c', 'printf "QUE_SMOKE_OK\\n"'],
+  cols: 80,
+  rows: 24
 })
-child.stderr.on('data', (d) => process.stderr.write(d))
-child.on('exit', (code) => {
-  if (!done) finish(out.includes('QUE_SMOKE_OK') ? 0 : 1, `smoke: electron exited with ${code}`)
+await client.request('term.attach', { id, cols: 80, rows: 24 }).then((r) => (buf += r.snapshot))
+client.on('term.data', (e) => {
+  if (e.id === id) buf += e.data
 })
+
+while (!done) {
+  if (!buf.includes('QUE_SMOKE_OK')) {
+    const snap = await client.request('term.snapshot', { id })
+    if (snap.text.includes('QUE_SMOKE_OK')) buf += snap.text
+  }
+  if (buf.includes('QUE_SMOKE_OK')) {
+    done = true
+    break
+  }
+  await new Promise((r) => setTimeout(r, 100))
+}
+
+console.log('smoke: QUE_SMOKE_OK')
+clearTimeout(timer)
+await shutdown()
+process.exit(0)

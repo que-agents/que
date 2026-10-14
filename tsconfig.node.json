@@ -15,5 +15,15 @@
     "composite": true,
     "noEmit": true
   },
-  "include": ["electron.vite.config.ts", "src/main/**/*", "src/preload/**/*"]
+  "include": [
+    "electron.vite.config.ts",
+    "vitest.config.ts",
+    "playwright.config.ts",
+    "src/main/**/*",
+    "src/preload/**/*",
+    "src/shared/**/*",
+    "src/daemon/**/*",
+    "src/cli/**/*",
+    "tests/**/*"
+  ]
 }

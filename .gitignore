@@ -11,3 +11,7 @@ dist/
 release/
 *.log
 *.tsbuildinfo
+
+# test output
+test-results/
+playwright-report/
