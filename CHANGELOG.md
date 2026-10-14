@@ -8,6 +8,11 @@ All notable changes to que are recorded here. The format follows
 
 ### Changed
 
+- A new look: a black-and-grey dark theme with hairline borders and
+  dashed guide lines between regions, system sans for reading and mono for
+  labels and metadata, one coral accent, and status shown as a dot and a
+  word. The top bar reads project / workspace. `docs/design.md` records the
+  tokens and the rules.
 - Settings no longer shows the overnight queue's defaults (concurrency, turn
   and dollar caps, default permission mode); they live in the config file.
   Protected branches, which also guard Create draft PR, sit under a Pull
