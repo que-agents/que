@@ -134,7 +134,7 @@ export const ErrorCodes = {
 // ---- framing --------------------------------------------------------------
 
 export function encode(msg: unknown): string {
-  return JSON.stringify(msg) + '\n'
+  return `${JSON.stringify(msg)}\n`
 }
 
 /**
@@ -180,4 +180,62 @@ export class MessageDecoder<T = unknown> {
 
 export function isEvent(msg: ServerMessage): msg is EventMessage {
   return typeof (msg as EventMessage).event === 'string'
+}
+
+// ---- Claude Code payloads -------------------------------------------------
+// Shapes que receives from Claude Code: hook JSON on stdin and the final
+// stream-json `result` line of a headless run.
+
+export type HookEventName =
+  | 'SessionStart'
+  | 'UserPromptSubmit'
+  | 'PreToolUse'
+  | 'PostToolUse'
+  | 'Notification'
+  | 'Stop'
+  | 'StopFailure'
+  | 'SubagentStop'
+  | 'PreCompact'
+  | 'SessionEnd'
+
+export interface HookEvent {
+  hook_event_name: HookEventName
+  session_id: string
+  cwd: string
+  transcript_path: string
+  permission_mode?: string
+  /** SessionStart */
+  source?: 'startup' | 'resume' | 'clear' | 'compact'
+  /** UserPromptSubmit */
+  prompt?: string
+  prompt_id?: string
+  /** PreToolUse / PostToolUse */
+  tool_name?: string
+  tool_input?: Record<string, unknown>
+  tool_response?: unknown
+  tool_use_id?: string
+  /** Notification */
+  notification_type?: string
+  message?: string
+  title?: string
+  /** Stop */
+  last_assistant_message?: string
+  stop_hook_active?: boolean
+  /** StopFailure */
+  error?: string
+  error_details?: string
+  /** SessionEnd */
+  reason?: string
+}
+
+export interface StreamResult {
+  type: 'result'
+  subtype: 'success' | 'error_max_turns' | 'error_during_execution' | 'error_max_budget_usd'
+  is_error: boolean
+  num_turns: number
+  total_cost_usd: number
+  duration_ms: number
+  session_id: string
+  stop_reason: string | null
+  result?: string
 }

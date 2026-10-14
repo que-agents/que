@@ -18,9 +18,7 @@ function toTab(t: TermInfo, reattached: boolean): Tab {
   return { id: t.id, name: t.name, cwd: t.cwd, alive: t.alive, reattached }
 }
 
-// Guards against StrictMode running the startup effect twice and creating two
-// terminals on a fresh launch.
-let startup: Promise<{ tabs: Tab[]; active: string | null }> | null = null
+type Startup = Promise<{ tabs: Tab[]; active: string | null }>
 
 async function loadInitial(): Promise<{ tabs: Tab[]; active: string | null }> {
   const existing = (await window.que.term.list())
@@ -33,7 +31,9 @@ async function loadInitial(): Promise<{ tabs: Tab[]; active: string | null }> {
   const cwd = await window.que.app.homedir()
   const { id } = await window.que.term.create({ cwd, cols: DEFAULT_COLS, rows: DEFAULT_ROWS })
   const info = (await window.que.term.list()).find((t) => t.id === id)
-  const tab: Tab = info ? toTab(info, false) : { id, name: 'shell', cwd, alive: true, reattached: false }
+  const tab: Tab = info
+    ? toTab(info, false)
+    : { id, name: 'shell', cwd, alive: true, reattached: false }
   return { tabs: [tab], active: id }
 }
 
@@ -41,12 +41,13 @@ export default function App(): React.JSX.Element {
   const [tabs, setTabs] = useState<Tab[]>([])
   const [activeId, setActiveId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const tabsRef = useRef(tabs)
-  tabsRef.current = tabs
+  // Guards against StrictMode running the startup effect twice and creating
+  // two terminals on a fresh launch (refs survive StrictMode's remount).
+  const startup = useRef<Startup | null>(null)
 
   useEffect(() => {
-    startup ??= loadInitial()
-    startup.then(
+    startup.current ??= loadInitial()
+    startup.current.then(
       ({ tabs, active }) => {
         setTabs(tabs)
         setActiveId(active)
@@ -73,7 +74,9 @@ export default function App(): React.JSX.Element {
       }),
       window.que.term.onDisconnect(() => setError('Lost connection to the que daemon.'))
     ]
-    return () => offs.forEach((off) => off())
+    return () => {
+      for (const off of offs) off()
+    }
   }, [])
 
   // If the active tab disappears, fall back to the last remaining one.
@@ -90,7 +93,10 @@ export default function App(): React.JSX.Element {
       setTabs((prev) =>
         prev.some((t) => t.id === id)
           ? prev
-          : [...prev, info ? toTab(info, false) : { id, name: 'shell', cwd, alive: true, reattached: false }]
+          : [
+              ...prev,
+              info ? toTab(info, false) : { id, name: 'shell', cwd, alive: true, reattached: false }
+            ]
       )
       setActiveId(id)
     } catch (err) {
@@ -120,26 +126,40 @@ export default function App(): React.JSX.Element {
 
   return (
     <div className="app">
-      <header className="topbar">
+      <header className="topbar" data-testid="topbar">
         <div className="tabs" role="tablist">
           {tabs.map((t) => (
-            <span key={t.id} className={`tab${t.id === activeId ? ' active' : ''}`}>
+            <span
+              key={t.id}
+              className={`tab${t.id === activeId ? ' active' : ''}`}
+              data-testid={`terminal-tab-${t.id}`}
+            >
               <button
                 type="button"
                 role="tab"
                 aria-selected={t.id === activeId}
                 data-term-id={t.id}
+                data-testid={`terminal-tab-${t.id}-select`}
                 title={t.cwd}
                 onClick={() => setActiveId(t.id)}
               >
                 {t.name} <span className="short-id">{t.id.slice(0, 6)}</span>
-                {!t.alive && <span className="badge exited">exited</span>}
-                {t.reattached && <span className="badge">reattached</span>}
+                {!t.alive && (
+                  <span className="badge exited" data-testid={`terminal-tab-${t.id}-exited`}>
+                    exited
+                  </span>
+                )}
+                {t.reattached && (
+                  <span className="badge" data-testid={`terminal-tab-${t.id}-reattached`}>
+                    reattached
+                  </span>
+                )}
               </button>
               <button
                 type="button"
                 className="close"
                 aria-label={`Close ${t.name}`}
+                data-testid={`terminal-tab-${t.id}-close`}
                 onClick={() => void closeTab(t.id)}
               >
                 ×
@@ -147,21 +167,27 @@ export default function App(): React.JSX.Element {
             </span>
           ))}
         </div>
-        <span className="cwd" title={active?.cwd ?? ''}>
+        <span className="cwd" title={active?.cwd ?? ''} data-testid="topbar-cwd">
           {active?.cwd ?? ''}
         </span>
-        <button type="button" onClick={() => void newTerminal()}>
+        <button type="button" data-testid="topbar-new-terminal" onClick={() => void newTerminal()}>
           New terminal
         </button>
-        <button type="button" onClick={() => void openFolder()}>
+        <button type="button" data-testid="topbar-open-folder" onClick={() => void openFolder()}>
           Open folder…
         </button>
       </header>
-      {error && <div className="error">{error}</div>}
+      {error && (
+        <div className="error" role="alert" data-testid="app-error">
+          {error}
+        </div>
+      )}
       {active ? (
         <Terminal key={active.id} id={active.id} />
       ) : (
-        <div className="empty">{tabs.length === 0 && !error ? 'No terminals.' : ''}</div>
+        <div className="empty" data-testid="terminal-empty">
+          {tabs.length === 0 && !error ? 'No terminals.' : ''}
+        </div>
       )}
     </div>
   )

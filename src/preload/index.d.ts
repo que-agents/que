@@ -5,8 +5,18 @@ import type {
   TermInfo,
   TermSnapshotResult
 } from '../shared/protocol'
+import type { Task, Workspace, WorkspaceStatus } from '../shared/types'
 
-export type { Events, TermAttachResult, TermCreateParams, TermInfo, TermSnapshotResult }
+export type {
+  Events,
+  Task,
+  TermAttachResult,
+  TermCreateParams,
+  TermInfo,
+  TermSnapshotResult,
+  Workspace,
+  WorkspaceStatus
+}
 
 /** Mirrors the daemon's term.* protocol methods and events. */
 export interface TermApi {
@@ -28,6 +38,21 @@ export interface AppApi {
   openFolder(): Promise<string | null>
   /** True only when the app was launched with QUE_E2E=1. */
   e2e: boolean
+}
+
+export interface WorkspaceEvents {
+  'workspace.status': { id: string; status: WorkspaceStatus }
+}
+
+/**
+ * The workspace surface the renderer will get once the daemon owns
+ * workspaces. Not exposed by the preload yet; the fake bridge implements it
+ * so renderer tests can be written against it.
+ */
+export interface WorkspaceApi {
+  list(): Promise<Workspace[]>
+  get(params: { id: string }): Promise<Workspace>
+  on<E extends keyof WorkspaceEvents>(event: E, cb: (data: WorkspaceEvents[E]) => void): () => void
 }
 
 export interface QueApi {

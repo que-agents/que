@@ -209,7 +209,6 @@ export function resolveRuntime(): string {
   // Under plain Node (CLI, scripts) the `electron` npm package exports the
   // path to its binary. TODO(packaging): the CLI shipped with a packaged app
   // must instead locate the installed app's binary.
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
   return require('electron') as unknown as string
 }
 
@@ -222,7 +221,10 @@ function startDaemon(paths: QuePaths, opts: StartOptions): void {
   const runtime = opts.runtime ?? resolveRuntime()
   const script = opts.daemonScript ?? resolveDaemonScript()
   if (!fs.existsSync(script)) {
-    throw new DaemonError('no_daemon_script', `daemon script not found at ${script}; run npm run build:node`)
+    throw new DaemonError(
+      'no_daemon_script',
+      `daemon script not found at ${script}; run npm run build:node`
+    )
   }
   const env: Record<string, string> = {}
   for (const [k, v] of Object.entries(process.env)) if (v !== undefined) env[k] = v

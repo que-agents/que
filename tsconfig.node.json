@@ -13,7 +13,11 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "composite": true,
-    "noEmit": true
+    "noEmit": true,
+    "paths": {
+      "@shared/*": ["./src/shared/*"],
+      "@daemon/*": ["./src/daemon/*"]
+    }
   },
   "include": [
     "electron.vite.config.ts",
@@ -24,6 +28,7 @@
     "src/shared/**/*",
     "src/daemon/**/*",
     "src/cli/**/*",
+    "src/testing/**/*",
     "tests/**/*"
   ]
 }
