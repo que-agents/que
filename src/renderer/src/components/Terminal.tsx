@@ -2,14 +2,16 @@ import { useEffect, useRef } from 'react'
 import { Terminal as XTerm } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebglAddon } from '@xterm/addon-webgl'
+import { clearActiveTerminal, setActiveTerminal } from '../testHook'
 
 interface Props {
-  cwd: string
+  /** Daemon terminal id to attach to. */
+  id: string
 }
 
 const isMac = navigator.userAgent.includes('Mac')
 
-export default function Terminal({ cwd }: Props): React.JSX.Element {
+export default function Terminal({ id }: Props): React.JSX.Element {
   const hostRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -59,34 +61,50 @@ export default function Terminal({ cwd }: Props): React.JSX.Element {
     fit.fit()
     term.focus()
 
-    let id: string | null = null
     let disposed = false
+    let attached = false
+    // Live output that arrives before the snapshot has been written.
+    let queued: string[] = []
     const cleanups: Array<() => void> = []
 
-    void window.que.pty.spawn({ cwd, cols: term.cols, rows: term.rows }).then((res) => {
-      if (disposed) {
-        window.que.pty.kill(res.id)
-        return
+    cleanups.push(
+      window.que.term.on('term.data', (e) => {
+        if (e.id !== id) return
+        if (attached) term.write(e.data)
+        else queued.push(e.data)
+      }),
+      window.que.term.on('term.exit', (e) => {
+        if (e.id === id) term.write(`\r\n[process exited with code ${e.exitCode}]\r\n`)
+      })
+    )
+    const input = term.onData((data) => window.que.term.write({ id, data }))
+    cleanups.push(() => input.dispose())
+
+    void window.que.term.attach({ id, cols: term.cols, rows: term.rows }).then(
+      (res) => {
+        if (disposed) return
+        // Replay the daemon's mirror before streaming live data.
+        term.write(res.snapshot)
+        for (const d of queued) term.write(d)
+        queued = []
+        attached = true
+        setActiveTerminal(id, term)
+        // Sync in case the window resized while the attach was in flight.
+        if (term.cols !== res.cols || term.rows !== res.rows) {
+          void window.que.term.resize({ id, cols: term.cols, rows: term.rows })
+        }
+      },
+      (err: Error) => {
+        if (!disposed) term.write(`\r\n[could not attach: ${err.message}]\r\n`)
       }
-      id = res.id
-      cleanups.push(window.que.pty.onData(res.id, (data) => term.write(data)))
-      cleanups.push(
-        window.que.pty.onExit(res.id, ({ exitCode }) => {
-          term.write(`\r\n[process exited with code ${exitCode}]\r\n`)
-        })
-      )
-      const input = term.onData((data) => window.que.pty.write(res.id, data))
-      cleanups.push(() => input.dispose())
-      // Sync in case the window resized while the spawn was in flight.
-      window.que.pty.resize(res.id, term.cols, term.rows)
-    })
+    )
 
     let frame = 0
     const observer = new ResizeObserver(() => {
       cancelAnimationFrame(frame)
       frame = requestAnimationFrame(() => {
         fit.fit()
-        if (id) window.que.pty.resize(id, term.cols, term.rows)
+        if (attached) void window.que.term.resize({ id, cols: term.cols, rows: term.rows }).catch(() => {})
       })
     })
     observer.observe(host)
@@ -96,10 +114,12 @@ export default function Terminal({ cwd }: Props): React.JSX.Element {
       cancelAnimationFrame(frame)
       observer.disconnect()
       for (const c of cleanups) c()
-      if (id) window.que.pty.kill(id)
+      // Detach only; the terminal keeps running in the daemon.
+      void window.que.term.detach({ id }).catch(() => {})
+      clearActiveTerminal(term)
       term.dispose()
     }
-  }, [cwd])
+  }, [id])
 
   return <div className="terminal" ref={hostRef} />
 }
