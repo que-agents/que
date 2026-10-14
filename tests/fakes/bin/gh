@@ -1,0 +1,50 @@
+#!/usr/bin/env node
+// Fake GitHub CLI for que's tests: records every call and answers the few
+// subcommands que uses. See tests/fakes/README.md.
+'use strict'
+
+const fs = require('node:fs')
+
+const argv = process.argv.slice(2)
+const log = process.env.QUE_FAKE_GH_LOG
+
+function priorPrCreates() {
+  if (!log || !fs.existsSync(log)) return 0
+  return fs
+    .readFileSync(log, 'utf8')
+    .split('\n')
+    .filter(Boolean)
+    .map((line) => {
+      try {
+        return JSON.parse(line).argv
+      } catch {
+        return []
+      }
+    })
+    .filter((a) => Array.isArray(a) && a[0] === 'pr' && a[1] === 'create').length
+}
+
+const prNumber = priorPrCreates() + 1
+if (log) {
+  fs.appendFileSync(log, `${JSON.stringify({ argv, cwd: process.cwd(), ts: new Date().toISOString() })}\n`)
+}
+
+const [cmd, sub] = argv
+if (cmd === 'auth' && sub === 'status') {
+  process.stdout.write(
+    [
+      'github.com',
+      '  ✓ Logged in to github.com account que-test (keyring)',
+      '  - Active account: true',
+      '  - Git operations protocol: https',
+      "  - Token: gho_************************************",
+      "  - Token scopes: 'gist', 'read:org', 'repo', 'workflow'",
+      ''
+    ].join('\n')
+  )
+} else if (cmd === 'pr' && sub === 'create') {
+  process.stdout.write(`https://github.com/rquellh/que/pull/${prNumber}\n`)
+} else if (cmd === '--version') {
+  process.stdout.write('gh version 2.80.0 (2026-09-01)\n')
+}
+process.exitCode = 0

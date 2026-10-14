@@ -9,9 +9,7 @@ declare const __QUE_VERSION__: string
 const VERSION = typeof __QUE_VERSION__ === 'string' ? __QUE_VERSION__ : '0.0.0-dev'
 
 async function withClient<T>(fn: (c: DaemonClient) => Promise<T>, start = true): Promise<T> {
-  const client = start
-    ? await DaemonClient.connectOrStart()
-    : await DaemonClient.tryConnect()
+  const client = start ? await DaemonClient.connectOrStart() : await DaemonClient.tryConnect()
   if (!client) {
     console.error('que: daemon is not running')
     process.exit(1)
@@ -38,7 +36,11 @@ function printTerms(terms: TermInfo[]): void {
   ])
   const header = ['ID', 'STATE', 'PID', 'SIZE', 'NAME', 'CWD']
   const widths = header.map((h, i) => Math.max(h.length, ...rows.map((r) => r[i].length)))
-  const fmt = (r: string[]): string => r.map((c, i) => c.padEnd(widths[i])).join('  ').trimEnd()
+  const fmt = (r: string[]): string =>
+    r
+      .map((c, i) => c.padEnd(widths[i]))
+      .join('  ')
+      .trimEnd()
   console.log(fmt(header))
   for (const r of rows) console.log(fmt(r))
 }
@@ -74,16 +76,20 @@ async function attach(id: string): Promise<void> {
     // Reset attributes and show the cursor in case the program hid it.
     stdout.write('\x1b[0m\x1b[?25h\r\n')
     if (msg) stdout.write(`${msg}\r\n`)
-    void client.request('term.detach', { id }).catch(() => {}).finally(() => {
-      client.close()
-      resolveDone()
-    })
+    void client
+      .request('term.detach', { id })
+      .catch(() => {})
+      .finally(() => {
+        client.close()
+        resolveDone()
+      })
   }
 
   const onInput = (buf: Buffer): void => {
     const i = buf.indexOf(0x1d) // Ctrl-]
     if (i >= 0) {
-      if (i > 0) void client.request('term.write', { id, data: buf.subarray(0, i).toString('utf8') })
+      if (i > 0)
+        void client.request('term.write', { id, data: buf.subarray(0, i).toString('utf8') })
       finish('[detached]')
       return
     }
@@ -169,10 +175,14 @@ async function main(): Promise<void> {
       try {
         const info = await c.request('daemon.ping')
         const terms = await c.request('term.list')
-        console.log(`daemon running pid=${info.pid} version=${info.version} node=${info.nodeVersion}`)
+        console.log(
+          `daemon running pid=${info.pid} version=${info.version} node=${info.nodeVersion}`
+        )
         console.log(`started ${info.startedAt}`)
         console.log(`socket ${paths.socket}`)
-        console.log(`terminals ${terms.filter((t) => t.alive).length} alive / ${terms.length} total`)
+        console.log(
+          `terminals ${terms.filter((t) => t.alive).length} alive / ${terms.length} total`
+        )
       } finally {
         c.close()
       }
@@ -200,7 +210,12 @@ async function main(): Promise<void> {
         if (!fs.existsSync(opts.cwd)) throw new Error(`no such directory: ${opts.cwd}`)
         const cols = process.stdout.columns || 80
         const rows = process.stdout.rows || 24
-        const { id } = await c.request('term.create', { cwd: opts.cwd, name: opts.name, cols, rows })
+        const { id } = await c.request('term.create', {
+          cwd: opts.cwd,
+          name: opts.name,
+          cols,
+          rows
+        })
         console.log(id)
       })
     )
@@ -211,7 +226,7 @@ async function main(): Promise<void> {
     .action((id: string, opts: { serialized?: boolean }) =>
       withClient(async (c) => {
         const snap = await c.request('term.snapshot', { id })
-        process.stdout.write((opts.serialized ? snap.serialized : snap.text) + '\n')
+        process.stdout.write(`${opts.serialized ? snap.serialized : snap.text}\n`)
       }, false)
     )
   term

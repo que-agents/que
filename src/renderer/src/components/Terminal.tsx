@@ -104,7 +104,8 @@ export default function Terminal({ id }: Props): React.JSX.Element {
       cancelAnimationFrame(frame)
       frame = requestAnimationFrame(() => {
         fit.fit()
-        if (attached) void window.que.term.resize({ id, cols: term.cols, rows: term.rows }).catch(() => {})
+        if (attached)
+          void window.que.term.resize({ id, cols: term.cols, rows: term.rows }).catch(() => {})
       })
     })
     observer.observe(host)
@@ -121,5 +122,5 @@ export default function Terminal({ id }: Props): React.JSX.Element {
     }
   }, [id])
 
-  return <div className="terminal" ref={hostRef} />
+  return <div className="terminal" ref={hostRef} data-testid="terminal-viewport" />
 }

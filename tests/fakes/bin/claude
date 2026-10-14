@@ -1,0 +1,577 @@
+#!/usr/bin/env node
+// Fake Claude Code for que's tests. Put tests/fakes/bin first on PATH and the
+// daemon, CLI, and app spawn this instead of the real binary. It parses the
+// flags que uses, runs `--settings` command hooks with realistic stdin JSON,
+// writes a transcript, and in headless mode prints a stream-json run whose
+// shape is picked by QUE_FAKE_CLAUDE_SCENARIO. See tests/fakes/README.md.
+'use strict'
+
+const { spawnSync } = require('node:child_process')
+const crypto = require('node:crypto')
+const fs = require('node:fs')
+const os = require('node:os')
+const path = require('node:path')
+const readline = require('node:readline')
+
+const VERSION = process.env.QUE_FAKE_CLAUDE_VERSION || '2.1.0'
+const MODEL_DEFAULT = 'claude-sonnet-4-5'
+const TOOLS = ['Task', 'Bash', 'Glob', 'Grep', 'Read', 'Edit', 'Write', 'WebFetch', 'TodoWrite']
+const SCENARIOS = ['success', 'stall', 'rate_limit', 'max_turns', 'crash', 'needs_input']
+
+// ---- argv ------------------------------------------------------------------
+
+const VALUE_FLAGS = new Map([
+  ['--output-format', 'outputFormat'],
+  ['--input-format', 'inputFormat'],
+  ['--settings', 'settings'],
+  ['--session-id', 'sessionId'],
+  ['--max-turns', 'maxTurns'],
+  ['--max-budget-usd', 'maxBudgetUsd'],
+  ['--permission-mode', 'permissionMode'],
+  ['--permission-prompts', 'permissionPrompts'],
+  ['--append-system-prompt-file', 'appendSystemPromptFile'],
+  ['--append-system-prompt', 'appendSystemPrompt'],
+  ['--system-prompt', 'systemPrompt'],
+  ['--model', 'model'],
+  ['--fallback-model', 'fallbackModel']
+])
+const BOOL_FLAGS = new Map([
+  ['--verbose', 'verbose'],
+  ['--include-hook-events', 'includeHookEvents'],
+  ['--include-partial-messages', 'includePartialMessages'],
+  ['--dangerously-skip-permissions', 'skipPermissions'],
+  ['--continue', 'continue'],
+  ['-c', 'continue']
+])
+const VARIADIC_FLAGS = new Map([
+  ['--allowedTools', 'allowedTools'],
+  ['--allowed-tools', 'allowedTools'],
+  ['--disallowedTools', 'disallowedTools'],
+  ['--disallowed-tools', 'disallowedTools'],
+  ['--add-dir', 'addDirs']
+])
+
+function parseArgs(argv) {
+  const o = { allowedTools: [], disallowedTools: [], addDirs: [], positionals: [] }
+  for (let i = 0; i < argv.length; i++) {
+    const raw = argv[i]
+    const eq = raw.startsWith('--') ? raw.indexOf('=') : -1
+    const flag = eq > 0 ? raw.slice(0, eq) : raw
+    const inline = eq > 0 ? raw.slice(eq + 1) : undefined
+    const next = () => (inline !== undefined ? inline : argv[++i])
+    const peekValue = () =>
+      inline !== undefined || (i + 1 < argv.length && !argv[i + 1].startsWith('-'))
+
+    if (flag === '-p' || flag === '--print') {
+      o.print = true
+      // `-p <prompt>`: the prompt may follow the flag or be the trailing positional.
+      if (peekValue()) o.prompt = next()
+    } else if (flag === '-r' || flag === '--resume') {
+      o.resume = peekValue() ? next() : true
+    } else if (flag === '-v' || flag === '--version') {
+      o.version = true
+    } else if (flag === '-h' || flag === '--help') {
+      o.help = true
+    } else if (VALUE_FLAGS.has(flag)) {
+      o[VALUE_FLAGS.get(flag)] = next()
+    } else if (BOOL_FLAGS.has(flag)) {
+      o[BOOL_FLAGS.get(flag)] = true
+    } else if (VARIADIC_FLAGS.has(flag)) {
+      const key = VARIADIC_FLAGS.get(flag)
+      if (inline !== undefined) o[key].push(...inline.split(/[\s,]+/).filter(Boolean))
+      while (i + 1 < argv.length && !argv[i + 1].startsWith('-')) {
+        o[key].push(...argv[++i].split(/[\s,]+/).filter(Boolean))
+      }
+    } else if (raw.startsWith('-')) {
+      // Unknown flags are ignored, never fatal.
+    } else {
+      o.positionals.push(raw)
+    }
+  }
+  if (o.prompt === undefined && o.positionals.length > 0) {
+    o.prompt = o.positionals[o.positionals.length - 1]
+  }
+  return o
+}
+
+// ---- settings and hooks ----------------------------------------------------
+
+function loadSettings(value) {
+  if (!value) return {}
+  try {
+    const text = value.trim().startsWith('{') ? value : fs.readFileSync(value, 'utf8')
+    return JSON.parse(text)
+  } catch (err) {
+    process.stderr.write(`fake claude: could not load --settings: ${err.message}\n`)
+    return {}
+  }
+}
+
+/** The field each event's `matcher` is tested against, as in Claude Code. */
+function matchTarget(event, payload) {
+  switch (event) {
+    case 'PreToolUse':
+    case 'PostToolUse':
+    case 'PostToolUseFailure':
+    case 'PermissionRequest':
+      return payload.tool_name
+    case 'SessionStart':
+      return payload.source
+    case 'SessionEnd':
+      return payload.reason
+    case 'Notification':
+      return payload.notification_type
+    case 'StopFailure':
+      return payload.error
+    default:
+      return undefined
+  }
+}
+
+function matches(matcher, target) {
+  if (matcher === undefined || matcher === '' || matcher === '*' || target === undefined) {
+    return true
+  }
+  try {
+    return new RegExp(`^(?:${matcher})$`).test(target)
+  } catch {
+    return matcher === target
+  }
+}
+
+// ---- session ---------------------------------------------------------------
+
+const opts = parseArgs(process.argv.slice(2))
+const settings = loadSettings(opts.settings)
+const hooks = (settings && typeof settings.hooks === 'object' && settings.hooks) || {}
+const cwd = process.cwd()
+const model = opts.model || MODEL_DEFAULT
+const permissionMode = opts.permissionMode || 'default'
+const outputFormat = opts.outputFormat || 'text'
+const delayMs = Number(process.env.QUE_FAKE_CLAUDE_DELAY_MS ?? 30)
+const resumed = typeof opts.resume === 'string'
+const sessionId = opts.sessionId || (resumed ? opts.resume : crypto.randomUUID())
+const transcriptDir =
+  process.env.QUE_FAKE_CLAUDE_TRANSCRIPT_DIR || path.join(os.tmpdir(), 'que-fake-claude-transcripts')
+const transcriptPath = path.join(transcriptDir, `${sessionId}.jsonl`)
+const startedAt = Date.now()
+
+function appendTranscript(entry) {
+  try {
+    fs.mkdirSync(transcriptDir, { recursive: true })
+    fs.appendFileSync(transcriptPath, `${JSON.stringify(entry)}\n`)
+  } catch {
+    // A transcript is best effort, as it is for the real thing.
+  }
+}
+
+function emit(msg) {
+  appendTranscript(msg)
+  if (opts.print && outputFormat === 'stream-json') process.stdout.write(`${JSON.stringify(msg)}\n`)
+}
+
+function runHooks(event, extra = {}) {
+  const payload = {
+    session_id: sessionId,
+    transcript_path: transcriptPath,
+    cwd,
+    permission_mode: permissionMode,
+    hook_event_name: event,
+    ...extra
+  }
+  const groups = Array.isArray(hooks[event]) ? hooks[event] : []
+  let blocked = false
+  for (const group of groups) {
+    if (!group || !matches(group.matcher, matchTarget(event, payload))) continue
+    for (const hook of Array.isArray(group.hooks) ? group.hooks : []) {
+      if (!hook || hook.type !== 'command' || typeof hook.command !== 'string') continue
+      const hookId = crypto.randomUUID()
+      if (opts.includeHookEvents) {
+        emit({
+          type: 'system',
+          subtype: 'hook_started',
+          hook_id: hookId,
+          hook_name: `${event}${group.matcher ? `:${group.matcher}` : ''}`,
+          hook_event: event,
+          session_id: sessionId,
+          uuid: crypto.randomUUID()
+        })
+      }
+      const r = spawnSync('/bin/sh', ['-c', hook.command], {
+        cwd,
+        env: { ...process.env, CLAUDE_PROJECT_DIR: cwd },
+        input: JSON.stringify(payload),
+        encoding: 'utf8',
+        timeout: (Number(hook.timeout) || 60) * 1000
+      })
+      if (r.status === 2) blocked = true
+      if (opts.includeHookEvents) {
+        emit({
+          type: 'system',
+          subtype: 'hook_response',
+          hook_id: hookId,
+          hook_name: `${event}${group.matcher ? `:${group.matcher}` : ''}`,
+          hook_event: event,
+          output: `${r.stdout ?? ''}${r.stderr ?? ''}`,
+          stdout: r.stdout ?? '',
+          stderr: r.stderr ?? '',
+          exit_code: r.status,
+          outcome: r.status === 0 ? 'success' : 'error',
+          session_id: sessionId,
+          uuid: crypto.randomUUID()
+        })
+      }
+    }
+  }
+  return { blocked }
+}
+
+// ---- message builders --------------------------------------------------------
+
+function initMessage() {
+  return {
+    type: 'system',
+    subtype: 'init',
+    cwd,
+    session_id: sessionId,
+    tools: TOOLS,
+    mcp_servers: [],
+    model,
+    permissionMode,
+    slash_commands: ['compact', 'context', 'cost', 'init', 'review'],
+    apiKeySource: 'none',
+    claude_code_version: VERSION,
+    output_style: 'default',
+    agents: ['general-purpose'],
+    skills: [],
+    plugins: [],
+    uuid: crypto.randomUUID()
+  }
+}
+
+const usage = { input_tokens: 12, output_tokens: 48, cache_read_input_tokens: 0 }
+
+function assistantMessage(content) {
+  return {
+    type: 'assistant',
+    message: {
+      id: `msg_${crypto.randomBytes(12).toString('hex')}`,
+      type: 'message',
+      role: 'assistant',
+      model,
+      content,
+      stop_reason: null,
+      stop_sequence: null,
+      usage
+    },
+    parent_tool_use_id: null,
+    session_id: sessionId,
+    uuid: crypto.randomUUID()
+  }
+}
+
+function toolResultMessage(toolUseId, content, isError) {
+  return {
+    type: 'user',
+    message: {
+      role: 'user',
+      content: [{ tool_use_id: toolUseId, type: 'tool_result', content, is_error: isError }]
+    },
+    parent_tool_use_id: null,
+    session_id: sessionId,
+    uuid: crypto.randomUUID()
+  }
+}
+
+function resultMessage(fields) {
+  return {
+    type: 'result',
+    subtype: 'success',
+    is_error: false,
+    duration_ms: Date.now() - startedAt,
+    duration_api_ms: Math.max(1, Date.now() - startedAt - 5),
+    num_turns: 2,
+    result: '',
+    stop_reason: 'end_turn',
+    session_id: sessionId,
+    total_cost_usd: 0.0123,
+    usage,
+    modelUsage: {},
+    permission_denials: [],
+    uuid: crypto.randomUUID(),
+    ...fields
+  }
+}
+
+// ---- helpers -------------------------------------------------------------------
+
+function sleep(ms) {
+  return new Promise((r) => setTimeout(r, ms))
+}
+
+/** Blocks until SIGTERM/SIGKILL, like a session stuck on a slow or failed API call. */
+function blockForever() {
+  setInterval(() => {}, 1 << 30)
+  return new Promise(() => {})
+}
+
+function finishOutput(result, code) {
+  if (outputFormat === 'json') process.stdout.write(`${JSON.stringify(result)}\n`)
+  else if (outputFormat === 'text') {
+    if (result.is_error) process.stderr.write(`Error: ${result.subtype}\n`)
+    else process.stdout.write(`${result.result}\n`)
+  }
+  process.exitCode = code
+}
+
+process.on('SIGTERM', () => process.exit(143))
+process.on('SIGINT', () => process.exit(130))
+
+// ---- headless ------------------------------------------------------------------
+
+async function headless(prompt) {
+  let scenario = process.env.QUE_FAKE_CLAUDE_SCENARIO || 'success'
+  if (!SCENARIOS.includes(scenario)) {
+    process.stderr.write(`fake claude: unknown QUE_FAKE_CLAUDE_SCENARIO ${scenario}\n`)
+    process.exit(2)
+  }
+  if (scenario === 'rate_limit' && resumed && process.env.QUE_FAKE_CLAUDE_RESUME_OK === '1') {
+    scenario = 'success'
+  }
+  const step = () => sleep(delayMs)
+  const source = resumed ? 'resume' : 'startup'
+
+  emit(initMessage())
+  runHooks('SessionStart', { source, model })
+  await step()
+
+  if (scenario === 'crash') {
+    process.stderr.write('fake claude: simulated crash\n')
+    process.exit(1)
+  }
+
+  appendTranscript({ type: 'user', message: { role: 'user', content: prompt }, session_id: sessionId })
+  runHooks('UserPromptSubmit', { prompt, prompt_id: crypto.randomUUID() })
+  await step()
+
+  if (scenario === 'rate_limit') {
+    emit({
+      type: 'rate_limit_event',
+      rate_limit_info: {
+        status: 'rejected',
+        resetsAt: Math.floor(Date.now() / 1000) + 3600,
+        rateLimitType: 'five_hour',
+        overageStatus: 'rejected',
+        isUsingOverage: false
+      },
+      session_id: sessionId,
+      uuid: crypto.randomUUID()
+    })
+    await step()
+    emit({
+      type: 'system',
+      subtype: 'api_retry',
+      attempt: 1,
+      max_retries: 10,
+      retry_delay_ms: 30000,
+      error_status: 429,
+      error: 'rate_limit',
+      session_id: sessionId,
+      uuid: crypto.randomUUID()
+    })
+    runHooks('StopFailure', {
+      error: 'rate_limit',
+      error_details: 'API Error: 429 {"type":"error","error":{"type":"rate_limit_error"}}'
+    })
+    return blockForever()
+  }
+
+  if (scenario === 'needs_input') {
+    runHooks('Notification', {
+      notification_type: 'permission_prompt',
+      message: 'Claude needs your permission to use Bash',
+      title: 'Permission needed'
+    })
+    return blockForever()
+  }
+
+  const firstText = "I'll make that change now."
+  if (scenario !== 'success') {
+    emit(assistantMessage([{ type: 'text', text: firstText }]))
+    await step()
+    if (scenario === 'stall') return blockForever()
+    // max_turns
+    const result = resultMessage({
+      subtype: 'error_max_turns',
+      is_error: true,
+      num_turns: Number(opts.maxTurns) || 200,
+      stop_reason: 'tool_use',
+      result: undefined,
+      errors: []
+    })
+    emit(result)
+    runHooks('SessionEnd', { reason: 'other' })
+    finishOutput(result, 1)
+    return
+  }
+
+  // success: one tool call (a real Write in cwd), then a closing message.
+  const toolUseId = `toolu_${crypto.randomBytes(12).toString('hex')}`
+  const filePath = path.join(cwd, 'que-fake-change.txt')
+  const toolInput = { file_path: filePath, content: prompt }
+  emit(
+    assistantMessage([
+      { type: 'text', text: firstText },
+      { type: 'tool_use', id: toolUseId, name: 'Write', input: toolInput }
+    ])
+  )
+  await step()
+  const pre = runHooks('PreToolUse', {
+    tool_name: 'Write',
+    tool_input: toolInput,
+    tool_use_id: toolUseId
+  })
+  if (pre.blocked) {
+    emit(toolResultMessage(toolUseId, 'Blocked by PreToolUse hook', true))
+  } else {
+    fs.writeFileSync(filePath, prompt)
+    const toolResponse = { type: 'create', filePath, content: prompt, structuredPatch: [] }
+    runHooks('PostToolUse', {
+      tool_name: 'Write',
+      tool_input: toolInput,
+      tool_response: toolResponse,
+      tool_use_id: toolUseId
+    })
+    emit(toolResultMessage(toolUseId, `File created successfully at: ${filePath}`, false))
+  }
+  await step()
+  const doneText = `Done: ${prompt.slice(0, 60)}`
+  emit(assistantMessage([{ type: 'text', text: doneText }]))
+  await step()
+  runHooks('Stop', { last_assistant_message: doneText, stop_hook_active: false })
+  const result = resultMessage({ result: doneText })
+  emit(result)
+  runHooks('SessionEnd', { reason: 'other' })
+  finishOutput(result, 0)
+}
+
+// ---- interactive ---------------------------------------------------------------
+
+function interactive() {
+  const out = (s) => process.stdout.write(s)
+  out(`✻ Claude Code v${VERSION} (fake) · ${model} · ${cwd}\r\n`)
+  runHooks('SessionStart', { source: resumed ? 'resume' : 'startup', model })
+  out('> ')
+
+  const rl = readline.createInterface({ input: process.stdin, terminal: false })
+  let awaitingPermission = false
+
+  const reply = (text) => {
+    out(`● ${text}\r\n`)
+    appendTranscript({ type: 'assistant', message: { role: 'assistant', content: text } })
+    runHooks('Stop', { last_assistant_message: text, stop_hook_active: false })
+  }
+
+  const toolCall = (name, input) => {
+    const id = `toolu_${crypto.randomBytes(12).toString('hex')}`
+    runHooks('PreToolUse', { tool_name: name, tool_input: input, tool_use_id: id })
+    runHooks('PostToolUse', {
+      tool_name: name,
+      tool_input: input,
+      tool_response: { type: 'text', ok: true },
+      tool_use_id: id
+    })
+  }
+
+  const handle = (raw) => {
+    const line = raw.trim()
+    if (awaitingPermission) {
+      if (line !== 'y') {
+        out('Allow? (y/n) ')
+        return
+      }
+      awaitingPermission = false
+      toolCall('Bash', { command: 'ls', description: 'List files' })
+      reply('Permission granted; ran the command.')
+      out('> ')
+      return
+    }
+    if (line === '') {
+      out('> ')
+      return
+    }
+    if (line === '/exit') {
+      runHooks('SessionEnd', { reason: 'prompt_input_exit' })
+      process.exit(0)
+    }
+    if (line === '/needs-input') {
+      awaitingPermission = true
+      runHooks('Notification', {
+        notification_type: 'permission_prompt',
+        message: 'Claude needs your permission to use Bash',
+        title: 'Permission needed'
+      })
+      out('Claude needs your permission to use Bash. Allow? (y/n) ')
+      return
+    }
+    appendTranscript({ type: 'user', message: { role: 'user', content: line } })
+    runHooks('UserPromptSubmit', { prompt: line, prompt_id: crypto.randomUUID() })
+    out('thinking…\r\n')
+    toolCall('Read', { file_path: path.join(cwd, 'README.md') })
+    reply(`Fake reply to: ${line}`)
+    out('> ')
+  }
+
+  rl.on('line', handle)
+  // `claude "<prompt>"` starts an interactive session with a first prompt.
+  if (opts.prompt) {
+    out(`${opts.prompt}\r\n`)
+    handle(opts.prompt)
+  }
+  rl.on('close', () => {
+    runHooks('SessionEnd', { reason: 'other' })
+    process.exit(0)
+  })
+}
+
+// ---- main ----------------------------------------------------------------------
+
+async function main() {
+  if (opts.version) {
+    process.stdout.write(`${VERSION} (Claude Code)\n`)
+    return
+  }
+  if (opts.help) {
+    process.stdout.write('Usage: claude [options] [command] [prompt]\n')
+    return
+  }
+  if (opts.positionals[0] === 'agents' && !opts.print) {
+    const file = process.env.QUE_FAKE_CLAUDE_AGENTS_JSON
+    const json = process.argv.includes('--json')
+    const text = file ? fs.readFileSync(file, 'utf8').trim() : '[]'
+    process.stdout.write(json ? `${text}\n` : 'No background agents.\n')
+    return
+  }
+  if (opts.print) {
+    if (outputFormat === 'stream-json' && !opts.verbose) {
+      process.stderr.write(
+        'Error: When using --print, --output-format=stream-json requires --verbose\n'
+      )
+      process.exit(1)
+    }
+    let prompt = opts.prompt
+    if (prompt === undefined && !process.stdin.isTTY) prompt = fs.readFileSync(0, 'utf8').trim()
+    if (!prompt) {
+      process.stderr.write('Error: Input must be provided either through stdin or as a prompt argument when using --print\n')
+      process.exit(1)
+    }
+    await headless(prompt)
+    return
+  }
+  interactive()
+}
+
+main().catch((err) => {
+  process.stderr.write(`fake claude: ${err.stack || err.message}\n`)
+  process.exit(1)
+})

@@ -25,7 +25,11 @@ export class HostedTerminal {
   cols: number
   rows: number
 
-  constructor(opts: TermCreateParams, onData: (data: string) => void, onExit: (e: ExitInfo) => void) {
+  constructor(
+    opts: TermCreateParams,
+    onData: (data: string) => void,
+    onExit: (e: ExitInfo) => void
+  ) {
     this.id = randomUUID()
     this.cols = Math.max(1, Math.floor(opts.cols) || 80)
     this.rows = Math.max(1, Math.floor(opts.rows) || 24)
@@ -46,7 +50,9 @@ export class HostedTerminal {
     this.serializer = new SerializeAddon()
     // The serialize addon is typed against the browser Terminal; the headless
     // terminal implements the same public surface it uses.
-    this.mirror.loadAddon(this.serializer as unknown as Parameters<HeadlessTerminal['loadAddon']>[0])
+    this.mirror.loadAddon(
+      this.serializer as unknown as Parameters<HeadlessTerminal['loadAddon']>[0]
+    )
 
     this.proc = pty.spawn(file, args, {
       name: 'xterm-256color',

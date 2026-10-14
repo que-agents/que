@@ -16,13 +16,27 @@ const common = {
   target: 'node24',
   sourcemap: true,
   logLevel: 'info',
+  // Resolves the @shared/* and @daemon/* path aliases.
+  tsconfig: resolve(root, 'tsconfig.node.json'),
   // node-pty is native; electron resolves to its binary path at runtime.
   external: ['node-pty', 'electron'],
   define: { __QUE_VERSION__: JSON.stringify(pkg.version) }
 }
 
 await Promise.all([
-  build({ ...common, entryPoints: [resolve(root, 'src/daemon/index.ts')], outfile: resolve(root, 'out/daemon/index.js') }),
-  build({ ...common, entryPoints: [resolve(root, 'src/cli/index.ts')], outfile: resolve(root, 'out/cli/index.js') }),
-  build({ ...common, entryPoints: [resolve(root, 'src/shared/client.ts')], outfile: resolve(root, 'out/client/index.js') })
+  build({
+    ...common,
+    entryPoints: [resolve(root, 'src/daemon/index.ts')],
+    outfile: resolve(root, 'out/daemon/index.js')
+  }),
+  build({
+    ...common,
+    entryPoints: [resolve(root, 'src/cli/index.ts')],
+    outfile: resolve(root, 'out/cli/index.js')
+  }),
+  build({
+    ...common,
+    entryPoints: [resolve(root, 'src/shared/client.ts')],
+    outfile: resolve(root, 'out/client/index.js')
+  })
 ])
