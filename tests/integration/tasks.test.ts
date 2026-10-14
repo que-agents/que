@@ -1,6 +1,6 @@
 // The overnight queue's wiring: the runner against every fake claude
 // scenario, the finisher pushing to a real bare `origin` and calling the fake
-// gh, the dispatcher's cap, stop, the keep-awake, hand-off, and recovery after
+// gh, the dispatcher's cap, stop, the keep-awake, and recovery after
 // a daemon restart. The transition rules themselves are in task-machine.test.ts.
 import fs from 'node:fs'
 import { join } from 'node:path'
@@ -8,7 +8,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { DaemonClient } from '@shared/client'
 import type { Events } from '@shared/protocol'
 import type { Task, TaskState } from '@shared/types'
-import { runCliWith } from '../../src/testing/cli'
 import { startTestDaemon, type TestDaemon } from '../../src/testing/daemon-harness'
 import { readFakeLog } from '../../src/testing/fakes'
 import { pidAlive } from '../../src/testing/leak-check'
@@ -366,63 +365,6 @@ describe('daemon restart', () => {
     expect(done).toMatchObject({ attempts: 2, sessionId: before.sessionId })
     expect(spawnLines(daemon, task.id)[1]).toContain(`--resume ${before.sessionId}`)
   }, 60_000)
-})
-
-describe('hand-off', () => {
-  it("kills the workspace's terminal and finishes its session headless (que handoff in the worktree)", async () => {
-    const { d, projectId } = await setup()
-    const ws = await d.client.request('workspace.create', {
-      projectId,
-      name: 'app-1432-retry-logic'
-    })
-    await expect
-      .poll(async () => (await d.client.request('workspace.get', { id: ws.id })).status, {
-        timeout: 10_000
-      })
-      .toBe('idle')
-    const { id: term } = await d.client.request('workspace.openTerminal', {
-      id: ws.id,
-      cols: 100,
-      rows: 30
-    })
-    await d.client.request('term.write', { id: term, data: 'claude\r' })
-    await expect
-      .poll(async () => (await d.client.request('workspace.get', { id: ws.id })).sessionId, {
-        timeout: 20_000
-      })
-      .toMatch(/^[0-9a-f-]{36}$/)
-    const { sessionId } = await d.client.request('workspace.get', { id: ws.id })
-    const killed = record(d.client, 'term.killed')
-
-    const r = await runCliWith({ cwd: ws.path }, 'handoff', 'Finish the retry logic and its tests')
-
-    expect(r.code).toBe(0)
-    const id = r.stdout.split(/\s+/)[0]
-    expect(await d.client.request('task.get', { id })).toMatchObject({
-      source: 'handoff',
-      workspaceId: ws.id,
-      resumeSessionId: sessionId
-    })
-    await d.client.request('queue.open')
-    const done = await waitFor(d, id, 'done', 30_000)
-    expect(done).toMatchObject({ sessionId, branch: 'app-1432-retry-logic' })
-    expect(killed).toEqual([{ id: term }])
-    expect(await d.client.request('term.list', { workspaceId: ws.id })).toEqual([])
-    expect(spawnLines(d, id)[0]).toContain(`--resume ${sessionId}`)
-    expect(taskLog(d, id)).toContain('killed 1 live terminal(s)')
-  }, 60_000)
-
-  it('refuses a workspace that has no session', async () => {
-    const { d, projectId } = await setup()
-    const ws = await d.client.request('workspace.create', {
-      projectId,
-      name: 'app-1440-no-session'
-    })
-
-    await expect(
-      d.client.request('handoff.create', { workspaceId: ws.id, brief: 'Finish it' })
-    ).rejects.toMatchObject({ code: 'bad_request' })
-  }, 30_000)
 })
 
 describe('safety', () => {

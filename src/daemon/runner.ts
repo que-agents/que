@@ -288,7 +288,7 @@ export class TaskRunner {
     const config = this.o.config()
 
     const resume = task.resumeSessionId
-    if (resume || task.source === 'handoff') {
+    if (resume) {
       const killed = this.o.killTerminals(ws.id)
       this.taskLog(id, `taking over workspace ${ws.name}: killed ${killed} live terminal(s)`)
       this.o.log(`task ${id}: took over workspace ${ws.id} (killed ${killed} terminals)`)

@@ -1,11 +1,5 @@
 import { useEffect, useState } from 'react'
-import {
-  AddTaskDialog,
-  CreatePrDialog,
-  HandoffDialog,
-  NewWorkspaceDialog,
-  RemoveWorkspaceDialog
-} from './components/dialogs'
+import { CreatePrDialog, NewWorkspaceDialog, RemoveWorkspaceDialog } from './components/dialogs'
 import { hhmm } from '../../daemon/quiet-hours'
 import QuietBoard from './components/QuietBoard'
 import ReportView from './components/ReportView'
@@ -26,12 +20,9 @@ function Dialogs(): React.JSX.Element | null {
       const project = projects.find((p) => p.id === dialog.projectId)
       return project ? <NewWorkspaceDialog project={project} onClose={close} /> : null
     }
-    case 'add-task':
-      return <AddTaskDialog onClose={close} />
     default: {
       const ws = workspaces[dialog.workspaceId]
       if (!ws) return null
-      if (dialog.kind === 'handoff') return <HandoffDialog workspace={ws} onClose={close} />
       if (dialog.kind === 'create-pr') return <CreatePrDialog workspace={ws} onClose={close} />
       return <RemoveWorkspaceDialog workspace={ws} onClose={close} />
     }

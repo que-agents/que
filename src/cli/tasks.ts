@@ -1,8 +1,8 @@
-// Overnight task commands: add, task, run, queue, report, handoff, and the
+// Overnight task commands: add, task, run, queue, report, and the
 // launchd agent (daemon install/uninstall).
 import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
-import { dirname, join, resolve, sep } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import type { Command } from 'commander'
 import { formatUnlocks } from '../daemon/quiet-hours'
 import { formatCost, formatReport, parseSince } from '../daemon/report'
@@ -10,7 +10,7 @@ import { type DaemonClient, resolveDaemonScript, resolveRuntime } from '../share
 import { formatConfigErrors, loadConfig } from '../shared/config'
 import { queHome, quePaths } from '../shared/paths'
 import type { QueueState, TaskAddParams } from '../shared/protocol'
-import type { Task, Workspace } from '../shared/types'
+import type { Task } from '../shared/types'
 import { CliError, findWorkspace, formatAge, printTable, withClient } from './common'
 import { LAUNCHD_LABEL, plistPath, renderPlist } from './launchd'
 
@@ -29,23 +29,6 @@ async function resolveTarget(
     return { projectId: (await c.request('project.add', { path })).id }
   }
   return { workspaceId: (await findWorkspace(c, ref)).id }
-}
-
-function realpath(p: string): string {
-  try {
-    return fs.realpathSync(p)
-  } catch {
-    return p
-  }
-}
-
-/** The workspace whose worktree contains `dir`. */
-function workspaceAt(list: Workspace[], dir: string): Workspace | undefined {
-  const here = realpath(dir)
-  return list.find((w) => {
-    const root = realpath(w.path)
-    return here === root || here.startsWith(`${root}${sep}`)
-  })
 }
 
 function positiveNumber(value: string, flag: string): number {
@@ -231,24 +214,6 @@ export function registerTaskCommands(program: Command, daemon: Command): void {
         const unlocks = await c.request('quiet.log', { since: r.since })
         console.log(formatReport(r, formatUnlocks(unlocks, Date.now())))
       }, false)
-    )
-
-  program
-    .command('handoff <brief>')
-    .description("hand a workspace's live session to the queue to finish unattended")
-    .option('-w, --workspace <ws>', 'workspace id or name (default: the one containing the cwd)')
-    .option('--json', 'print the task as JSON')
-    .action((brief: string, opts: { workspace?: string; json?: boolean }) =>
-      withClient(async (c) => {
-        const ws = opts.workspace
-          ? await findWorkspace(c, opts.workspace)
-          : workspaceAt(await c.request('workspace.list'), process.cwd())
-        if (!ws) throw new CliError('not inside a que workspace; pass -w <workspace>')
-        const t = await c.request('handoff.create', { workspaceId: ws.id, brief })
-        if (opts.json) console.log(JSON.stringify(t, null, 2))
-        else
-          console.log(`${t.id}  ${t.title}  (resumes session ${t.resumeSessionId} in ${ws.name})`)
-      })
     )
 
   daemon

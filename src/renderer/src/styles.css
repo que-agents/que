@@ -154,7 +154,6 @@ h2 {
 }
 
 .row-button .name,
-.task .name,
 .report-row .name {
   flex: 1;
   min-width: 0;
@@ -258,28 +257,6 @@ h2 {
   color: var(--fg-muted);
 }
 
-/* ---- tasks -------------------------------------------------------------- */
-
-.tasks {
-  border-top: 1px solid var(--border);
-  padding-top: 8px;
-}
-
-.queue {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin: 0 4px 6px;
-}
-
-.queue .spacer {
-  flex: 1;
-}
-
-.queue button {
-  padding: 1px 6px;
-}
-
 .dot {
   width: 7px;
   height: 7px;
@@ -289,32 +266,6 @@ h2 {
 
 .dot.on {
   background: #3fb950;
-}
-
-.task {
-  padding: 4px 6px;
-  border-radius: 4px;
-}
-
-.task:hover {
-  background: var(--bg-hover);
-}
-
-.task-line {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-}
-
-.task-line.muted {
-  flex-wrap: wrap;
-  font-size: 11px;
-}
-
-.task-line button {
-  padding: 0 4px;
-  margin-left: auto;
 }
 
 .report-entry {

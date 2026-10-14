@@ -2,7 +2,6 @@ import type {
   ConfigGetResult,
   ConfigSetParams,
   Events,
-  HandoffCreateParams,
   ProjectAddParams,
   ProjectRemoveParams,
   QueueOpenParams,
@@ -162,11 +161,6 @@ export interface ReportApi {
   get(params?: ReportParams): Promise<Report>
 }
 
-export interface HandoffApi {
-  /** Queues the workspace's live session to be finished unattended. */
-  create(params: HandoffCreateParams): Promise<Task>
-}
-
 /** Mirrors the daemon's quiet.* methods and the quiet.changed event. */
 export interface QuietApi {
   state(): Promise<QuietState>
@@ -194,7 +188,6 @@ export interface QueApi {
   task: TaskApi
   queue: QueueApi
   report: ReportApi
-  handoff: HandoffApi
   app: AppApi
 }
 
