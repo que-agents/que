@@ -37,7 +37,7 @@ message every `QUE_FAKE_CLAUDE_DELAY_MS` (default 30):
 
 **Interactive mode** (no `-p`): prints a banner and `> `; each line fires
 UserPromptSubmit, a fake `Read` (Pre/PostToolUse), a reply, and Stop.
-`/needs-input` fires the permission Notification and waits for `y`; `/exit` fires
+`/needs-input` fires UserPromptSubmit, then the permission Notification, and waits for `y`; `/exit` fires
 SessionEnd and exits 0.
 
 Other knobs: `QUE_FAKE_CLAUDE_TRANSCRIPT_DIR` (where `<session_id>.jsonl`

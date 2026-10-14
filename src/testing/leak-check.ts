@@ -1,7 +1,7 @@
 // Leak check for daemon integration tests: every terminal process a test
 // created must be gone once the harness has torn the daemon down.
 import type { TermCreateParams } from '@shared/protocol'
-import { type HostedTerminal, PtyHost } from '@daemon/pty-host'
+import { type HostedTerminal, PtyHost, type TermExtra } from '@daemon/pty-host'
 
 /** True while `pid` exists (signal 0 only checks; it sends nothing). */
 export function pidAlive(pid: number): boolean {
@@ -17,8 +17,8 @@ export function pidAlive(pid: number): boolean {
 export class LeakCheckedPtyHost extends PtyHost {
   readonly pids = new Set<number>()
 
-  override create(opts: TermCreateParams): HostedTerminal {
-    const t = super.create(opts)
+  override create(opts: TermCreateParams, extra?: TermExtra): HostedTerminal {
+    const t = super.create(opts, extra)
     this.pids.add(t.proc.pid)
     return t
   }

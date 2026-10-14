@@ -41,6 +41,8 @@ export function testEnv(
     QUE_FAKE_GH_LOG: join(queHome, 'fake-gh.log'),
     QUE_FAKE_CODE_LOG: join(queHome, 'fake-code.log'),
     QUE_FAKE_CLAUDE_TRANSCRIPT_DIR: join(queHome, 'fake-claude-transcripts'),
+    // Never the user's own config file.
+    QUE_CONFIG: join(queHome, 'config.toml'),
     ...extra
   }
 }

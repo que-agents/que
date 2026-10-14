@@ -4,125 +4,41 @@ import { Command } from 'commander'
 import { DaemonClient, DaemonError } from '../shared/client'
 import { quePaths } from '../shared/paths'
 import type { TermInfo } from '../shared/protocol'
+import { attach } from './attach'
+import { CliError, printTable, withClient } from './common'
+import { runDoctor } from './doctor'
+import { runHook } from './hook'
+import { registerWorkspaceCommands } from './workspaces'
 
 declare const __QUE_VERSION__: string
 const VERSION = typeof __QUE_VERSION__ === 'string' ? __QUE_VERSION__ : '0.0.0-dev'
-
-async function withClient<T>(fn: (c: DaemonClient) => Promise<T>, start = true): Promise<T> {
-  const client = start ? await DaemonClient.connectOrStart() : await DaemonClient.tryConnect()
-  if (!client) {
-    console.error('que: daemon is not running')
-    process.exit(1)
-  }
-  try {
-    return await fn(client)
-  } finally {
-    client.close()
-  }
-}
 
 function printTerms(terms: TermInfo[]): void {
   if (terms.length === 0) {
     console.log('no terminals')
     return
   }
-  const rows = terms.map((t) => [
-    t.id,
-    t.alive ? 'alive' : 'exited',
-    String(t.pid),
-    `${t.cols}x${t.rows}`,
-    t.name,
-    t.cwd
-  ])
-  const header = ['ID', 'STATE', 'PID', 'SIZE', 'NAME', 'CWD']
-  const widths = header.map((h, i) => Math.max(h.length, ...rows.map((r) => r[i].length)))
-  const fmt = (r: string[]): string =>
-    r
-      .map((c, i) => c.padEnd(widths[i]))
-      .join('  ')
-      .trimEnd()
-  console.log(fmt(header))
-  for (const r of rows) console.log(fmt(r))
-}
-
-/** Raw-mode passthrough of this TTY to a daemon terminal. Ctrl-] detaches. */
-async function attach(id: string): Promise<void> {
-  const stdin = process.stdin
-  const stdout = process.stdout
-  if (!stdin.isTTY || !stdout.isTTY) {
-    console.error('que: attach needs an interactive terminal')
-    process.exit(1)
-  }
-  const client = await DaemonClient.connectOrStart()
-  const size = (): { cols: number; rows: number } => ({
-    cols: stdout.columns || 80,
-    rows: stdout.rows || 24
-  })
-
-  let finished = false
-  let resolveDone!: () => void
-  const done = new Promise<void>((r) => (resolveDone = r))
-  const finish = (msg?: string): void => {
-    if (finished) return
-    finished = true
-    process.off('SIGWINCH', onResize)
-    stdin.off('data', onInput)
-    try {
-      stdin.setRawMode(false)
-    } catch {
-      // stdin already closed.
-    }
-    stdin.pause()
-    // Reset attributes and show the cursor in case the program hid it.
-    stdout.write('\x1b[0m\x1b[?25h\r\n')
-    if (msg) stdout.write(`${msg}\r\n`)
-    void client
-      .request('term.detach', { id })
-      .catch(() => {})
-      .finally(() => {
-        client.close()
-        resolveDone()
-      })
-  }
-
-  const onInput = (buf: Buffer): void => {
-    const i = buf.indexOf(0x1d) // Ctrl-]
-    if (i >= 0) {
-      if (i > 0)
-        void client.request('term.write', { id, data: buf.subarray(0, i).toString('utf8') })
-      finish('[detached]')
-      return
-    }
-    void client.request('term.write', { id, data: buf.toString('utf8') }).catch(() => {})
-  }
-  const onResize = (): void => {
-    void client.request('term.resize', { id, ...size() }).catch(() => {})
-  }
-
-  client.on('term.data', (e) => {
-    if (e.id === id) stdout.write(e.data)
-  })
-  client.on('term.exit', (e) => {
-    if (e.id === id) finish(`[process exited with code ${e.exitCode}]`)
-  })
-  client.on('term.killed', (e) => {
-    if (e.id === id) finish('[terminal killed]')
-  })
-  client.onClose(() => finish('[daemon connection closed]'))
-
-  // Subscribe before switching the TTY so errors print normally.
-  const res = await client.request('term.attach', { id, ...size() })
-  stdin.setRawMode(true)
-  stdin.resume()
-  // Clear the screen, then replay the terminal's current state.
-  stdout.write('\x1b[H\x1b[2J\x1b[3J')
-  stdout.write(res.snapshot)
-  stdin.on('data', onInput)
-  process.on('SIGWINCH', onResize)
-  await done
+  printTable(
+    ['ID', 'STATE', 'PID', 'SIZE', 'NAME', 'CWD'],
+    terms.map((t) => [
+      t.id,
+      t.alive ? 'alive' : 'exited',
+      String(t.pid),
+      `${t.cols}x${t.rows}`,
+      t.name,
+      t.cwd
+    ])
+  )
 }
 
 async function main(): Promise<void> {
+  // `que hook` runs inside Claude Code for every hook event: answer before
+  // loading the rest of the CLI, and never fail.
+  if (process.argv[2] === 'hook') {
+    await runHook().catch(() => {})
+    process.exit(0)
+  }
+
   const program = new Command()
   program.name('que').description('que command-line interface').version(VERSION)
 
@@ -243,11 +159,32 @@ async function main(): Promise<void> {
     .description('attach this TTY to a terminal (Ctrl-] detaches)')
     .action((id: string) => attach(id))
 
+  registerWorkspaceCommands(program)
+
+  program
+    .command('hook')
+    .description('report a Claude Code hook event (stdin JSON) to the daemon; used by hooks.json')
+    .action(() => {
+      // Handled before parsing; listed here for --help.
+    })
+
+  program
+    .command('doctor')
+    .description('check the daemon, claude, gh, git, node, config, and the hooks wrapper')
+    .action(async () => {
+      process.exitCode = await runDoctor()
+    })
+
   await program.parseAsync(process.argv)
 }
 
 main().catch((err) => {
-  const msg = err instanceof DaemonError ? `${err.message} (${err.code})` : (err as Error).message
+  const msg =
+    err instanceof DaemonError
+      ? `${err.message} (${err.code})`
+      : err instanceof CliError
+        ? err.message
+        : (err as Error).message
   console.error(`que: ${msg}`)
   process.exit(1)
 })

@@ -53,15 +53,21 @@ export function makeConfig(overrides: Partial<QueConfig> = {}): QueConfig {
 /** A workspace whose branch and worktree path derive from its name, status idle. */
 export function makeWorkspace(overrides: Partial<Workspace> = {}): Workspace {
   wsCounter += 1
-  const name = overrides.name ?? `HA-${1430 + wsCounter}-retry-logic`
+  const name = overrides.name ?? `ha-${1430 + wsCounter}-retry-logic`
   return {
     id: `ws_01hzx${wsCounter.toString(36).padStart(7, '0')}`,
-    projectId: 'proj_01hzw7q2m4nb',
+    projectId: 'prj_01hzw7q2m4nb',
     name,
     branch: name,
-    path: `/Users/dev/.que/worktrees/que/${name}`,
+    path: `/Users/dev/.que/worktrees/uploader/${name}`,
+    baseRef: 'origin/main',
     status: 'idle',
+    statusReason: null,
+    statusAt: '2026-10-13T21:04:30.000Z',
+    lastActivityAt: null,
+    sessionId: null,
     createdAt: '2026-10-13T21:04:00.000Z',
+    archivedAt: null,
     ...overrides
   }
 }
