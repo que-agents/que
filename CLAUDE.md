@@ -64,3 +64,4 @@ Path aliases: `@shared/*`, `@daemon/*`, `@renderer/*`.
   (`…/que.app/Contents/Resources/{daemon,cli,client}` when packaged, `out/` otherwise);
   never import `electron` in the daemon or CLI. Keep the `runAsNode` fuse enabled.
 - License: Apache-2.0. Keep third-party product names out of the repo (code, comments, docs).
+- UI follows `docs/design.md`: use the tokens in `styles.css`, no new colours or fonts inline.

@@ -8,7 +8,7 @@ export const BOARD_HASH = 'board'
 
 export function createBoardWindow(opts: { e2e: boolean }): BrowserWindow {
   const win = new BrowserWindow({
-    width: 520,
+    width: 600,
     height: 400,
     frame: false,
     resizable: false,
@@ -16,7 +16,7 @@ export function createBoardWindow(opts: { e2e: boolean }): BrowserWindow {
     maximizable: false,
     fullscreenable: false,
     show: false,
-    backgroundColor: '#1e1e1e',
+    backgroundColor: '#181818',
     title: 'que · quiet hours',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),

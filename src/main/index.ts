@@ -182,7 +182,7 @@ function createWindow(): void {
     // the desktop land in the terminal under test. During quiet hours it
     // starts hidden behind the board.
     show: !e2e && !isLocked(),
-    backgroundColor: '#1e1e1e',
+    backgroundColor: '#181818',
     title: 'que',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
