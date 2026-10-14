@@ -1,0 +1,43 @@
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: #1e1e1e;
+  color: #d4d4d4;
+  font: 12px -apple-system, BlinkMacSystemFont, sans-serif;
+  overflow: hidden;
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  border-bottom: 1px solid #333;
+  flex: none;
+}
+
+.cwd {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: Menlo, 'SF Mono', monospace;
+}
+
+.terminal {
+  flex: 1;
+  min-height: 0;
+  padding: 4px 0 0 6px;
+}

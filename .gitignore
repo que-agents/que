@@ -1,0 +1,13 @@
+# private working documents (plans, research, comparisons); never committed
+.private/
+
+# dependencies and build output
+node_modules/
+out/
+dist/
+.DS_Store
+
+# electron-vite / packaging output and logs
+release/
+*.log
+*.tsbuildinfo
