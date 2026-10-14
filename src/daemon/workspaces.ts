@@ -233,7 +233,8 @@ export class WorkspaceManager {
       lastActivityAt: null,
       sessionId: null,
       createdAt: now,
-      archivedAt: null
+      archivedAt: null,
+      prUrl: null
     }
     this.opts.store.insertWorkspace(ws)
     this.log(`workspace ${ws.id} created at ${path} on ${branch} from ${base}`)

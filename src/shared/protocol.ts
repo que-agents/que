@@ -117,6 +117,16 @@ export interface WorkspaceOpenTerminalParams {
   rows: number
 }
 
+export interface WorkspaceCreatePrParams {
+  id: string
+  /** The commit message for uncommitted changes, and the pull request title. */
+  title: string
+}
+
+export interface WorkspaceCreatePrResult {
+  prUrl: string
+}
+
 export interface HookEventParams {
   workspaceId: string
   /** Set when the hook fired inside a headless task run (QUE_TASK_ID). */
@@ -224,6 +234,7 @@ export interface Methods {
   'workspace.get': { params: { id: string }; result: Workspace }
   'workspace.remove': { params: WorkspaceRemoveParams; result: Ok }
   'workspace.openTerminal': { params: WorkspaceOpenTerminalParams; result: { id: string } }
+  'workspace.createPr': { params: WorkspaceCreatePrParams; result: WorkspaceCreatePrResult }
   'hook.event': { params: HookEventParams; result: Ok }
   'task.add': { params: TaskAddParams; result: Task }
   'task.list': { params: TaskListParams | undefined; result: Task[] }
@@ -249,6 +260,7 @@ export interface Events {
   'term.created': { id: string }
   'term.killed': { id: string }
   'workspace.created': Workspace
+  /** Its pull request (prUrl) changed. */
   'workspace.updated': Workspace
   'workspace.removed': { id: string }
   'workspace.status': WorkspaceStatusEvent
