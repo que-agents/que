@@ -12,9 +12,12 @@ import {
 } from '../shared/protocol'
 import { loadConfig, type UserConfig, defaultConfig } from '../shared/config'
 import { ensureDirs, quePaths, type QuePaths } from '../shared/paths'
-import type { HookEvent, TermCreateParams } from '../shared/protocol'
+import type { HookEvent, TaskAddParams, TermCreateParams } from '../shared/protocol'
+import type { TaskSource, TaskState } from '../shared/types'
 import { RpcError } from './errors'
 import type { HostedTerminal, PtyHost, TermExtra } from './pty-host'
+import { TaskQueue } from './queue'
+import { SYSTEM_PROMPT } from './runner'
 import { StatusService } from './status'
 import { Store } from './store'
 import { WorkspaceManager, workspaceTerminalEnv } from './workspaces'
@@ -33,6 +36,10 @@ export interface ServerOptions {
   cliScript?: string
   /** Status engine stall-check interval. Default 5 s. */
   statusTickMs?: number
+  /** Task queue stall / pause tick. Default 5 s. */
+  queueTickMs?: number
+  /** Task dispatcher interval. Default 1 s. */
+  dispatchMs?: number
 }
 
 interface Subscription {
@@ -86,6 +93,7 @@ export class DaemonServer {
   readonly store: Store
   readonly status: StatusService
   readonly workspaces: WorkspaceManager
+  readonly tasks: TaskQueue
 
   constructor(private opts: ServerOptions) {
     this.startedAt = opts.startedAt ?? new Date().toISOString()
@@ -107,6 +115,18 @@ export class DaemonServer {
       emit,
       killTerminals: (id) => this.killWorkspaceTerminals(id),
       log: (m) => this.log(m)
+    })
+    this.tasks = new TaskQueue({
+      store: this.store,
+      paths: this.paths,
+      workspaces: this.workspaces,
+      emit,
+      config: () => this.configOrDefault(),
+      killTerminals: (id) => this.killWorkspaceTerminals(id),
+      socket: () => this.socketPath,
+      log: (m) => this.log(m),
+      tickMs: opts.queueTickMs,
+      dispatchMs: opts.dispatchMs
     })
     this.unsubs.push(
       host.onData((id, data) => {
@@ -152,13 +172,17 @@ export class DaemonServer {
     return true
   }
 
-  private killWorkspaceTerminals(workspaceId: string): void {
+  /** Kills every terminal of a workspace; returns how many were still alive. */
+  private killWorkspaceTerminals(workspaceId: string): number {
+    let alive = 0
     for (const t of this.opts.host.list()) {
       if (t.workspaceId === workspaceId) {
+        if (t.alive) alive += 1
         this.termWorkspace.delete(t.id)
         this.killTerminal(t.id)
       }
     }
+    return alive
   }
 
   log(msg: string): void {
@@ -189,7 +213,13 @@ export class DaemonServer {
         } catch (err) {
           this.log(`installing the hooks wrapper failed: ${(err as Error).message}`)
         }
+        try {
+          fs.writeFileSync(this.paths.systemPrompt, SYSTEM_PROMPT, { mode: 0o644 })
+        } catch (err) {
+          this.log(`writing ${this.paths.systemPrompt} failed: ${(err as Error).message}`)
+        }
         this.status.start()
+        this.tasks.start()
         server.on('error', (err) => this.log(`server error: ${err.message}`))
         try {
           fs.chmodSync(socketPath, 0o600)
@@ -202,12 +232,16 @@ export class DaemonServer {
     })
   }
 
-  /** Stops accepting connections and drops existing ones. Does not kill PTYs. */
-  close(): Promise<void> {
+  /**
+   * Stops accepting connections and drops existing ones, and stops every task
+   * run (restart recovery resumes them). Does not kill PTYs.
+   */
+  async close(): Promise<void> {
     for (const u of this.unsubs) u()
     this.unsubs = []
     if (!this.closed) {
       this.closed = true
+      await this.tasks.shutdown()
       this.status.stop()
       this.workspaces.close()
       this.store.close()
@@ -346,6 +380,7 @@ export class DaemonServer {
       case 'workspace.get':
         return this.workspaces.get(str(p, 'id'))
       case 'workspace.remove':
+        this.tasks.stopWorkspace(str(p, 'id'))
         await this.workspaces.remove({ id: str(p, 'id'), deleteBranch: optBool(p, 'deleteBranch') })
         return { ok: true }
       case 'workspace.openTerminal': {
@@ -363,8 +398,42 @@ export class DaemonServer {
           throw new RpcError(ErrorCodes.BadRequest, 'payload must be an object')
         }
         this.status.hook(ws.id, payload as HookEvent)
+        const taskId = optString(p, 'taskId')
+        if (taskId) this.tasks.hook(taskId, payload as HookEvent)
         return { ok: true }
       }
+      case 'task.add': {
+        const params: TaskAddParams = {
+          projectId: optString(p, 'projectId'),
+          workspaceId: optString(p, 'workspaceId'),
+          title: optString(p, 'title'),
+          brief: str(p, 'brief'),
+          source: optString(p, 'source') as TaskSource | undefined,
+          resumeSessionId: optString(p, 'resumeSessionId'),
+          maxTurns: optNumber(p, 'maxTurns'),
+          maxBudgetUsd: optNumber(p, 'maxBudgetUsd')
+        }
+        return this.tasks.add(params)
+      }
+      case 'task.list':
+        return this.tasks.list({ state: optString(p, 'state') as TaskState | undefined })
+      case 'task.get':
+        return this.tasks.get(str(p, 'id'))
+      case 'task.stop':
+        return this.tasks.stop(str(p, 'id'))
+      case 'task.remove':
+        this.tasks.remove(str(p, 'id'))
+        return { ok: true }
+      case 'queue.open':
+        return this.tasks.open(optNumber(p, 'concurrency'))
+      case 'queue.close':
+        return this.tasks.close()
+      case 'queue.state':
+        return this.tasks.state()
+      case 'report.get':
+        return this.tasks.report(optString(p, 'since'))
+      case 'handoff.create':
+        return this.tasks.handoff({ workspaceId: str(p, 'workspaceId'), brief: str(p, 'brief') })
       default:
         throw new RpcError(ErrorCodes.UnknownMethod, `unknown method ${method}`)
     }
@@ -406,6 +475,15 @@ function optBool(p: Record<string, unknown>, key: string): boolean | undefined {
   const v = p[key]
   if (v === undefined || v === null) return undefined
   if (typeof v !== 'boolean') throw new RpcError(ErrorCodes.BadRequest, `${key} must be a boolean`)
+  return v
+}
+
+function optNumber(p: Record<string, unknown>, key: string): number | undefined {
+  const v = p[key]
+  if (v === undefined || v === null) return undefined
+  if (typeof v !== 'number' || !Number.isFinite(v)) {
+    throw new RpcError(ErrorCodes.BadRequest, `${key} must be a number`)
+  }
   return v
 }
 

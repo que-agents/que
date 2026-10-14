@@ -1,13 +1,14 @@
 # que
 
 que is an open-source macOS Electron app for running Claude Code sessions in git worktrees.
-A long-running daemon owns every terminal (and, later, workspaces, tasks, and the status engine),
+A long-running daemon owns every terminal, workspace, overnight task, and the status engine,
 so sessions outlive the app; the app and the `que` CLI are thin clients of its unix socket.
 
 ## Layout
 
 ```
-src/daemon/         daemon: PtyHost (node-pty + @xterm/headless mirror), DaemonServer (socket API)
+src/daemon/         daemon: PtyHost (node-pty + @xterm/headless mirror), DaemonServer (socket API),
+                    workspaces, status engine, task queue (task-machine, runner, finisher, report)
 src/shared/         protocol.ts (Methods, Events, framing), client.ts (DaemonClient), paths.ts, types.ts
 src/cli/            the `que` CLI (commander), a DaemonClient
 src/main/           Electron main: proxies the renderer's calls and events to the daemon
@@ -17,7 +18,7 @@ src/testing/        node-side test code: fixtures, daemon harness, leak check, t
 tests/integration/  daemon integration tests (in-process daemon, real pty/socket/git)
 tests/contract/     opt-in tests against the real Claude Code CLI
 tests/e2e/          Playwright Electron specs, pages/ (page objects), utils/ (app, que, repo)
-tests/fakes/bin/    fake claude, gh, code (see tests/fakes/README.md)
+tests/fakes/bin/    fake claude, gh, code, caffeinate (see tests/fakes/README.md)
 scripts/            build-node.mjs (daemon, CLI, client bundles), smoke.mjs
 ```
 

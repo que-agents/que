@@ -6,6 +6,7 @@ import os from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { FAKES_BIN, readFakeLog } from './fakes'
+import { gitIn } from './temp-repo'
 
 const CLAUDE = join(FAKES_BIN, 'claude')
 const HOOK_EVENTS = [
@@ -206,6 +207,47 @@ describe('fake claude', () => {
       expect(hooks()[0].payload).toMatchObject({ source: 'resume' })
     }, 20_000)
 
+    it('rate_limit: reports resetsAt QUE_FAKE_CLAUDE_RESET_SECONDS from now, in epoch seconds', async () => {
+      const startedAt = Math.floor(Date.now() / 1000)
+      const { proc, out } = start(headless('Refactor the queue'), {
+        QUE_FAKE_CLAUDE_SCENARIO: 'rate_limit',
+        QUE_FAKE_CLAUDE_RESET_SECONDS: '90'
+      })
+      await expect.poll(() => out.join(''), { timeout: 10_000 }).toContain('rate_limit_event')
+
+      const event = stream(out.join('')).find((m) => m.type === 'rate_limit_event') as {
+        rate_limit_info: { status: string; resetsAt: number }
+      }
+      expect(event.rate_limit_info.status).toBe('rejected')
+      expect(event.rate_limit_info.resetsAt).toBeGreaterThanOrEqual(startedAt + 90)
+      expect(event.rate_limit_info.resetsAt).toBeLessThanOrEqual(Math.floor(Date.now() / 1000) + 90)
+      proc.kill('SIGTERM')
+      await exitCode(proc)
+    }, 20_000)
+
+    it('success: commits its change when QUE_FAKE_CLAUDE_COMMIT=1, and leaves it uncommitted otherwise', async () => {
+      gitIn(dir, 'init', '-b', 'main')
+      gitIn(dir, 'commit', '--allow-empty', '-m', 'Initial commit')
+      const identity = {
+        GIT_AUTHOR_NAME: 'que test',
+        GIT_AUTHOR_EMAIL: 'test@que.invalid',
+        GIT_COMMITTER_NAME: 'que test',
+        GIT_COMMITTER_EMAIL: 'test@que.invalid'
+      }
+
+      await run(CLAUDE, headless('Add retry logic'), { ...identity, QUE_FAKE_CLAUDE_COMMIT: '1' })
+
+      expect(gitIn(dir, 'log', '--format=%s', '-1')).toBe('Add que-fake-change.txt')
+      expect(gitIn(dir, 'status', '--porcelain', '--', 'que-fake-change.txt')).toBe('')
+
+      await run(CLAUDE, headless('Add backoff'), identity)
+
+      expect(gitIn(dir, 'log', '--format=%s', '-1')).toBe('Add que-fake-change.txt')
+      expect(gitIn(dir, 'status', '--porcelain', '--', 'que-fake-change.txt')).toBe(
+        'M que-fake-change.txt'
+      )
+    }, 20_000)
+
     it('max_turns: ends with error_max_turns at the cap and exits 1', async () => {
       const r = await run(CLAUDE, headless('Refactor the queue', '--max-turns', '7'), {
         QUE_FAKE_CLAUDE_SCENARIO: 'max_turns'
@@ -296,5 +338,26 @@ describe('fake gh and code', () => {
     expect(readFakeLog(codeLog)).toEqual([
       { argv: ['--new-window', dir], cwd: dir, ts: expect.any(String) }
     ])
+  }, 20_000)
+})
+
+describe('fake caffeinate', () => {
+  it('logs its call and exits once the -w process is gone', async () => {
+    const log = join(dir, 'caffeinate.log')
+    const sleeper = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'])
+    children.push(sleeper)
+    const caffeinate = spawn(join(FAKES_BIN, 'caffeinate'), ['-i', '-w', String(sleeper.pid)], {
+      env: { ...process.env, QUE_FAKE_CAFFEINATE_LOG: log }
+    })
+    children.push(caffeinate)
+    await expect.poll(() => readFakeLog(log).length, { timeout: 10_000 }).toBe(1)
+    expect(readFakeLog(log)[0]).toMatchObject({
+      argv: ['-i', '-w', String(sleeper.pid)],
+      pid: caffeinate.pid
+    })
+
+    sleeper.kill('SIGKILL')
+
+    expect(await exitCode(caffeinate)).toBe(0)
   }, 20_000)
 })

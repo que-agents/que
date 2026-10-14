@@ -56,3 +56,15 @@ export function makeTempRepo(dir: string, opts: TempRepoOptions = {}): string {
   }
   return repo
 }
+
+/**
+ * Gives `repo` an `origin`: a bare clone next to it (`<repo>.git`), fetched so
+ * `origin/<branch>` exists. Pushes from worktrees land there for real.
+ */
+export function addBareOrigin(repo: string): string {
+  const bare = `${repo}.git`
+  gitIn(dirname(repo), 'clone', '--bare', '--quiet', repo, bare)
+  gitIn(repo, 'remote', 'add', 'origin', bare)
+  gitIn(repo, 'fetch', '--quiet', 'origin')
+  return bare
+}
