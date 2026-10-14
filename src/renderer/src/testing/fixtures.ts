@@ -1,6 +1,13 @@
 // Fixture factories for renderer tests. Same shapes as src/testing/fixtures.ts
 // (kept separate: renderer tests never import node-side test code).
-import type { Project, Task, TermInfo, Workspace } from '../../../preload/index.d'
+import type {
+  Project,
+  QuietState,
+  Task,
+  TermInfo,
+  UserConfig,
+  Workspace
+} from '../../../preload/index.d'
 
 let wsCounter = 0
 let taskCounter = 0
@@ -88,6 +95,43 @@ export function makeTermInfo(overrides: Partial<TermInfo> = {}): TermInfo {
     pid: 51_200 + termCounter,
     alive: true,
     createdAt: `2026-10-13T21:${(10 + termCounter).toString().padStart(2, '0')}:00.000Z`,
+    ...overrides
+  }
+}
+
+/** Work hours: quiet hours on, the next window starting at 19:00 local. */
+export function makeQuietState(overrides: Partial<QuietState> = {}): QuietState {
+  return {
+    enabled: true,
+    inQuietHours: false,
+    windowStart: null,
+    windowEnd: null,
+    nextBoundary: new Date(2026, 9, 13, 19, 0).toISOString(),
+    unlockedUntil: null,
+    unlockMinutes: 20,
+    ...overrides
+  }
+}
+
+/** The parsed defaults, as config.get reports them. */
+export function makeUserConfig(overrides: Partial<UserConfig> = {}): UserConfig {
+  return {
+    worktreeRoot: '/Users/dev/.que/worktrees',
+    stallTimeoutMinutes: 5,
+    statusPollSeconds: 10,
+    repos: {},
+    concurrency: 2,
+    maxTurns: 50,
+    maxBudgetUsd: 5,
+    allowBypassPermissions: false,
+    protectedBranches: ['main', 'master', 'release'],
+    quietHours: {
+      enabled: true,
+      default: { start: '19:00', end: '07:00' },
+      days: {},
+      unlockMinutes: 20
+    },
+    notifications: { chimeOnComplete: true, chimeOnNeedsInput: false, morningSummary: false },
     ...overrides
   }
 }

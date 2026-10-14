@@ -1,5 +1,6 @@
 import { SCRATCH, useQue, useStore } from '../store'
 import { StatusBadge } from './StatusBadge'
+import UnlockStatus from './UnlockStatus'
 
 /** The selected workspace (or the loose terminals) and its actions. */
 export default function TopBar({ termKey }: { termKey: string }): React.JSX.Element {
@@ -33,6 +34,7 @@ export default function TopBar({ termKey }: { termKey: string }): React.JSX.Elem
       <span className="cwd" title={cwd} data-testid="topbar-cwd">
         {cwd}
       </span>
+      <UnlockStatus />
       {ws && (
         <div className="actions">
           <button

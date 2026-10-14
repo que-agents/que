@@ -1,28 +1,35 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { Report } from '../../../preload/index.d'
+import { formatUnlocks } from '../../../daemon/quiet-hours'
 import { formatCost, formatDuration, REPORT_GROUPS } from '../format'
 import { useQue, useStore } from '../store'
 import { TaskBadge } from './StatusBadge'
+import UnlockStatus from './UnlockStatus'
 
 /** What the overnight queue did since it was last opened, grouped by outcome. */
 export default function ReportView(): React.JSX.Element {
   const store = useStore()
-  const { connected } = useQue()
+  const { connected, tasks } = useQue()
   const [report, setReport] = useState<Report | null>(null)
+  const [unlocks, setUnlocks] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     try {
-      setReport(await store.fetchReport())
+      const r = await store.fetchReport()
+      setReport(r)
+      setUnlocks(formatUnlocks(await store.fetchUnlocks(r.since), Date.now()))
       setError(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     }
   }, [store])
 
+  // Refreshes whenever a task's state, cost, turns or PR changes (the store's tasks).
   useEffect(() => {
+    void tasks
     void load()
-  }, [load])
+  }, [load, tasks])
 
   const groups = report ? REPORT_GROUPS.filter(({ group }) => report.groups[group].length > 0) : []
 
@@ -35,6 +42,7 @@ export default function ReportView(): React.JSX.Element {
         {report && (
           <span className="cwd muted">since {new Date(report.since).toLocaleString()}</span>
         )}
+        <UnlockStatus />
         <div className="actions">
           <button
             type="button"
@@ -58,6 +66,11 @@ export default function ReportView(): React.JSX.Element {
             {formatCost(report.totals.costUsd)} · {formatDuration(report.totals.durationMs)}
           </p>
         )}
+        {unlocks && (
+          <p className="unlocks muted" data-testid="report-unlocks">
+            {unlocks}
+          </p>
+        )}
         {report && groups.length === 0 && (
           <p className="empty-note" data-testid="report-empty">
             Nothing ran in this window.
@@ -77,8 +90,13 @@ export default function ReportView(): React.JSX.Element {
                 <li key={e.id} className="report-row" data-testid={`report-task-${e.id}`}>
                   <TaskBadge state={e.state} testId={`report-task-${e.id}-state`} />
                   <span className="name">{e.title}</span>
+                  {e.state === 'stuck' && e.reason && (
+                    <strong className="reason stuck" data-testid={`report-task-${e.id}-reason`}>
+                      {e.reason}
+                    </strong>
+                  )}
                   <span className="muted">{e.workspace ?? ''}</span>
-                  {e.reason && <span className="reason">{e.reason}</span>}
+                  {e.state !== 'stuck' && e.reason && <span className="reason">{e.reason}</span>}
                   {e.prUrl && (
                     <a
                       href={e.prUrl}

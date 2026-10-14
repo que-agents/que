@@ -1,6 +1,6 @@
 import fs from 'node:fs'
 import net from 'node:net'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import {
   ErrorCodes,
   MessageDecoder,
@@ -11,13 +11,29 @@ import {
   type Request,
   type ResponseError
 } from '../shared/protocol'
-import { loadConfig, type UserConfig, defaultConfig } from '../shared/config'
+import {
+  configPath,
+  defaultConfig,
+  formatConfigErrors,
+  loadConfig,
+  mergeConfigPatch,
+  parseConfig,
+  readRawConfig,
+  stringifyConfig,
+  type UserConfig
+} from '../shared/config'
 import { ensureDirs, quePaths, type QuePaths } from '../shared/paths'
-import type { HookEvent, TaskAddParams, TermCreateParams } from '../shared/protocol'
+import type {
+  ConfigGetResult,
+  HookEvent,
+  TaskAddParams,
+  TermCreateParams
+} from '../shared/protocol'
 import type { TaskSource, TaskState } from '../shared/types'
 import { conflict, RpcError } from './errors'
 import { finishTask, isProtectedBranch } from './finisher'
 import type { HostedTerminal, PtyHost, TermExtra } from './pty-host'
+import { QuietService } from './quiet'
 import { TaskQueue } from './queue'
 import { SYSTEM_PROMPT } from './runner'
 import { StatusService } from './status'
@@ -42,6 +58,10 @@ export interface ServerOptions {
   queueTickMs?: number
   /** Task dispatcher interval. Default 1 s. */
   dispatchMs?: number
+  /** Quiet-hours re-evaluation interval. Default 15 s. */
+  quietTickMs?: number
+  /** The clock quiet hours read. Default Date.now. */
+  now?: () => number
 }
 
 interface Subscription {
@@ -96,12 +116,17 @@ export class DaemonServer {
   readonly status: StatusService
   readonly workspaces: WorkspaceManager
   readonly tasks: TaskQueue
+  readonly quiet: QuietService
+  /** The last good user config and the file stamp it was read at. */
+  private config: UserConfig
+  private configStamp = ''
 
   constructor(private opts: ServerOptions) {
     this.startedAt = opts.startedAt ?? new Date().toISOString()
     const { host } = opts
     this.paths = ensureDirs(opts.paths ?? quePaths())
     this.store = new Store(this.paths.db)
+    this.config = defaultConfig({ queHome: this.paths.home })
     const emit = this.broadcast.bind(this) as DaemonServer['broadcast']
     this.status = new StatusService({
       store: this.store,
@@ -130,6 +155,18 @@ export class DaemonServer {
       tickMs: opts.queueTickMs,
       dispatchMs: opts.dispatchMs
     })
+    this.quiet = new QuietService({
+      store: this.store,
+      emit,
+      config: () => this.configOrDefault(),
+      detachAll: () => {
+        for (const c of this.conns) c.subs.clear()
+      },
+      report: (since) => this.tasks.report(since),
+      log: (m) => this.log(m),
+      now: opts.now,
+      tickMs: opts.quietTickMs
+    })
     this.unsubs.push(
       host.onData((id, data) => {
         for (const c of this.conns) {
@@ -152,10 +189,69 @@ export class DaemonServer {
     )
   }
 
+  /**
+   * The user config, re-read whenever the file changes (so every reader sees
+   * an edit at once). An invalid file keeps the last good config.
+   */
   private configOrDefault(): UserConfig {
-    const r = loadConfig({ queHome: this.paths.home })
-    if (r.ok) return r.config
-    return defaultConfig({ queHome: this.paths.home })
+    const path = configPath()
+    let stamp = `${path}:missing`
+    try {
+      const st = fs.statSync(path)
+      stamp = `${path}:${st.mtimeMs}:${st.size}`
+    } catch {
+      // No file: the defaults.
+    }
+    if (stamp !== this.configStamp) {
+      this.configStamp = stamp
+      const r = loadConfig({ queHome: this.paths.home }, path)
+      if (r.ok) this.config = r.config
+      else
+        this.log(
+          `config ${path} is invalid; keeping the last good one: ${formatConfigErrors(r.errors)}`
+        )
+    }
+    return this.config
+  }
+
+  private getConfig(): ConfigGetResult {
+    const path = configPath()
+    const raw = readRawConfig(path)
+    return { path, config: this.configOrDefault(), raw: raw.ok ? raw.config : {} }
+  }
+
+  /** Merges a patch into the config file, validates, writes, and reloads it. */
+  private setConfig(patch: unknown, applyTonight: boolean): ConfigGetResult {
+    if (typeof patch !== 'object' || patch === null || Array.isArray(patch)) {
+      throw new RpcError(ErrorCodes.BadRequest, 'patch must be an object')
+    }
+    const path = configPath()
+    const raw = readRawConfig(path)
+    if (!raw.ok) {
+      throw new RpcError(ErrorCodes.BadRequest, `${path}: ${formatConfigErrors(raw.errors)}`)
+    }
+    const merged = mergeConfigPatch(raw.config, patch as Record<string, unknown>)
+    // smol-toml writes the table back without the file's comments.
+    const text = stringifyConfig(merged)
+    const parsed = parseConfig(text, { queHome: this.paths.home })
+    if (!parsed.ok) {
+      throw new RpcError(
+        ErrorCodes.BadRequest,
+        `invalid config: ${formatConfigErrors(parsed.errors)}`
+      )
+    }
+    fs.mkdirSync(dirname(path), { recursive: true })
+    const tmp = `${path}.${process.pid}.tmp`
+    fs.writeFileSync(tmp, text.endsWith('\n') ? text : `${text}\n`)
+    fs.renameSync(tmp, path)
+    this.configStamp = ''
+    this.configOrDefault()
+    this.log(`config ${path} updated${applyTonight ? ' (apply tonight)' : ''}`)
+    this.quiet.configChanged(applyTonight)
+    this.tasks.kick()
+    const result = this.getConfig()
+    this.broadcast('config.changed', result)
+    return result
   }
 
   private createTerminal(params: TermCreateParams, extra?: TermExtra): HostedTerminal {
@@ -266,6 +362,7 @@ export class DaemonServer {
         }
         this.status.start()
         this.tasks.start()
+        this.quiet.start()
         server.on('error', (err) => this.log(`server error: ${err.message}`))
         try {
           fs.chmodSync(socketPath, 0o600)
@@ -287,6 +384,7 @@ export class DaemonServer {
     this.unsubs = []
     if (!this.closed) {
       this.closed = true
+      this.quiet.stop()
       await this.tasks.shutdown()
       this.status.stop()
       this.workspaces.close()
@@ -340,6 +438,8 @@ export class DaemonServer {
     afterSend: AfterSend
   ): Promise<unknown> {
     const { host } = this.opts
+    // Quiet hours: detail is refused here, so every client gets the same answer.
+    this.quiet.check(method)
     switch (method) {
       case 'daemon.ping': {
         const r: PingResult = {
@@ -407,12 +507,20 @@ export class DaemonServer {
       }
       case 'term.snapshot':
         return term(host, p).snapshot()
-      case 'project.add':
-        return this.workspaces.addProject({ path: str(p, 'path'), name: optString(p, 'name') })
+      case 'project.add': {
+        const before = new Set(this.workspaces.listProjects().map((x) => x.id))
+        const project = await this.workspaces.addProject({
+          path: str(p, 'path'),
+          name: optString(p, 'name')
+        })
+        if (!before.has(project.id)) this.broadcast('project.added', project)
+        return project
+      }
       case 'project.list':
         return this.workspaces.listProjects()
       case 'project.remove':
         await this.workspaces.removeProject(str(p, 'id'), optBool(p, 'force'))
+        this.broadcast('project.removed', { id: str(p, 'id') })
         return { ok: true }
       case 'workspace.create':
         return this.workspaces.create({
@@ -482,6 +590,18 @@ export class DaemonServer {
         return this.tasks.report(optString(p, 'since'))
       case 'handoff.create':
         return this.tasks.handoff({ workspaceId: str(p, 'workspaceId'), brief: str(p, 'brief') })
+      case 'quiet.state':
+        return this.quiet.state()
+      case 'quiet.unlock':
+        return this.quiet.unlockFor(optNumber(p, 'minutes'), optString(p, 'why'))
+      case 'quiet.lock':
+        return this.quiet.lock()
+      case 'quiet.log':
+        return this.quiet.log(optString(p, 'since'))
+      case 'config.get':
+        return this.getConfig()
+      case 'config.set':
+        return this.setConfig(p.patch, optBool(p, 'applyTonight') === true)
       default:
         throw new RpcError(ErrorCodes.UnknownMethod, `unknown method ${method}`)
     }

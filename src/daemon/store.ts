@@ -5,6 +5,7 @@ import { randomBytes } from 'node:crypto'
 import { DatabaseSync } from 'node:sqlite'
 import type {
   Project,
+  QuietUnlock,
   Task,
   TaskSource,
   TaskState,
@@ -77,7 +78,15 @@ const MIGRATIONS: string[] = [
    );
    CREATE INDEX tasks_state ON tasks(state, created_at);
    CREATE TABLE kv (key TEXT PRIMARY KEY, value TEXT NOT NULL);`,
-  `ALTER TABLE workspaces ADD COLUMN pr_url TEXT;`
+  `ALTER TABLE workspaces ADD COLUMN pr_url TEXT;`,
+  `CREATE TABLE quiet_unlocks (
+     id INTEGER PRIMARY KEY,
+     at TEXT NOT NULL,
+     minutes REAL NOT NULL,
+     why TEXT,
+     until TEXT NOT NULL,
+     ended_at TEXT
+   );`
 ]
 
 const ID_ALPHABET = 'abcdefghijklmnopqrstuvwxyz234567'
@@ -492,6 +501,44 @@ export class Store {
 
   deleteTask(id: string): void {
     this.db.prepare('DELETE FROM tasks WHERE id = ?').run(id)
+  }
+
+  // ---- quiet unlocks ---------------------------------------------------------
+
+  insertUnlock(u: { at: string; minutes: number; why: string | null; until: string }): number {
+    const r = this.db
+      .prepare('INSERT INTO quiet_unlocks (at, minutes, why, until) VALUES (?, ?, ?, ?)')
+      .run(u.at, u.minutes, u.why, u.until)
+    return Number(r.lastInsertRowid)
+  }
+
+  endUnlock(id: number, endedAt: string): void {
+    this.db
+      .prepare('UPDATE quiet_unlocks SET ended_at = ? WHERE id = ? AND ended_at IS NULL')
+      .run(endedAt, id)
+  }
+
+  /** The unlock still open (not ended), if any. */
+  openUnlock(): { id: number; at: string; why: string | null; until: string } | undefined {
+    const r = this.db
+      .prepare(
+        'SELECT id, at, why, until FROM quiet_unlocks WHERE ended_at IS NULL ORDER BY id DESC LIMIT 1'
+      )
+      .get() as { id: number; at: string; why: string | null; until: string } | undefined
+    return r
+  }
+
+  /** Unlocks started at or after `since`, oldest first. */
+  listUnlocks(since?: string): QuietUnlock[] {
+    const rows = (since
+      ? this.db.prepare('SELECT * FROM quiet_unlocks WHERE at >= ? ORDER BY id').all(since)
+      : this.db.prepare('SELECT * FROM quiet_unlocks ORDER BY id').all()) as unknown as Array<{
+      at: string
+      minutes: number
+      why: string | null
+      ended_at: string | null
+    }>
+    return rows.map((r) => ({ at: r.at, minutes: r.minutes, why: r.why, endedAt: r.ended_at }))
   }
 
   // ---- kv -------------------------------------------------------------------

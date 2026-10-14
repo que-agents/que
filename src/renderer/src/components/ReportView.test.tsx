@@ -68,6 +68,88 @@ describe('ReportView', () => {
     })
   })
 
+  describe('unlocks', () => {
+    it('says how often and how long detail was unlocked', async () => {
+      const user = userEvent.setup()
+      fakeBridge.seedUnlocks([
+        {
+          at: '2026-10-14T03:00:00.000Z',
+          minutes: 20,
+          why: 'check the deploy',
+          endedAt: '2026-10-14T03:20:00.000Z'
+        },
+        {
+          at: '2026-10-14T06:00:00.000Z',
+          minutes: 20,
+          why: null,
+          endedAt: '2026-10-14T06:11:00.000Z'
+        }
+      ])
+
+      await openReport(user)
+
+      expect(await screen.findByTestId('report-unlocks')).toHaveTextContent(
+        'Unlocked twice last night, 31 min total'
+      )
+    })
+
+    it('says so when there were none', async () => {
+      const user = userEvent.setup()
+
+      await openReport(user)
+
+      expect(await screen.findByTestId('report-unlocks')).toHaveTextContent('No unlocks')
+    })
+  })
+
+  describe('status updates', () => {
+    it('refreshes on its own when a task changes state, showing why it is stuck', async () => {
+      const user = userEvent.setup()
+      const running = makeTask({
+        id: 'tsk_01hzy2h8j4pq',
+        title: 'Fix the flaky upload test',
+        workspaceId: null,
+        state: 'running'
+      })
+      fakeBridge.seedProject(makeProject())
+      fakeBridge.seedTask(running)
+      await openReport(user)
+      await screen.findByTestId('report-group-running')
+
+      fakeBridge.setTaskState(running.id, 'stuck', 'max_turns')
+
+      expect(await screen.findByTestId(`report-task-${running.id}-reason`)).toHaveTextContent(
+        'max_turns'
+      )
+      expect(screen.queryByTestId('report-group-running')).not.toBeInTheDocument()
+    })
+
+    it('lists the groups done, stuck, failed, paused, running, queued, then stopped', async () => {
+      const user = userEvent.setup()
+      fakeBridge.seedProject(makeProject())
+      for (const state of [
+        'stopped',
+        'queued',
+        'running',
+        'paused',
+        'failed',
+        'stuck',
+        'done'
+      ] as const) {
+        fakeBridge.seedTask(makeTask({ workspaceId: null, state }))
+      }
+
+      await openReport(user)
+
+      await screen.findByTestId('report-group-stopped')
+      expect(
+        screen
+          .getAllByTestId(/^report-group-/)
+          .map((g) => g.dataset.testid?.replace('report-group-', ''))
+      ).toEqual(['done', 'stuck', 'failed', 'paused', 'running', 'queued', 'stopped'])
+    })
+  })
+
   describe('user interactions', () => {
     it('picks up new results on Refresh', async () => {
       const user = userEvent.setup()

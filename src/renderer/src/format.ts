@@ -72,8 +72,18 @@ export const REPORT_GROUPS: ReadonlyArray<{ group: ReportGroup; title: string }>
   { group: 'done', title: 'Done' },
   { group: 'stuck', title: 'Stuck' },
   { group: 'failed', title: 'Failed' },
-  { group: 'stopped', title: 'Stopped' },
   { group: 'paused', title: 'Paused' },
   { group: 'running', title: 'Running' },
-  { group: 'queued', title: 'Queued' }
+  { group: 'queued', title: 'Queued' },
+  { group: 'stopped', title: 'Stopped' }
 ]
+
+/** `42s ago`, `5m ago`, `3h ago`; `-` when there is no timestamp. */
+export function formatAge(iso: string | null, now: number): string {
+  if (!iso) return '-'
+  const s = Math.max(0, Math.floor((now - Date.parse(iso)) / 1000))
+  if (s < 60) return `${s}s ago`
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`
+  if (s < 86_400) return `${Math.floor(s / 3600)}h ago`
+  return `${Math.floor(s / 86_400)}d ago`
+}

@@ -6,7 +6,7 @@ import type { TermInfo } from '@shared/protocol'
 import type { Workspace } from '@shared/types'
 import type { StatusJson } from '../../src/cli/workspaces'
 import { runCli } from '../../src/testing/cli'
-import { startTestDaemon, type TestDaemon } from '../../src/testing/daemon-harness'
+import { startTestDaemon, type TestDaemon, withQuietOff } from '../../src/testing/daemon-harness'
 import { readFakeLog } from '../../src/testing/fakes'
 import { makeHookEvent } from '../../src/testing/fixtures'
 import { gitIn, makeTempRepo } from '../../src/testing/temp-repo'
@@ -83,7 +83,7 @@ describe('que work and que ws', () => {
 
   it('resolves -r through the config registry and fails when setup fails', async () => {
     const repo = makeTempRepo(daemon.home, { queToml: 'setup = "exit 4"\n' })
-    fs.writeFileSync(daemon.configPath, `[repos.uploader-api]\npath = "${repo}"\n`)
+    fs.writeFileSync(daemon.configPath, withQuietOff(`[repos.uploader-api]\npath = "${repo}"\n`))
 
     const r = await runCli('work', 'ha-1433-broken-setup', '-r', 'uploader-api')
 
@@ -183,6 +183,7 @@ describe('que doctor', () => {
       'ok caffeinate',
       'ok node',
       'ok config',
+      'ok quiet',
       'ok wrapper'
     ])
     expect(r.stdout).toContain('2.1.0 (Claude Code)')

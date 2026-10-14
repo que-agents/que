@@ -1,15 +1,13 @@
 // `que term attach` / `que attach`: raw-mode passthrough of this TTY to a
 // daemon terminal. Ctrl-] detaches.
 import { DaemonClient } from '../shared/client'
+import type { TermAttachResult } from '../shared/protocol'
 
 export async function attach(id: string): Promise<void> {
   const stdin = process.stdin
   const stdout = process.stdout
-  if (!stdin.isTTY || !stdout.isTTY) {
-    console.error('que: attach needs an interactive terminal')
-    process.exit(1)
-  }
   const client = await DaemonClient.connectOrStart()
+  const interactive = stdin.isTTY && stdout.isTTY
   const size = (): { cols: number; rows: number } => ({
     cols: stdout.columns || 80,
     rows: stdout.rows || 24
@@ -64,10 +62,23 @@ export async function attach(id: string): Promise<void> {
   client.on('term.killed', (e) => {
     if (e.id === id) finish('[terminal killed]')
   })
-  client.onClose(() => finish('[daemon connection closed]'))
 
-  // Subscribe before switching the TTY so errors print normally.
-  const res = await client.request('term.attach', { id, ...size() })
+  // Subscribe before switching the TTY so errors (no such terminal, quiet
+  // hours) print normally, with or without a TTY.
+  let res: TermAttachResult
+  try {
+    res = await client.request('term.attach', { id, ...size() })
+  } catch (err) {
+    client.close()
+    throw err
+  }
+  if (!interactive) {
+    await client.request('term.detach', { id }).catch(() => {})
+    client.close()
+    console.error('que: attach needs an interactive terminal')
+    process.exit(1)
+  }
+  client.onClose(() => finish('[daemon connection closed]'))
   stdin.setRawMode(true)
   stdin.resume()
   // Clear the screen, then replay the terminal's current state.

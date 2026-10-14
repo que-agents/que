@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { fakeBridge } from '@renderer/testing/fake-bridge'
-import { makeProject, makeWorkspace } from '@renderer/testing/fixtures'
+import { makeProject, makeTask, makeWorkspace } from '@renderer/testing/fixtures'
 import App from '../App'
 
 const uploader = makeProject()
@@ -106,6 +106,78 @@ describe('Sidebar', () => {
         'preparing'
       )
       expect(screen.queryByTestId(`sidebar-workspace-${board.id}`)).not.toBeInTheDocument()
+    })
+  })
+
+  describe('overnight tasks', () => {
+    const owned = makeWorkspace({
+      id: 'ws_01hzx6v8b3xc',
+      name: 'add-retry-logic',
+      status: 'exited'
+    })
+    const task = makeTask({
+      id: 'tsk_01hzy0d7w3ke',
+      title: 'Add retry logic to the uploader',
+      workspaceId: owned.id,
+      state: 'running'
+    })
+
+    it("shows the task's state on its workspace while it runs, then done with the PR", async () => {
+      seed()
+      fakeBridge.seedWorkspace(owned)
+      fakeBridge.seedTask(task)
+      render(<App />)
+      const badge = await screen.findByTestId(`sidebar-workspace-${owned.id}-status`)
+      expect(badge).toHaveAttribute('data-status', 'running')
+      expect(badge).toHaveTextContent('running')
+
+      fakeBridge.updateTask(task.id, { prUrl: 'https://github.com/rquellh/que/pull/88' })
+      fakeBridge.setTaskState(task.id, 'done')
+
+      await waitFor(() => {
+        expect(badge).toHaveAttribute('data-status', 'done')
+      })
+      expect(screen.getByTestId(`sidebar-workspace-${owned.id}-pr`)).toHaveAttribute(
+        'href',
+        'https://github.com/rquellh/que/pull/88'
+      )
+    })
+
+    it('shows the workspace status again for a task that ended without finishing', async () => {
+      seed()
+      fakeBridge.seedWorkspace(owned)
+      fakeBridge.seedTask({ ...task, state: 'failed', reason: 'crashed' })
+      render(<App />)
+
+      const badge = await screen.findByTestId(`sidebar-workspace-${owned.id}-status`)
+      expect(badge).toHaveAttribute('data-status', 'exited')
+      expect(screen.queryByTestId(`sidebar-workspace-${owned.id}-pr`)).not.toBeInTheDocument()
+    })
+  })
+
+  describe('projects added elsewhere', () => {
+    it('shows a project the CLI added, live', async () => {
+      seed()
+      render(<App />)
+      await screen.findByTestId(`sidebar-project-${uploader.id}`)
+
+      const billing = await window.que.project.add({ path: '/Users/dev/code/billing' })
+
+      expect(await screen.findByTestId(`sidebar-project-${billing.id}`)).toHaveTextContent(
+        'billing'
+      )
+    })
+
+    it('drops a project removed elsewhere', async () => {
+      seed()
+      render(<App />)
+      await screen.findByTestId(`sidebar-project-${api.id}`)
+
+      await window.que.project.remove({ id: api.id, force: true })
+
+      await waitFor(() => {
+        expect(screen.queryByTestId(`sidebar-project-${api.id}`)).not.toBeInTheDocument()
+      })
     })
   })
 

@@ -4,6 +4,7 @@ import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import { dirname, join, resolve, sep } from 'node:path'
 import type { Command } from 'commander'
+import { formatUnlocks } from '../daemon/quiet-hours'
 import { formatCost, formatReport, parseSince } from '../daemon/report'
 import { type DaemonClient, resolveDaemonScript, resolveRuntime } from '../shared/client'
 import { formatConfigErrors, loadConfig } from '../shared/config'
@@ -226,8 +227,9 @@ export function registerTaskCommands(program: Command, daemon: Command): void {
         const since = opts.since === undefined ? undefined : parseSince(opts.since, Date.now())
         if (since === null) throw new CliError(`invalid --since ${opts.since}`)
         const r = await c.request('report.get', since ? { since } : {})
-        if (opts.json) console.log(JSON.stringify(r, null, 2))
-        else console.log(formatReport(r))
+        if (opts.json) return console.log(JSON.stringify(r, null, 2))
+        const unlocks = await c.request('quiet.log', { since: r.since })
+        console.log(formatReport(r, formatUnlocks(unlocks, Date.now())))
       }, false)
     )
 

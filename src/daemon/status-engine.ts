@@ -192,3 +192,20 @@ export function traySummary(
   }
   return summarize([...effective.values(), ...unplaced].map((status) => ({ status })))
 }
+
+/**
+ * The menu-bar title with quiet hours folded in: while an unlock runs it
+ * leads with the countdown (`🔓 14:32 · ● 3 ▸ 1 ✕ 0`), otherwise it is the
+ * plain counts.
+ */
+export function quietTrayTitle(
+  s: StatusSummary,
+  quiet: { inQuietHours: boolean; unlockedUntil: string | null } | null,
+  now: number
+): string {
+  const base = trayTitle(s)
+  if (!quiet?.inQuietHours || !quiet.unlockedUntil) return base
+  const left = Math.max(0, Math.ceil((Date.parse(quiet.unlockedUntil) - now) / 1000))
+  const mmss = `${String(Math.floor(left / 60)).padStart(2, '0')}:${String(left % 60).padStart(2, '0')}`
+  return `🔓 ${mmss} · ${base}`
+}
