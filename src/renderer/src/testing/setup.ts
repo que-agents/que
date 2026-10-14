@@ -3,6 +3,7 @@
 import '@testing-library/jest-dom/vitest'
 import { cleanup } from '@testing-library/react'
 import { afterEach } from 'vitest'
+import { setChimePlayer } from '../sound'
 import { fakeBridge } from './fake-bridge'
 
 // Browser APIs jsdom lacks that xterm.js touches when a <Terminal> mounts. They
@@ -32,7 +33,12 @@ HTMLCanvasElement.prototype.getContext = (() => null) as HTMLCanvasElement['getC
 
 window.que = fakeBridge.api
 
+// jsdom has no AudioContext: tests that care about the chime install their own player.
+const silent = { play: () => {} }
+setChimePlayer(silent)
+
 afterEach(() => {
   cleanup()
   fakeBridge.reset()
+  setChimePlayer(silent)
 })

@@ -1,0 +1,219 @@
+import { describe, expect, it } from 'vitest'
+import { render, screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { fakeBridge } from '@renderer/testing/fake-bridge'
+import { makeQuietState } from '@renderer/testing/fixtures'
+import App from '../App'
+
+const hhmm = (d: Date): string =>
+  `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+
+/** A window an hour either side of now, and the quiet state the daemon reports for it. */
+function tonight(): { start: string; end: string; state: ReturnType<typeof makeQuietState> } {
+  const start = new Date(Date.now() - 3_600_000)
+  const end = new Date(Date.now() + 3_600_000)
+  start.setSeconds(0, 0)
+  end.setSeconds(0, 0)
+  return {
+    start: hhmm(start),
+    end: hhmm(end),
+    // Unlocked: the main window (and so Settings) only shows during quiet hours then.
+    state: makeQuietState({
+      inQuietHours: true,
+      windowStart: start.toISOString(),
+      windowEnd: end.toISOString(),
+      unlockedUntil: new Date(Date.now() + 600_000).toISOString()
+    })
+  }
+}
+
+async function openSettings(user: ReturnType<typeof userEvent.setup>): Promise<HTMLElement> {
+  render(<App />)
+  await user.click(await screen.findByRole('button', { name: 'Settings' }))
+  return screen.findByTestId('settings-view')
+}
+
+describe('SettingsView', () => {
+  describe('rendering', () => {
+    it('loads the config: quiet hours, per-day overrides, notifications, caps and the path', async () => {
+      const user = userEvent.setup()
+      fakeBridge.setConfig({
+        concurrency: 3,
+        quietHours: {
+          enabled: true,
+          default: { start: '20:30', end: '06:45' },
+          days: { friday: { start: '23:00', end: '09:00' }, saturday: 'none' },
+          unlockMinutes: 15
+        },
+        notifications: { chimeOnComplete: false, chimeOnNeedsInput: true, morningSummary: true }
+      })
+
+      await openSettings(user)
+
+      expect(await screen.findByTestId('settings-quiet-start')).toHaveValue('20:30')
+      expect(screen.getByTestId('settings-quiet-end')).toHaveValue('06:45')
+      expect(screen.getByTestId('settings-quiet-enabled')).toBeChecked()
+      expect(screen.getByTestId('settings-unlock-minutes')).toHaveValue(15)
+      expect(screen.getByTestId('settings-day-friday-mode')).toHaveValue('custom')
+      expect(screen.getByTestId('settings-day-friday-start')).toHaveValue('23:00')
+      expect(screen.getByTestId('settings-day-saturday-mode')).toHaveValue('none')
+      expect(screen.getByTestId('settings-day-monday-mode')).toHaveValue('inherit')
+      expect(screen.getByTestId('settings-chime-complete')).not.toBeChecked()
+      expect(screen.getByTestId('settings-chime-needs-input')).toBeChecked()
+      expect(screen.getByTestId('settings-morning-summary')).toBeChecked()
+      expect(screen.getByTestId('settings-concurrency')).toHaveValue(3)
+      expect(screen.getByTestId('settings-path')).toHaveTextContent(
+        '/Users/dev/.config/que/config.toml'
+      )
+      const modes = within(screen.getByTestId('settings-permission-mode'))
+        .getAllByRole('option')
+        .map((o) => o.getAttribute('value'))
+      expect(modes).not.toContain('bypassPermissions')
+    })
+  })
+
+  describe('user interactions', () => {
+    it('saves the changes as a config patch, removing overrides set back to the default', async () => {
+      const user = userEvent.setup()
+      fakeBridge.setConfig({
+        quietHours: {
+          enabled: true,
+          default: { start: '19:00', end: '07:00' },
+          days: { saturday: 'none' },
+          unlockMinutes: 20
+        }
+      })
+      await openSettings(user)
+
+      await user.clear(await screen.findByTestId('settings-quiet-start'))
+      await user.type(screen.getByTestId('settings-quiet-start'), '20:00')
+      await user.selectOptions(screen.getByTestId('settings-day-saturday-mode'), 'inherit')
+      await user.selectOptions(screen.getByTestId('settings-day-monday-mode'), 'custom')
+      await user.clear(screen.getByTestId('settings-day-monday-end'))
+      await user.type(screen.getByTestId('settings-day-monday-end'), '06:30')
+      await user.click(screen.getByTestId('settings-chime-complete'))
+      await user.clear(screen.getByTestId('settings-concurrency'))
+      await user.type(screen.getByTestId('settings-concurrency'), '4')
+      await user.click(screen.getByTestId('settings-save'))
+
+      await waitFor(() => {
+        expect(fakeBridge.configSetCalls()).toHaveLength(1)
+      })
+      const [{ patch, applyTonight }] = fakeBridge.configSetCalls()
+      expect(applyTonight).toBe(false)
+      expect(patch).toMatchObject({
+        quiet_hours: {
+          enabled: true,
+          default: ['20:00', '07:00'],
+          unlock_minutes: 20,
+          monday: ['19:00', '06:30'],
+          saturday: null,
+          sunday: null
+        },
+        notifications: { chime_on_complete: false },
+        concurrency: 4,
+        max_turns: 50,
+        default_permission_mode: null,
+        protected_branches: ['main', 'master', 'release']
+      })
+      expect(await screen.findByTestId('settings-saved')).toHaveTextContent('Saved')
+    })
+
+    it('refuses to save an empty window or a bad number, saying why', async () => {
+      const user = userEvent.setup()
+      await openSettings(user)
+
+      await user.clear(await screen.findByTestId('settings-quiet-end'))
+      await user.type(screen.getByTestId('settings-quiet-end'), '19:00')
+      await user.clear(screen.getByTestId('settings-concurrency'))
+      await user.type(screen.getByTestId('settings-concurrency'), '1.5')
+      await user.click(screen.getByTestId('settings-save'))
+
+      const alert = await screen.findByRole('alert')
+      expect(alert).toHaveTextContent('Quiet hours: start and end must differ')
+      expect(alert).toHaveTextContent('Concurrency must be a positive whole number')
+      expect(fakeBridge.configSetCalls()).toEqual([])
+    })
+  })
+
+  describe('apply tonight', () => {
+    it("asks before a change that ends tonight's quiet hours early, and applies it tonight on Yes", async () => {
+      const user = userEvent.setup()
+      const t = tonight()
+      fakeBridge.setConfig({
+        quietHours: {
+          enabled: true,
+          default: { start: t.start, end: t.end },
+          days: {},
+          unlockMinutes: 20
+        }
+      })
+      fakeBridge.setQuietState(t.state)
+      await openSettings(user)
+
+      await user.click(await screen.findByTestId('settings-quiet-enabled'))
+      await user.click(screen.getByTestId('settings-save'))
+
+      const confirm = await screen.findByTestId('settings-apply-tonight-confirm')
+      expect(within(confirm).getByRole('heading')).toHaveTextContent('Apply tonight?')
+      expect(fakeBridge.configSetCalls()).toEqual([])
+      await user.click(within(confirm).getByRole('button', { name: 'Yes, tonight' }))
+
+      await waitFor(() => {
+        expect(fakeBridge.configSetCalls()).toEqual([
+          expect.objectContaining({ applyTonight: true })
+        ])
+      })
+      expect(screen.queryByTestId('settings-apply-tonight-confirm')).not.toBeInTheDocument()
+    })
+
+    it('saves for tomorrow on No', async () => {
+      const user = userEvent.setup()
+      const t = tonight()
+      fakeBridge.setConfig({
+        quietHours: {
+          enabled: true,
+          default: { start: t.start, end: t.end },
+          days: {},
+          unlockMinutes: 20
+        }
+      })
+      fakeBridge.setQuietState(t.state)
+      await openSettings(user)
+
+      await user.click(await screen.findByTestId('settings-quiet-enabled'))
+      await user.click(screen.getByTestId('settings-save'))
+      await user.click(await screen.findByRole('button', { name: 'No, from tomorrow' }))
+
+      await waitFor(() => {
+        expect(fakeBridge.configSetCalls()).toEqual([
+          expect.objectContaining({ applyTonight: false })
+        ])
+      })
+    })
+
+    it("does not ask when the change leaves tonight's window as long", async () => {
+      const user = userEvent.setup()
+      const t = tonight()
+      fakeBridge.setConfig({
+        quietHours: {
+          enabled: true,
+          default: { start: t.start, end: t.end },
+          days: {},
+          unlockMinutes: 20
+        }
+      })
+      fakeBridge.setQuietState(t.state)
+      await openSettings(user)
+
+      await user.clear(await screen.findByTestId('settings-concurrency'))
+      await user.type(screen.getByTestId('settings-concurrency'), '3')
+      await user.click(screen.getByTestId('settings-save'))
+
+      await waitFor(() => {
+        expect(fakeBridge.configSetCalls()).toHaveLength(1)
+      })
+      expect(screen.queryByTestId('settings-apply-tonight-confirm')).not.toBeInTheDocument()
+    })
+  })
+})

@@ -8,6 +8,7 @@ import { attach } from './attach'
 import { CliError, printTable, withClient } from './common'
 import { runDoctor } from './doctor'
 import { runHook } from './hook'
+import { registerQuietCommands } from './quiet'
 import { registerTaskCommands } from './tasks'
 import { registerWorkspaceCommands } from './workspaces'
 
@@ -162,6 +163,7 @@ async function main(): Promise<void> {
 
   registerWorkspaceCommands(program)
   registerTaskCommands(program, daemon)
+  registerQuietCommands(program)
 
   program
     .command('hook')
@@ -183,6 +185,11 @@ async function main(): Promise<void> {
 }
 
 main().catch((err) => {
+  // Quiet hours: the daemon's one-line refusal, and a distinct exit code.
+  if (err instanceof DaemonError && err.code === 'quiet_hours') {
+    console.error(err.message)
+    process.exit(3)
+  }
   const msg =
     err instanceof DaemonError
       ? `${err.message} (${err.code})`

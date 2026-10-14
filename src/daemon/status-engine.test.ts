@@ -3,6 +3,7 @@ import { makeHookEvent, makeTask, makeWorkspace } from '../testing/fixtures'
 import {
   AGENTS_JSON_MIN_AGE_MS,
   initialState,
+  quietTrayTitle,
   reduce,
   type StatusState,
   summarize,
@@ -260,5 +261,36 @@ describe('traySummary', () => {
 
     expect(trayTitle(summary)).toBe('● 0 ▸ 0 ✕ 0')
     expect(summary.idle).toBe(1)
+  })
+})
+
+describe('quietTrayTitle', () => {
+  const summary = summarize([
+    { status: 'working' },
+    { status: 'working' },
+    { status: 'working' },
+    { status: 'needs_input' }
+  ])
+  const now = new Date(2026, 9, 14, 2, 0).getTime()
+  const quiet = {
+    inQuietHours: true,
+    unlockedUntil: new Date(now + 14 * 60_000 + 32_000).toISOString()
+  }
+
+  it('leads with the unlock countdown while an unlock runs', () => {
+    expect(quietTrayTitle(summary, quiet, now)).toBe('🔓 14:32 · ● 3 ▸ 1 ✕ 0')
+    expect(quietTrayTitle(summary, quiet, now + 14 * 60_000 + 31_000)).toBe(
+      '🔓 00:01 · ● 3 ▸ 1 ✕ 0'
+    )
+  })
+
+  it('is the plain counts while quiet and locked, and in work hours', () => {
+    expect(quietTrayTitle(summary, { inQuietHours: true, unlockedUntil: null }, now)).toBe(
+      '● 3 ▸ 1 ✕ 0'
+    )
+    expect(quietTrayTitle(summary, { inQuietHours: false, unlockedUntil: null }, now)).toBe(
+      '● 3 ▸ 1 ✕ 0'
+    )
+    expect(quietTrayTitle(summary, null, now)).toBe('● 3 ▸ 1 ✕ 0')
   })
 })

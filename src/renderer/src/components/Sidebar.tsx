@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
-import type { Workspace } from '../../../preload/index.d'
+import type { Task, Workspace } from '../../../preload/index.d'
+import { isLiveTask } from '../format'
 import { SCRATCH, useQue, useStore } from '../store'
-import { StatusBadge } from './StatusBadge'
+import { StatusBadge, TaskBadge } from './StatusBadge'
 import TasksPanel from './TasksPanel'
 
 function WorkspaceMenu({
@@ -59,9 +60,33 @@ function WorkspaceMenu({
   )
 }
 
+/** The newest task that ran (or runs) in each workspace. */
+function latestTasks(tasks: Record<string, Task>): Map<string, Task> {
+  const out = new Map<string, Task>()
+  for (const t of Object.values(tasks)) {
+    if (!t.workspaceId) continue
+    const prev = out.get(t.workspaceId)
+    if (!prev || t.createdAt > prev.createdAt) out.set(t.workspaceId, t)
+  }
+  return out
+}
+
+/**
+ * A task-owned workspace shows its task: the task's state while it is live
+ * (not the idle or exited terminal state), and `done` with the PR after.
+ */
+function WorkspaceBadge({ w, task }: { w: Workspace; task?: Task }): React.JSX.Element {
+  const testId = `sidebar-workspace-${w.id}-status`
+  const interactive = w.status === 'working' || w.status === 'needs_input'
+  if (task && isLiveTask(task.state)) return <TaskBadge state={task.state} testId={testId} />
+  if (task?.state === 'done' && !interactive) return <TaskBadge state="done" testId={testId} />
+  return <StatusBadge status={w.status} reason={w.statusReason} testId={testId} />
+}
+
 export default function Sidebar(): React.JSX.Element {
   const store = useStore()
-  const { projects, workspaces, terminals, view, connected, loaded } = useQue()
+  const { projects, workspaces, terminals, view, connected, loaded, tasks } = useQue()
+  const owned = latestTasks(tasks)
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set())
   const [menuFor, setMenuFor] = useState<string | null>(null)
   const closeMenu = useRef(() => setMenuFor(null)).current
@@ -147,12 +172,19 @@ export default function Sidebar(): React.JSX.Element {
                         onClick={() => store.showTerminals(w.id)}
                       >
                         <span className="name">{w.name}</span>
-                        <StatusBadge
-                          status={w.status}
-                          reason={w.statusReason}
-                          testId={`sidebar-workspace-${w.id}-status`}
-                        />
+                        <WorkspaceBadge w={w} task={owned.get(w.id)} />
                       </button>
+                      {owned.get(w.id)?.state === 'done' && owned.get(w.id)?.prUrl && (
+                        <a
+                          className="pr-link"
+                          href={owned.get(w.id)?.prUrl ?? undefined}
+                          target="_blank"
+                          rel="noreferrer"
+                          data-testid={`sidebar-workspace-${w.id}-pr`}
+                        >
+                          PR #{owned.get(w.id)?.prUrl?.split('/').pop()}
+                        </a>
+                      )}
                       <button
                         type="button"
                         className="ghost more"
@@ -182,6 +214,15 @@ export default function Sidebar(): React.JSX.Element {
         onClick={() => store.showReport()}
       >
         <span className="name">Report</span>
+      </button>
+      <button
+        type="button"
+        className="row-button report-entry"
+        data-testid="sidebar-settings"
+        aria-current={view.kind === 'settings' ? 'page' : undefined}
+        onClick={() => store.showSettings()}
+      >
+        <span className="name">Settings</span>
       </button>
     </aside>
   )

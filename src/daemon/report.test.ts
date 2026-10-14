@@ -120,6 +120,36 @@ describe('buildReport', () => {
     )
   })
 
+  it('reads done, stuck, failed, paused, running, queued, then stopped, with the unlocks line last-but-one', () => {
+    const tasks = (
+      ['stopped', 'queued', 'running', 'paused', 'failed', 'stuck', 'done'] as const
+    ).map((state, i) =>
+      makeTask({
+        title: `Task ${state}`,
+        state,
+        createdAt: `2026-10-13T22:0${i}:00.000Z`,
+        updatedAt: `2026-10-13T23:0${i}:00.000Z`
+      })
+    )
+
+    const text = formatReport(
+      buildReport(tasks, WORKSPACES, SINCE, NOW),
+      'Unlocked once last night, 20 min total'
+    )
+
+    const headings = text.split('\n').filter((l) => /^[A-Z][a-z]+ \(\d+\)$/.test(l))
+    expect(headings).toEqual([
+      'Done (1)',
+      'Stuck (1)',
+      'Failed (1)',
+      'Paused (1)',
+      'Running (1)',
+      'Queued (1)',
+      'Stopped (1)'
+    ])
+    expect(text.trim().split('\n').at(-3)).toBe('Unlocked once last night, 20 min total')
+  })
+
   it('says so when the window is empty', () => {
     expect(formatReport(buildReport([], WORKSPACES, SINCE, NOW))).toContain(
       'No tasks in this window.'

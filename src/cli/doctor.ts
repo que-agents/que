@@ -4,7 +4,7 @@ import fs from 'node:fs'
 import { join } from 'node:path'
 import { findOnPath } from '../daemon/wrapper'
 import { DaemonClient } from '../shared/client'
-import { configPath, formatConfigErrors, loadConfig } from '../shared/config'
+import { configPath, describeQuietHours, formatConfigErrors, loadConfig } from '../shared/config'
 import { quePaths } from '../shared/paths'
 
 interface Check {
@@ -107,6 +107,15 @@ export async function runDoctor(): Promise<number> {
     detail: cfg.ok
       ? `${fs.existsSync(cfgPath) ? cfgPath : `${cfgPath} (not present; defaults)`}`
       : `${cfgPath}: ${formatConfigErrors(cfg.errors)}`
+  })
+
+  checks.push({
+    name: 'quiet',
+    ok: cfg.ok,
+    required: false,
+    detail: cfg.ok
+      ? `quiet hours ${describeQuietHours(cfg.config.quietHours)}`
+      : 'unknown (the config is invalid)'
   })
 
   const wrapper = [join(paths.binDir, 'claude'), join(paths.binDir, 'que')]

@@ -1,5 +1,6 @@
 // Shared CLI helpers: daemon connection, tables, and id-or-name lookups.
-import { DaemonClient } from '../shared/client'
+import { quietMessage } from '../daemon/quiet-hours'
+import { DaemonClient, DaemonError } from '../shared/client'
 import type { Project, Workspace } from '../shared/types'
 
 export class CliError extends Error {}
@@ -68,4 +69,15 @@ function onlyOne<T extends { id: string }>(items: T[], what: string): T | undefi
     throw new CliError(`${what} is ambiguous (${items.map((i) => i.id).join(', ')}); use the id`)
   }
   return items[0]
+}
+
+/**
+ * For detail commands that call no refused daemon method themselves (opening
+ * an editor, printing a terminal id): the daemon's quiet-hours refusal.
+ */
+export async function assertNotQuiet(c: DaemonClient): Promise<void> {
+  const q = await c.request('quiet.state')
+  if (q.inQuietHours && !q.unlockedUntil && q.windowEnd) {
+    throw new DaemonError('quiet_hours', quietMessage(Date.parse(q.windowEnd), q.unlockMinutes))
+  }
 }
