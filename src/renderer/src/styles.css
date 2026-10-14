@@ -245,7 +245,8 @@ h2 {
 /* ---- sidebar ------------------------------------------------------------ */
 
 .sidebar {
-  width: 256px;
+  box-sizing: border-box;
+  width: var(--sidebar-width, 256px);
   flex: none;
   display: flex;
   flex-direction: column;
@@ -487,6 +488,34 @@ h2 {
 
 .sidebar nav + .report-entry {
   margin-top: 6px;
+}
+
+/* ---- the divider ------------------------------------------------------- */
+
+/* Straddles the sidebar's right border; shows the accent while it is used. */
+.sidebar-resizer {
+  flex: none;
+  width: 7px;
+  height: auto;
+  margin: 0 -3px;
+  border: 0;
+  z-index: 5;
+  cursor: col-resize;
+  background: linear-gradient(to right, transparent 3px, var(--accent) 3px 4px, transparent 4px);
+  opacity: 0;
+  transition: opacity 0.12s 0.1s;
+}
+
+.sidebar-resizer:hover,
+.sidebar-resizer:focus-visible,
+body.resizing .sidebar-resizer {
+  opacity: 1;
+  outline: none;
+}
+
+body.resizing {
+  cursor: col-resize;
+  user-select: none;
 }
 
 /* ---- main --------------------------------------------------------------- */
