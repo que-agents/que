@@ -187,6 +187,10 @@ function createWindow(): void {
     show: !e2e && !isLocked(),
     backgroundColor: '#181818',
     title: 'que',
+    // No native title bar: the app's chrome runs to the top, the traffic
+    // lights sit over the sidebar's top strip, which drags the window.
+    titleBarStyle: 'hiddenInset',
+    trafficLightPosition: { x: 13, y: 13 },
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
