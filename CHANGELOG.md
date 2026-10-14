@@ -6,6 +6,13 @@ All notable changes to que are recorded here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- Settings no longer shows the overnight queue's defaults (concurrency, turn
+  and dollar caps, default permission mode); they live in the config file.
+  Protected branches, which also guard Create draft PR, sit under a Pull
+  requests heading.
+
 ### Added
 
 - Right-click a project or a workspace in the sidebar for its actions (the ⋯

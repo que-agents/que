@@ -35,10 +35,10 @@ async function openSettings(user: ReturnType<typeof userEvent.setup>): Promise<H
 
 describe('SettingsView', () => {
   describe('rendering', () => {
-    it('loads the config: quiet hours, per-day overrides, notifications, caps and the path', async () => {
+    it('loads the config: quiet hours, per-day overrides, notifications, protected branches and the path', async () => {
       const user = userEvent.setup()
       fakeBridge.setConfig({
-        concurrency: 3,
+        protectedBranches: ['main', 'release'],
         quietHours: {
           enabled: true,
           default: { start: '20:30', end: '06:45' },
@@ -61,14 +61,11 @@ describe('SettingsView', () => {
       expect(screen.getByTestId('settings-chime-complete')).not.toBeChecked()
       expect(screen.getByTestId('settings-chime-needs-input')).toBeChecked()
       expect(screen.getByTestId('settings-morning-summary')).toBeChecked()
-      expect(screen.getByTestId('settings-concurrency')).toHaveValue(3)
+      expect(screen.getByTestId('settings-protected-branches')).toHaveValue('main, release')
       expect(screen.getByTestId('settings-path')).toHaveTextContent(
         '/Users/dev/.config/que/config.toml'
       )
-      const modes = within(screen.getByTestId('settings-permission-mode'))
-        .getAllByRole('option')
-        .map((o) => o.getAttribute('value'))
-      expect(modes).not.toContain('bypassPermissions')
+      expect(screen.queryByText('Overnight tasks')).not.toBeInTheDocument()
     })
   })
 
@@ -92,8 +89,8 @@ describe('SettingsView', () => {
       await user.clear(screen.getByTestId('settings-day-monday-end'))
       await user.type(screen.getByTestId('settings-day-monday-end'), '06:30')
       await user.click(screen.getByTestId('settings-chime-complete'))
-      await user.clear(screen.getByTestId('settings-concurrency'))
-      await user.type(screen.getByTestId('settings-concurrency'), '4')
+      await user.clear(screen.getByTestId('settings-protected-branches'))
+      await user.type(screen.getByTestId('settings-protected-branches'), 'main, release, hotfix')
       await user.click(screen.getByTestId('settings-save'))
 
       await waitFor(() => {
@@ -111,11 +108,13 @@ describe('SettingsView', () => {
           sunday: null
         },
         notifications: { chime_on_complete: false },
-        concurrency: 4,
-        max_turns: 50,
-        default_permission_mode: null,
-        protected_branches: ['main', 'master', 'release']
+        protected_branches: ['main', 'release', 'hotfix']
       })
+      // The queue's defaults are the config file's business now.
+      expect(patch).not.toHaveProperty('concurrency')
+      expect(patch).not.toHaveProperty('max_turns')
+      expect(patch).not.toHaveProperty('max_budget_usd')
+      expect(patch).not.toHaveProperty('default_permission_mode')
       expect(await screen.findByTestId('settings-saved')).toHaveTextContent('Saved')
     })
 
@@ -125,13 +124,13 @@ describe('SettingsView', () => {
 
       await user.clear(await screen.findByTestId('settings-quiet-end'))
       await user.type(screen.getByTestId('settings-quiet-end'), '19:00')
-      await user.clear(screen.getByTestId('settings-concurrency'))
-      await user.type(screen.getByTestId('settings-concurrency'), '1.5')
+      await user.clear(screen.getByTestId('settings-unlock-minutes'))
+      await user.type(screen.getByTestId('settings-unlock-minutes'), '0')
       await user.click(screen.getByTestId('settings-save'))
 
       const alert = await screen.findByRole('alert')
       expect(alert).toHaveTextContent('Quiet hours: start and end must differ')
-      expect(alert).toHaveTextContent('Concurrency must be a positive whole number')
+      expect(alert).toHaveTextContent('Unlock minutes must be a positive number')
       expect(fakeBridge.configSetCalls()).toEqual([])
     })
   })
@@ -206,8 +205,7 @@ describe('SettingsView', () => {
       fakeBridge.setQuietState(t.state)
       await openSettings(user)
 
-      await user.clear(await screen.findByTestId('settings-concurrency'))
-      await user.type(screen.getByTestId('settings-concurrency'), '3')
+      await user.click(await screen.findByTestId('settings-chime-complete'))
       await user.click(screen.getByTestId('settings-save'))
 
       await waitFor(() => {
