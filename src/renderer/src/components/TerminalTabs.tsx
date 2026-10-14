@@ -1,4 +1,5 @@
 import { useQue, useStore } from '../store'
+import { PlusIcon } from './icons'
 import Terminal from './Terminal'
 
 /** The tabs of one workspace (or of the loose terminals) and the active xterm. */
@@ -53,14 +54,14 @@ export default function TerminalTabs({ termKey }: { termKey: string }): React.JS
         </div>
         <button
           type="button"
-          className="ghost new-tab"
+          className="ghost icon new-tab"
           aria-label="New terminal"
           title="New terminal (⌘T)"
           data-testid="terminal-tabs-new"
           disabled={!connected}
           onClick={() => void store.newTerminal(termKey)}
         >
-          +
+          <PlusIcon />
         </button>
       </div>
       {active ? (
