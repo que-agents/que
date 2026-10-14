@@ -14,7 +14,16 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "composite": true,
-    "noEmit": true
+    "noEmit": true,
+    "paths": {
+      "@shared/*": ["./src/shared/*"],
+      "@renderer/*": ["./src/renderer/src/*"]
+    }
   },
-  "include": ["src/renderer/src/**/*", "src/preload/index.d.ts", "src/shared/protocol.ts"]
+  "include": [
+    "src/renderer/src/**/*",
+    "src/preload/index.d.ts",
+    "src/shared/protocol.ts",
+    "src/shared/types.ts"
+  ]
 }

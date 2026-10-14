@@ -7,7 +7,10 @@ import { installTestHook } from './testHook'
 
 installTestHook()
 
-createRoot(document.getElementById('root')!).render(
+const root = document.getElementById('root')
+if (!root) throw new Error('que: #root element missing from index.html')
+
+createRoot(root).render(
   <StrictMode>
     <App />
   </StrictMode>
