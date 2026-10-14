@@ -93,47 +93,5 @@ describe('work-mode dialogs', () => {
       expect(fakeBridge.createPrCalls()).toEqual([{ id: retry.id, title: 'Add retry logic' }])
       expect(screen.getByTestId('topbar-pr')).toHaveTextContent('PR #41')
     })
-
-    it('hands the session off as a task', async () => {
-      const user = userEvent.setup()
-      await openRetry(user)
-
-      await user.click(await screen.findByRole('button', { name: 'Hand off…' }))
-      const dialog = screen.getByRole('dialog', { name: `Hand off ${retry.name}` })
-      await user.type(
-        within(dialog).getByRole('textbox', { name: 'Brief' }),
-        'Finish the backoff tests'
-      )
-      await user.click(within(dialog).getByRole('button', { name: 'Hand off' }))
-
-      await waitFor(() => {
-        expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
-      })
-      const [task] = await window.que.task.list()
-      expect(task).toMatchObject({
-        workspaceId: retry.id,
-        source: 'handoff',
-        resumeSessionId: retry.sessionId,
-        brief: 'Finish the backoff tests'
-      })
-      expect(
-        within(screen.getByTestId('tasks-panel')).getByText('Finish the backoff tests')
-      ).toBeInTheDocument()
-    })
-
-    it('keeps the hand-off dialog open with the error when there is no session', async () => {
-      const user = userEvent.setup()
-      fakeBridge.seedProject(uploader)
-      fakeBridge.seedWorkspace({ ...retry, sessionId: null })
-      render(<App />)
-      await user.click(await screen.findByTestId(`sidebar-workspace-${retry.id}-open`))
-
-      await user.click(await screen.findByRole('button', { name: 'Hand off…' }))
-      const dialog = screen.getByRole('dialog')
-      await user.type(within(dialog).getByRole('textbox', { name: 'Brief' }), 'Finish it')
-      await user.click(within(dialog).getByRole('button', { name: 'Hand off' }))
-
-      expect(await within(dialog).findByRole('alert')).toHaveTextContent('has no session')
-    })
   })
 })

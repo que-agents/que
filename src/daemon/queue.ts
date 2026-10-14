@@ -1,4 +1,4 @@
-// The task queue: task.* / queue.* / report.get / handoff.create, the
+// The task queue: task.* / queue.* / report.get, the
 // dispatcher that starts queued tasks up to the concurrency cap while the
 // queue is open, the clock tick (stalls, pause expiry, sleep/wake), the
 // keep-awake, and recovery after a daemon restart. Every state change goes
@@ -7,13 +7,7 @@ import { type ChildProcess, spawn } from 'node:child_process'
 import { performance } from 'node:perf_hooks'
 import type { UserConfig } from '../shared/config'
 import type { QuePaths } from '../shared/paths'
-import type {
-  HandoffCreateParams,
-  QueueState,
-  Report,
-  TaskAddParams,
-  TaskListParams
-} from '../shared/protocol'
+import type { QueueState, Report, TaskAddParams, TaskListParams } from '../shared/protocol'
 import type { Task, TaskState } from '../shared/types'
 import { badRequest, conflict, notFound } from './errors'
 import { buildReport, reportSince } from './report'
@@ -293,8 +287,7 @@ export class TaskQueue {
       projectId = this.o.workspaces.project(p.projectId as string).id
     }
     const source = p.source ?? 'prompt'
-    if (!['prompt', 'file', 'handoff'].includes(source))
-      throw badRequest(`invalid source ${source}`)
+    if (!['prompt', 'file'].includes(source)) throw badRequest(`invalid source ${source}`)
     const positive = (v: unknown, key: string, int: boolean): void => {
       if (v === undefined) return
       if (typeof v !== 'number' || !(v > 0) || (int && !Number.isInteger(v))) {
@@ -374,17 +367,6 @@ export class TaskQueue {
 
   hook(taskId: string, payload: TaskHookPayload): void {
     this.apply(taskId, { type: 'hook', payload })
-  }
-
-  handoff(p: HandoffCreateParams): Task {
-    const ws = this.o.workspaces.get(p.workspaceId)
-    if (!ws.sessionId) throw badRequest(`workspace ${ws.name} has no session to hand off`)
-    return this.add({
-      workspaceId: ws.id,
-      brief: p.brief,
-      source: 'handoff',
-      resumeSessionId: ws.sessionId
-    })
   }
 
   open(concurrency?: number): QueueState {

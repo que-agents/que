@@ -106,7 +106,7 @@ describe('completion chime', () => {
     fakeBridge.seedWorkspace(retry)
     fakeBridge.seedTask(task)
     render(<App now={clock} />)
-    await screen.findByTestId(`task-${task.id}`)
+    await screen.findByTestId(`sidebar-workspace-${retry.id}-status`)
 
     fakeBridge.setTaskState(task.id, 'done')
 
@@ -122,12 +122,13 @@ describe('completion chime', () => {
     fakeBridge.seedTask(task)
     fakeBridge.setQuietState({ ...locked, ...unlockedFor(20 * 60_000) })
     render(<App now={clock} />)
-    const state = await screen.findByTestId(`task-${task.id}-state`)
+    const badge = `sidebar-workspace-${retry.id}-status`
+    await screen.findByTestId(badge)
 
     fakeBridge.setTaskState(task.id, 'done')
 
     await waitFor(() => {
-      expect(state).toHaveAttribute('data-status', 'done')
+      expect(screen.getByTestId(badge)).toHaveAttribute('data-status', 'done')
     })
     expect(played).toEqual([])
   })
@@ -141,7 +142,7 @@ describe('completion chime', () => {
       notifications: { chimeOnComplete: true, chimeOnNeedsInput: true, morningSummary: false }
     })
     render(<App now={clock} />)
-    await screen.findByTestId(`task-${task.id}`)
+    await screen.findByTestId(`sidebar-workspace-${retry.id}-status`)
 
     fakeBridge.setTaskState(task.id, 'stuck', 'needs_input')
 
