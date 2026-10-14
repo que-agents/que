@@ -3,6 +3,7 @@
 import { expect, test } from '@playwright/test'
 import type { TermInfo } from '../../src/shared/protocol'
 import { AppShellPage } from './pages/AppShellPage'
+import { SidebarPage } from './pages/SidebarPage'
 import { TerminalPage } from './pages/TerminalPage'
 import { type LaunchedApp, launchApp } from './utils/app'
 import { que, queJson } from './utils/que'
@@ -50,6 +51,10 @@ test('a terminal survives quitting the app and is reattached on relaunch', async
     expect(await terminal.waitForActiveTerminal()).toBe(termId)
     await terminal.expectScreenToContain(marker)
     await expect(terminal.tabReattached(termId)).toBeVisible()
+    await expect(new SidebarPage(launched.window).sessionOpen(termId)).toHaveAttribute(
+      'aria-current',
+      'page'
+    )
   })
 
   await test.step('The reattached shell still runs commands', async () => {

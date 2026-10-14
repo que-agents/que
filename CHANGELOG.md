@@ -8,6 +8,9 @@ All notable changes to que are recorded here. The format follows
 
 ### Changed
 
+- The sidebar starts with a Sessions section: one row per terminal outside a
+  workspace, a + to open another, and the selected one marked. It replaces
+  the single Terminals row, and the view it opens is titled Sessions.
 - The window no longer has a native title bar: the app's chrome runs to the
   top, the traffic lights sit over the sidebar, and that strip and the top
   bar's empty space drag the window.

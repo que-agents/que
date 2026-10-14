@@ -323,6 +323,12 @@ h2 {
   color: var(--fg-faint);
 }
 
+.session .glyph {
+  flex: none;
+  font: 11px var(--mono);
+  color: var(--fg-faint);
+}
+
 .project {
   margin-top: 6px;
 }
@@ -685,6 +691,10 @@ body.resizing {
 .badge.exited {
   background: color-mix(in srgb, var(--tone-bad) 16%, transparent);
   color: #ff7079;
+}
+
+.session .badge {
+  margin-left: 0;
 }
 
 .terminal {

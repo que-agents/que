@@ -41,7 +41,7 @@ export default function TopBar({ termKey }: { termKey: string }): React.JSX.Elem
         </>
       ) : (
         <h1 className="title" data-testid="topbar-title">
-          Terminals
+          Sessions
         </h1>
       )}
       <span className="cwd" title={cwd} data-testid="topbar-cwd">
