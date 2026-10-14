@@ -1,7 +1,9 @@
 // Work mode end to end: a project registered with the CLI, a workspace made
 // from the sidebar dialog, its terminal opened automatically, a claude session
-// in it reaching needs input on the sidebar badge (and in `que status`), and
-// Open in editor launching the editor on the worktree.
+// in it reaching needs input on the sidebar badge (and in `que status`), Open
+// in editor launching the editor on the worktree, and the project removed from
+// its context menu with the workspace and its worktree.
+import fs from 'node:fs'
 import { expect, test } from '@playwright/test'
 import type { StatusJson } from '../../src/cli/workspaces'
 import type { TermInfo } from '../../src/shared/protocol'
@@ -19,7 +21,7 @@ test.afterEach(async () => {
   await launched?.close() // quits the app AND stops the test daemon
 })
 
-test('a workspace made in the sidebar runs claude, shows needs input, and opens in the editor', async () => {
+test('a workspace made in the sidebar runs claude, shows needs input, opens in the editor, and goes with its project', async () => {
   const repo = makeRepo()
   const queHome = newQueHome()
   let project: Project
@@ -99,5 +101,16 @@ test('a workspace made in the sidebar runs claude, shows needs input, and opens 
     await topbar.openEditorButton.click()
     await expect.poll(() => launched.codeCalls()).toContainEqual(['-n', workspace.path])
     await launched.window.screenshot({ path: 'test-results/wp4-work-mode.png' })
+  })
+
+  await test.step('Remove the project from its context menu; the workspace and its worktree go too', async () => {
+    await sidebar.projectToggle(project.id).click({ button: 'right' })
+    await sidebar.projectMenuRemove(project.id).click()
+    await expect(sidebar.removeProjectDialog).toContainText('Its 1 workspace is removed too')
+    await sidebar.removeProjectSubmit.click()
+    await expect(sidebar.removeProjectDialog).toHaveCount(0)
+    await expect(sidebar.emptyState).toBeVisible()
+    expect(queJson<Project[]>(queHome, 'project', 'list', '--json')).toEqual([])
+    await expect.poll(() => fs.existsSync(workspace.path)).toBe(false)
   })
 })
