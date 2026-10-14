@@ -10,6 +10,7 @@ import QuietBoard from './components/QuietBoard'
 import ReportView from './components/ReportView'
 import SettingsView from './components/SettingsView'
 import Sidebar from './components/Sidebar'
+import SidebarResizer, { useSidebarWidth } from './components/SidebarResizer'
 import TerminalTabs from './components/TerminalTabs'
 import TopBar from './components/TopBar'
 import UpdateBanner from './components/UpdateBanner'
@@ -54,6 +55,7 @@ function Locked(): React.JSX.Element {
 function Shell(): React.JSX.Element {
   const store = useStore()
   const { view, error, dialog, connected, quiet } = useQue()
+  const [sidebarWidth, setSidebarWidth] = useSidebarWidth()
   const locked = isLocked(quiet)
   const termKey = view.kind === 'terminals' && !locked ? view.key : null
 
@@ -77,8 +79,13 @@ function Shell(): React.JSX.Element {
   }, [store, termKey, dialog])
 
   return (
-    <div className="app">
+    <div
+      className="app"
+      data-testid="app-shell"
+      style={{ '--sidebar-width': `${sidebarWidth}px` } as React.CSSProperties}
+    >
       <Sidebar />
+      <SidebarResizer width={sidebarWidth} onChange={setSidebarWidth} />
       <main className="main">
         <UpdateBanner />
         {!connected ? (
