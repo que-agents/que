@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { fakeBridge } from '@renderer/testing/fake-bridge'
-import { makeProject, makeTask, makeWorkspace } from '@renderer/testing/fixtures'
+import { makeProject, makeTask, makeTermInfo, makeWorkspace } from '@renderer/testing/fixtures'
 import App from '../App'
 
 const uploader = makeProject()
@@ -300,6 +300,69 @@ describe('Sidebar', () => {
       await user.keyboard('{Escape}')
 
       expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+    })
+
+    describe('sessions', () => {
+      const zsh = makeTermInfo({
+        id: '7d0c5b2a-1111-4000-8000-3e4f5a6b7c8d',
+        name: 'zsh',
+        cwd: '/Users/dev'
+      })
+      const node = makeTermInfo({
+        id: '7d0c5b2a-2222-4000-8000-3e4f5a6b7c8d',
+        name: 'node',
+        cwd: '/Users/dev/code/api'
+      })
+
+      it('lists the terminals outside any workspace above the projects, and opens the one clicked', async () => {
+        const user = userEvent.setup()
+        fakeBridge.seedTerminal(zsh)
+        fakeBridge.seedTerminal(node)
+        seed()
+        render(<App />)
+
+        const sessions = await screen.findByRole('navigation', { name: 'Sessions' })
+        const projects = screen.getByRole('navigation', { name: 'Projects' })
+        expect(
+          sessions.compareDocumentPosition(projects) & Node.DOCUMENT_POSITION_FOLLOWING
+        ).toBeTruthy()
+        expect(
+          within(sessions)
+            .getAllByRole('listitem')
+            .map((li) => li.textContent)
+        ).toEqual(['›_zsh', '›_node'])
+
+        await user.click(within(sessions).getByRole('button', { name: 'node' }))
+
+        expect(screen.getByTestId(`sidebar-session-${node.id}-open`)).toHaveAttribute(
+          'aria-current',
+          'page'
+        )
+        expect(screen.getByTestId(`sidebar-session-${zsh.id}-open`)).not.toHaveAttribute(
+          'aria-current'
+        )
+        expect(screen.getByTestId(`terminal-tab-${node.id}-select`)).toHaveAttribute(
+          'aria-selected',
+          'true'
+        )
+      })
+
+      it('opens a new session from +, and selects it', async () => {
+        const user = userEvent.setup()
+        fakeBridge.seedTerminal(zsh)
+        render(<App />)
+        const sessions = await screen.findByRole('navigation', { name: 'Sessions' })
+        await within(sessions).findByRole('button', { name: 'zsh' })
+
+        await user.click(screen.getByRole('button', { name: 'New session' }))
+
+        await waitFor(() => {
+          expect(within(sessions).getAllByRole('listitem')).toHaveLength(2)
+        })
+        const [, created] = within(sessions).getAllByRole('listitem')
+        expect(within(created).getByRole('button')).toHaveAttribute('aria-current', 'page')
+        expect((await window.que.term.list()).filter((t) => !t.workspaceId)).toHaveLength(2)
+      })
     })
   })
 })

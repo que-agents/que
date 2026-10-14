@@ -1,4 +1,4 @@
-// Projects → workspaces with their status badges, the loose terminals entry,
+// Sessions (loose terminals) above projects → workspaces with their status badges,
 // the report entry, the project context menu, and the new-workspace and
 // remove-project dialogs.
 import { expect, type Locator, type Page } from '@playwright/test'
@@ -9,7 +9,9 @@ export class SidebarPage {
   resizer: Locator
   emptyState: Locator
   addProjectButton: Locator
-  scratchButton: Locator
+  sessionsAdd: Locator
+  session: (id: string) => Locator
+  sessionOpen: (id: string) => Locator
   reportButton: Locator
   newWorkspaceDialog: Locator
   newWorkspaceName: Locator
@@ -33,7 +35,9 @@ export class SidebarPage {
     this.resizer = page.getByTestId('sidebar-resizer')
     this.emptyState = page.getByTestId('sidebar-empty')
     this.addProjectButton = page.getByTestId('sidebar-add-project')
-    this.scratchButton = page.getByTestId('sidebar-scratch')
+    this.sessionsAdd = page.getByTestId('sidebar-sessions-add')
+    this.session = (id: string) => page.getByTestId(`sidebar-session-${id}`)
+    this.sessionOpen = (id: string) => page.getByTestId(`sidebar-session-${id}-open`)
     this.reportButton = page.getByTestId('sidebar-report')
     this.newWorkspaceDialog = page.getByTestId('dialog-new-workspace')
     this.newWorkspaceName = page.getByTestId('dialog-new-workspace-name')

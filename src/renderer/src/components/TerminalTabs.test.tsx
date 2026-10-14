@@ -67,7 +67,7 @@ describe('TerminalTabs', () => {
       const [first] = await window.que.term.list({ workspaceId: board.id })
       expect(first.cwd).toBe(board.path)
       await user.click(screen.getByRole('button', { name: `Close ${board.name}` }))
-      await user.click(screen.getByTestId('sidebar-scratch'))
+      await user.click(screen.getAllByTestId(/^sidebar-session-.*-open$/)[0])
       await user.click(screen.getByTestId(`sidebar-workspace-${board.id}-open`))
 
       expect(await screen.findByTestId('terminal-empty')).toBeInTheDocument()
