@@ -1,5 +1,6 @@
 import fs from 'node:fs'
 import net from 'node:net'
+import { join } from 'node:path'
 import {
   ErrorCodes,
   MessageDecoder,
@@ -14,7 +15,8 @@ import { loadConfig, type UserConfig, defaultConfig } from '../shared/config'
 import { ensureDirs, quePaths, type QuePaths } from '../shared/paths'
 import type { HookEvent, TaskAddParams, TermCreateParams } from '../shared/protocol'
 import type { TaskSource, TaskState } from '../shared/types'
-import { RpcError } from './errors'
+import { conflict, RpcError } from './errors'
+import { finishTask, isProtectedBranch } from './finisher'
 import type { HostedTerminal, PtyHost, TermExtra } from './pty-host'
 import { TaskQueue } from './queue'
 import { SYSTEM_PROMPT } from './runner'
@@ -187,6 +189,50 @@ export class DaemonServer {
 
   log(msg: string): void {
     this.opts.log?.(msg)
+  }
+
+  /**
+   * Opens a draft pull request from an interactive workspace with the
+   * finisher: commits what is uncommitted as `title`, pushes, and runs gh.
+   */
+  private async createPr(id: string, rawTitle: string): Promise<{ prUrl: string }> {
+    const ws = this.workspaces.get(id)
+    const title = rawTitle.trim()
+    if (!title) throw new RpcError(ErrorCodes.BadRequest, 'title is required')
+    const project = this.workspaces.project(ws.projectId)
+    const { protectedBranches } = this.configOrDefault()
+    if (isProtectedBranch(ws.branch, project.defaultBranch, protectedBranches)) {
+      throw conflict(`refusing to open a pull request from protected branch ${ws.branch}`)
+    }
+    const busy = this.tasks
+      .list()
+      .some((t) => t.workspaceId === id && ['preparing', 'running', 'finishing'].includes(t.state))
+    if (busy) throw conflict(`a task is running in workspace ${ws.name}`)
+
+    const lines: string[] = []
+    fs.mkdirSync(this.paths.workspaceLogsDir, { recursive: true, mode: 0o700 })
+    const result = await finishTask({
+      task: { title, resultText: null },
+      workspace: ws,
+      project,
+      protectedBranches,
+      bodyFile: join(this.paths.workspaceLogsDir, `${ws.id}.pr.md`),
+      log: (line) => {
+        lines.push(line)
+        this.log(`workspace ${ws.id} ${line}`)
+      }
+    })
+    if (!result.ok) {
+      const detail = lines.at(-1) ?? `${result.step} failed`
+      if (result.step === 'protected_branch') throw conflict(detail)
+      throw new RpcError(ErrorCodes.Internal, detail)
+    }
+    if (!result.prUrl) {
+      throw conflict(`${ws.branch} has no commits ahead of its base; nothing to open a PR for`)
+    }
+    this.store.setWorkspacePrUrl(ws.id, result.prUrl)
+    this.broadcast('workspace.updated', this.workspaces.get(ws.id))
+    return { prUrl: result.prUrl }
   }
 
   listen(socketPath: string): Promise<void> {
@@ -391,6 +437,8 @@ export class DaemonServer {
         )
         return { id: t.id }
       }
+      case 'workspace.createPr':
+        return this.createPr(str(p, 'id'), str(p, 'title'))
       case 'hook.event': {
         const ws = this.workspaces.get(str(p, 'workspaceId'))
         const payload = p.payload

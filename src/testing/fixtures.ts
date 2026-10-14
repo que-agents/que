@@ -68,6 +68,7 @@ export function makeWorkspace(overrides: Partial<Workspace> = {}): Workspace {
     sessionId: null,
     createdAt: '2026-10-13T21:04:00.000Z',
     archivedAt: null,
+    prUrl: null,
     ...overrides
   }
 }

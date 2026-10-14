@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { makeHookEvent } from '../testing/fixtures'
+import { makeHookEvent, makeTask, makeWorkspace } from '../testing/fixtures'
 import {
   AGENTS_JSON_MIN_AGE_MS,
   initialState,
   reduce,
   type StatusState,
   summarize,
+  traySummary,
   trayTitle
 } from './status-engine'
 
@@ -209,5 +210,55 @@ describe('summarize and trayTitle', () => {
       preparing: 1
     })
     expect(trayTitle(summary)).toBe('● 3 ▸ 1 ✕ 0')
+  })
+})
+
+describe('traySummary', () => {
+  const retry = makeWorkspace({
+    id: 'ws_01hzx3k9c2qf',
+    name: 'ha-1432-retry-logic',
+    status: 'idle'
+  })
+  const board = makeWorkspace({
+    id: 'ws_01hzx4m1p8rt',
+    name: 'ha-1440-quiet-board',
+    status: 'needs_input'
+  })
+
+  it('counts a workspace once, as working while a task runs in it', () => {
+    const summary = traySummary(
+      [retry, board],
+      [makeTask({ workspaceId: retry.id, state: 'running' })]
+    )
+
+    expect(trayTitle(summary)).toBe('● 1 ▸ 1 ✕ 0')
+    expect(summary.idle).toBe(0)
+  })
+
+  it('counts a stuck task as a stuck workspace', () => {
+    const summary = traySummary([retry], [makeTask({ workspaceId: retry.id, state: 'stuck' })])
+
+    expect(trayTitle(summary)).toBe('● 0 ▸ 0 ✕ 1')
+  })
+
+  it('counts a task still preparing its workspace as working on its own', () => {
+    const summary = traySummary([], [makeTask({ workspaceId: null, state: 'preparing' })])
+
+    expect(summary.working).toBe(1)
+  })
+
+  it('ignores finished, queued, and paused tasks and stuck ones whose workspace is gone', () => {
+    const summary = traySummary(
+      [retry],
+      [
+        makeTask({ workspaceId: retry.id, state: 'done' }),
+        makeTask({ workspaceId: retry.id, state: 'queued' }),
+        makeTask({ workspaceId: retry.id, state: 'paused' }),
+        makeTask({ workspaceId: 'ws_01hzx9gone00', state: 'stuck' })
+      ]
+    )
+
+    expect(trayTitle(summary)).toBe('● 0 ▸ 0 ✕ 0')
+    expect(summary.idle).toBe(1)
   })
 })

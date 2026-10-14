@@ -1,6 +1,6 @@
 // Launches the built app for one test: a fresh QUE_HOME (so a fresh daemon),
 // QUE_E2E=1 (the renderer's window.__que hook), and the fakes first on PATH.
-import { existsSync, mkdtempSync, readFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import { join, resolve } from 'node:path'
 import {
@@ -20,6 +20,8 @@ export interface LaunchedApp {
   queHome: string
   /** argv of every fake `gh` call, in order. */
   ghCalls(): string[][]
+  /** argv of every fake `code` call, in order. */
+  codeCalls(): string[][]
   /** Quits the app, stops the test daemon, and checks its process is gone. */
   close(): Promise<void>
 }
@@ -43,6 +45,9 @@ export function testEnv(
     QUE_FAKE_CLAUDE_TRANSCRIPT_DIR: join(queHome, 'fake-claude-transcripts'),
     // Never the user's own config file.
     QUE_CONFIG: join(queHome, 'config.toml'),
+    // A fixed git identity for commits the finisher makes, never the user's.
+    GIT_CONFIG_GLOBAL: join(queHome, 'gitconfig'),
+    GIT_CONFIG_NOSYSTEM: '1',
     ...extra
   }
 }
@@ -56,24 +61,36 @@ function pidAlive(pid: number): boolean {
   }
 }
 
+function readLog(path: string): string[][] {
+  if (!existsSync(path)) return []
+  return readFileSync(path, 'utf8')
+    .trim()
+    .split('\n')
+    .map((l) => (JSON.parse(l) as { argv: string[] }).argv)
+}
+
+/** A fresh QUE_HOME, for specs that seed state with the CLI before launching. */
+export function newQueHome(): string {
+  const queHome = mkdtempSync(join(os.tmpdir(), 'que-e2e-'))
+  writeFileSync(
+    join(queHome, 'gitconfig'),
+    '[user]\n\tname = que e2e\n\temail = e2e@que.invalid\n[commit]\n\tgpgsign = false\n'
+  )
+  return queHome
+}
+
 export async function launchApp(
   opts: { queHome?: string; env?: Record<string, string> } = {}
 ): Promise<LaunchedApp> {
-  const queHome = opts.queHome ?? mkdtempSync(join(os.tmpdir(), 'que-e2e-'))
+  const queHome = opts.queHome ?? newQueHome()
   const app = await electron.launch({ args: ['.'], cwd: ROOT, env: testEnv(queHome, opts.env) })
   const window = await app.firstWindow()
   return {
     app,
     window,
     queHome,
-    ghCalls: () => {
-      const log = join(queHome, 'fake-gh.log')
-      if (!existsSync(log)) return []
-      return readFileSync(log, 'utf8')
-        .trim()
-        .split('\n')
-        .map((l) => (JSON.parse(l) as { argv: string[] }).argv)
-    },
+    ghCalls: () => readLog(join(queHome, 'fake-gh.log')),
+    codeCalls: () => readLog(join(queHome, 'fake-code.log')),
     close: async () => {
       // The app first, so it cannot reconnect and respawn a daemon.
       await app.close().catch(() => {})

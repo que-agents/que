@@ -43,6 +43,7 @@ const api: QueApi = {
     get: (p) => call('workspace.get', p),
     remove: (p) => call('workspace.remove', p),
     openTerminal: (p) => call('workspace.openTerminal', p),
+    createPr: (p) => call('workspace.createPr', p),
     on: (event, cb) => subscribe(event, cb as (data: unknown) => void)
   },
   task: {
@@ -68,6 +69,8 @@ const api: QueApi = {
   app: {
     homedir: () => ipcRenderer.invoke('app:homedir'),
     openFolder: () => ipcRenderer.invoke('dialog:openFolder'),
+    openInEditor: (p) => ipcRenderer.invoke('app:openInEditor', p.path),
+    trayTitle: () => ipcRenderer.invoke('app:trayTitle'),
     e2e: process.argv.includes('--que-e2e')
   }
 }
