@@ -146,7 +146,16 @@ const settings = loadSettings(opts.settings)
 const hooks = (settings && typeof settings.hooks === 'object' && settings.hooks) || {}
 const cwd = process.cwd()
 if (process.env.QUE_FAKE_CLAUDE_LOG) {
-  const call = { argv: process.argv.slice(2), cwd, pid: process.pid, ts: new Date().toISOString() }
+  const call = {
+    argv: process.argv.slice(2),
+    cwd,
+    pid: process.pid,
+    ts: new Date().toISOString(),
+    // The environment names a session cares about (markers, terminal identity, que's own).
+    env: Object.keys(process.env)
+      .filter((k) => /^(CLAUDE|TERM|QUE_)/.test(k))
+      .sort()
+  }
   fs.appendFileSync(process.env.QUE_FAKE_CLAUDE_LOG, `${JSON.stringify(call)}\n`)
 }
 const model = opts.model || MODEL_DEFAULT

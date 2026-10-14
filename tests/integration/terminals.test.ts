@@ -1,7 +1,7 @@
 // Terminals over the real socket: real node-pty, the headless mirror, and the
 // real DaemonClient against an in-process DaemonServer (migrated from the
 // first work package's pty-host and server tests).
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DaemonClient } from '@shared/client'
 import type { Events } from '@shared/protocol'
 import { startTestDaemon, type TestDaemon } from '../../src/testing/daemon-harness'
@@ -68,6 +68,40 @@ describe('terminals', () => {
         )
         .toContain('QUE_STREAM_91c0')
     }, 20_000)
+  })
+
+  describe('environment', () => {
+    it("starts a shell without the launching terminal's identity or an agent session's markers", async () => {
+      // As when the daemon was started from a shell inside another terminal
+      // emulator, by an agent's tool: none of that belongs to a new terminal.
+      vi.stubEnv('TERM_PROGRAM', 'kitty')
+      vi.stubEnv('KITTY_WINDOW_ID', '3')
+      vi.stubEnv('CLAUDECODE', '1')
+      vi.stubEnv('CLAUDE_CODE_CHILD_SESSION', '1')
+      vi.stubEnv('CLAUDE_CONFIG_DIR', '/Users/dev/.claude-work')
+      const { id } = await client.request('term.create', {
+        file: '/bin/sh',
+        args: [
+          '-c',
+          'env | grep -E "^(TERM|TERM_PROGRAM|KITTY_WINDOW_ID|CLAUDECODE|CLAUDE_CODE_CHILD_SESSION|CLAUDE_CONFIG_DIR|QUE_TERMINAL)=" | sort; echo QUE_ENV_END'
+        ],
+        cols: 80,
+        rows: 24
+      })
+
+      await expect
+        .poll(async () => (await client.request('term.snapshot', { id })).text, { timeout: 10_000 })
+        .toContain('QUE_ENV_END')
+      const lines = (await client.request('term.snapshot', { id })).text
+        .split('\n')
+        .map((l) => l.trim())
+        .filter((l) => l.includes('='))
+      expect(lines).toEqual([
+        'CLAUDE_CONFIG_DIR=/Users/dev/.claude-work',
+        'QUE_TERMINAL=1',
+        'TERM=xterm-256color'
+      ])
+    })
   })
 
   describe('attach', () => {

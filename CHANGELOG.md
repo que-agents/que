@@ -46,6 +46,12 @@ All notable changes to que are recorded here. The format follows
 
 ### Fixed
 
+- Terminals and headless runs start with a cleaned environment: the markers a
+  running coding-agent session leaves in its shells are removed (a session in
+  que is a top-level one again, with transcripts saved), and the launching
+  terminal emulator's identity is removed (programs no longer try keyboard
+  protocols the embedded terminal cannot serve, so Tab accepts prompt
+  suggestions). `QUE_TERMINAL=1` marks a que terminal.
 - The `claude` wrapper in workspace terminals no longer hangs when another
   `claude` wrapper on `PATH` hands the command back to it. The chain now ends
   at the real executable with `--settings` added once, and a wrapper that

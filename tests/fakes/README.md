@@ -53,8 +53,9 @@ Other knobs: `QUE_FAKE_CLAUDE_TRANSCRIPT_DIR` (where `<session_id>.jsonl`
 transcripts go; default under the OS temp dir), `QUE_FAKE_CLAUDE_AGENTS_JSON` (a
 file whose contents `agents --json` prints instead of `[]`),
 `QUE_FAKE_CLAUDE_VERSION`. With `QUE_FAKE_CLAUDE_LOG` set, every invocation
-first appends one JSON line `{ "argv": [...], "cwd": "...", "pid": <n>, "ts": "..." }`
-to it, as `gh` and `code` do.
+first appends one JSON line `{ "argv": [...], "cwd": "...", "pid": <n>, "ts": "...",
+"env": [...] }` to it (`env` is the sorted CLAUDE*, TERM* and QUE_* variable names it
+saw), as `gh` and `code` do.
 
 ## `gh` and `code`
 

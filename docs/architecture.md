@@ -79,6 +79,17 @@ That directory holds two small scripts the daemon writes at startup:
 `hooks.json` registers `que hook` for every hook event, so each event a session
 fires arrives at the daemon as JSON on stdin, tagged with the workspace it ran in.
 
+## What a process que starts can see
+
+The daemon, every terminal, and every headless run get a cleaned copy of the
+environment (`src/shared/env.ts`): the markers a running coding-agent session
+leaves in the shells it spawns are removed, so a session started in que is a
+normal top-level one; the identity of whichever terminal emulator launched que
+is removed, so programs pick generic terminal features that an embedded xterm
+serves; app internals go too. `QUE_TERMINAL=1` is set. The user's own
+configuration (an alternate config directory, provider selectors, limits) is
+kept.
+
 ## The status engine
 
 `status-engine.ts` is a set of pure functions: a hook event, a terminal exit,
