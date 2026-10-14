@@ -11,6 +11,16 @@ export interface QuePaths {
   pid: string
   logsDir: string
   daemonLog: string
+  /** Per-workspace setup/teardown logs. */
+  workspaceLogsDir: string
+  /** SQLite database. */
+  db: string
+  /** The wrappers that sit first on PATH in workspace terminals (claude, que). */
+  binDir: string
+  /** Hook settings passed to Claude Code with --settings. */
+  hooksJson: string
+  /** Shell startup files for workspace terminals (zsh ZDOTDIR). */
+  shellDir: string
   /** Set when the socket had to move to /tmp because the home path is too long. */
   socketFallback: boolean
 }
@@ -36,6 +46,11 @@ export function quePaths(): QuePaths {
     pid: join(home, 'daemon.pid'),
     logsDir,
     daemonLog: join(logsDir, 'daemon.log'),
+    workspaceLogsDir: join(logsDir, 'workspaces'),
+    db: join(home, 'que.db'),
+    binDir: join(home, 'bin'),
+    hooksJson: join(home, 'hooks.json'),
+    shellDir: join(home, 'shell'),
     socketFallback
   }
 }

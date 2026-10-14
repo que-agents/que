@@ -505,7 +505,10 @@ function interactive() {
       process.exit(0)
     }
     if (line === '/needs-input') {
+      // A prompt whose tool call needs permission: the turn starts, then asks.
       awaitingPermission = true
+      appendTranscript({ type: 'user', message: { role: 'user', content: line } })
+      runHooks('UserPromptSubmit', { prompt: line, prompt_id: crypto.randomUUID() })
       runHooks('Notification', {
         notification_type: 'permission_prompt',
         message: 'Claude needs your permission to use Bash',

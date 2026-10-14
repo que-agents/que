@@ -1,0 +1,273 @@
+// Projects, workspaces, and status commands.
+import { execFile } from 'node:child_process'
+import fs from 'node:fs'
+import { join, resolve } from 'node:path'
+import type { Command } from 'commander'
+import { summarize, trayTitle } from '../daemon/status-engine'
+import type { DaemonClient } from '../shared/client'
+import { formatConfigErrors, loadConfig } from '../shared/config'
+import { queHome, quePaths } from '../shared/paths'
+import type { WorkspaceStatusEvent } from '../shared/protocol'
+import type { Project, Workspace } from '../shared/types'
+import { attach } from './attach'
+import { CliError, findProject, findWorkspace, formatAge, printTable, withClient } from './common'
+
+/** The JSON shape of `que status --json`. */
+export interface StatusJson {
+  summary: ReturnType<typeof summarize>
+  tray: string
+  workspaces: Array<{
+    id: string
+    name: string
+    project: string
+    projectId: string
+    branch: string
+    path: string
+    status: Workspace['status']
+    reason: string | null
+    lastActivityAt: string | null
+    sessionId: string | null
+  }>
+}
+
+function openInEditor(path: string): Promise<void> {
+  return new Promise((res, rej) => {
+    execFile('code', ['-n', path], (err) =>
+      err ? rej(new CliError(`code -n failed: ${err.message}`)) : res()
+    )
+  })
+}
+
+/** `-r` takes a configured repo name or a path. */
+function resolveRepo(ref: string): { path: string; name?: string } {
+  const config = loadConfig({ queHome: queHome() })
+  if (!config.ok) throw new CliError(`invalid config: ${formatConfigErrors(config.errors)}`)
+  const named = config.config.repos[ref]
+  if (named) return { path: named.path, name: ref }
+  const path = resolve(ref)
+  if (!fs.existsSync(path)) throw new CliError(`no configured repo or directory named ${ref}`)
+  return { path }
+}
+
+/** Waits until a workspace leaves `preparing` (its setup command finished). */
+async function waitForSetup(
+  c: DaemonClient,
+  ws: Workspace,
+  seen: WorkspaceStatusEvent[]
+): Promise<Workspace> {
+  const settled = (): boolean => seen.some((e) => e.id === ws.id && e.status !== 'preparing')
+  if (!settled()) {
+    const now = await c.request('workspace.get', { id: ws.id })
+    if (now.status !== 'preparing') return now
+    process.stderr.write(`que: running setup for ${ws.name}…\n`)
+    await new Promise<void>((done) => {
+      const off = c.on('workspace.status', (e) => {
+        if (e.id === ws.id && e.status !== 'preparing') {
+          off()
+          done()
+        }
+      })
+      if (settled()) {
+        off()
+        done()
+      }
+    })
+  }
+  return c.request('workspace.get', { id: ws.id })
+}
+
+/** The workspace's most recent live terminal, or a new one. */
+async function workspaceTerminal(
+  c: DaemonClient,
+  ws: Workspace,
+  forceNew = false
+): Promise<string> {
+  if (!forceNew) {
+    const live = (await c.request('term.list', { workspaceId: ws.id }))
+      .filter((t) => t.alive)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    if (live[0]) return live[0].id
+  }
+  const { id } = await c.request('workspace.openTerminal', {
+    id: ws.id,
+    cols: process.stdout.columns || 80,
+    rows: process.stdout.rows || 24
+  })
+  return id
+}
+
+function projectName(projects: Project[], id: string): string {
+  return projects.find((p) => p.id === id)?.name ?? id
+}
+
+export function registerWorkspaceCommands(program: Command): void {
+  const project = program.command('project').description('manage projects (git repositories)')
+  project
+    .command('add <path>')
+    .description('register a git repository')
+    .option('--name <name>', 'display name (defaults to the folder name)')
+    .option('--json', 'print JSON')
+    .action((path: string, opts: { name?: string; json?: boolean }) =>
+      withClient(async (c) => {
+        const p = await c.request('project.add', { path: resolve(path), name: opts.name })
+        if (opts.json) console.log(JSON.stringify(p, null, 2))
+        else console.log(`${p.id}  ${p.name}  ${p.path}  (default branch ${p.defaultBranch})`)
+      })
+    )
+  project
+    .command('list')
+    .description('list projects')
+    .option('--json', 'print JSON')
+    .action((opts: { json?: boolean }) =>
+      withClient(async (c) => {
+        const projects = await c.request('project.list')
+        if (opts.json) return console.log(JSON.stringify(projects, null, 2))
+        if (projects.length === 0) return console.log('no projects')
+        printTable(
+          ['ID', 'NAME', 'DEFAULT', 'PATH'],
+          projects.map((p) => [p.id, p.name, p.defaultBranch, p.path])
+        )
+      })
+    )
+
+  program
+    .command('work <name>')
+    .description('create a workspace (git worktree) and print its path')
+    .requiredOption('-r, --repo <repo>', 'repository path or configured repo name')
+    .option('--base <ref>', 'base ref (default: origin/<default branch>)')
+    .option('--open', 'open the workspace with `code -n`')
+    .option('--json', 'print the workspace as JSON')
+    .action((name: string, opts: { repo: string; base?: string; open?: boolean; json?: boolean }) =>
+      withClient(async (c) => {
+        const repo = resolveRepo(opts.repo)
+        const p = await c.request('project.add', { path: repo.path, name: repo.name })
+        const seen: WorkspaceStatusEvent[] = []
+        c.on('workspace.status', (e) => seen.push(e))
+        const created = await c.request('workspace.create', {
+          projectId: p.id,
+          name,
+          baseRef: opts.base
+        })
+        const ws = await waitForSetup(c, created, seen)
+        if (opts.json) console.log(JSON.stringify(ws, null, 2))
+        else console.log(ws.path)
+        if (ws.status === 'stuck') {
+          const log = join(quePaths().workspaceLogsDir, `${ws.id}-setup.log`)
+          console.error(`que: setup failed for ${ws.name}; see ${log}`)
+          process.exitCode = 1
+        }
+        if (opts.open) await openInEditor(ws.path)
+      })
+    )
+
+  const ws = program.command('ws').description('manage workspaces')
+  ws.command('list')
+    .description('list workspaces')
+    .option('--project <project>', 'only this project (id, name, or path)')
+    .option('--json', 'print JSON')
+    .action((opts: { project?: string; json?: boolean }) =>
+      withClient(async (c) => {
+        const projectId = opts.project ? (await findProject(c, opts.project)).id : undefined
+        const list = await c.request('workspace.list', { projectId })
+        if (opts.json) return console.log(JSON.stringify(list, null, 2))
+        if (list.length === 0) return console.log('no workspaces')
+        const projects = await c.request('project.list')
+        printTable(
+          ['ID', 'NAME', 'PROJECT', 'BRANCH', 'STATUS', 'PATH'],
+          list.map((w) => [
+            w.id,
+            w.name,
+            projectName(projects, w.projectId),
+            w.branch,
+            w.status,
+            w.path
+          ])
+        )
+      })
+    )
+  ws.command('remove <workspace>')
+    .description('remove a workspace: kill its terminals, run teardown, remove the worktree')
+    .option('--delete-branch', 'also delete its branch')
+    .action((ref: string, opts: { deleteBranch?: boolean }) =>
+      withClient(async (c) => {
+        const w = await findWorkspace(c, ref)
+        await c.request('workspace.remove', { id: w.id, deleteBranch: opts.deleteBranch === true })
+        console.log(`removed ${w.id} (${w.name})`)
+      })
+    )
+  ws.command('terminal <workspace>')
+    .description("print the id of the workspace's latest live terminal, opening one if needed")
+    .option('--new', 'always open a new terminal')
+    .action((ref: string, opts: { new?: boolean }) =>
+      withClient(async (c) => {
+        console.log(await workspaceTerminal(c, await findWorkspace(c, ref), opts.new === true))
+      })
+    )
+
+  program
+    .command('status')
+    .description('summary and per-workspace status')
+    .option('--json', 'print JSON')
+    .action((opts: { json?: boolean }) =>
+      withClient(async (c) => {
+        const [list, projects] = await Promise.all([
+          c.request('workspace.list'),
+          c.request('project.list')
+        ])
+        const summary = summarize(list)
+        if (opts.json) {
+          const out: StatusJson = {
+            summary,
+            tray: trayTitle(summary),
+            workspaces: list.map((w) => ({
+              id: w.id,
+              name: w.name,
+              project: projectName(projects, w.projectId),
+              projectId: w.projectId,
+              branch: w.branch,
+              path: w.path,
+              status: w.status,
+              reason: w.statusReason,
+              lastActivityAt: w.lastActivityAt,
+              sessionId: w.sessionId
+            }))
+          }
+          return console.log(JSON.stringify(out, null, 2))
+        }
+        console.log(
+          `${trayTitle(summary)}   working ${summary.working} · needs input ${summary.needs_input} · stuck ${summary.stuck} · idle ${summary.idle} · exited ${summary.exited} · preparing ${summary.preparing}`
+        )
+        if (list.length === 0) return console.log('no workspaces')
+        printTable(
+          ['WORKSPACE', 'PROJECT', 'STATUS', 'REASON', 'ACTIVE', 'SESSION'],
+          list.map((w) => [
+            w.name,
+            projectName(projects, w.projectId),
+            w.status,
+            w.statusReason ?? '-',
+            formatAge(w.lastActivityAt ?? w.statusAt),
+            w.sessionId ? w.sessionId.slice(0, 8) : '-'
+          ])
+        )
+      }, false)
+    )
+
+  program
+    .command('attach <workspace>')
+    .description(
+      "attach to the workspace's latest terminal, opening one if needed (Ctrl-] detaches)"
+    )
+    .action(async (ref: string) => {
+      const id = await withClient(async (c) => workspaceTerminal(c, await findWorkspace(c, ref)))
+      await attach(id)
+    })
+
+  program
+    .command('open <workspace>')
+    .description('open the workspace with `code -n`')
+    .action((ref: string) =>
+      withClient(async (c) => {
+        await openInEditor((await findWorkspace(c, ref)).path)
+      }, false)
+    )
+}

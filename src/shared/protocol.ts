@@ -2,6 +2,8 @@
 // Newline-delimited JSON over a unix socket. Requests carry an id; responses
 // echo it. Events are server-pushed and carry no id.
 
+import type { Project, Workspace, WorkspaceStatus } from './types'
+
 export const PROTOCOL_VERSION = 1
 
 // ---- method types ---------------------------------------------------------
@@ -32,6 +34,13 @@ export interface TermInfo {
   pid: number
   alive: boolean
   createdAt: string
+  /** Set for terminals opened with workspace.openTerminal. */
+  workspaceId?: string
+}
+
+export interface TermListParams {
+  /** Only the terminals of this workspace. */
+  workspaceId?: string
 }
 
 export interface TermIdParams {
@@ -72,18 +81,76 @@ export interface Ok {
   ok: true
 }
 
+export interface ProjectAddParams {
+  /** Any path inside the repository; the git toplevel is registered. */
+  path: string
+  name?: string
+}
+
+export interface ProjectRemoveParams {
+  id: string
+  /** Also remove its unarchived workspaces. */
+  force?: boolean
+}
+
+export interface WorkspaceCreateParams {
+  projectId: string
+  name: string
+  /** Defaults to origin/<default branch> when that ref exists, else <default branch>. */
+  baseRef?: string
+  /** Defaults to the slugged name. */
+  branch?: string
+}
+
+export interface WorkspaceListParams {
+  projectId?: string
+}
+
+export interface WorkspaceRemoveParams {
+  id: string
+  deleteBranch?: boolean
+}
+
+export interface WorkspaceOpenTerminalParams {
+  id: string
+  cols: number
+  rows: number
+}
+
+export interface HookEventParams {
+  workspaceId: string
+  /** The hook JSON Claude Code wrote to the hook's stdin. */
+  payload: HookEvent
+}
+
+export interface WorkspaceStatusEvent {
+  id: string
+  status: WorkspaceStatus
+  reason?: string
+  at: string
+}
+
 /** Maps each method name to its params and result types. */
 export interface Methods {
   'daemon.ping': { params: Record<string, never> | undefined; result: PingResult }
   'daemon.shutdown': { params: Record<string, never> | undefined; result: Ok }
   'term.create': { params: TermCreateParams; result: { id: string } }
-  'term.list': { params: Record<string, never> | undefined; result: TermInfo[] }
+  'term.list': { params: TermListParams | undefined; result: TermInfo[] }
   'term.attach': { params: TermAttachParams; result: TermAttachResult }
   'term.detach': { params: TermIdParams; result: Ok }
   'term.write': { params: TermWriteParams; result: Ok }
   'term.resize': { params: TermResizeParams; result: Ok }
   'term.kill': { params: TermIdParams; result: Ok }
   'term.snapshot': { params: TermIdParams; result: TermSnapshotResult }
+  'project.add': { params: ProjectAddParams; result: Project }
+  'project.list': { params: Record<string, never> | undefined; result: Project[] }
+  'project.remove': { params: ProjectRemoveParams; result: Ok }
+  'workspace.create': { params: WorkspaceCreateParams; result: Workspace }
+  'workspace.list': { params: WorkspaceListParams | undefined; result: Workspace[] }
+  'workspace.get': { params: { id: string }; result: Workspace }
+  'workspace.remove': { params: WorkspaceRemoveParams; result: Ok }
+  'workspace.openTerminal': { params: WorkspaceOpenTerminalParams; result: { id: string } }
+  'hook.event': { params: HookEventParams; result: Ok }
 }
 
 export type MethodName = keyof Methods
@@ -97,6 +164,10 @@ export interface Events {
   'term.exit': { id: string; exitCode: number; signal?: number }
   'term.created': { id: string }
   'term.killed': { id: string }
+  'workspace.created': Workspace
+  'workspace.updated': Workspace
+  'workspace.removed': { id: string }
+  'workspace.status': WorkspaceStatusEvent
 }
 
 export type EventName = keyof Events
@@ -128,6 +199,7 @@ export const ErrorCodes = {
   BadRequest: 'bad_request',
   UnknownMethod: 'unknown_method',
   NotFound: 'not_found',
+  Conflict: 'conflict',
   Internal: 'internal'
 } as const
 
@@ -186,17 +258,23 @@ export function isEvent(msg: ServerMessage): msg is EventMessage {
 // Shapes que receives from Claude Code: hook JSON on stdin and the final
 // stream-json `result` line of a headless run.
 
-export type HookEventName =
-  | 'SessionStart'
-  | 'UserPromptSubmit'
-  | 'PreToolUse'
-  | 'PostToolUse'
-  | 'Notification'
-  | 'Stop'
-  | 'StopFailure'
-  | 'SubagentStop'
-  | 'PreCompact'
-  | 'SessionEnd'
+export const HOOK_EVENT_NAMES = [
+  'SessionStart',
+  'SessionEnd',
+  'UserPromptSubmit',
+  'PreToolUse',
+  'PostToolUse',
+  'PostToolUseFailure',
+  'Stop',
+  'StopFailure',
+  'Notification',
+  'PermissionRequest',
+  'PreCompact',
+  'SubagentStart',
+  'SubagentStop'
+] as const
+
+export type HookEventName = (typeof HOOK_EVENT_NAMES)[number]
 
 export interface HookEvent {
   hook_event_name: HookEventName
@@ -204,6 +282,9 @@ export interface HookEvent {
   cwd: string
   transcript_path: string
   permission_mode?: string
+  /** Set when the event comes from a subagent rather than the main session. */
+  agent_id?: string
+  agent_type?: string
   /** SessionStart */
   source?: 'startup' | 'resume' | 'clear' | 'compact'
   /** UserPromptSubmit */

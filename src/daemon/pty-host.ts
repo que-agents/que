@@ -7,6 +7,13 @@ import type { TermCreateParams, TermInfo, TermSnapshotResult } from '../shared/p
 
 const SCROLLBACK = 10000
 
+/** Daemon-internal terminal options that clients cannot set directly. */
+export interface TermExtra {
+  /** Merged over the daemon's environment. */
+  env?: Record<string, string>
+  workspaceId?: string
+}
+
 export interface ExitInfo {
   exitCode: number
   signal?: number
@@ -20,6 +27,7 @@ export class HostedTerminal {
   readonly createdAt: string
   readonly proc: pty.IPty
   readonly mirror: HeadlessTerminal
+  readonly workspaceId?: string
   private serializer: SerializeAddon
   alive = true
   cols: number
@@ -28,9 +36,11 @@ export class HostedTerminal {
   constructor(
     opts: TermCreateParams,
     onData: (data: string) => void,
-    onExit: (e: ExitInfo) => void
+    onExit: (e: ExitInfo) => void,
+    extra: TermExtra = {}
   ) {
     this.id = randomUUID()
+    this.workspaceId = extra.workspaceId
     this.cols = Math.max(1, Math.floor(opts.cols) || 80)
     this.rows = Math.max(1, Math.floor(opts.rows) || 24)
     this.cwd = opts.cwd || os.homedir()
@@ -59,7 +69,7 @@ export class HostedTerminal {
       cols: this.cols,
       rows: this.rows,
       cwd: this.cwd,
-      env: spawnEnv()
+      env: { ...spawnEnv(), ...extra.env }
     })
     this.proc.onData((data) => {
       this.mirror.write(data)
@@ -149,7 +159,8 @@ export class HostedTerminal {
       rows: this.rows,
       pid: this.proc.pid,
       alive: this.alive,
-      createdAt: this.createdAt
+      createdAt: this.createdAt,
+      ...(this.workspaceId ? { workspaceId: this.workspaceId } : {})
     }
   }
 }
@@ -174,7 +185,7 @@ export class PtyHost {
   private dataListeners = new Set<DataListener>()
   private exitListeners = new Set<ExitListener>()
 
-  create(opts: TermCreateParams): HostedTerminal {
+  create(opts: TermCreateParams, extra?: TermExtra): HostedTerminal {
     let id = ''
     const t = new HostedTerminal(
       opts,
@@ -183,7 +194,8 @@ export class PtyHost {
       },
       (info) => {
         for (const l of this.exitListeners) l(id, info)
-      }
+      },
+      extra
     )
     id = t.id
     this.terms.set(id, t)
