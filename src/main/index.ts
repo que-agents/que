@@ -55,7 +55,6 @@ const ALLOWED: ReadonlySet<MethodName> = new Set<MethodName>([
   'queue.close',
   'queue.state',
   'report.get',
-  'handoff.create',
   'quiet.state',
   'quiet.unlock',
   'quiet.lock',

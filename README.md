@@ -162,7 +162,6 @@ Generated from `que --help`; options and arguments are in [docs/cli.md](docs/cli
 | `que queue close [options]` | stop starting queued tasks (running ones finish) |
 | `que queue status [options]` | show the queue |
 | `que report [options]` | the morning report: what the queue did |
-| `que handoff [options] <brief>` | hand a workspace's live session to the queue to finish unattended |
 | `que unlock [options] [minutes]` | unlock detail during quiet hours for a while (default: quiet_hours.unlock_minutes) |
 | `que lock [options]` | end an unlock early |
 | `que quiet status [options]` | whether quiet hours are on, until when, and any unlock |

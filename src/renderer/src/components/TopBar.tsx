@@ -53,14 +53,6 @@ export default function TopBar({ termKey }: { termKey: string }): React.JSX.Elem
           >
             Create draft PR
           </button>
-          <button
-            type="button"
-            data-testid="topbar-handoff"
-            disabled={!connected}
-            onClick={() => store.openDialog({ kind: 'handoff', workspaceId: ws.id })}
-          >
-            Hand off…
-          </button>
         </div>
       )}
     </header>

@@ -76,9 +76,6 @@ const api: QueApi = {
   report: {
     get: (p) => call('report.get', p)
   },
-  handoff: {
-    create: (p) => call('handoff.create', p)
-  },
   app: {
     homedir: () => ipcRenderer.invoke('app:homedir'),
     openFolder: () => ipcRenderer.invoke('dialog:openFolder'),

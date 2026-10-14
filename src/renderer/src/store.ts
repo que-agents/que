@@ -1,6 +1,5 @@
-// The renderer's single store: loads projects, workspaces, terminals, tasks
-// and the queue at boot, applies every daemon event, and holds the UI's
-// selection. Components read it with useQue() and call its actions; nothing
+// The renderer's single store: loads projects, workspaces, terminals, and
+// tasks at boot, applies every daemon event, and holds the UI's selection. Components read it with useQue() and call its actions; nothing
 // else talks to window.que except Terminal.tsx's attach/detach.
 import { createContext, useContext, useSyncExternalStore } from 'react'
 import type {
@@ -8,12 +7,10 @@ import type {
   ConfigSetParams,
   Project,
   QueApi,
-  QueueState,
   QuietState,
   QuietUnlock,
   Report,
   Task,
-  TaskAddParams,
   TermInfo,
   UpdateInfo,
   Workspace
@@ -42,8 +39,6 @@ export type View = { kind: 'terminals'; key: string } | { kind: 'report' } | { k
 
 export type DialogState =
   | { kind: 'new-workspace'; projectId: string }
-  | { kind: 'add-task' }
-  | { kind: 'handoff'; workspaceId: string }
   | { kind: 'create-pr'; workspaceId: string }
   | { kind: 'remove-workspace'; workspaceId: string }
 
@@ -56,7 +51,6 @@ export interface QueState {
   workspaces: Record<string, Workspace>
   terminals: TermTab[]
   tasks: Record<string, Task>
-  queue: QueueState | null
   view: View
   /** The selected tab per terminal key. */
   activeTerm: Record<string, string>
@@ -113,7 +107,6 @@ export class QueStore {
     workspaces: {},
     terminals: [],
     tasks: {},
-    queue: null,
     view: { kind: 'terminals', key: SCRATCH },
     activeTerm: {},
     dialog: null,
@@ -176,12 +169,11 @@ export class QueStore {
 
   private async load(): Promise<void> {
     try {
-      const [projects, workspaces, terms, tasks, queue, quiet, config] = await Promise.all([
+      const [projects, workspaces, terms, tasks, quiet, config] = await Promise.all([
         this.api.project.list(),
         this.api.workspace.list(),
         this.api.term.list(),
         this.api.task.list(),
-        this.api.queue.state(),
         this.api.quiet.state(),
         this.api.config.get()
       ])
@@ -193,7 +185,6 @@ export class QueStore {
         projects: mergeProjects(projects, s.projects),
         workspaces: { ...byId(workspaces), ...s.workspaces },
         tasks: { ...byId(tasks), ...s.tasks },
-        queue: s.queue ?? queue,
         terminals: mergeTabs(
           live.map((t) => toTab(t, true)),
           s.terminals
@@ -207,7 +198,7 @@ export class QueStore {
 
   private subscribeEvents(): void {
     if (this.offs.length > 0) return
-    const { term, workspace, task, queue, project, quiet, config } = this.api
+    const { term, workspace, task, project, quiet, config } = this.api
     this.offs.push(
       quiet.on('quiet.changed', (q) => {
         const was = isLocked(this.state.quiet)
@@ -269,8 +260,7 @@ export class QueStore {
           (t) => this.set((s) => ({ tasks: { ...s.tasks, [t.id]: t } })),
           () => {}
         )
-      }),
-      queue.on('queue.state', (q) => this.set({ queue: q }))
+      })
     )
   }
 
@@ -467,45 +457,8 @@ export class QueStore {
     return prUrl
   }
 
-  async handoff(workspaceId: string, brief: string): Promise<Task> {
-    const task = await this.api.handoff.create({ workspaceId, brief })
-    this.set((s) => ({ tasks: { ...s.tasks, [task.id]: task } }))
-    return task
-  }
-
-  async addTask(p: TaskAddParams): Promise<Task> {
-    const task = await this.api.task.add(p)
-    this.set((s) => ({ tasks: { ...s.tasks, [task.id]: task } }))
-    return task
-  }
-
-  async stopTask(id: string): Promise<void> {
-    try {
-      const task = await this.api.task.stop({ id })
-      this.set((s) => ({ tasks: { ...s.tasks, [task.id]: task } }))
-    } catch (err) {
-      this.fail(err)
-    }
-  }
-
   fetchReport(): Promise<Report> {
     return this.api.report.get()
-  }
-
-  async openQueue(): Promise<void> {
-    try {
-      this.set({ queue: await this.api.queue.open() })
-    } catch (err) {
-      this.fail(err)
-    }
-  }
-
-  async closeQueue(): Promise<void> {
-    try {
-      this.set({ queue: await this.api.queue.close() })
-    } catch (err) {
-      this.fail(err)
-    }
   }
 }
 

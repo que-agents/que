@@ -284,19 +284,6 @@ class FakeBridge {
           return this.report(p?.since)
         }
       },
-      handoff: {
-        create: async ({ workspaceId, brief }) => {
-          this.refuseIfQuiet('handoff.create')
-          const ws = this.workspace(workspaceId)
-          if (!ws.sessionId) throw rpcError('bad_request', `workspace ${ws.name} has no session`)
-          return this.api.task.add({
-            workspaceId,
-            brief,
-            source: 'handoff',
-            resumeSessionId: ws.sessionId
-          })
-        }
-      },
       workspace: {
         create: async ({ projectId, name, baseRef, branch }) => {
           const project = this.projects.get(projectId)

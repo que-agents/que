@@ -588,8 +588,6 @@ export class DaemonServer {
         return this.tasks.state()
       case 'report.get':
         return this.tasks.report(optString(p, 'since'))
-      case 'handoff.create':
-        return this.tasks.handoff({ workspaceId: str(p, 'workspaceId'), brief: str(p, 'brief') })
       case 'quiet.state':
         return this.quiet.state()
       case 'quiet.unlock':
