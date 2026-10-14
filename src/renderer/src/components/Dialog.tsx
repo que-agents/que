@@ -46,6 +46,10 @@ export default function Dialog({ title, testId, onClose, children }: Props): Rea
         aria-labelledby={titleId}
         data-testid={testId}
       >
+        <span className="corner tl" aria-hidden="true" />
+        <span className="corner tr" aria-hidden="true" />
+        <span className="corner bl" aria-hidden="true" />
+        <span className="corner br" aria-hidden="true" />
         <h2 id={titleId}>{title}</h2>
         {children}
       </div>

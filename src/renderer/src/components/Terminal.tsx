@@ -24,11 +24,13 @@ export default function Terminal({ id }: Props): React.JSX.Element {
       cursorBlink: true,
       scrollback: 10000,
       macOptionIsMeta: false,
+      // The app's surface colours (styles.css); the cursor takes the accent.
       theme: {
-        background: '#1e1e1e',
-        foreground: '#d4d4d4',
-        cursor: '#d4d4d4',
-        selectionBackground: '#264f78'
+        background: '#181818',
+        foreground: '#eeeeee',
+        cursor: '#c26157',
+        cursorAccent: '#181818',
+        selectionBackground: '#363636'
       }
     })
     const fit = new FitAddon()

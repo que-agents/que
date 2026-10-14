@@ -5,20 +5,33 @@ import UnlockStatus from './UnlockStatus'
 /** The selected workspace (or the loose terminals) and its actions. */
 export default function TopBar({ termKey }: { termKey: string }): React.JSX.Element {
   const store = useStore()
-  const { workspaces, connected } = useQue()
+  const { workspaces, projects, connected } = useQue()
   const ws = termKey === SCRATCH ? undefined : workspaces[termKey]
+  const project = ws ? projects.find((p) => p.id === ws.projectId) : undefined
   const cwd = store.activeTab(termKey)?.cwd ?? ws?.path ?? ''
 
   return (
     <header className="topbar" data-testid="topbar">
       {ws ? (
         <>
+          {project && (
+            <>
+              <span className="crumb" data-testid="topbar-project">
+                {project.name}
+              </span>
+              <span className="crumb-sep" aria-hidden="true">
+                /
+              </span>
+            </>
+          )}
           <h1 className="title" title={ws.path} data-testid="topbar-title">
             {ws.name}
           </h1>
-          <span className="branch" data-testid="topbar-branch">
-            {ws.branch}
-          </span>
+          {ws.branch !== ws.name && (
+            <span className="branch" data-testid="topbar-branch">
+              {ws.branch}
+            </span>
+          )}
           <StatusBadge status={ws.status} reason={ws.statusReason} testId="topbar-status" />
           {ws.prUrl && (
             <a href={ws.prUrl} target="_blank" rel="noreferrer" data-testid="topbar-pr">
