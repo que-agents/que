@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { Project, Task, Workspace } from '../../../preload/index.d'
 import { isLiveTask } from '../format'
 import { SCRATCH, useQue, useStore } from '../store'
+import { FolderPlusIcon, PlusIcon } from './icons'
 import { StatusBadge, TaskBadge } from './StatusBadge'
 
 interface MenuItem {
@@ -185,17 +186,17 @@ export default function Sidebar(): React.JSX.Element {
           <h2>Sessions</h2>
           <button
             type="button"
-            className="ghost"
+            className="ghost icon"
             data-testid="sidebar-sessions-add"
             aria-label="New session"
-            title="A terminal outside any workspace (⌘T)"
+            title="New session: a terminal outside any workspace"
             disabled={!connected}
             onClick={() => {
               store.showTerminals(SCRATCH)
               void store.newTerminal(SCRATCH)
             }}
           >
-            +
+            <PlusIcon />
           </button>
         </div>
         {sessions.length === 0 ? (
@@ -237,14 +238,14 @@ export default function Sidebar(): React.JSX.Element {
           <h2>Projects</h2>
           <button
             type="button"
-            className="ghost"
+            className="ghost icon"
             data-testid="sidebar-add-project"
             aria-label="Add project"
-            title="Add a git repository"
+            title="Add project: a git repository"
             disabled={!connected}
             onClick={() => void store.addProject()}
           >
-            + Project
+            <FolderPlusIcon />
           </button>
         </div>
         {loaded && projects.length === 0 && (
@@ -272,13 +273,14 @@ export default function Sidebar(): React.JSX.Element {
                 </button>
                 <button
                   type="button"
-                  className="ghost"
+                  className="ghost icon"
                   data-testid={`sidebar-project-${p.id}-add-workspace`}
                   aria-label={`New workspace in ${p.name}`}
+                  title={`New workspace in ${p.name}`}
                   disabled={!connected}
                   onClick={() => store.openDialog({ kind: 'new-workspace', projectId: p.id })}
                 >
-                  +
+                  <PlusIcon />
                 </button>
                 <button
                   type="button"
