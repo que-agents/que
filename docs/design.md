@@ -71,6 +71,9 @@ remove. The quiet board uses the same tones as plain text.
 - Borders are 1px. Shadows appear only under things that float (menus, dialogs).
 - Dialogs carry four small corner points, the marks of a drawing's frame.
 - Row actions (the ⋯ button) show on hover, focus, or while their menu is open.
+- The window has no native title bar. The traffic lights sit in the 40px strip
+  above the sidebar's content; that strip and the top bar's empty space drag
+  the window.
 - The sidebar's divider drags between 180 and 520px, double-click resets it, and
   the arrow keys move it when it has focus; the width is remembered.
 - The top bar reads `project / workspace`, with the branch after it only when
