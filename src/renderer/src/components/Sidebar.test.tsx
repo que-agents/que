@@ -62,10 +62,10 @@ describe('Sidebar', () => {
       seed()
       render(<App />)
 
-      await user.click(await screen.findByRole('button', { name: /api/, expanded: true }))
+      await user.click(await screen.findByRole('button', { name: 'api', expanded: true }))
 
       expect(screen.queryByText('app-1451-token-refresh')).not.toBeInTheDocument()
-      expect(screen.getByRole('button', { name: /api/, expanded: false })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'api', expanded: false })).toBeInTheDocument()
     })
 
     it('invites adding a repository when there are no projects', async () => {
@@ -230,6 +230,75 @@ describe('Sidebar', () => {
       await waitFor(() => {
         expect(fakeBridge.openInEditorCalls()).toEqual([retry.path])
       })
+      expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+    })
+
+    it('removes a project and its workspaces from its right-click menu', async () => {
+      const user = userEvent.setup()
+      seed()
+      render(<App />)
+      const row = await screen.findByRole('button', { name: 'uploader', expanded: true })
+
+      await user.pointer({ keys: '[MouseRight]', target: row })
+      const menu = screen.getByRole('menu', { name: 'Actions for uploader' })
+      expect(
+        within(menu)
+          .getAllByRole('menuitem')
+          .map((m) => m.textContent)
+      ).toEqual(['New workspace…', 'Open in editor', 'Remove project…'])
+      await user.click(within(menu).getByRole('menuitem', { name: 'Remove project…' }))
+      const dialog = screen.getByRole('dialog', { name: 'Remove uploader?' })
+      expect(dialog).toHaveTextContent('the repository itself is not touched')
+      expect(dialog).toHaveTextContent('Its 2 workspaces are removed too')
+      await user.click(within(dialog).getByRole('button', { name: 'Remove' }))
+
+      await waitFor(() => {
+        expect(screen.queryByTestId(`sidebar-project-${uploader.id}`)).not.toBeInTheDocument()
+      })
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+      expect((await window.que.project.list()).map((p) => p.id)).toEqual([api.id])
+      expect(fakeBridge.getWorkspace(retry.id)).toBeUndefined()
+      expect(fakeBridge.getWorkspace(board.id)).toBeUndefined()
+      expect(screen.getByTestId(`sidebar-project-${api.id}`)).toBeInTheDocument()
+    })
+
+    it('removes a project from its ⋯ button too, saying nothing about workspaces when it has none', async () => {
+      const user = userEvent.setup()
+      const billing = makeProject({
+        id: 'prj_01hzwb2x9m4e',
+        name: 'billing',
+        path: '/Users/dev/code/billing'
+      })
+      seed()
+      fakeBridge.seedProject(billing)
+      render(<App />)
+
+      await user.click(await screen.findByRole('button', { name: 'More actions for billing' }))
+      await user.click(screen.getByRole('menuitem', { name: 'Remove project…' }))
+      const dialog = screen.getByRole('dialog', { name: 'Remove billing?' })
+      expect(dialog).not.toHaveTextContent('removed too')
+      await user.click(within(dialog).getByRole('button', { name: 'Remove' }))
+
+      await waitFor(() => {
+        expect(screen.queryByTestId(`sidebar-project-${billing.id}`)).not.toBeInTheDocument()
+      })
+    })
+
+    it('offers the workspace actions on right-click too, and closes them with Escape', async () => {
+      const user = userEvent.setup()
+      seed()
+      render(<App />)
+      const row = await screen.findByTestId(`sidebar-workspace-${retry.id}`)
+
+      await user.pointer({ keys: '[MouseRight]', target: row })
+      const menu = screen.getByRole('menu', { name: 'Actions for app-1432-retry-logic' })
+      expect(
+        within(menu)
+          .getAllByRole('menuitem')
+          .map((m) => m.textContent)
+      ).toEqual(['Open in editor', 'Remove…'])
+      await user.keyboard('{Escape}')
+
       expect(screen.queryByRole('menu')).not.toBeInTheDocument()
     })
   })

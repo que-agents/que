@@ -1,5 +1,10 @@
 import { useEffect, useState } from 'react'
-import { CreatePrDialog, NewWorkspaceDialog, RemoveWorkspaceDialog } from './components/dialogs'
+import {
+  CreatePrDialog,
+  NewWorkspaceDialog,
+  RemoveProjectDialog,
+  RemoveWorkspaceDialog
+} from './components/dialogs'
 import { hhmm } from '../../daemon/quiet-hours'
 import QuietBoard from './components/QuietBoard'
 import ReportView from './components/ReportView'
@@ -19,6 +24,10 @@ function Dialogs(): React.JSX.Element | null {
     case 'new-workspace': {
       const project = projects.find((p) => p.id === dialog.projectId)
       return project ? <NewWorkspaceDialog project={project} onClose={close} /> : null
+    }
+    case 'remove-project': {
+      const project = projects.find((p) => p.id === dialog.projectId)
+      return project ? <RemoveProjectDialog project={project} onClose={close} /> : null
     }
     default: {
       const ws = workspaces[dialog.workspaceId]
