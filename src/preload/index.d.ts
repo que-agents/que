@@ -1,7 +1,15 @@
 import type {
   Events,
+  HandoffCreateParams,
   ProjectAddParams,
   ProjectRemoveParams,
+  QueueOpenParams,
+  QueueState,
+  Report,
+  ReportParams,
+  TaskAddParams,
+  TaskListParams,
+  TaskStatusEvent,
   TermAttachResult,
   TermCreateParams,
   TermInfo,
@@ -13,12 +21,16 @@ import type {
   WorkspaceRemoveParams,
   WorkspaceStatusEvent
 } from '../shared/protocol'
-import type { Project, Task, Workspace, WorkspaceStatus } from '../shared/types'
+import type { Project, Task, TaskState, Workspace, WorkspaceStatus } from '../shared/types'
 
 export type {
   Events,
   Project,
+  QueueState,
+  Report,
   Task,
+  TaskState,
+  TaskStatusEvent,
   TermAttachResult,
   TermCreateParams,
   TermInfo,
@@ -78,10 +90,43 @@ export interface WorkspaceApi {
   on<E extends WorkspaceEventName>(event: E, cb: (data: Events[E]) => void): () => void
 }
 
+export type TaskEventName = 'task.created' | 'task.status' | 'task.updated'
+
+/** Mirrors the daemon's task.* methods and events. */
+export interface TaskApi {
+  add(params: TaskAddParams): Promise<Task>
+  list(params?: TaskListParams): Promise<Task[]>
+  get(params: { id: string }): Promise<Task>
+  stop(params: { id: string }): Promise<Task>
+  remove(params: { id: string }): Promise<{ ok: true }>
+  on<E extends TaskEventName>(event: E, cb: (data: Events[E]) => void): () => void
+}
+
+/** Mirrors the daemon's queue.* methods and the queue.state event. */
+export interface QueueApi {
+  open(params?: QueueOpenParams): Promise<QueueState>
+  close(): Promise<QueueState>
+  state(): Promise<QueueState>
+  on(event: 'queue.state', cb: (data: QueueState) => void): () => void
+}
+
+export interface ReportApi {
+  get(params?: ReportParams): Promise<Report>
+}
+
+export interface HandoffApi {
+  /** Queues the workspace's live session to be finished unattended. */
+  create(params: HandoffCreateParams): Promise<Task>
+}
+
 export interface QueApi {
   term: TermApi
   project: ProjectApi
   workspace: WorkspaceApi
+  task: TaskApi
+  queue: QueueApi
+  report: ReportApi
+  handoff: HandoffApi
   app: AppApi
 }
 

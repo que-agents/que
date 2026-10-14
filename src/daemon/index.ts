@@ -33,8 +33,10 @@ async function main(): Promise<void> {
 
   if (fs.existsSync(paths.socket)) {
     if (await socketAlive(paths.socket)) {
+      // Not a failure: under launchd (KeepAlive on unsuccessful exit) this
+      // must not be restarted in a loop.
       log('another daemon is already listening; exiting')
-      process.exitCode = 1
+      process.exitCode = 0
       logStream.end()
       return
     }

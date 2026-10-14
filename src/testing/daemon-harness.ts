@@ -2,7 +2,9 @@
 // fresh temp QUE_HOME, the fakes first on PATH, the real DaemonServer on the
 // home's socket, and a connected DaemonClient. close() tears it all down and
 // runs the leak check. The hooks wrapper's bin/que runs the CLI bundled from
-// source, and the user config lives at <home>/config.toml (QUE_CONFIG).
+// source, and the user config lives at <home>/config.toml (QUE_CONFIG). Git
+// gets a fixed identity from <home>/gitconfig (GIT_CONFIG_GLOBAL), so commits
+// made by the finisher or the fake claude never depend on the machine's config.
 import fs from 'node:fs'
 import os from 'node:os'
 import { join } from 'node:path'
@@ -22,13 +24,17 @@ export interface TestDaemon {
   host: LeakCheckedPtyHost
   server: DaemonServer
   client: DaemonClient
-  /** Where the fake gh/code record their calls (read with readFakeLog). */
+  /** Where the fake gh/code/caffeinate record their calls (read with readFakeLog). */
   ghLog: string
   codeLog: string
+  caffeinateLog: string
   /** QUE_CONFIG for this daemon (written only when `config` was passed). */
   configPath: string
-  /** Tears down client, terminals, server, env, and home; fails on leaked pids. */
-  close(): Promise<void>
+  /**
+   * Tears down client, terminals, task runs, server, env, and home; fails on
+   * leaked pids. `keepHome` leaves QUE_HOME for a second daemon (restart tests).
+   */
+  close(opts?: { keepHome?: boolean }): Promise<void>
 }
 
 export interface TestDaemonOptions {
@@ -38,16 +44,27 @@ export interface TestDaemonOptions {
   config?: string
   /** Status engine stall-check interval. Default 200 ms (the daemon's is 5 s). */
   statusTickMs?: number
+  /** Reuse this QUE_HOME (from a daemon closed with keepHome) instead of a fresh one. */
+  home?: string
 }
 
 export async function startTestDaemon(opts: TestDaemonOptions = {}): Promise<TestDaemon> {
-  const home = fs.realpathSync(fs.mkdtempSync(join(os.tmpdir(), 'que-it-')))
+  const home = opts.home ?? fs.realpathSync(fs.mkdtempSync(join(os.tmpdir(), 'que-it-')))
   const ghLog = join(home, 'fake-gh.log')
   const codeLog = join(home, 'fake-code.log')
+  const caffeinateLog = join(home, 'fake-caffeinate.log')
+  const gitconfig = join(home, 'gitconfig')
+  fs.writeFileSync(
+    gitconfig,
+    '[user]\n\tname = que test\n\temail = test@que.invalid\n[commit]\n\tgpgsign = false\n[init]\n\tdefaultBranch = main\n'
+  )
   vi.stubEnv('QUE_HOME', home)
   vi.stubEnv('PATH', `${FAKES_BIN}:${process.env.PATH}`)
   vi.stubEnv('QUE_FAKE_GH_LOG', ghLog)
   vi.stubEnv('QUE_FAKE_CODE_LOG', codeLog)
+  vi.stubEnv('QUE_FAKE_CAFFEINATE_LOG', caffeinateLog)
+  vi.stubEnv('GIT_CONFIG_GLOBAL', gitconfig)
+  vi.stubEnv('GIT_CONFIG_NOSYSTEM', '1')
   vi.stubEnv('QUE_FAKE_CLAUDE_TRANSCRIPT_DIR', join(home, 'transcripts'))
   const configPath = join(home, 'config.toml')
   vi.stubEnv('QUE_CONFIG', configPath)
@@ -61,7 +78,9 @@ export async function startTestDaemon(opts: TestDaemonOptions = {}): Promise<Tes
     version: 'test',
     onShutdown: opts.onShutdown,
     cliScript: bundleEntry('src/cli/index.ts'),
-    statusTickMs: opts.statusTickMs ?? 200
+    statusTickMs: opts.statusTickMs ?? 200,
+    queueTickMs: 100,
+    dispatchMs: 100
   })
   await server.listen(paths.socket)
   const client = new DaemonClient(paths.socket)
@@ -76,18 +95,20 @@ export async function startTestDaemon(opts: TestDaemonOptions = {}): Promise<Tes
     client,
     ghLog,
     codeLog,
+    caffeinateLog,
     configPath,
-    async close() {
+    async close(closeOpts = {}) {
       if (closed) return
       closed = true
+      const taskPids = server.tasks.pids()
       client.close()
       host.killAll()
       await server.close()
       vi.unstubAllEnvs()
       try {
-        await assertPidsGone(host.pids)
+        await assertPidsGone([...host.pids, ...taskPids])
       } finally {
-        fs.rmSync(home, { recursive: true, force: true })
+        if (!closeOpts.keepHome) fs.rmSync(home, { recursive: true, force: true })
       }
     }
   }

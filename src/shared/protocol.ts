@@ -2,7 +2,7 @@
 // Newline-delimited JSON over a unix socket. Requests carry an id; responses
 // echo it. Events are server-pushed and carry no id.
 
-import type { Project, Workspace, WorkspaceStatus } from './types'
+import type { Project, Task, TaskSource, TaskState, Workspace, WorkspaceStatus } from './types'
 
 export const PROTOCOL_VERSION = 1
 
@@ -119,8 +119,82 @@ export interface WorkspaceOpenTerminalParams {
 
 export interface HookEventParams {
   workspaceId: string
+  /** Set when the hook fired inside a headless task run (QUE_TASK_ID). */
+  taskId?: string
   /** The hook JSON Claude Code wrote to the hook's stdin. */
   payload: HookEvent
+}
+
+export interface TaskAddParams {
+  /** Exactly one of projectId (a new workspace per task) or workspaceId (run in it). */
+  projectId?: string
+  workspaceId?: string
+  /** Defaults to the first line of the brief, 80 characters at most. */
+  title?: string
+  brief: string
+  source?: TaskSource
+  resumeSessionId?: string
+  maxTurns?: number
+  maxBudgetUsd?: number
+}
+
+export interface TaskListParams {
+  state?: TaskState
+}
+
+export interface QueueOpenParams {
+  /** Overrides the configured concurrency until the queue is closed. */
+  concurrency?: number
+}
+
+export interface QueueState {
+  open: boolean
+  concurrency: number
+  /** Tasks preparing, running, or finishing. */
+  running: number
+  queued: number
+  paused: number
+  /** When the queue was last opened. */
+  openedAt: string | null
+}
+
+export interface ReportParams {
+  /** ISO time; defaults to the last queue.open, else 24 hours ago. */
+  since?: string
+}
+
+export type ReportGroup = 'done' | 'stuck' | 'failed' | 'stopped' | 'paused' | 'running' | 'queued'
+
+export interface ReportEntry {
+  id: string
+  title: string
+  state: TaskState
+  reason: string | null
+  workspace: string | null
+  branch: string | null
+  prUrl: string | null
+  durationMs: number | null
+  turns: number
+  costUsd: number
+}
+
+export interface Report {
+  since: string
+  generatedAt: string
+  groups: Record<ReportGroup, ReportEntry[]>
+  totals: { tasks: number; prs: number; turns: number; costUsd: number; durationMs: number }
+}
+
+export interface HandoffCreateParams {
+  workspaceId: string
+  brief: string
+}
+
+export interface TaskStatusEvent {
+  id: string
+  state: TaskState
+  reason?: string
+  at: string
 }
 
 export interface WorkspaceStatusEvent {
@@ -151,6 +225,16 @@ export interface Methods {
   'workspace.remove': { params: WorkspaceRemoveParams; result: Ok }
   'workspace.openTerminal': { params: WorkspaceOpenTerminalParams; result: { id: string } }
   'hook.event': { params: HookEventParams; result: Ok }
+  'task.add': { params: TaskAddParams; result: Task }
+  'task.list': { params: TaskListParams | undefined; result: Task[] }
+  'task.get': { params: { id: string }; result: Task }
+  'task.stop': { params: { id: string }; result: Task }
+  'task.remove': { params: { id: string }; result: Ok }
+  'queue.open': { params: QueueOpenParams | undefined; result: QueueState }
+  'queue.close': { params: Record<string, never> | undefined; result: QueueState }
+  'queue.state': { params: Record<string, never> | undefined; result: QueueState }
+  'report.get': { params: ReportParams | undefined; result: Report }
+  'handoff.create': { params: HandoffCreateParams; result: Task }
 }
 
 export type MethodName = keyof Methods
@@ -168,6 +252,11 @@ export interface Events {
   'workspace.updated': Workspace
   'workspace.removed': { id: string }
   'workspace.status': WorkspaceStatusEvent
+  'task.created': Task
+  'task.status': TaskStatusEvent
+  /** Cost, turns, session, branch, or PR changed. */
+  'task.updated': Task
+  'queue.state': QueueState
 }
 
 export type EventName = keyof Events
@@ -309,7 +398,8 @@ export interface HookEvent {
   reason?: string
 }
 
-export interface StreamResult {
+// A type alias (not an interface) so it is assignable to a generic stream message.
+export type StreamResult = {
   type: 'result'
   subtype: 'success' | 'error_max_turns' | 'error_during_execution' | 'error_max_budget_usd'
   is_error: boolean
@@ -319,4 +409,6 @@ export interface StreamResult {
   session_id: string
   stop_reason: string | null
   result?: string
+  /** Set on error_during_execution when the session could not start (e.g. worktree refused). */
+  startup_failure_reason?: string
 }

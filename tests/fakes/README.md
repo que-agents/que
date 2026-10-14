@@ -3,7 +3,7 @@
 `tests/fakes/bin/` holds stand-ins for the external programs que spawns. Tests put
 the directory **first on `PATH`** (`vi.stubEnv('PATH', ...)` in Vitest, `testEnv()`
 in Playwright), so the daemon, the CLI, and the app find these instead of the real
-binaries. `git` is never faked: tests use real repos in temp dirs. All three are
+binaries. `git` is never faked: tests use real repos in temp dirs. All four are
 dependency-free Node scripts.
 
 ## `claude`
@@ -33,7 +33,12 @@ message every `QUE_FAKE_CLAUDE_DELAY_MS` (default 30):
 | `needs_input` | init, hooks, Notification `permission_prompt`, then hangs                                          | 143 on SIGTERM |
 
 `rate_limit` behaves as `success` when `QUE_FAKE_CLAUDE_RESUME_OK=1` and
-`--resume` was passed.
+`--resume` was passed. Its `rate_limit_event` reports `resetsAt` as now plus
+`QUE_FAKE_CLAUDE_RESET_SECONDS` (default 3600), in epoch seconds.
+
+With `QUE_FAKE_CLAUDE_COMMIT=1`, `success` also runs `git add` and `git commit`
+on the file it wrote (an agent that commits its work); without it the change is
+left uncommitted in the working tree.
 
 **Interactive mode** (no `-p`): prints a banner and `> `; each line fires
 UserPromptSubmit, a fake `Read` (Pre/PostToolUse), a reply, and Stop.
@@ -53,3 +58,9 @@ a logged-in account; `gh pr create ...` prints
 `https://github.com/rquellh/que/pull/<n>`, where `n` counts the `pr create` calls
 already in the log. Everything else exits 0 silently. Read the logs back with
 `readFakeLog()` from `src/testing/fakes.ts` (Vitest) or `launched.ghCalls()` (E2E).
+
+## `caffeinate`
+
+Appends `{ "argv": [...], "cwd": "...", "pid": <n>, "ts": "..." }` to
+`$QUE_FAKE_CAFFEINATE_LOG` when set, then sleeps until it gets SIGTERM/SIGINT or
+the process named by `-w <pid>` exits, as the real one does.

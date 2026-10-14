@@ -29,7 +29,17 @@ const ALLOWED: ReadonlySet<MethodName> = new Set<MethodName>([
   'workspace.list',
   'workspace.get',
   'workspace.remove',
-  'workspace.openTerminal'
+  'workspace.openTerminal',
+  'task.add',
+  'task.list',
+  'task.get',
+  'task.stop',
+  'task.remove',
+  'queue.open',
+  'queue.close',
+  'queue.state',
+  'report.get',
+  'handoff.create'
 ])
 const FORWARDED_EVENTS: EventName[] = [
   'term.data',
@@ -39,7 +49,11 @@ const FORWARDED_EVENTS: EventName[] = [
   'workspace.created',
   'workspace.updated',
   'workspace.removed',
-  'workspace.status'
+  'workspace.status',
+  'task.created',
+  'task.status',
+  'task.updated',
+  'queue.state'
 ]
 
 function getClient(): Promise<DaemonClient> {

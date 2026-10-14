@@ -1,9 +1,16 @@
-// SQLite store (node:sqlite) for projects, workspaces, and hook events. A
+// SQLite store (node:sqlite) for projects, workspaces, hook events, tasks, and kv. A
 // small typed layer over prepared statements; migrations are numbered and
 // recorded in the `migrations` table.
 import { randomBytes } from 'node:crypto'
 import { DatabaseSync } from 'node:sqlite'
-import type { Project, Workspace, WorkspaceStatus } from '../shared/types'
+import type {
+  Project,
+  Task,
+  TaskSource,
+  TaskState,
+  Workspace,
+  WorkspaceStatus
+} from '../shared/types'
 
 const HOOK_EVENTS_PER_WORKSPACE = 500
 
@@ -39,13 +46,43 @@ const MIGRATIONS: string[] = [
      payload TEXT NOT NULL,
      received_at TEXT NOT NULL
    );
-   CREATE INDEX hook_events_workspace ON hook_events(workspace_id, id);`
+   CREATE INDEX hook_events_workspace ON hook_events(workspace_id, id);`,
+  `CREATE TABLE tasks (
+     id TEXT PRIMARY KEY,
+     project_id TEXT NOT NULL,
+     workspace_id TEXT,
+     title TEXT NOT NULL,
+     brief TEXT NOT NULL,
+     source TEXT NOT NULL,
+     resume_session_id TEXT,
+     state TEXT NOT NULL,
+     reason TEXT,
+     session_id TEXT,
+     pid INTEGER,
+     attempts INTEGER NOT NULL DEFAULT 0,
+     cost_usd REAL NOT NULL DEFAULT 0,
+     turns INTEGER NOT NULL DEFAULT 0,
+     max_turns INTEGER NOT NULL,
+     max_budget_usd REAL NOT NULL,
+     permission_mode TEXT,
+     branch TEXT,
+     pr_url TEXT,
+     result_text TEXT,
+     last_activity_at TEXT,
+     started_at TEXT,
+     finished_at TEXT,
+     paused_until TEXT,
+     created_at TEXT NOT NULL,
+     updated_at TEXT NOT NULL
+   );
+   CREATE INDEX tasks_state ON tasks(state, created_at);
+   CREATE TABLE kv (key TEXT PRIMARY KEY, value TEXT NOT NULL);`
 ]
 
 const ID_ALPHABET = 'abcdefghijklmnopqrstuvwxyz234567'
 
 /** `<prefix>` + 12 random base32 characters. */
-export function newId(prefix: 'prj_' | 'ws_'): string {
+export function newId(prefix: 'prj_' | 'ws_' | 'tsk_'): string {
   const bytes = randomBytes(12)
   let out = prefix
   for (const b of bytes) out += ID_ALPHABET[b & 31]
@@ -74,6 +111,96 @@ interface WorkspaceRow {
   session_id: string | null
   created_at: string
   archived_at: string | null
+}
+
+interface TaskRow {
+  id: string
+  project_id: string
+  workspace_id: string | null
+  title: string
+  brief: string
+  source: string
+  resume_session_id: string | null
+  state: string
+  reason: string | null
+  session_id: string | null
+  pid: number | null
+  attempts: number
+  cost_usd: number
+  turns: number
+  max_turns: number
+  max_budget_usd: number
+  permission_mode: string | null
+  branch: string | null
+  pr_url: string | null
+  result_text: string | null
+  last_activity_at: string | null
+  started_at: string | null
+  finished_at: string | null
+  paused_until: string | null
+  created_at: string
+  updated_at: string
+}
+
+/** Task field → column, in insert order. */
+const TASK_COLUMNS: Array<[keyof Task, keyof TaskRow]> = [
+  ['id', 'id'],
+  ['projectId', 'project_id'],
+  ['workspaceId', 'workspace_id'],
+  ['title', 'title'],
+  ['brief', 'brief'],
+  ['source', 'source'],
+  ['resumeSessionId', 'resume_session_id'],
+  ['state', 'state'],
+  ['reason', 'reason'],
+  ['sessionId', 'session_id'],
+  ['pid', 'pid'],
+  ['attempts', 'attempts'],
+  ['costUsd', 'cost_usd'],
+  ['turns', 'turns'],
+  ['maxTurns', 'max_turns'],
+  ['maxBudgetUsd', 'max_budget_usd'],
+  ['permissionMode', 'permission_mode'],
+  ['branch', 'branch'],
+  ['prUrl', 'pr_url'],
+  ['resultText', 'result_text'],
+  ['lastActivityAt', 'last_activity_at'],
+  ['startedAt', 'started_at'],
+  ['finishedAt', 'finished_at'],
+  ['pausedUntil', 'paused_until'],
+  ['createdAt', 'created_at'],
+  ['updatedAt', 'updated_at']
+]
+
+function toTask(r: TaskRow): Task {
+  return {
+    id: r.id,
+    projectId: r.project_id,
+    workspaceId: r.workspace_id,
+    title: r.title,
+    brief: r.brief,
+    source: r.source as TaskSource,
+    resumeSessionId: r.resume_session_id,
+    state: r.state as TaskState,
+    reason: r.reason,
+    sessionId: r.session_id,
+    pid: r.pid,
+    attempts: r.attempts,
+    costUsd: r.cost_usd,
+    turns: r.turns,
+    maxTurns: r.max_turns,
+    maxBudgetUsd: r.max_budget_usd,
+    permissionMode: r.permission_mode,
+    branch: r.branch,
+    prUrl: r.pr_url,
+    resultText: r.result_text,
+    lastActivityAt: r.last_activity_at,
+    startedAt: r.started_at,
+    finishedAt: r.finished_at,
+    pausedUntil: r.paused_until,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at
+  }
 }
 
 export interface HookEventRow {
@@ -318,5 +445,63 @@ export class Store {
       payload: r.payload,
       receivedAt: r.received_at
     }))
+  }
+
+  // ---- tasks ----------------------------------------------------------------
+
+  insertTask(t: Task): void {
+    const cols = TASK_COLUMNS.map(([, c]) => c)
+    this.db
+      .prepare(`INSERT INTO tasks (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`)
+      .run(...TASK_COLUMNS.map(([k]) => t[k]))
+  }
+
+  /** Writes every field of the task (it must exist). */
+  updateTask(t: Task): void {
+    const rest = TASK_COLUMNS.filter(([k]) => k !== 'id')
+    this.db
+      .prepare(`UPDATE tasks SET ${rest.map(([, c]) => `${c} = ?`).join(', ')} WHERE id = ?`)
+      .run(...rest.map(([k]) => t[k]), t.id)
+  }
+
+  getTask(id: string): Task | undefined {
+    const r = this.db.prepare('SELECT * FROM tasks WHERE id = ?').get(id)
+    return r ? toTask(r as unknown as TaskRow) : undefined
+  }
+
+  /** Oldest first (insertion order breaks ties within a millisecond). */
+  listTasks(states?: readonly TaskState[]): Task[] {
+    const rows =
+      states && states.length > 0
+        ? this.db
+            .prepare(
+              `SELECT * FROM tasks WHERE state IN (${states.map(() => '?').join(', ')}) ORDER BY created_at, rowid`
+            )
+            .all(...states)
+        : this.db.prepare('SELECT * FROM tasks ORDER BY created_at, rowid').all()
+    return (rows as unknown as TaskRow[]).map(toTask)
+  }
+
+  deleteTask(id: string): void {
+    this.db.prepare('DELETE FROM tasks WHERE id = ?').run(id)
+  }
+
+  // ---- kv -------------------------------------------------------------------
+
+  getKv(key: string): string | undefined {
+    const r = this.db.prepare('SELECT value FROM kv WHERE key = ?').get(key) as
+      | { value: string }
+      | undefined
+    return r?.value
+  }
+
+  setKv(key: string, value: string | null): void {
+    if (value === null) this.db.prepare('DELETE FROM kv WHERE key = ?').run(key)
+    else
+      this.db
+        .prepare(
+          'INSERT INTO kv (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value'
+        )
+        .run(key, value)
   }
 }

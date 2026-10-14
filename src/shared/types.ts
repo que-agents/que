@@ -1,5 +1,5 @@
-// Domain types shared by the daemon, CLI, and renderer. Tasks and quiet hours
-// are placeholders until those features land.
+// Domain types shared by the daemon, CLI, and renderer. Quiet hours
+// are a placeholder until that feature lands.
 
 export type WorkspaceStatus = 'preparing' | 'idle' | 'working' | 'needs_input' | 'stuck' | 'exited'
 
@@ -44,16 +44,49 @@ export type TaskState =
   | 'done'
   | 'stuck'
   | 'failed'
+  | 'stopped'
 
+/** Where a task's brief came from. */
+export type TaskSource = 'prompt' | 'file' | 'handoff'
+
+/** An overnight task: a brief run headless by claude in its own workspace. */
 export interface Task {
   id: string
-  workspaceId: string
+  projectId: string
+  /** Null until the runner has prepared (or been given) a workspace. */
+  workspaceId: string | null
   title: string
+  brief: string
+  source: TaskSource
+  /** The session the next run resumes (hand-off, crash retry, rate-limit pause). */
+  resumeSessionId: string | null
   state: TaskState
-  prUrl?: string
-  cost: number
+  /**
+   * Detail for the state: `max_turns`, `max_budget`, `no_heartbeat`, `needs_input`,
+   * `crashed`, `execution`, `worktree_refused`, `setup_failed`, `session_active`,
+   * `finisher:<step>`, `daemon_restart`, `no_changes`.
+   */
+  reason: string | null
+  sessionId: string | null
+  /** The claude process while one runs. */
+  pid: number | null
+  /** The attempt number of the current (or last) run; automatic re-queues add one. */
+  attempts: number
+  costUsd: number
   turns: number
+  maxTurns: number
+  maxBudgetUsd: number
+  permissionMode: string | null
+  branch: string | null
+  prUrl: string | null
+  /** The final summary (the result text, else the last assistant text). */
+  resultText: string | null
+  lastActivityAt: string | null
+  startedAt: string | null
+  finishedAt: string | null
+  pausedUntil: string | null
   createdAt: string
+  updatedAt: string
 }
 
 /** Quiet window in local wall-clock time, `HH:MM`. */
