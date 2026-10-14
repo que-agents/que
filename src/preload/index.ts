@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
-import type { QueApi } from './index.d'
+import type { QueApi, UpdateInfo } from './index.d'
 
 type Reply = { ok: true; result: unknown } | { ok: false; error: { code: string; message: string } }
 
@@ -84,6 +84,13 @@ const api: QueApi = {
     openFolder: () => ipcRenderer.invoke('dialog:openFolder'),
     openInEditor: (p) => ipcRenderer.invoke('app:openInEditor', p.path),
     trayTitle: () => ipcRenderer.invoke('app:trayTitle'),
+    update: () => ipcRenderer.invoke('app:update'),
+    onUpdate: (cb) => {
+      const listener = (_e: IpcRendererEvent, info: UpdateInfo): void => cb(info)
+      ipcRenderer.on('que:update', listener)
+      return () => ipcRenderer.removeListener('que:update', listener)
+    },
+    openUpdate: () => ipcRenderer.invoke('app:openUpdate'),
     e2e: process.argv.includes('--que-e2e')
   }
 }

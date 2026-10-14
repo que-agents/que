@@ -373,7 +373,7 @@ describe('hand-off', () => {
     const { d, projectId } = await setup()
     const ws = await d.client.request('workspace.create', {
       projectId,
-      name: 'ha-1432-retry-logic'
+      name: 'app-1432-retry-logic'
     })
     await expect
       .poll(async () => (await d.client.request('workspace.get', { id: ws.id })).status, {
@@ -405,7 +405,7 @@ describe('hand-off', () => {
     })
     await d.client.request('queue.open')
     const done = await waitFor(d, id, 'done', 30_000)
-    expect(done).toMatchObject({ sessionId, branch: 'ha-1432-retry-logic' })
+    expect(done).toMatchObject({ sessionId, branch: 'app-1432-retry-logic' })
     expect(killed).toEqual([{ id: term }])
     expect(await d.client.request('term.list', { workspaceId: ws.id })).toEqual([])
     expect(spawnLines(d, id)[0]).toContain(`--resume ${sessionId}`)
@@ -414,7 +414,10 @@ describe('hand-off', () => {
 
   it('refuses a workspace that has no session', async () => {
     const { d, projectId } = await setup()
-    const ws = await d.client.request('workspace.create', { projectId, name: 'ha-1440-no-session' })
+    const ws = await d.client.request('workspace.create', {
+      projectId,
+      name: 'app-1440-no-session'
+    })
 
     await expect(
       d.client.request('handoff.create', { workspaceId: ws.id, brief: 'Finish it' })

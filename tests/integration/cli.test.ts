@@ -66,17 +66,41 @@ describe('que term list', () => {
   }, 30_000)
 })
 
+describe('que daemon status', () => {
+  it('prints the running daemon as JSON with --json, and running: false with exit 3 once it is gone', async () => {
+    const ping = await daemon.client.request('daemon.ping')
+
+    const r = await runCli('daemon', 'status', '--json')
+
+    expect(r.code).toBe(0)
+    expect(JSON.parse(r.stdout)).toEqual({
+      running: true,
+      pid: ping.pid,
+      version: ping.version,
+      nodeVersion: ping.nodeVersion,
+      startedAt: ping.startedAt,
+      socket: daemon.socket,
+      terminals: { alive: 0, total: 0 }
+    })
+
+    await daemon.server.close()
+    const gone = await runCli('daemon', 'status', '--json')
+    expect(gone.code).toBe(3)
+    expect(JSON.parse(gone.stdout)).toEqual({ running: false, socket: daemon.socket })
+  }, 30_000)
+})
+
 describe('que work and que ws', () => {
   it('creates a workspace from a repo path, waits for setup, and prints its path', async () => {
     const repo = makeTempRepo(daemon.home, { queToml: 'setup = "printf ok > .setup-done"\n' })
 
-    const r = await runCli('work', 'HA-1432 retry logic', '-r', repo)
+    const r = await runCli('work', 'APP-1432 retry logic', '-r', repo)
 
     expect(r.code).toBe(0)
-    const path = join(daemon.home, 'worktrees', 'uploader', 'ha-1432-retry-logic')
+    const path = join(daemon.home, 'worktrees', 'uploader', 'app-1432-retry-logic')
     expect(r.stdout.trim()).toBe(path)
     expect(fs.readFileSync(join(path, '.setup-done'), 'utf8')).toBe('ok')
-    expect(gitIn(path, 'rev-parse', '--abbrev-ref', 'HEAD')).toBe('ha-1432-retry-logic')
+    expect(gitIn(path, 'rev-parse', '--abbrev-ref', 'HEAD')).toBe('app-1432-retry-logic')
     const listed = JSON.parse((await runCli('ws', 'list', '--json')).stdout) as Workspace[]
     expect(listed).toEqual([expect.objectContaining({ path, status: 'idle' })])
   }, 30_000)
@@ -85,31 +109,31 @@ describe('que work and que ws', () => {
     const repo = makeTempRepo(daemon.home, { queToml: 'setup = "exit 4"\n' })
     fs.writeFileSync(daemon.configPath, withQuietOff(`[repos.uploader-api]\npath = "${repo}"\n`))
 
-    const r = await runCli('work', 'ha-1433-broken-setup', '-r', 'uploader-api')
+    const r = await runCli('work', 'app-1433-broken-setup', '-r', 'uploader-api')
 
     expect(r.code).toBe(1)
-    expect(r.stderr).toContain('setup failed for ha-1433-broken-setup')
+    expect(r.stderr).toContain('setup failed for app-1433-broken-setup')
     const [project] = await daemon.client.request('project.list')
     expect(project).toMatchObject({ name: 'uploader-api', path: repo })
   }, 30_000)
 
   it('removes a workspace by name and deletes its branch', async () => {
     const repo = makeTempRepo(daemon.home)
-    await runCli('work', 'ha-1470-cleanup', '-r', repo)
+    await runCli('work', 'app-1470-cleanup', '-r', repo)
 
-    const r = await runCli('ws', 'remove', 'ha-1470-cleanup', '--delete-branch')
+    const r = await runCli('ws', 'remove', 'app-1470-cleanup', '--delete-branch')
 
     expect(r.code).toBe(0)
-    expect(r.stdout).toMatch(/^removed ws_[a-z2-7]{12} \(ha-1470-cleanup\)/)
+    expect(r.stdout).toMatch(/^removed ws_[a-z2-7]{12} \(app-1470-cleanup\)/)
     expect(await daemon.client.request('workspace.list')).toEqual([])
-    expect(gitIn(repo, 'branch', '--list', 'ha-1470-cleanup')).toBe('')
+    expect(gitIn(repo, 'branch', '--list', 'app-1470-cleanup')).toBe('')
   }, 30_000)
 
   it('opens a workspace with code -n', async () => {
     const repo = makeTempRepo(daemon.home)
-    const path = (await runCli('work', 'ha-1480-editor', '-r', repo)).stdout.trim()
+    const path = (await runCli('work', 'app-1480-editor', '-r', repo)).stdout.trim()
 
-    const r = await runCli('open', 'ha-1480-editor')
+    const r = await runCli('open', 'app-1480-editor')
 
     expect(r.code).toBe(0)
     expect(readFakeLog(daemon.codeLog).map((c) => c.argv)).toEqual([['-n', path]])
@@ -123,7 +147,7 @@ describe('que status', () => {
     })
     const ws = await daemon.client.request('workspace.create', {
       projectId: project.id,
-      name: 'ha-1432-retry-logic'
+      name: 'app-1432-retry-logic'
     })
     await expect
       .poll(async () => (await daemon.client.request('workspace.get', { id: ws.id })).status, {
@@ -155,10 +179,10 @@ describe('que status', () => {
     expect(status.workspaces).toEqual([
       {
         id: ws.id,
-        name: 'ha-1432-retry-logic',
+        name: 'app-1432-retry-logic',
         project: 'uploader',
         projectId: project.id,
-        branch: 'ha-1432-retry-logic',
+        branch: 'app-1432-retry-logic',
         path: ws.path,
         status: 'needs_input',
         reason: null,

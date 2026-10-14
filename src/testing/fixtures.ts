@@ -15,8 +15,8 @@ export function makeHookEvent(name: HookEventName, overrides: Partial<HookEvent>
   return {
     hook_event_name: name,
     session_id: sessionId,
-    cwd: '/Users/dev/.que/worktrees/que/HA-1432-retry-logic',
-    transcript_path: `/Users/dev/.claude/projects/-Users-dev--que-worktrees-que-HA-1432-retry-logic/${sessionId}.jsonl`,
+    cwd: '/Users/dev/.que/worktrees/que/APP-1432-retry-logic',
+    transcript_path: `/Users/dev/.claude/projects/-Users-dev--que-worktrees-que-APP-1432-retry-logic/${sessionId}.jsonl`,
     permission_mode: 'default',
     ...overrides
   }

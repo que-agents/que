@@ -13,6 +13,7 @@ import SettingsView from './components/SettingsView'
 import Sidebar from './components/Sidebar'
 import TerminalTabs from './components/TerminalTabs'
 import TopBar from './components/TopBar'
+import UpdateBanner from './components/UpdateBanner'
 import { isLocked, QueStore, StoreContext, useQue, useStore } from './store'
 
 function Dialogs(): React.JSX.Element | null {
@@ -79,6 +80,7 @@ function Shell(): React.JSX.Element {
     <div className="app">
       <Sidebar />
       <main className="main">
+        <UpdateBanner />
         {!connected ? (
           <div className="error" role="alert" data-testid="app-error">
             <span>Lost connection to the que daemon.</span>
@@ -122,12 +124,15 @@ function isBoardWindow(): boolean {
 }
 
 export default function App({
-  board = isBoardWindow()
+  board = isBoardWindow(),
+  now
 }: {
   /** Render the quiet board (its own window) instead of the app. */
   board?: boolean
+  /** The clock (tests pass a fixed one). Default Date.now. */
+  now?: () => number
 }): React.JSX.Element {
-  const [store] = useState(() => new QueStore(window.que, { board }))
+  const [store] = useState(() => new QueStore(window.que, { board, now }))
 
   useEffect(() => {
     store.start()

@@ -1,0 +1,55 @@
+# Contributing to que
+
+Thanks for helping. que is small on purpose; a good change keeps it that way.
+
+## Setup
+
+You need macOS on Apple Silicon, Node 24, and git. Then:
+
+```sh
+git clone https://github.com/rquellh/que.git
+cd que
+npm ci          # also rebuilds node-pty for Electron (postinstall)
+npm run dev     # the app with hot reload, using ~/.que
+```
+
+To try things without touching your real state, set `QUE_HOME` (and
+`QUE_CONFIG`) to a scratch directory first; every test and script does.
+
+## Before you open a pull request
+
+```sh
+npm run verify
+```
+
+runs typecheck, lint, build, the Vitest suites, the smoke check, and the
+Playwright specs in that order and stops at the first failure. CI runs the
+same thing plus `npm run smoke:packaged`. If you changed a CLI command or a
+config default, run `npm run docs` and commit the regenerated `docs/` files.
+
+## Tests
+
+The repository carries three testing guides in `.claude/skills/` that apply to
+everyone, human or not:
+
+- `test-planning`: which behavior to test at which layer (logic, daemon or
+  renderer integration, end to end), without testing the same thing twice;
+- `vitest-testing`: how to write logic, daemon integration, and renderer tests;
+- `e2e-testing`: how to write the Playwright specs.
+
+The short version: fake the subprocesses (`tests/fakes/bin` first on `PATH`),
+never internal modules; a fresh temp `QUE_HOME` for every test; no sleeps, wait
+on a condition; inject the clock into anything time-dependent.
+`npm run test:flaky -- 10` runs the Vitest suites ten times when you suspect a
+flaky test.
+
+## Pull requests
+
+- One change per pull request, with tests at the layer the change lives in.
+- Explain the why in the description; the diff shows the what.
+- Keep `npm run verify` green, and update `CHANGELOG.md` under `Unreleased`.
+- Code, comments, and docs describe que on its own terms.
+
+By contributing you agree that your contribution is licensed under the
+Apache License 2.0 (see `LICENSE`), and to follow the
+[code of conduct](CODE_OF_CONDUCT.md).

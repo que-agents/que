@@ -339,7 +339,10 @@ process.on('SIGINT', () => process.exit(130))
 // ---- headless ------------------------------------------------------------------
 
 async function headless(prompt) {
-  let scenario = process.env.QUE_FAKE_CLAUDE_SCENARIO || 'success'
+  // A `[que-fake-scenario:<name>]` marker in the prompt wins over the env, so
+  // one daemon can run tasks with different scenarios (the soak script does).
+  const marked = /\[que-fake-scenario:([a-z_]+)\]/.exec(prompt ?? '')
+  let scenario = marked?.[1] || process.env.QUE_FAKE_CLAUDE_SCENARIO || 'success'
   if (!SCENARIOS.includes(scenario)) {
     process.stderr.write(`fake claude: unknown QUE_FAKE_CLAUDE_SCENARIO ${scenario}\n`)
     process.exit(2)

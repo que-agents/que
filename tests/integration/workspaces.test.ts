@@ -65,7 +65,7 @@ describe('projects', () => {
     const project = await client.request('project.add', { path: makeTempRepo(daemon.home) })
     const ws = await client.request('workspace.create', {
       projectId: project.id,
-      name: 'ha-1440-quiet-board'
+      name: 'app-1440-quiet-board'
     })
 
     await expect(client.request('project.remove', { id: project.id })).rejects.toMatchObject({
@@ -95,20 +95,20 @@ worktree_include = ["config/local", "missing.json"]
 
       const ws = await client.request('workspace.create', {
         projectId: project.id,
-        name: 'HA-1432 retry logic'
+        name: 'APP-1432 retry logic'
       })
 
       expect(ws).toMatchObject({
         projectId: project.id,
-        name: 'ha-1432-retry-logic',
-        branch: 'ha-1432-retry-logic',
-        path: join(daemon.home, 'worktrees', 'uploader', 'ha-1432-retry-logic'),
+        name: 'app-1432-retry-logic',
+        branch: 'app-1432-retry-logic',
+        path: join(daemon.home, 'worktrees', 'uploader', 'app-1432-retry-logic'),
         baseRef: 'main',
         status: 'preparing'
       })
       expect(ws.id).toMatch(/^ws_[a-z2-7]{12}$/)
       expect(created).toEqual([ws])
-      expect(gitIn(ws.path, 'rev-parse', '--abbrev-ref', 'HEAD')).toBe('ha-1432-retry-logic')
+      expect(gitIn(ws.path, 'rev-parse', '--abbrev-ref', 'HEAD')).toBe('app-1432-retry-logic')
       expect(gitIn(ws.path, 'rev-parse', 'HEAD')).toBe(mainHead)
       expect(fs.readFileSync(join(ws.path, '.env'), 'utf8')).toBe('API_TOKEN=tok_51f2\n')
       expect(fs.readFileSync(join(ws.path, 'config/local/db.json'), 'utf8')).toContain('5433')
@@ -134,7 +134,7 @@ worktree_include = ["config/local", "missing.json"]
 
       const ws = await client.request('workspace.create', {
         projectId: project.id,
-        name: 'ha-1433-flaky-setup'
+        name: 'app-1433-flaky-setup'
       })
 
       await expect
@@ -156,7 +156,7 @@ worktree_include = ["config/local", "missing.json"]
 
       const ws = await client.request('workspace.create', {
         projectId: project.id,
-        name: 'ha-1450-changelog'
+        name: 'app-1450-changelog'
       })
 
       expect(ws.baseRef).toBe('origin/develop')
@@ -167,23 +167,25 @@ worktree_include = ["config/local", "missing.json"]
   describe('errors', () => {
     it('refuses bad names, taken branches, duplicates, and unknown projects', async () => {
       const repo = makeTempRepo(daemon.home)
-      gitIn(repo, 'branch', 'ha-1460-taken')
+      gitIn(repo, 'branch', 'app-1460-taken')
       const project = await client.request('project.add', { path: repo })
-      await client.request('workspace.create', { projectId: project.id, name: 'ha-1461-dupe' })
+      await client.request('workspace.create', { projectId: project.id, name: 'app-1461-dupe' })
 
       await expect(
         client.request('workspace.create', { projectId: project.id, name: '!!!' })
       ).rejects.toMatchObject({ code: 'bad_request' })
       await expect(
-        client.request('workspace.create', { projectId: project.id, name: 'ha-1460-taken' })
+        client.request('workspace.create', { projectId: project.id, name: 'app-1460-taken' })
       ).rejects.toMatchObject({ code: 'conflict', message: expect.stringContaining('branch') })
       await expect(
-        client.request('workspace.create', { projectId: project.id, name: 'HA-1461 dupe' })
+        client.request('workspace.create', { projectId: project.id, name: 'APP-1461 dupe' })
       ).rejects.toMatchObject({ code: 'conflict' })
       await expect(
-        client.request('workspace.create', { projectId: 'prj_missing0000', name: 'ha-1462' })
+        client.request('workspace.create', { projectId: 'prj_missing0000', name: 'app-1462' })
       ).rejects.toMatchObject({ code: 'not_found' })
-      expect(fs.existsSync(join(daemon.home, 'worktrees', 'uploader', 'ha-1460-taken'))).toBe(false)
+      expect(fs.existsSync(join(daemon.home, 'worktrees', 'uploader', 'app-1460-taken'))).toBe(
+        false
+      )
     }, 20_000)
   })
 
@@ -196,7 +198,7 @@ worktree_include = ["config/local", "missing.json"]
       const project = await client.request('project.add', { path: repo })
       const ws = await client.request('workspace.create', {
         projectId: project.id,
-        name: 'ha-1470-cleanup'
+        name: 'app-1470-cleanup'
       })
       const { id: termId } = await client.request('workspace.openTerminal', {
         id: ws.id,
@@ -216,7 +218,7 @@ worktree_include = ["config/local", "missing.json"]
       expect(fs.readFileSync(marker, 'utf8').trim()).toBe(ws.path)
       expect(fs.existsSync(ws.path)).toBe(false)
       expect(gitIn(repo, 'worktree', 'list')).not.toContain(ws.path)
-      expect(gitIn(repo, 'branch', '--list', 'ha-1470-cleanup')).toBe('')
+      expect(gitIn(repo, 'branch', '--list', 'app-1470-cleanup')).toBe('')
       expect(await client.request('workspace.list')).toEqual([])
       await expect(client.request('workspace.get', { id: ws.id })).rejects.toMatchObject({
         code: 'not_found'
@@ -232,7 +234,7 @@ describe('workspace.createPr', () => {
     const { id: projectId } = await client.request('project.add', { path: repo })
     const ws = await client.request('workspace.create', {
       projectId,
-      name: 'HA-1432 retry logic',
+      name: 'APP-1432 retry logic',
       ...(branch ? { branch } : {})
     })
     return { origin, ws }
@@ -250,7 +252,7 @@ describe('workspace.createPr', () => {
 
     expect(result.prUrl).toMatch(/^https:\/\/github\.com\/.+\/pull\/\d+$/)
     expect(gitIn(ws.path, 'log', '-1', '--format=%s')).toBe('Add retry logic to the uploader')
-    expect(gitIn(origin, 'rev-parse', 'ha-1432-retry-logic')).toBe(
+    expect(gitIn(origin, 'rev-parse', 'app-1432-retry-logic')).toBe(
       gitIn(ws.path, 'rev-parse', 'HEAD')
     )
     const pr = readFakeLog(daemon.ghLog).find((c) => c.argv[0] === 'pr')

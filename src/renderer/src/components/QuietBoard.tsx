@@ -38,7 +38,7 @@ export default function QuietBoard(): React.JSX.Element {
     return () => clearInterval(t)
   }, [])
 
-  const now = Date.now()
+  const now = store.now()
   const since = quiet?.windowStart ? Date.parse(quiet.windowStart) : now
   const projectName = (id: string): string => projects.find((p) => p.id === id)?.name ?? ''
   const tonight = Object.values(tasks).filter(

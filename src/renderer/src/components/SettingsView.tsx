@@ -187,7 +187,7 @@ export default function SettingsView(): React.JSX.Element {
     if (problems.length > 0) return
     // Tonight's window in progress would end sooner (or go away): ask first.
     if (quiet?.inQuietHours && quiet.windowEnd) {
-      const next = currentWindow(Date.now(), quietOf(form))
+      const next = currentWindow(store.now(), quietOf(form))
       if (!next || next.end.getTime() < Date.parse(quiet.windowEnd)) {
         setConfirming(true)
         return

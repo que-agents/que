@@ -8,7 +8,7 @@ import App from '../App'
 const uploader = makeProject()
 const retry = makeWorkspace({
   id: 'ws_01hzx3k9c2qf',
-  name: 'ha-1432-retry-logic',
+  name: 'app-1432-retry-logic',
   sessionId: 'b3c1d2e4-0000-4000-8000-1a2b3c4d5e6f'
 })
 
@@ -36,16 +36,18 @@ describe('work-mode dialogs', () => {
       expect(within(dialog).getByText(/Use letters, digits/)).toBeInTheDocument()
 
       await user.clear(name)
-      await user.type(name, 'HA-1432 Retry logic')
-      expect(within(dialog).getByText('Branch and folder: ha-1432-retry-logic')).toBeInTheDocument()
+      await user.type(name, 'APP-1432 Retry logic')
+      expect(
+        within(dialog).getByText('Branch and folder: app-1432-retry-logic')
+      ).toBeInTheDocument()
       await user.click(submit)
 
       await waitFor(() => {
         expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
       })
       const [ws] = await window.que.workspace.list()
-      expect(ws).toMatchObject({ name: 'ha-1432-retry-logic', baseRef: 'origin/main' })
-      expect(screen.getByTestId('topbar-title')).toHaveTextContent('ha-1432-retry-logic')
+      expect(ws).toMatchObject({ name: 'app-1432-retry-logic', baseRef: 'origin/main' })
+      expect(screen.getByTestId('topbar-title')).toHaveTextContent('app-1432-retry-logic')
       await waitFor(() => {
         expect(screen.getAllByRole('tab')).toHaveLength(1)
       })
