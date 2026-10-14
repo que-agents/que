@@ -163,6 +163,33 @@ describe('runner and finisher', () => {
   }, 45_000)
 })
 
+describe('runner environment', () => {
+  it('starts claude as a fresh top-level session, whatever started the daemon', async () => {
+    vi.stubEnv('TERM_PROGRAM', 'kitty')
+    vi.stubEnv('CLAUDECODE', '1')
+    vi.stubEnv('CLAUDE_CODE_CHILD_SESSION', '1')
+    vi.stubEnv('CLAUDE_CODE_MAX_OUTPUT_TOKENS', '32000')
+    const { d, projectId } = await setup()
+
+    const task = await d.client.request('task.add', { projectId, brief: 'Add retry logic' })
+    await d.client.request('queue.open')
+    await waitFor(d, task.id, 'done', 30_000)
+
+    const [call] = readFakeLog(d.claudeLog)
+    expect(call.env).toEqual(
+      expect.arrayContaining([
+        'CLAUDE_CODE_MAX_OUTPUT_TOKENS',
+        'QUE_TERMINAL',
+        'QUE_WORKSPACE_ID',
+        'TERM'
+      ])
+    )
+    expect(call.env).not.toEqual(
+      expect.arrayContaining(['CLAUDECODE', 'CLAUDE_CODE_CHILD_SESSION', 'TERM_PROGRAM'])
+    )
+  }, 60_000)
+})
+
 describe('runner against the failure scenarios', () => {
   it('stall: stuck(no_heartbeat) and the claude process is killed', async () => {
     const { d, projectId } = await setup({ config: 'stall_timeout_minutes = 0.02\n' })

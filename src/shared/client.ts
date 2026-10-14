@@ -4,6 +4,7 @@ import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import net from 'node:net'
 import os from 'node:os'
+import { cleanSpawnEnv } from './env'
 import { daemonScriptFrom, runtimeFrom } from './packaged'
 import { ensureDirs, quePaths, type QuePaths } from './paths'
 import {
@@ -221,11 +222,10 @@ function startDaemon(paths: QuePaths, opts: StartOptions): void {
       `daemon script not found at ${script}; run npm run build:node`
     )
   }
-  const env: Record<string, string> = {}
-  for (const [k, v] of Object.entries(process.env)) if (v !== undefined) env[k] = v
-  // Dev-server and app-specific variables must not leak into user shells.
-  delete env.ELECTRON_RENDERER_URL
-  delete env.ELECTRON_ENABLE_LOGGING
+  // The daemon starts clean (shared/env.ts): nothing of the shell or agent
+  // session that launched it reaches the terminals it will open.
+  const env = cleanSpawnEnv(process.env)
+  delete env.QUE_TERMINAL
   env.ELECTRON_RUN_AS_NODE = '1'
   env.QUE_HOME = paths.home
 
