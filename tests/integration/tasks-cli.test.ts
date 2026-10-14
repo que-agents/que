@@ -83,12 +83,12 @@ describe('que add, run, task list, report', () => {
     const project = await daemon.client.request('project.add', { path: repo })
     await daemon.client.request('workspace.create', {
       projectId: project.id,
-      name: 'ha-1432-retry-logic'
+      name: 'app-1432-retry-logic'
     })
     const brief = join(daemon.home, 'brief.md')
     fs.writeFileSync(brief, 'Cover the retry logic with tests\n\nUse the fake clock.\n')
 
-    const added = await runCli('add', '-r', 'ha-1432-retry-logic', '-f', brief, '--json')
+    const added = await runCli('add', '-r', 'app-1432-retry-logic', '-f', brief, '--json')
 
     expect(added.code).toBe(0)
     const task = JSON.parse(added.stdout) as Task

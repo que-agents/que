@@ -122,7 +122,7 @@ describe('App', () => {
 
     it('disables every daemon action while disconnected', async () => {
       const user = userEvent.setup()
-      const retry = makeWorkspace({ id: 'ws_01hzx3k9c2qf', name: 'ha-1432-retry-logic' })
+      const retry = makeWorkspace({ id: 'ws_01hzx3k9c2qf', name: 'app-1432-retry-logic' })
       fakeBridge.seedProject(makeProject())
       fakeBridge.seedWorkspace(retry)
       render(<App />)

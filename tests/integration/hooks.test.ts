@@ -40,7 +40,7 @@ async function idleWorkspace(
   const project = await d.client.request('project.add', { path: makeTempRepo(d.home) })
   const ws = await d.client.request('workspace.create', {
     projectId: project.id,
-    name: 'ha-1432-retry-logic'
+    name: 'app-1432-retry-logic'
   })
   await expect
     .poll(async () => (await d.client.request('workspace.get', { id: ws.id })).status, {
@@ -73,9 +73,14 @@ describe('hook delivery', () => {
     await expect
       .poll(() => statusesOf(statuses, ws.id), { timeout: 15_000 })
       .toEqual(['preparing', 'idle', 'working', 'needs_input'])
-    const screen = (await d.client.request('term.snapshot', { id })).text
-    expect(screen).toContain('Claude Code v2.1.0 (fake)')
-    expect(screen).toContain('Claude needs your permission to use Bash')
+    // The Notification hook fires before the prompt is printed, so the status
+    // can change before the mirror has the line: wait for the screen too.
+    const screen = async (): Promise<string> =>
+      (await d.client.request('term.snapshot', { id })).text
+    await expect
+      .poll(screen, { timeout: 10_000 })
+      .toContain('Claude needs your permission to use Bash')
+    expect(await screen()).toContain('Claude Code v2.1.0 (fake)')
   }, 45_000)
 
   it('accepts hook JSON from `que hook` on stdin, printing nothing', async () => {

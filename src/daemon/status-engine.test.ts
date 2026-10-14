@@ -150,7 +150,7 @@ describe('reduce', () => {
   describe('claude agents --json cross-check', () => {
     const entry = (status: string) => ({
       kind: 'agents_json' as const,
-      entry: { cwd: '/Users/dev/.que/worktrees/uploader/ha-1432-retry-logic', status }
+      entry: { cwd: '/Users/dev/.que/worktrees/uploader/app-1432-retry-logic', status }
     })
     const old = T0 + AGENTS_JSON_MIN_AGE_MS + 1
 
@@ -217,12 +217,12 @@ describe('summarize and trayTitle', () => {
 describe('traySummary', () => {
   const retry = makeWorkspace({
     id: 'ws_01hzx3k9c2qf',
-    name: 'ha-1432-retry-logic',
+    name: 'app-1432-retry-logic',
     status: 'idle'
   })
   const board = makeWorkspace({
     id: 'ws_01hzx4m1p8rt',
-    name: 'ha-1440-quiet-board',
+    name: 'app-1440-quiet-board',
     status: 'needs_input'
   })
 

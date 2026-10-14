@@ -39,7 +39,7 @@ import { SYSTEM_PROMPT } from './runner'
 import { StatusService } from './status'
 import { Store } from './store'
 import { WorkspaceManager, workspaceTerminalEnv } from './workspaces'
-import { defaultCliScript, installWrapper, resolveNode } from './wrapper'
+import { defaultCliScript, installWrapper, resolveCliRunner } from './wrapper'
 
 export interface ServerOptions {
   host: PtyHost
@@ -349,7 +349,7 @@ export class DaemonServer {
         try {
           installWrapper({
             paths: this.paths,
-            nodePath: resolveNode(),
+            ...resolveCliRunner(),
             cliScript: this.opts.cliScript ?? defaultCliScript()
           })
         } catch (err) {

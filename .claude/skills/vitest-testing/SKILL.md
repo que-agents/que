@@ -38,7 +38,7 @@ For deciding **what** to test at which layer, use the `test-planning` skill. For
 
 6. **Practical quality rules.**
    - Prefer `toBeInTheDocument()` for presence checks, `toBeVisible()` when visibility matters
-   - Use unique, realistic values in fixtures to prevent false positives (a workspace named `'HA-1432-retry-logic'` with id `'ws_01hzx3k9c2qf'`, not `'test'`)
+   - Use unique, realistic values in fixtures to prevent false positives (a workspace named `'APP-1432-retry-logic'` with id `'ws_01hzx3k9c2qf'`, not `'test'`)
    - No if/else in tests — tests should be linear and predictable
    - Never sleep. Anything touching a PTY, a socket, or a subprocess is waited on with `waitFor`/`expect.poll` against a condition, with real timers
    - For logic tests of reducers: assert the returned state is a _new_ object and the input was left untouched — the status engine and task machine are pure `(state, input) => next` functions, and the suite is the cheapest place to keep them honest
@@ -97,7 +97,7 @@ The `node` project has **no** global setup: each daemon integration test builds 
 
 | Export (file)                                  | What it does                                                                                                                                                         |
 | ---------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `makeWorkspace(overrides)` (both)              | A realistic workspace: opaque id (`ws_01h…`), branch-style name (`HA-1432-retry-logic`), worktree path under `~/.que/worktrees/<project>/<name>`, status `idle`.     |
+| `makeWorkspace(overrides)` (both)              | A realistic workspace: opaque id (`ws_01h…`), branch-style name (`APP-1432-retry-logic`), worktree path under `~/.que/worktrees/<project>/<name>`, status `idle`.     |
 | `makeTask(overrides)` (both)                   | A queued task with a real prompt, turn and dollar caps, and an opaque id (`task_01h…`).                                                                              |
 | `makeHookEvent(name, overrides)` (`src/testing`) | A realistic Claude Code hook payload: `hook_event_name`, `session_id`, `cwd`, `transcript_path`, plus per-event fields (`notification_type`, `message`, `tool_name`). |
 | `makeStreamResult(overrides)` (`src/testing`)  | A stream-json `result` message: `type: 'result'`, `subtype`, `num_turns`, `total_cost_usd`, `session_id`, `stop_reason`, `is_error`.                                 |
@@ -168,15 +168,15 @@ import { Sidebar } from './Sidebar'
 
 it('lists each workspace under its project with a status badge', async () => {
   fakeBridge.seedWorkspace(
-    makeWorkspace({ id: 'ws_01hzx3k9c2qf', project: 'que', name: 'HA-1432-retry-logic', status: 'working' })
+    makeWorkspace({ id: 'ws_01hzx3k9c2qf', project: 'que', name: 'APP-1432-retry-logic', status: 'working' })
   )
   fakeBridge.seedWorkspace(
-    makeWorkspace({ id: 'ws_01hzx4m1p8rt', project: 'que', name: 'HA-1440-quiet-board', status: 'idle' })
+    makeWorkspace({ id: 'ws_01hzx4m1p8rt', project: 'que', name: 'APP-1440-quiet-board', status: 'idle' })
   )
 
   render(<Sidebar />)
 
-  expect(await screen.findByRole('button', { name: /HA-1432-retry-logic/ })).toBeInTheDocument()
+  expect(await screen.findByRole('button', { name: /APP-1432-retry-logic/ })).toBeInTheDocument()
   expect(screen.getByTestId('sidebar-workspace-ws_01hzx3k9c2qf-status')).toHaveTextContent('working')
   expect(screen.getByTestId('sidebar-workspace-ws_01hzx4m1p8rt-status')).toHaveTextContent('idle')
 })
@@ -190,7 +190,7 @@ The daemon pushes events; the fake bridge pushes the same ones. `setStatus` and 
 
 ```tsx
 it('moves the badge to needs input when the status engine says so', async () => {
-  fakeBridge.seedWorkspace(makeWorkspace({ id: 'ws_01hzx3k9c2qf', name: 'HA-1432-retry-logic', status: 'working' }))
+  fakeBridge.seedWorkspace(makeWorkspace({ id: 'ws_01hzx3k9c2qf', name: 'APP-1432-retry-logic', status: 'working' }))
   render(<Sidebar />)
   const badge = await screen.findByTestId('sidebar-workspace-ws_01hzx3k9c2qf-status')
 
@@ -272,9 +272,9 @@ it('creates a workspace as a git worktree on its own branch', async () => {
   const repo = makeTempRepo(home) // real git: two commits on main
   const { id: projectId } = await client.request('project.add', { path: repo })
 
-  const ws = await client.request('workspace.create', { projectId, name: 'HA-1432-retry-logic' })
+  const ws = await client.request('workspace.create', { projectId, name: 'APP-1432-retry-logic' })
 
-  expect(ws.branch).toBe('HA-1432-retry-logic')
+  expect(ws.branch).toBe('APP-1432-retry-logic')
   expect(fs.existsSync(join(ws.path, '.git'))).toBe(true)
   const listed = await client.request('workspace.list', { projectId })
   expect(listed.map((w) => w.id)).toContain(ws.id)
@@ -286,10 +286,10 @@ it('creates a workspace as a git worktree on its own branch', async () => {
 ```tsx
 it('archives a workspace from its context menu', async () => {
   const user = userEvent.setup()
-  fakeBridge.seedWorkspace(makeWorkspace({ id: 'ws_01hzx3k9c2qf', name: 'HA-1432-retry-logic' }))
+  fakeBridge.seedWorkspace(makeWorkspace({ id: 'ws_01hzx3k9c2qf', name: 'APP-1432-retry-logic' }))
   render(<Sidebar />)
 
-  await user.click(await screen.findByRole('button', { name: /more actions for HA-1432-retry-logic/i }))
+  await user.click(await screen.findByRole('button', { name: /more actions for APP-1432-retry-logic/i }))
   await user.click(screen.getByRole('menuitem', { name: 'Archive' }))
 
   await waitFor(() => {
@@ -511,8 +511,8 @@ export function makeHookEvent(name: HookEventName, overrides: Partial<HookEvent>
   return {
     hook_event_name: name,
     session_id: sessionId,
-    cwd: '/Users/dev/.que/worktrees/que/HA-1432-retry-logic',
-    transcript_path: `/Users/dev/.claude/projects/-Users-dev--que-worktrees-que-HA-1432-retry-logic/${sessionId}.jsonl`,
+    cwd: '/Users/dev/.que/worktrees/que/APP-1432-retry-logic',
+    transcript_path: `/Users/dev/.claude/projects/-Users-dev--que-worktrees-que-APP-1432-retry-logic/${sessionId}.jsonl`,
     permission_mode: 'default',
     ...overrides,
   }
@@ -595,7 +595,7 @@ const idlePrompt = makeHookEvent('Notification', { notification_type: 'idle_prom
 
 ### The Identity Invariants Fixtures Must Respect
 
-- Workspaces, terminals, and tasks are identified by **opaque ids minted by the daemon** (`ws_…`, `task_…`, terminal ids). Every lookup, testid, and assertion keys by id, never by name — two projects can each have a workspace called `HA-1432-retry-logic`.
+- Workspaces, terminals, and tasks are identified by **opaque ids minted by the daemon** (`ws_…`, `task_…`, terminal ids). Every lookup, testid, and assertion keys by id, never by name — two projects can each have a workspace called `APP-1432-retry-logic`.
 - A workspace's branch name and worktree directory derive from its name through the slug rules; a fixture whose `branch` or `path` disagrees with its `name` is lying about a state the daemon can't produce. Override `name` and let the factory derive the rest, unless the test is about the derivation itself.
 
 ---
@@ -660,7 +660,7 @@ Use the highest-priority query that works for your case:
 ### When `getByTestId` Is Correct
 
 - Elements identified by an opaque entity id with no unique visible text — a status badge inside `sidebar-workspace-<id>`, a row in `report-task-<id>`
-- Text that is legitimately duplicated (every badge says `idle`; two projects both have a `HA-1432-retry-logic`)
+- Text that is legitimately duplicated (every badge says `idle`; two projects both have a `APP-1432-retry-logic`)
 
 The testid pattern is shared with the E2E suite: `{component}-{entity-id?}-{element}`, keyed by the daemon's ids (`sidebar-workspace-<id>-status`, `terminal-tab-<id>`, `quiet-board-unlock`).
 
@@ -713,10 +713,10 @@ Both wait for async elements; `findBy*` is shorthand for `waitFor` + `getBy*`:
 ```tsx
 // Equivalent:
 await waitFor(() => {
-  expect(screen.getByText('HA-1432-retry-logic')).toBeInTheDocument()
+  expect(screen.getByText('APP-1432-retry-logic')).toBeInTheDocument()
 })
 
-const el = await screen.findByText('HA-1432-retry-logic')
+const el = await screen.findByText('APP-1432-retry-logic')
 expect(el).toBeInTheDocument()
 ```
 
@@ -809,7 +809,7 @@ import { makeWorkspace } from '@renderer/testing/fixtures'
 import { QuietBoard } from './QuietBoard'
 
 // ── File-scope fixtures (only what this file needs) ──
-const retryLogic = makeWorkspace({ id: 'ws_01hzx3k9c2qf', name: 'HA-1432-retry-logic', status: 'working' })
+const retryLogic = makeWorkspace({ id: 'ws_01hzx3k9c2qf', name: 'APP-1432-retry-logic', status: 'working' })
 
 // ── Test Suites ──────────────────────────────
 describe('QuietBoard', () => {

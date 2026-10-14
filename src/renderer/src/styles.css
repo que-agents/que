@@ -446,6 +446,21 @@ h2 {
   flex: 1;
 }
 
+.update-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  background: var(--bg-raised);
+  border-bottom: 1px solid var(--border);
+  color: var(--fg-muted);
+  flex: none;
+}
+
+.update-banner span {
+  flex: 1;
+}
+
 .empty {
   flex: 1;
   display: flex;

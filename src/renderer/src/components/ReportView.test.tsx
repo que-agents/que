@@ -5,7 +5,7 @@ import { fakeBridge } from '@renderer/testing/fake-bridge'
 import { makeProject, makeTask, makeWorkspace } from '@renderer/testing/fixtures'
 import App from '../App'
 
-const retry = makeWorkspace({ id: 'ws_01hzx3k9c2qf', name: 'ha-1432-retry-logic' })
+const retry = makeWorkspace({ id: 'ws_01hzx3k9c2qf', name: 'app-1432-retry-logic' })
 const done = makeTask({
   id: 'tsk_01hzy0d7w3ke',
   title: 'Add retry logic to the uploader',
@@ -46,7 +46,7 @@ describe('ReportView', () => {
       const doneGroup = await screen.findByTestId('report-group-done')
       expect(within(doneGroup).getByRole('heading', { name: 'Done 1' })).toBeInTheDocument()
       const row = within(doneGroup).getByTestId(`report-task-${done.id}`)
-      expect(within(row).getByText('ha-1432-retry-logic')).toBeInTheDocument()
+      expect(within(row).getByText('app-1432-retry-logic')).toBeInTheDocument()
       expect(within(row).getByRole('link')).toHaveAttribute('href', done.prUrl)
       expect(within(row).getByText(/3m 05s · 12 turns · \$0\.42/)).toBeInTheDocument()
       const stuckGroup = screen.getByTestId('report-group-stuck')

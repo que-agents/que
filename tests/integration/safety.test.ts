@@ -268,7 +268,7 @@ describe('safety: hooks wrapper', () => {
   const hookJson = JSON.stringify({
     hook_event_name: 'PermissionRequest',
     session_id: '7d0c5b2a-0000-4000-8000-3e4f5a6b7c8d',
-    cwd: '/Users/dev/.que/worktrees/uploader/ha-1432-retry-logic',
+    cwd: '/Users/dev/.que/worktrees/uploader/app-1432-retry-logic',
     tool_name: 'Bash'
   })
 

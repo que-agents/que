@@ -6,7 +6,7 @@ import { makeProject, makeTask, makeWorkspace } from '@renderer/testing/fixtures
 import App from '../App'
 
 const uploader = makeProject()
-const retry = makeWorkspace({ id: 'ws_01hzx3k9c2qf', name: 'ha-1432-retry-logic' })
+const retry = makeWorkspace({ id: 'ws_01hzx3k9c2qf', name: 'app-1432-retry-logic' })
 const done = makeTask({
   id: 'tsk_01hzy0d7w3ke',
   title: 'Add retry logic to the uploader',
@@ -46,7 +46,7 @@ describe('TasksPanel', () => {
         'data-status',
         'done'
       )
-      expect(within(row).getByText('ha-1432-retry-logic')).toBeInTheDocument()
+      expect(within(row).getByText('app-1432-retry-logic')).toBeInTheDocument()
       expect(within(row).getByText('$0.42')).toBeInTheDocument()
       expect(within(row).getByRole('link', { name: 'PR #88' })).toHaveAttribute(
         'href',

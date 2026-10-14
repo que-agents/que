@@ -14,6 +14,7 @@ import type {
   Task,
   TaskState,
   TermInfo,
+  UpdateInfo,
   UserConfig,
   Workspace,
   WorkspaceStatus
@@ -62,6 +63,9 @@ class FakeBridge {
   private folder: string | null = null
   private tray = '● 0 ▸ 0 ✕ 0'
   private editorCalls: string[] = []
+  private updateInfo: UpdateInfo | null = null
+  private updateListeners = new Set<(info: UpdateInfo) => void>()
+  private updateOpens = 0
   private prCalls: Array<{ id: string; title: string }> = []
   private quiet: QuietState = makeQuietState()
   private unlocks: QuietUnlock[] = []
@@ -158,6 +162,15 @@ class FakeBridge {
           return { ok: true }
         },
         trayTitle: async () => this.tray,
+        update: async () => (this.updateInfo ? { ...this.updateInfo } : null),
+        onUpdate: (cb) => {
+          this.updateListeners.add(cb)
+          return () => this.updateListeners.delete(cb)
+        },
+        openUpdate: async () => {
+          this.updateOpens++
+          return { ok: true }
+        },
         e2e: false
       },
       project: {
@@ -462,6 +475,20 @@ class FakeBridge {
     this.tray = title
   }
 
+  /**
+   * What app.update() resolves to. Set before render to model a check that
+   * finished before the window opened; set after render to emit onUpdate.
+   */
+  setUpdate(info: UpdateInfo | null): void {
+    this.updateInfo = info
+    if (info) for (const cb of this.updateListeners) cb({ ...info })
+  }
+
+  /** How many times app.openUpdate() was called. */
+  openUpdateCalls(): number {
+    return this.updateOpens
+  }
+
   /** Every path app.openInEditor was asked to open, in order. */
   openInEditorCalls(): string[] {
     return [...this.editorCalls]
@@ -496,6 +523,9 @@ class FakeBridge {
     this.folder = null
     this.tray = '● 0 ▸ 0 ✕ 0'
     this.editorCalls = []
+    this.updateInfo = null
+    this.updateListeners.clear()
+    this.updateOpens = 0
     this.prCalls = []
     this.quiet = makeQuietState()
     this.unlocks = []

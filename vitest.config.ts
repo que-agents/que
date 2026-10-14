@@ -21,7 +21,7 @@ export default defineConfig({
           name: 'node',
           environment: 'node',
           include: [
-            'src/{daemon,cli,shared}/**/*.test.ts',
+            'src/{daemon,cli,shared,main}/**/*.test.ts',
             'src/testing/**/*.test.ts',
             'tests/integration/**/*.test.ts',
             'tests/contract/**/*.test.ts'

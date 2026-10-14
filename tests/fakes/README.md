@@ -32,6 +32,10 @@ message every `QUE_FAKE_CLAUDE_DELAY_MS` (default 30):
 | `crash`       | init, SessionStart, `fake claude: simulated crash` on stderr                                       | 1              |
 | `needs_input` | init, hooks, Notification `permission_prompt`, then hangs                                          | 143 on SIGTERM |
 
+A `[que-fake-scenario:<name>]` marker anywhere in the prompt picks the scenario
+for that run instead of the env, so one daemon can run tasks with different
+scenarios.
+
 `rate_limit` behaves as `success` when `QUE_FAKE_CLAUDE_RESUME_OK=1` and
 `--resume` was passed. Its `rate_limit_event` reports `resetsAt` as now plus
 `QUE_FAKE_CLAUDE_RESET_SECONDS` (default 3600), in epoch seconds.
