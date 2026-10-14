@@ -24,10 +24,12 @@ export interface TestDaemon {
   host: LeakCheckedPtyHost
   server: DaemonServer
   client: DaemonClient
-  /** Where the fake gh/code/caffeinate record their calls (read with readFakeLog). */
+  /** Where the fakes record their calls (read with readFakeLog / readWrapperLog). */
+  claudeLog: string
   ghLog: string
   codeLog: string
   caffeinateLog: string
+  wrapperLog: string
   /** QUE_CONFIG for this daemon (always written; see withQuietOff). */
   configPath: string
   /**
@@ -62,23 +64,29 @@ export interface TestDaemonOptions {
   statusTickMs?: number
   /** Reuse this QUE_HOME (from a daemon closed with keepHome) instead of a fresh one. */
   home?: string
+  /** Directories put ahead of the fakes on the daemon's PATH (e.g. FAKE_WRAPPERS). */
+  pathPrefix?: string[]
 }
 
 export async function startTestDaemon(opts: TestDaemonOptions = {}): Promise<TestDaemon> {
   const home = opts.home ?? fs.realpathSync(fs.mkdtempSync(join(os.tmpdir(), 'que-it-')))
+  const claudeLog = join(home, 'fake-claude.log')
   const ghLog = join(home, 'fake-gh.log')
   const codeLog = join(home, 'fake-code.log')
   const caffeinateLog = join(home, 'fake-caffeinate.log')
+  const wrapperLog = join(home, 'fake-wrapper.log')
   const gitconfig = join(home, 'gitconfig')
   fs.writeFileSync(
     gitconfig,
     '[user]\n\tname = que test\n\temail = test@que.invalid\n[commit]\n\tgpgsign = false\n[init]\n\tdefaultBranch = main\n'
   )
   vi.stubEnv('QUE_HOME', home)
-  vi.stubEnv('PATH', `${FAKES_BIN}:${process.env.PATH}`)
+  vi.stubEnv('PATH', [...(opts.pathPrefix ?? []), FAKES_BIN, process.env.PATH].join(':'))
+  vi.stubEnv('QUE_FAKE_CLAUDE_LOG', claudeLog)
   vi.stubEnv('QUE_FAKE_GH_LOG', ghLog)
   vi.stubEnv('QUE_FAKE_CODE_LOG', codeLog)
   vi.stubEnv('QUE_FAKE_CAFFEINATE_LOG', caffeinateLog)
+  vi.stubEnv('QUE_FAKE_WRAPPER_LOG', wrapperLog)
   vi.stubEnv('GIT_CONFIG_GLOBAL', gitconfig)
   vi.stubEnv('GIT_CONFIG_NOSYSTEM', '1')
   vi.stubEnv('QUE_FAKE_CLAUDE_TRANSCRIPT_DIR', join(home, 'transcripts'))
@@ -111,9 +119,11 @@ export async function startTestDaemon(opts: TestDaemonOptions = {}): Promise<Tes
     host,
     server,
     client,
+    claudeLog,
     ghLog,
     codeLog,
     caffeinateLog,
+    wrapperLog,
     configPath,
     async close(closeOpts = {}) {
       if (closed) return

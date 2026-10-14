@@ -145,6 +145,10 @@ const opts = parseArgs(process.argv.slice(2))
 const settings = loadSettings(opts.settings)
 const hooks = (settings && typeof settings.hooks === 'object' && settings.hooks) || {}
 const cwd = process.cwd()
+if (process.env.QUE_FAKE_CLAUDE_LOG) {
+  const call = { argv: process.argv.slice(2), cwd, pid: process.pid, ts: new Date().toISOString() }
+  fs.appendFileSync(process.env.QUE_FAKE_CLAUDE_LOG, `${JSON.stringify(call)}\n`)
+}
 const model = opts.model || MODEL_DEFAULT
 const permissionMode = opts.permissionMode || 'default'
 const outputFormat = opts.outputFormat || 'text'
