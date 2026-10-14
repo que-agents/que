@@ -15,7 +15,11 @@ import type {
   TermInfo,
   TermListParams,
   TermSnapshotResult,
+  ReportEntry,
+  ReportGroup,
   WorkspaceCreateParams,
+  WorkspaceCreatePrParams,
+  WorkspaceCreatePrResult,
   WorkspaceListParams,
   WorkspaceOpenTerminalParams,
   WorkspaceRemoveParams,
@@ -28,7 +32,10 @@ export type {
   Project,
   QueueState,
   Report,
+  ReportEntry,
+  ReportGroup,
   Task,
+  TaskAddParams,
   TaskState,
   TaskStatusEvent,
   TermAttachResult,
@@ -60,6 +67,10 @@ export interface AppApi {
   homedir(): Promise<string>
   /** Shows a native folder picker; resolves to the chosen path or null. */
   openFolder(): Promise<string | null>
+  /** Opens a folder in a new editor window (`code -n <path>`); fire-and-forget. */
+  openInEditor(params: { path: string }): Promise<{ ok: true }>
+  /** The menu-bar title. Answers only when the app was launched with QUE_E2E=1. */
+  trayTitle(): Promise<string>
   /** True only when the app was launched with QUE_E2E=1. */
   e2e: boolean
 }
@@ -87,6 +98,8 @@ export interface WorkspaceApi {
   remove(params: WorkspaceRemoveParams): Promise<{ ok: true }>
   /** Opens a terminal in the worktree with the hooks wrapper on PATH. */
   openTerminal(params: WorkspaceOpenTerminalParams): Promise<{ id: string }>
+  /** Commits what is uncommitted as `title`, pushes, and opens a draft PR. */
+  createPr(params: WorkspaceCreatePrParams): Promise<WorkspaceCreatePrResult>
   on<E extends WorkspaceEventName>(event: E, cb: (data: Events[E]) => void): () => void
 }
 
@@ -133,6 +146,8 @@ export interface QueApi {
 export interface QueTestHook {
   activeTermId(): string | null
   screenText(): string
+  /** The tray's current title, from the main process. */
+  trayTitle(): Promise<string>
 }
 
 declare global {

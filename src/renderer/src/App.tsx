@@ -1,194 +1,111 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import Terminal from './components/Terminal'
-import type { TermInfo } from '../../preload/index.d'
+import { useEffect, useState } from 'react'
+import {
+  AddTaskDialog,
+  CreatePrDialog,
+  HandoffDialog,
+  NewWorkspaceDialog,
+  RemoveWorkspaceDialog
+} from './components/dialogs'
+import ReportView from './components/ReportView'
+import Sidebar from './components/Sidebar'
+import TerminalTabs from './components/TerminalTabs'
+import TopBar from './components/TopBar'
+import { QueStore, StoreContext, useQue, useStore } from './store'
 
-interface Tab {
-  id: string
-  name: string
-  cwd: string
-  alive: boolean
-  /** Was already running in the daemon when this app instance launched. */
-  reattached: boolean
+function Dialogs(): React.JSX.Element | null {
+  const store = useStore()
+  const { dialog, projects, workspaces } = useQue()
+  const close = (): void => store.closeDialog()
+  if (!dialog) return null
+  switch (dialog.kind) {
+    case 'new-workspace': {
+      const project = projects.find((p) => p.id === dialog.projectId)
+      return project ? <NewWorkspaceDialog project={project} onClose={close} /> : null
+    }
+    case 'add-task':
+      return <AddTaskDialog onClose={close} />
+    default: {
+      const ws = workspaces[dialog.workspaceId]
+      if (!ws) return null
+      if (dialog.kind === 'handoff') return <HandoffDialog workspace={ws} onClose={close} />
+      if (dialog.kind === 'create-pr') return <CreatePrDialog workspace={ws} onClose={close} />
+      return <RemoveWorkspaceDialog workspace={ws} onClose={close} />
+    }
+  }
 }
 
-const DEFAULT_COLS = 80
-const DEFAULT_ROWS = 24
+function Shell(): React.JSX.Element {
+  const store = useStore()
+  const { view, error, dialog, connected } = useQue()
+  const termKey = view.kind === 'terminals' ? view.key : null
 
-function toTab(t: TermInfo, reattached: boolean): Tab {
-  return { id: t.id, name: t.name, cwd: t.cwd, alive: t.alive, reattached }
-}
-
-type Startup = Promise<{ tabs: Tab[]; active: string | null }>
-
-async function loadInitial(): Promise<{ tabs: Tab[]; active: string | null }> {
-  const existing = (await window.que.term.list())
-    .filter((t) => t.alive)
-    .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
-  if (existing.length > 0) {
-    const tabs = existing.map((t) => toTab(t, true))
-    return { tabs, active: tabs[tabs.length - 1].id }
-  }
-  const cwd = await window.que.app.homedir()
-  const { id } = await window.que.term.create({ cwd, cols: DEFAULT_COLS, rows: DEFAULT_ROWS })
-  const info = (await window.que.term.list()).find((t) => t.id === id)
-  const tab: Tab = info
-    ? toTab(info, false)
-    : { id, name: 'shell', cwd, alive: true, reattached: false }
-  return { tabs: [tab], active: id }
-}
-
-export default function App(): React.JSX.Element {
-  const [tabs, setTabs] = useState<Tab[]>([])
-  const [activeId, setActiveId] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  // Guards against StrictMode running the startup effect twice and creating
-  // two terminals on a fresh launch (refs survive StrictMode's remount).
-  const startup = useRef<Startup | null>(null)
-
+  // Cmd+T / Cmd+W manage the terminal tabs; captured before xterm sees them.
   useEffect(() => {
-    startup.current ??= loadInitial()
-    startup.current.then(
-      ({ tabs, active }) => {
-        setTabs(tabs)
-        setActiveId(active)
-      },
-      (err: Error) => setError(err.message)
-    )
-  }, [])
-
-  // Keep tabs in sync with terminals created, killed or exited elsewhere (CLI).
-  useEffect(() => {
-    const offs = [
-      window.que.term.on('term.created', ({ id }) => {
-        void window.que.term.list().then((list) => {
-          const info = list.find((t) => t.id === id)
-          if (!info) return
-          setTabs((prev) => (prev.some((t) => t.id === id) ? prev : [...prev, toTab(info, false)]))
-        })
-      }),
-      window.que.term.on('term.killed', ({ id }) => {
-        setTabs((prev) => prev.filter((t) => t.id !== id))
-      }),
-      window.que.term.on('term.exit', ({ id }) => {
-        setTabs((prev) => prev.map((t) => (t.id === id ? { ...t, alive: false } : t)))
-      }),
-      window.que.term.onDisconnect(() => setError('Lost connection to the que daemon.'))
-    ]
-    return () => {
-      for (const off of offs) off()
+    if (termKey === null || dialog) return
+    const onKey = (e: KeyboardEvent): void => {
+      if (!e.metaKey || e.shiftKey || e.altKey || e.ctrlKey) return
+      const key = e.key.toLowerCase()
+      if (key !== 't' && key !== 'w') return
+      e.preventDefault()
+      e.stopPropagation()
+      if (key === 't') void store.newTerminal(termKey)
+      else {
+        const active = store.activeTab(termKey)
+        if (active) void store.closeTerminal(active.id)
+      }
     }
-  }, [])
-
-  // If the active tab disappears, fall back to the last remaining one.
-  useEffect(() => {
-    if (activeId && !tabs.some((t) => t.id === activeId)) {
-      setActiveId(tabs.length > 0 ? tabs[tabs.length - 1].id : null)
-    }
-  }, [tabs, activeId])
-
-  const createIn = useCallback(async (cwd: string) => {
-    try {
-      const { id } = await window.que.term.create({ cwd, cols: DEFAULT_COLS, rows: DEFAULT_ROWS })
-      const info = (await window.que.term.list()).find((t) => t.id === id)
-      setTabs((prev) =>
-        prev.some((t) => t.id === id)
-          ? prev
-          : [
-              ...prev,
-              info ? toTab(info, false) : { id, name: 'shell', cwd, alive: true, reattached: false }
-            ]
-      )
-      setActiveId(id)
-    } catch (err) {
-      setError((err as Error).message)
-    }
-  }, [])
-
-  const active = tabs.find((t) => t.id === activeId) ?? null
-
-  async function newTerminal(): Promise<void> {
-    await createIn(active?.cwd ?? (await window.que.app.homedir()))
-  }
-
-  async function openFolder(): Promise<void> {
-    const dir = await window.que.app.openFolder()
-    if (dir) await createIn(dir)
-  }
-
-  async function closeTab(id: string): Promise<void> {
-    setTabs((prev) => prev.filter((t) => t.id !== id))
-    try {
-      await window.que.term.kill({ id })
-    } catch {
-      // Already gone.
-    }
-  }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [store, termKey, dialog])
 
   return (
     <div className="app">
-      <header className="topbar" data-testid="topbar">
-        <div className="tabs" role="tablist">
-          {tabs.map((t) => (
-            <span
-              key={t.id}
-              className={`tab${t.id === activeId ? ' active' : ''}`}
-              data-testid={`terminal-tab-${t.id}`}
-            >
+      <Sidebar />
+      <main className="main">
+        {!connected ? (
+          <div className="error" role="alert" data-testid="app-error">
+            <span>Lost connection to the que daemon.</span>
+          </div>
+        ) : (
+          error && (
+            <div className="error" role="alert" data-testid="app-error">
+              <span>{error}</span>
               <button
                 type="button"
-                role="tab"
-                aria-selected={t.id === activeId}
-                data-term-id={t.id}
-                data-testid={`terminal-tab-${t.id}-select`}
-                title={t.cwd}
-                onClick={() => setActiveId(t.id)}
-              >
-                {t.name} <span className="short-id">{t.id.slice(0, 6)}</span>
-                {!t.alive && (
-                  <span className="badge exited" data-testid={`terminal-tab-${t.id}-exited`}>
-                    exited
-                  </span>
-                )}
-                {t.reattached && (
-                  <span className="badge" data-testid={`terminal-tab-${t.id}-reattached`}>
-                    reattached
-                  </span>
-                )}
-              </button>
-              <button
-                type="button"
-                className="close"
-                aria-label={`Close ${t.name}`}
-                data-testid={`terminal-tab-${t.id}-close`}
-                onClick={() => void closeTab(t.id)}
+                className="ghost"
+                aria-label="Dismiss"
+                onClick={() => store.dismissError()}
               >
                 ×
               </button>
-            </span>
-          ))}
-        </div>
-        <span className="cwd" title={active?.cwd ?? ''} data-testid="topbar-cwd">
-          {active?.cwd ?? ''}
-        </span>
-        <button type="button" data-testid="topbar-new-terminal" onClick={() => void newTerminal()}>
-          New terminal
-        </button>
-        <button type="button" data-testid="topbar-open-folder" onClick={() => void openFolder()}>
-          Open folder…
-        </button>
-      </header>
-      {error && (
-        <div className="error" role="alert" data-testid="app-error">
-          {error}
-        </div>
-      )}
-      {active ? (
-        <Terminal key={active.id} id={active.id} />
-      ) : (
-        <div className="empty" data-testid="terminal-empty">
-          {tabs.length === 0 && !error ? 'No terminals.' : ''}
-        </div>
-      )}
+            </div>
+          )
+        )}
+        {termKey !== null ? (
+          <>
+            <TopBar termKey={termKey} />
+            <TerminalTabs termKey={termKey} />
+          </>
+        ) : (
+          <ReportView />
+        )}
+      </main>
+      <Dialogs />
     </div>
+  )
+}
+
+export default function App(): React.JSX.Element {
+  const [store] = useState(() => new QueStore(window.que))
+
+  useEffect(() => {
+    store.start()
+    return () => store.stop()
+  }, [store])
+
+  return (
+    <StoreContext.Provider value={store}>
+      <Shell />
+    </StoreContext.Provider>
   )
 }

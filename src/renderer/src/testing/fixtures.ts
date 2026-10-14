@@ -1,10 +1,22 @@
 // Fixture factories for renderer tests. Same shapes as src/testing/fixtures.ts
 // (kept separate: renderer tests never import node-side test code).
-import type { Task, TermInfo, Workspace } from '../../../preload/index.d'
+import type { Project, Task, TermInfo, Workspace } from '../../../preload/index.d'
 
 let wsCounter = 0
 let taskCounter = 0
 let termCounter = 0
+
+/** The uploader repository, the project every fixture workspace belongs to by default. */
+export function makeProject(overrides: Partial<Project> = {}): Project {
+  return {
+    id: 'prj_01hzw7q2m4nb',
+    name: 'uploader',
+    path: '/Users/dev/code/uploader',
+    defaultBranch: 'main',
+    createdAt: '2026-10-13T20:58:00.000Z',
+    ...overrides
+  }
+}
 
 /** A workspace whose branch and worktree path derive from its name, status idle. */
 export function makeWorkspace(overrides: Partial<Workspace> = {}): Workspace {
@@ -24,6 +36,7 @@ export function makeWorkspace(overrides: Partial<Workspace> = {}): Workspace {
     sessionId: null,
     createdAt: '2026-10-13T21:04:00.000Z',
     archivedAt: null,
+    prUrl: null,
     ...overrides
   }
 }

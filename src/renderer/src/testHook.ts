@@ -24,6 +24,7 @@ export function installTestHook(): void {
         lines.push(buf.getLine(i)?.translateToString(true) ?? '')
       }
       return lines.join('\n')
-    }
+    },
+    trayTitle: () => window.que.app.trayTitle()
   }
 }

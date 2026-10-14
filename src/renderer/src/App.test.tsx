@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { fakeBridge } from '@renderer/testing/fake-bridge'
-import { makeTermInfo } from '@renderer/testing/fixtures'
+import { makeProject, makeTermInfo, makeWorkspace } from '@renderer/testing/fixtures'
 import App from './App'
 
 const uploader = makeTermInfo({ name: 'zsh', cwd: '/Users/dev/code/uploader' })
@@ -66,19 +66,32 @@ describe('App', () => {
       const created = (await window.que.term.list()).find((t) => t.id !== api.id)
       expect(created?.cwd).toBe('/Users/dev/code/api')
     })
+  })
 
-    it('opens a terminal in the folder picked from Open folder', async () => {
+  describe('keyboard', () => {
+    it('opens a tab with Cmd+T and closes the active one with Cmd+W', async () => {
       const user = userEvent.setup()
       fakeBridge.seedTerminal(uploader)
-      fakeBridge.setOpenFolderResult('/Users/dev/code/docs')
       render(<App />)
       await screen.findByTestId(`terminal-tab-${uploader.id}`)
 
-      await user.click(screen.getByRole('button', { name: 'Open folder…' }))
+      await user.keyboard('{Meta>}t{/Meta}')
 
       await waitFor(() => {
-        expect(screen.getByTestId('topbar-cwd')).toHaveTextContent('/Users/dev/code/docs')
+        expect(screen.getAllByRole('tab')).toHaveLength(2)
       })
+      const created = (await window.que.term.list()).find((t) => t.id !== uploader.id)
+      expect(screen.getByTestId(`terminal-tab-${created?.id}-select`)).toHaveAttribute(
+        'aria-selected',
+        'true'
+      )
+
+      await user.keyboard('{Meta>}w{/Meta}')
+
+      await waitFor(() => {
+        expect(fakeBridge.getTerminal(created?.id ?? '')).toBeUndefined()
+      })
+      expect(screen.getAllByRole('tab')).toHaveLength(1)
     })
   })
 
@@ -105,6 +118,27 @@ describe('App', () => {
       expect(await screen.findByRole('alert')).toHaveTextContent(
         'Lost connection to the que daemon.'
       )
+    })
+
+    it('disables every daemon action while disconnected', async () => {
+      const user = userEvent.setup()
+      const retry = makeWorkspace({ id: 'ws_01hzx3k9c2qf', name: 'ha-1432-retry-logic' })
+      fakeBridge.seedProject(makeProject())
+      fakeBridge.seedWorkspace(retry)
+      render(<App />)
+      await user.click(await screen.findByTestId(`sidebar-workspace-${retry.id}-open`))
+      expect(await screen.findByRole('button', { name: 'Create draft PR' })).toBeEnabled()
+
+      fakeBridge.disconnect()
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: 'Create draft PR' })).toBeDisabled()
+      })
+      for (const name of ['Open in editor', 'Hand off…', 'New terminal', 'Add project', 'Run']) {
+        expect(screen.getByRole('button', { name })).toBeDisabled()
+      }
+      expect(screen.getByRole('button', { name: 'New workspace in uploader' })).toBeDisabled()
+      expect(screen.getByRole('button', { name: '+ Task' })).toBeDisabled()
     })
   })
 })

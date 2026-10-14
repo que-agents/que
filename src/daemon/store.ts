@@ -76,7 +76,8 @@ const MIGRATIONS: string[] = [
      updated_at TEXT NOT NULL
    );
    CREATE INDEX tasks_state ON tasks(state, created_at);
-   CREATE TABLE kv (key TEXT PRIMARY KEY, value TEXT NOT NULL);`
+   CREATE TABLE kv (key TEXT PRIMARY KEY, value TEXT NOT NULL);`,
+  `ALTER TABLE workspaces ADD COLUMN pr_url TEXT;`
 ]
 
 const ID_ALPHABET = 'abcdefghijklmnopqrstuvwxyz234567'
@@ -111,6 +112,7 @@ interface WorkspaceRow {
   session_id: string | null
   created_at: string
   archived_at: string | null
+  pr_url: string | null
 }
 
 interface TaskRow {
@@ -236,7 +238,8 @@ function toWorkspace(r: WorkspaceRow): Workspace {
     lastActivityAt: r.last_activity_at,
     sessionId: r.session_id,
     createdAt: r.created_at,
-    archivedAt: r.archived_at
+    archivedAt: r.archived_at,
+    prUrl: r.pr_url ?? null
   }
 }
 
@@ -335,8 +338,8 @@ export class Store {
     this.db
       .prepare(
         `INSERT INTO workspaces (id, project_id, name, branch, path, base_ref, status, status_reason,
-           status_at, last_activity_at, session_id, created_at, archived_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+           status_at, last_activity_at, session_id, created_at, archived_at, pr_url)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         w.id,
@@ -351,7 +354,8 @@ export class Store {
         w.lastActivityAt,
         w.sessionId,
         w.createdAt,
-        w.archivedAt
+        w.archivedAt,
+        w.prUrl
       )
   }
 
@@ -390,6 +394,10 @@ export class Store {
            session_id = ? WHERE id = ?`
       )
       .run(u.status, u.reason, u.at, u.lastActivityAt, u.sessionId, id)
+  }
+
+  setWorkspacePrUrl(id: string, prUrl: string): void {
+    this.db.prepare('UPDATE workspaces SET pr_url = ? WHERE id = ?').run(prUrl, id)
   }
 
   archiveWorkspace(id: string, at: string): void {

@@ -9,7 +9,8 @@ import { git } from './workspaces'
 export type FinishResult = { ok: true; prUrl: string | null } | { ok: false; step: string }
 
 export interface FinishOptions {
-  task: Task
+  /** The commit message and PR title (`title`) and the PR summary (`resultText`). */
+  task: Pick<Task, 'title' | 'resultText'>
   workspace: Workspace
   project: Project
   /** Config `protected_branches`. */

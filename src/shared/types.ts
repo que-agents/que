@@ -30,6 +30,8 @@ export interface Workspace {
   sessionId: string | null
   createdAt: string
   archivedAt: string | null
+  /** The draft pull request opened from this workspace (workspace.createPr). */
+  prUrl: string | null
 }
 
 /** Workspace counts per status, for the tray and `que status`. */
