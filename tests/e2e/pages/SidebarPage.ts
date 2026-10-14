@@ -1,5 +1,6 @@
 // Projects → workspaces with their status badges, the loose terminals entry,
-// the report entry, and the new-workspace dialog.
+// the report entry, the project context menu, and the new-workspace and
+// remove-project dialogs.
 import { expect, type Locator, type Page } from '@playwright/test'
 
 export class SidebarPage {
@@ -13,7 +14,11 @@ export class SidebarPage {
   newWorkspaceName: Locator
   newWorkspaceSlug: Locator
   newWorkspaceSubmit: Locator
+  removeProjectDialog: Locator
+  removeProjectSubmit: Locator
   project: (id: string) => Locator
+  projectToggle: (id: string) => Locator
+  projectMenuRemove: (id: string) => Locator
   projectAddWorkspace: (id: string) => Locator
   workspace: (id: string) => Locator
   workspaceOpen: (id: string) => Locator
@@ -32,7 +37,11 @@ export class SidebarPage {
     this.newWorkspaceName = page.getByTestId('dialog-new-workspace-name')
     this.newWorkspaceSlug = page.getByTestId('dialog-new-workspace-slug')
     this.newWorkspaceSubmit = page.getByTestId('dialog-new-workspace-submit')
+    this.removeProjectDialog = page.getByTestId('dialog-remove-project')
+    this.removeProjectSubmit = page.getByTestId('dialog-remove-project-submit')
     this.project = (id: string) => page.getByTestId(`sidebar-project-${id}`)
+    this.projectToggle = (id: string) => page.getByTestId(`sidebar-project-${id}-toggle`)
+    this.projectMenuRemove = (id: string) => page.getByTestId(`sidebar-project-${id}-menu-remove`)
     this.projectAddWorkspace = (id: string) =>
       page.getByTestId(`sidebar-project-${id}-add-workspace`)
     this.workspace = (id: string) => page.getByTestId(`sidebar-workspace-${id}`)

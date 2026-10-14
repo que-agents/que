@@ -6,6 +6,12 @@ All notable changes to que are recorded here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Right-click a project or a workspace in the sidebar for its actions (the ⋯
+  button offers the same). Projects can now be removed from the app; their
+  workspaces go with them, worktrees deleted and branches kept.
+
 ### Removed
 
 - The Tonight panel in the sidebar (add task, queue control, task list) and

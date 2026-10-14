@@ -39,6 +39,7 @@ export type View = { kind: 'terminals'; key: string } | { kind: 'report' } | { k
 
 export type DialogState =
   | { kind: 'new-workspace'; projectId: string }
+  | { kind: 'remove-project'; projectId: string }
   | { kind: 'create-pr'; workspaceId: string }
   | { kind: 'remove-workspace'; workspaceId: string }
 
@@ -210,9 +211,7 @@ export class QueStore {
       project.on('project.added', (p) =>
         this.set((s) => ({ projects: mergeProjects(s.projects, [p]) }))
       ),
-      project.on('project.removed', ({ id }) =>
-        this.set((s) => ({ projects: s.projects.filter((p) => p.id !== id) }))
-      ),
+      project.on('project.removed', ({ id }) => this.set((s) => dropProject(s, id))),
       term.on('term.created', ({ id }) => void this.addTerminal(id)),
       term.on('term.killed', ({ id }) =>
         this.set((s) => ({ terminals: s.terminals.filter((t) => t.id !== id) }))
@@ -432,6 +431,12 @@ export class QueStore {
     this.showTerminals(ws.id)
   }
 
+  /** Removes the project and, with it, its workspaces (terminals killed, worktrees deleted). */
+  async removeProject(id: string): Promise<void> {
+    await this.api.project.remove({ id, force: true })
+    this.set((s) => dropProject(s, id))
+  }
+
   async removeWorkspace(id: string, deleteBranch: boolean): Promise<void> {
     await this.api.workspace.remove({ id, deleteBranch })
     this.set((s) => ({
@@ -472,6 +477,20 @@ function mergeProjects(a: readonly Project[], b: readonly Project[]): Project[] 
 
 function scratchView(): View {
   return { kind: 'terminals', key: SCRATCH }
+}
+
+/** The state without a project and its workspaces; a view on one of them goes back to scratch. */
+function dropProject(s: QueState, id: string): Partial<QueState> {
+  const gone = new Set(
+    Object.values(s.workspaces)
+      .filter((w) => w.projectId === id)
+      .map((w) => w.id)
+  )
+  return {
+    projects: s.projects.filter((p) => p.id !== id),
+    workspaces: Object.fromEntries(Object.entries(s.workspaces).filter(([k]) => !gone.has(k))),
+    view: s.view.kind === 'terminals' && gone.has(s.view.key) ? scratchView() : s.view
+  }
 }
 
 /** Appends the tabs not already present, keeping creation order. */
