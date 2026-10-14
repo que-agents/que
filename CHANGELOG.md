@@ -8,6 +8,9 @@ All notable changes to que are recorded here. The format follows
 
 ### Changed
 
+- The window no longer has a native title bar: the app's chrome runs to the
+  top, the traffic lights sit over the sidebar, and that strip and the top
+  bar's empty space drag the window.
 - A new look: a black-and-grey dark theme with hairline borders and
   dashed guide lines between regions, system sans for reading and mono for
   labels and metadata, one coral accent, and status shown as a dot and a
