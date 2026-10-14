@@ -1,11 +1,14 @@
 // Daemon smoke check: with a fresh QUE_HOME, start the daemon through the
 // client, run a one-shot PTY, wait for its marker, then shut the daemon down.
-import { mkdtempSync } from 'node:fs'
+import { mkdtempSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import os from 'node:os'
 import { join } from 'node:path'
 
 process.env.QUE_HOME = mkdtempSync(join(os.tmpdir(), 'que-smoke-'))
+// Never the user's config; quiet hours off so the smoke check runs at any hour.
+process.env.QUE_CONFIG = join(process.env.QUE_HOME, 'config.toml')
+writeFileSync(process.env.QUE_CONFIG, '[quiet_hours]\nenabled = false\n')
 const require = createRequire(import.meta.url)
 const { DaemonClient } = require('../out/client/index.js')
 

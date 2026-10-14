@@ -8,14 +8,24 @@ import type { DaemonClient } from '../shared/client'
 import { formatConfigErrors, loadConfig } from '../shared/config'
 import { queHome, quePaths } from '../shared/paths'
 import type { WorkspaceStatusEvent } from '../shared/protocol'
-import type { Project, Workspace } from '../shared/types'
+import type { Project, QuietState, Workspace } from '../shared/types'
 import { attach } from './attach'
-import { CliError, findProject, findWorkspace, formatAge, printTable, withClient } from './common'
+import {
+  assertNotQuiet,
+  CliError,
+  findProject,
+  findWorkspace,
+  formatAge,
+  printTable,
+  withClient
+} from './common'
+import { describeQuietState } from './quiet'
 
 /** The JSON shape of `que status --json`. */
 export interface StatusJson {
   summary: ReturnType<typeof summarize>
   tray: string
+  quiet: QuietState
   workspaces: Array<{
     id: string
     name: string
@@ -200,6 +210,7 @@ export function registerWorkspaceCommands(program: Command): void {
     .option('--new', 'always open a new terminal')
     .action((ref: string, opts: { new?: boolean }) =>
       withClient(async (c) => {
+        await assertNotQuiet(c)
         console.log(await workspaceTerminal(c, await findWorkspace(c, ref), opts.new === true))
       })
     )
@@ -210,15 +221,17 @@ export function registerWorkspaceCommands(program: Command): void {
     .option('--json', 'print JSON')
     .action((opts: { json?: boolean }) =>
       withClient(async (c) => {
-        const [list, projects] = await Promise.all([
+        const [list, projects, quiet] = await Promise.all([
           c.request('workspace.list'),
-          c.request('project.list')
+          c.request('project.list'),
+          c.request('quiet.state')
         ])
         const summary = summarize(list)
         if (opts.json) {
           const out: StatusJson = {
             summary,
             tray: trayTitle(summary),
+            quiet,
             workspaces: list.map((w) => ({
               id: w.id,
               name: w.name,
@@ -234,6 +247,7 @@ export function registerWorkspaceCommands(program: Command): void {
           }
           return console.log(JSON.stringify(out, null, 2))
         }
+        if (quiet.inQuietHours) console.log(describeQuietState(quiet))
         console.log(
           `${trayTitle(summary)}   working ${summary.working} · needs input ${summary.needs_input} · stuck ${summary.stuck} · idle ${summary.idle} · exited ${summary.exited} · preparing ${summary.preparing}`
         )
@@ -267,6 +281,7 @@ export function registerWorkspaceCommands(program: Command): void {
     .description('open the workspace with `code -n`')
     .action((ref: string) =>
       withClient(async (c) => {
+        await assertNotQuiet(c)
         await openInEditor((await findWorkspace(c, ref)).path)
       }, false)
     )

@@ -2,7 +2,17 @@
 // Newline-delimited JSON over a unix socket. Requests carry an id; responses
 // echo it. Events are server-pushed and carry no id.
 
-import type { Project, Task, TaskSource, TaskState, Workspace, WorkspaceStatus } from './types'
+import type {
+  Project,
+  QuietState,
+  QuietUnlock,
+  Task,
+  TaskSource,
+  TaskState,
+  UserConfig,
+  Workspace,
+  WorkspaceStatus
+} from './types'
 
 export const PROTOCOL_VERSION = 1
 
@@ -214,6 +224,33 @@ export interface WorkspaceStatusEvent {
   at: string
 }
 
+export interface QuietUnlockParams {
+  /** Defaults to quiet_hours.unlock_minutes. */
+  minutes?: number
+  /** Why, for the unlock log. */
+  why?: string
+}
+
+export interface QuietLogParams {
+  /** ISO time; defaults to everything. */
+  since?: string
+}
+
+export interface ConfigGetResult {
+  /** The config file (QUE_CONFIG or ~/.config/que/config.toml). */
+  path: string
+  config: UserConfig
+  /** The file as a TOML table (snake_case keys), the shape config.set patches. */
+  raw: Record<string, unknown>
+}
+
+export interface ConfigSetParams {
+  /** Deep-merged into the file's table; `null` removes a key. */
+  patch: Record<string, unknown>
+  /** Let a change that shortens or removes tonight's window apply now. */
+  applyTonight?: boolean
+}
+
 /** Maps each method name to its params and result types. */
 export interface Methods {
   'daemon.ping': { params: Record<string, never> | undefined; result: PingResult }
@@ -246,7 +283,29 @@ export interface Methods {
   'queue.state': { params: Record<string, never> | undefined; result: QueueState }
   'report.get': { params: ReportParams | undefined; result: Report }
   'handoff.create': { params: HandoffCreateParams; result: Task }
+  'quiet.state': { params: Record<string, never> | undefined; result: QuietState }
+  'quiet.unlock': { params: QuietUnlockParams | undefined; result: QuietState }
+  'quiet.lock': { params: Record<string, never> | undefined; result: QuietState }
+  'quiet.log': { params: QuietLogParams | undefined; result: QuietUnlock[] }
+  'config.get': { params: Record<string, never> | undefined; result: ConfigGetResult }
+  'config.set': { params: ConfigSetParams; result: ConfigGetResult }
 }
+
+/**
+ * Refused with `quiet_hours` while quiet hours are on and not unlocked: every
+ * way to see a terminal, its output, or a report, or to start new work.
+ */
+export const QUIET_REFUSED_METHODS = [
+  'term.attach',
+  'term.snapshot',
+  'term.create',
+  'workspace.openTerminal',
+  'workspace.createPr',
+  'report.get',
+  'handoff.create',
+  'task.add',
+  'queue.open'
+] as const satisfies readonly MethodName[]
 
 export type MethodName = keyof Methods
 export type ParamsOf<M extends MethodName> = Methods[M]['params']
@@ -269,6 +328,12 @@ export interface Events {
   /** Cost, turns, session, branch, or PR changed. */
   'task.updated': Task
   'queue.state': QueueState
+  'project.added': Project
+  'project.removed': { id: string }
+  'quiet.changed': QuietState
+  /** Once, when a quiet window ends and notifications.morning_summary is on. */
+  'quiet.morningSummary': { report: Report }
+  'config.changed': ConfigGetResult
 }
 
 export type EventName = keyof Events
@@ -301,7 +366,8 @@ export const ErrorCodes = {
   UnknownMethod: 'unknown_method',
   NotFound: 'not_found',
   Conflict: 'conflict',
-  Internal: 'internal'
+  Internal: 'internal',
+  QuietHours: 'quiet_hours'
 } as const
 
 // ---- framing --------------------------------------------------------------

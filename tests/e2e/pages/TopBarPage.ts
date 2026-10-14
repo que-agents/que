@@ -19,6 +19,8 @@ export class TopBarPage {
   handoffDialog: Locator
   handoffBrief: Locator
   handoffSubmit: Locator
+  unlockCountdown: Locator
+  lockButton: Locator
 
   constructor(page: Page) {
     this.page = page
@@ -37,5 +39,7 @@ export class TopBarPage {
     this.handoffDialog = page.getByTestId('dialog-handoff')
     this.handoffBrief = page.getByTestId('dialog-handoff-brief')
     this.handoffSubmit = page.getByTestId('dialog-handoff-submit')
+    this.unlockCountdown = page.getByTestId('topbar-unlock-countdown')
+    this.lockButton = page.getByTestId('topbar-lock')
   }
 }

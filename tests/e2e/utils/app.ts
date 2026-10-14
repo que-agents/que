@@ -69,13 +69,18 @@ function readLog(path: string): string[][] {
     .map((l) => (JSON.parse(l) as { argv: string[] }).argv)
 }
 
-/** A fresh QUE_HOME, for specs that seed state with the CLI before launching. */
-export function newQueHome(): string {
+/**
+ * A fresh QUE_HOME, for specs that seed state with the CLI before launching.
+ * Its config.toml turns quiet hours off (they default to on in the evening)
+ * unless the spec passes its own config.
+ */
+export function newQueHome(config = '[quiet_hours]\nenabled = false\n'): string {
   const queHome = mkdtempSync(join(os.tmpdir(), 'que-e2e-'))
   writeFileSync(
     join(queHome, 'gitconfig'),
     '[user]\n\tname = que e2e\n\temail = e2e@que.invalid\n[commit]\n\tgpgsign = false\n'
   )
+  writeFileSync(join(queHome, 'config.toml'), config)
   return queHome
 }
 
@@ -108,4 +113,31 @@ export async function launchApp(
       }
     }
   }
+}
+
+/** Every app window as the main process sees it: its URL and whether it is shown. */
+export async function windowStates(
+  app: ElectronApplication
+): Promise<Array<{ board: boolean; visible: boolean }>> {
+  return app.evaluate(({ BrowserWindow }) =>
+    BrowserWindow.getAllWindows().map((w) => ({
+      board: w.webContents.getURL().endsWith('#board'),
+      visible: w.isVisible()
+    }))
+  )
+}
+
+/** The open window that is (or is not) the quiet board, found by its URL hash. */
+export async function findWindow(app: ElectronApplication, board: boolean): Promise<Page> {
+  let found: Page | undefined
+  await expect
+    .poll(
+      () => {
+        found = app.windows().find((w) => !w.isClosed() && w.url().endsWith('#board') === board)
+        return found !== undefined
+      },
+      { message: `no ${board ? 'quiet board' : 'main'} window` }
+    )
+    .toBe(true)
+  return found as Page
 }

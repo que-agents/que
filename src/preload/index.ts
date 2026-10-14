@@ -35,7 +35,20 @@ const api: QueApi = {
   project: {
     add: (p) => call('project.add', p),
     list: () => call('project.list'),
-    remove: (p) => call('project.remove', p)
+    remove: (p) => call('project.remove', p),
+    on: (event, cb) => subscribe(event, cb as (data: unknown) => void)
+  },
+  quiet: {
+    state: () => call('quiet.state'),
+    unlock: (p) => call('quiet.unlock', p),
+    lock: () => call('quiet.lock'),
+    log: (p) => call('quiet.log', p),
+    on: (event, cb) => subscribe(event, cb as (data: unknown) => void)
+  },
+  config: {
+    get: () => call('config.get'),
+    set: (p) => call('config.set', p),
+    on: (event, cb) => subscribe(event, cb as (data: unknown) => void)
   },
   workspace: {
     create: (p) => call('workspace.create', p),

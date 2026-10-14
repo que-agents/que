@@ -1,9 +1,12 @@
 import { spawn } from 'node:child_process'
 import os from 'node:os'
 import { join } from 'node:path'
-import { app, BrowserWindow, dialog, ipcMain, Menu, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, Menu, Notification, shell } from 'electron'
+import { formatCost } from '../daemon/report'
 import { DaemonClient } from '../shared/client'
-import type { EventName, MethodName } from '../shared/protocol'
+import type { EventName, MethodName, Report } from '../shared/protocol'
+import type { QuietState } from '../shared/types'
+import { createBoardWindow } from './board'
 import { createTray, type QueTray } from './tray'
 
 // The daemon owns every terminal and workspace. This process only proxies the
@@ -11,6 +14,9 @@ import { createTray, type QueTray } from './tray'
 // quitting leaves terminals alive.
 
 let mainWindow: BrowserWindow | null = null
+/** The quiet board, while quiet hours are locked. */
+let boardWindow: BrowserWindow | null = null
+let quiet: QuietState | null = null
 let client: DaemonClient | null = null
 let connecting: Promise<DaemonClient> | null = null
 let tray: QueTray | null = null
@@ -44,7 +50,13 @@ const ALLOWED: ReadonlySet<MethodName> = new Set<MethodName>([
   'queue.close',
   'queue.state',
   'report.get',
-  'handoff.create'
+  'handoff.create',
+  'quiet.state',
+  'quiet.unlock',
+  'quiet.lock',
+  'quiet.log',
+  'config.get',
+  'config.set'
 ])
 const FORWARDED_EVENTS: EventName[] = [
   'term.data',
@@ -58,7 +70,11 @@ const FORWARDED_EVENTS: EventName[] = [
   'task.created',
   'task.status',
   'task.updated',
-  'queue.state'
+  'queue.state',
+  'project.added',
+  'project.removed',
+  'quiet.changed',
+  'config.changed'
 ]
 /** Events after which the tray title is recomputed. */
 const TRAY_EVENTS: EventName[] = [
@@ -80,6 +96,9 @@ function getClient(): Promise<DaemonClient> {
         }
         for (const ev of TRAY_EVENTS) c.on(ev, () => tray?.refresh(c))
         tray?.refresh(c)
+        c.on('quiet.changed', (q) => applyQuiet(q))
+        c.on('quiet.morningSummary', ({ report }) => morningSummary(report))
+        void c.request('quiet.state').then(applyQuiet, () => {})
         c.onClose(() => {
           if (client === c) client = null
           sendToRenderer('que:event', 'daemon.disconnected', {})
@@ -93,13 +112,72 @@ function getClient(): Promise<DaemonClient> {
   return connecting
 }
 
+/** Quiet hours are on and detail is not unlocked: only the board shows. */
+function isLocked(): boolean {
+  return Boolean(quiet?.inQuietHours && !quiet.unlockedUntil)
+}
+
+function showBoard(): void {
+  if (!boardWindow || boardWindow.isDestroyed()) {
+    boardWindow = createBoardWindow({ e2e })
+    boardWindow.on('closed', () => {
+      boardWindow = null
+    })
+    const win = boardWindow
+    win.once('ready-to-show', () => {
+      if (win.isDestroyed() || !isLocked()) return
+      if (e2e) win.showInactive()
+      else win.show()
+    })
+  } else if (e2e) boardWindow.showInactive()
+  else boardWindow.show()
+}
+
+function closeBoard(): void {
+  const win = boardWindow
+  boardWindow = null
+  if (win && !win.isDestroyed()) win.close()
+}
+
+/**
+ * Locked: the main window hides (its terminals stay running in the daemon)
+ * and the board shows. Unlocked or work hours: the reverse, with no prompt.
+ */
+function applyQuiet(q: QuietState): void {
+  const wasLocked = isLocked()
+  quiet = q
+  tray?.setQuiet(q)
+  if (isLocked()) {
+    mainWindow?.hide()
+    showBoard()
+  } else {
+    closeBoard()
+    if (wasLocked) showWindow()
+  }
+}
+
+/** One notification with the night's totals, when quiet hours end. */
+function morningSummary(report: Report): void {
+  if (e2e || !Notification.isSupported()) return
+  const g = report.groups
+  const body = [
+    `${g.done.length} done`,
+    `${g.stuck.length} stuck`,
+    `${g.failed.length} failed`,
+    `${report.totals.prs} PRs`,
+    formatCost(report.totals.costUsd)
+  ].join(' · ')
+  new Notification({ title: 'que · good morning', body }).show()
+}
+
 function createWindow(): void {
   mainWindow = new BrowserWindow({
     width: 1100,
     height: 720,
     // Under e2e the window must not steal OS focus, or stray keystrokes from
-    // the desktop land in the terminal under test.
-    show: !e2e,
+    // the desktop land in the terminal under test. During quiet hours it
+    // starts hidden behind the board.
+    show: !e2e && !isLocked(),
     backgroundColor: '#1e1e1e',
     title: 'que',
     webPreferences: {
@@ -111,7 +189,7 @@ function createWindow(): void {
       additionalArguments: e2e ? ['--que-e2e'] : []
     }
   })
-  if (e2e) mainWindow.showInactive()
+  if (e2e && !isLocked()) mainWindow.showInactive()
 
   mainWindow.on('closed', () => {
     mainWindow = null
@@ -136,6 +214,12 @@ function createWindow(): void {
   } else {
     void mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
   }
+}
+
+/** Brings que forward: the board while locked, else the main window. */
+function showApp(): void {
+  if (isLocked()) showBoard()
+  else showWindow()
 }
 
 function showWindow(): void {
@@ -166,12 +250,15 @@ function installMenu(): void {
 }
 
 function sendToRenderer(channel: string, ...args: unknown[]): void {
-  const wc = mainWindow?.webContents
-  if (!wc || wc.isDestroyed() || wc.isCrashed()) return
-  try {
-    wc.send(channel, ...args)
-  } catch {
-    // The frame can be torn down mid-send during shutdown or reload.
+  for (const win of [mainWindow, boardWindow]) {
+    if (!win || win.isDestroyed()) continue
+    const wc = win.webContents
+    if (wc.isDestroyed() || wc.isCrashed()) continue
+    try {
+      wc.send(channel, ...args)
+    } catch {
+      // The frame can be torn down mid-send during shutdown or reload.
+    }
   }
 }
 
@@ -223,15 +310,27 @@ function registerIpc(): void {
 app.whenReady().then(async () => {
   registerIpc()
   installMenu()
-  tray = createTray({ show: showWindow, quit: () => app.quit() })
+  const quietCall = (method: 'quiet.unlock' | 'quiet.lock'): void => {
+    void getClient()
+      .then((c) => c.request(method))
+      .catch((err) => console.error(`${method} failed:`, err))
+  }
+  tray = createTray({
+    show: showApp,
+    quit: () => app.quit(),
+    unlock: () => quietCall('quiet.unlock'),
+    lock: () => quietCall('quiet.lock')
+  })
   try {
-    await getClient()
+    const c = await getClient()
+    applyQuiet(await c.request('quiet.state'))
   } catch (err) {
     console.error('failed to reach que daemon:', err)
   }
-  createWindow()
+  if (!mainWindow) createWindow()
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow()
+    if (!mainWindow) createWindow()
+    showApp()
   })
 })
 

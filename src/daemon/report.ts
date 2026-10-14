@@ -3,14 +3,15 @@
 import type { Report, ReportEntry, ReportGroup } from '../shared/protocol'
 import type { Task, TaskState } from '../shared/types'
 
+/** Reading order: outcomes first, what still needs a look next, stopped last. */
 export const REPORT_GROUPS: ReportGroup[] = [
   'done',
   'stuck',
   'failed',
-  'stopped',
   'paused',
   'running',
-  'queued'
+  'queued',
+  'stopped'
 ]
 
 const GROUP_OF: Record<TaskState, ReportGroup> = {
@@ -129,8 +130,8 @@ const HEADINGS: Record<ReportGroup, string> = {
   queued: 'Queued'
 }
 
-/** The report as plain text for `que report`. */
-export function formatReport(r: Report): string {
+/** The report as plain text for `que report`, with the unlocks line when given. */
+export function formatReport(r: Report, unlocks?: string): string {
   const lines = [`que report since ${r.since}`]
   for (const g of REPORT_GROUPS) {
     const list = r.groups[g]
@@ -150,6 +151,7 @@ export function formatReport(r: Report): string {
     }
   }
   if (r.totals.tasks === 0) lines.push('', 'No tasks in this window.')
+  if (unlocks) lines.push('', unlocks)
   lines.push(
     '',
     `Total: ${r.totals.tasks} tasks · ${r.totals.prs} PRs · ${r.totals.turns} turns · ${formatCost(r.totals.costUsd)} · ${formatDuration(r.totals.durationMs)}`
