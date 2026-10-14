@@ -185,6 +185,58 @@ export function CreatePrDialog({
   )
 }
 
+export function RemoveProjectDialog({
+  project,
+  onClose
+}: {
+  project: Project
+  onClose: () => void
+}): React.JSX.Element {
+  const store = useStore()
+  const { connected, workspaces } = useQue()
+  const { busy, error, run } = useSubmit()
+  const id = 'dialog-remove-project'
+  const count = Object.values(workspaces).filter((w) => w.projectId === project.id).length
+
+  const submit = (e: FormEvent): void => {
+    e.preventDefault()
+    void run(async () => {
+      await store.removeProject(project.id)
+      onClose()
+    })
+  }
+
+  return (
+    <Dialog title={`Remove ${project.name}?`} testId={id} onClose={onClose}>
+      <form onSubmit={submit}>
+        <p className="hint">
+          que forgets the repository at {project.path}; the repository itself is not touched.
+        </p>
+        {count > 0 && (
+          <p className="hint" data-testid={`${id}-workspaces`}>
+            Its {count} {count === 1 ? 'workspace is' : 'workspaces are'} removed too: terminals
+            killed and worktrees deleted. Branches are kept.
+          </p>
+        )}
+        <FormError error={error} testId={id} />
+        <div className="dialog-actions">
+          <button type="button" onClick={onClose}>
+            Cancel
+          </button>
+          <button
+            type="submit"
+            className="danger"
+            data-testid={`${id}-submit`}
+            disabled={busy || !connected}
+          >
+            Remove
+          </button>
+        </div>
+      </form>
+    </Dialog>
+  )
+}
+
 export function RemoveWorkspaceDialog({
   workspace,
   onClose
