@@ -4,9 +4,11 @@
 'use strict'
 
 const fs = require('node:fs')
+const { spawnSync } = require('node:child_process')
 
 const argv = process.argv.slice(2)
 const log = process.env.QUE_FAKE_GH_LOG
+const prsFile = process.env.QUE_FAKE_GH_PRS
 
 function priorPrCreates() {
   if (!log || !fs.existsSync(log)) return 0
@@ -22,6 +24,20 @@ function priorPrCreates() {
       }
     })
     .filter((a) => Array.isArray(a) && a[0] === 'pr' && a[1] === 'create').length
+}
+
+function readPrs() {
+  if (!prsFile || !fs.existsSync(prsFile)) return {}
+  try {
+    return JSON.parse(fs.readFileSync(prsFile, 'utf8'))
+  } catch {
+    return {}
+  }
+}
+
+function flag(name) {
+  const i = argv.indexOf(name)
+  return i >= 0 ? argv[i + 1] : undefined
 }
 
 const prNumber = priorPrCreates() + 1
@@ -43,7 +59,38 @@ if (cmd === 'auth' && sub === 'status') {
     ].join('\n')
   )
 } else if (cmd === 'pr' && sub === 'create') {
-  process.stdout.write(`https://github.com/rquellh/que/pull/${prNumber}\n`)
+  const url = `https://github.com/rquellh/que/pull/${prNumber}`
+  if (prsFile) {
+    const head = spawnSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], {
+      cwd: process.cwd(),
+      encoding: 'utf8'
+    }).stdout.trim()
+    if (head) {
+      const prs = readPrs()
+      prs[head] = {
+        number: prNumber,
+        url,
+        title: flag('--title') ?? '',
+        state: 'OPEN',
+        isDraft: argv.includes('--draft'),
+        headRefName: head,
+        reviewDecision: '',
+        statusCheckRollup: [],
+        mergedAt: null
+      }
+      fs.writeFileSync(prsFile, JSON.stringify(prs, null, 2))
+    }
+  }
+  process.stdout.write(`${url}\n`)
+} else if (cmd === 'pr' && sub === 'list') {
+  if (process.env.QUE_FAKE_GH_FAIL) {
+    process.stderr.write('gh: failed (fake)\n')
+    process.exit(1)
+  }
+  const entry = readPrs()[flag('--head') ?? '']
+  const fields = (flag('--json') ?? '').split(',').filter(Boolean)
+  const out = entry ? [Object.fromEntries(fields.filter((f) => f in entry).map((f) => [f, entry[f]]))] : []
+  process.stdout.write(`${JSON.stringify(out)}\n`)
 } else if (cmd === '--version') {
   process.stdout.write('gh version 2.80.0 (2026-09-01)\n')
 }

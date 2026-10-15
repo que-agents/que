@@ -86,6 +86,7 @@ it and the daemon reloads at once. Every key, with its default
 worktree_root = "~/.que/worktrees"
 stall_timeout_minutes = 5
 status_poll_seconds = 10
+pr_poll_seconds = 60
 concurrency = 2
 max_turns = 50
 max_budget_usd = 5

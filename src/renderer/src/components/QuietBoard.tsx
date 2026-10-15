@@ -11,6 +11,7 @@ interface Row {
   name: string
   project: string
   state: string
+  pr: string
   elapsedMs: number | null
   lastActivity: string | null
   turns: number | null
@@ -61,6 +62,7 @@ export default function QuietBoard(): React.JSX.Element {
       name: t.title,
       project: projectName(t.projectId),
       state: t.state,
+      pr: '-',
       elapsedMs: t.startedAt ? now - Date.parse(t.startedAt) : null,
       lastActivity: t.lastActivityAt,
       turns: t.turns,
@@ -74,6 +76,7 @@ export default function QuietBoard(): React.JSX.Element {
         name: w.name,
         project: projectName(w.projectId),
         state: w.status,
+        pr: w.pr ? `${w.pr.state}${w.pr.checks === 'failing' ? ' ✕' : ''}` : '-',
         elapsedMs: now - Math.min(...terms.map((t) => Date.parse(t.createdAt))),
         lastActivity: w.lastActivityAt,
         turns: null,
@@ -111,6 +114,7 @@ export default function QuietBoard(): React.JSX.Element {
                 <th scope="col">Name</th>
                 <th scope="col">Project</th>
                 <th scope="col">State</th>
+                <th scope="col">PR</th>
                 <th scope="col">Elapsed</th>
                 <th scope="col">Last activity</th>
                 <th scope="col">Turns</th>
@@ -123,6 +127,7 @@ export default function QuietBoard(): React.JSX.Element {
                   <td className="name">{r.name}</td>
                   <td>{r.project}</td>
                   <td className={`state state-${r.state}`}>{r.state.replace('_', ' ')}</td>
+                  <td className="state">{r.pr}</td>
                   <td>{r.elapsedMs === null ? '-' : formatDuration(r.elapsedMs)}</td>
                   <td>{formatAge(r.lastActivity, now)}</td>
                   <td>{r.turns ?? '-'}</td>

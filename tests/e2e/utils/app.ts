@@ -41,6 +41,7 @@ export function testEnv(
     QUE_E2E: '1',
     PATH: `${FAKES_BIN}:${env.PATH}`,
     QUE_FAKE_GH_LOG: join(queHome, 'fake-gh.log'),
+    QUE_FAKE_GH_PRS: join(queHome, 'fake-gh-prs.json'),
     QUE_FAKE_CODE_LOG: join(queHome, 'fake-code.log'),
     QUE_FAKE_CLAUDE_TRANSCRIPT_DIR: join(queHome, 'fake-claude-transcripts'),
     // Never the user's own config file.
