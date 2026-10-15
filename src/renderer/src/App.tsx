@@ -13,10 +13,11 @@ import SettingsView from './components/SettingsView'
 import TicketsView from './components/TicketsView'
 import Sidebar from './components/Sidebar'
 import SidebarResizer, { useSidebarWidth } from './components/SidebarResizer'
+import ChangesView from './components/ChangesView'
 import Panes from './components/Panes'
 import TopBar from './components/TopBar'
 import UpdateBanner from './components/UpdateBanner'
-import { isLocked, QueStore, StoreContext, useQue, useStore } from './store'
+import { isLocked, SCRATCH, QueStore, StoreContext, useQue, useStore } from './store'
 
 function Dialogs(): React.JSX.Element | null {
   const store = useStore()
@@ -58,7 +59,7 @@ function Locked(): React.JSX.Element {
 
 function Shell(): React.JSX.Element {
   const store = useStore()
-  const { view, error, dialog, connected, quiet } = useQue()
+  const { view, error, dialog, connected, quiet, changesOpen } = useQue()
   const [sidebarWidth, setSidebarWidth] = useSidebarWidth()
   const locked = isLocked(quiet)
   const termKey = view.kind === 'terminals' && !locked ? view.key : null
@@ -132,7 +133,11 @@ function Shell(): React.JSX.Element {
         ) : termKey !== null ? (
           <>
             <TopBar termKey={termKey} />
-            <Panes termKey={termKey} />
+            {termKey !== SCRATCH && changesOpen[termKey] ? (
+              <ChangesView termKey={termKey} />
+            ) : (
+              <Panes termKey={termKey} />
+            )}
           </>
         ) : view.kind === 'settings' ? (
           <SettingsView />
