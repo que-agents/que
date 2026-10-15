@@ -116,7 +116,10 @@ const MIGRATIONS: string[] = [
      synced_at TEXT NOT NULL,
      workspace_id TEXT
    );`,
-  `ALTER TABLE tickets ADD COLUMN position INTEGER NOT NULL DEFAULT 0;`
+  `ALTER TABLE tickets ADD COLUMN position INTEGER NOT NULL DEFAULT 0;`,
+  `ALTER TABLE tickets ADD COLUMN parent_key TEXT;`,
+  `ALTER TABLE tickets ADD COLUMN level TEXT NOT NULL DEFAULT 'standard';`,
+  `ALTER TABLE tickets ADD COLUMN assigned INTEGER NOT NULL DEFAULT 1;`
 ]
 
 const STATUS_LOG_RETENTION_MS = 30 * 24 * 3_600_000
@@ -138,6 +141,9 @@ export function newId(prefix: 'prj_' | 'ws_' | 'tsk_'): string {
 }
 
 interface TicketRow {
+  parent_key: string | null
+  level: string
+  assigned: number
   key: string
   summary: string
   status: string
@@ -163,6 +169,9 @@ function ticketFromRow(r: TicketRow): Ticket {
     // Unreadable labels are no labels.
   }
   return {
+    parentKey: r.parent_key ?? null,
+    level: r.level === 'epic' || r.level === 'subtask' ? r.level : 'standard',
+    assigned: r.assigned !== 0,
     key: r.key,
     summary: r.summary,
     status: r.status,
@@ -679,14 +688,16 @@ export class Store {
   upsertTickets(tickets: Ticket[]): void {
     const stmt = this.db.prepare(
       `INSERT INTO tickets (key, summary, status, status_category, priority, type, assignee,
-         project_key, project_name, url, labels_json, updated_at, synced_at, position)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         project_key, project_name, url, labels_json, updated_at, synced_at, position,
+         parent_key, level, assigned)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(key) DO UPDATE SET summary = excluded.summary, status = excluded.status,
          status_category = excluded.status_category, priority = excluded.priority,
          type = excluded.type, assignee = excluded.assignee, project_key = excluded.project_key,
          project_name = excluded.project_name, url = excluded.url,
          labels_json = excluded.labels_json, updated_at = excluded.updated_at,
-         synced_at = excluded.synced_at, position = excluded.position`
+         synced_at = excluded.synced_at, position = excluded.position,
+         parent_key = excluded.parent_key, level = excluded.level, assigned = excluded.assigned`
     )
     this.db.exec('BEGIN')
     try {
@@ -705,7 +716,10 @@ export class Store {
           JSON.stringify(t.labels),
           t.updatedAt,
           t.syncedAt,
-          position
+          position,
+          t.parentKey,
+          t.level,
+          t.assigned ? 1 : 0
         )
       }
       this.db.exec('COMMIT')

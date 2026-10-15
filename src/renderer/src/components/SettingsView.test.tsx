@@ -223,6 +223,7 @@ describe('SettingsView tickets', () => {
       jira: {
         jql: 'assignee = currentUser()',
         pollMinutes: 7,
+        site: null,
         startPrompt: 'Plan first.',
         projects: { APP: 'uploader', WEB: 'site' }
       }
