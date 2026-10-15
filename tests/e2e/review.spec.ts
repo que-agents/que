@@ -2,12 +2,15 @@
 // edited in its worktree; the top bar's toggle opens the review pane on Changes,
 // a full-height column at the window's right edge beside the terminals, which
 // stay as they are; clicking the file opens its diff as a
-// tab beside the terminal tab (once, however often it is clicked); the pane
+// tab beside the terminal tab (once, however often it is clicked); with the
+// edit and a second file committed, the Commits menu narrows the list to one
+// commit and back, and the base menu compares against another branch; the pane
 // drags wider; Pull request shows no pull request, then one appears (through
 // the fake GitHub CLI) with its checks and conversation, and Refresh picks up a
 // new comment; the app quits and relaunches on the same home and the pane, its
-// tab, its width and the diff tab come back; ⌘W closes the diff tab, and the
+// tab, its width, the chosen base and the diff tab come back; ⌘W closes the diff tab, and the
 // pane closes and opens again on the tab it was left on.
+import { execFileSync } from 'node:child_process'
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { expect, test } from '@playwright/test'
@@ -33,6 +36,23 @@ import { makeRepo } from './utils/repo'
 
 let launched: LaunchedApp
 
+/** Runs git in a directory and returns its trimmed output; commits as a fixed test author. */
+function git(dir: string, ...args: string[]): string {
+  return execFileSync(
+    'git',
+    [
+      '-c',
+      'user.name=que e2e',
+      '-c',
+      'user.email=e2e@que.invalid',
+      '-c',
+      'commit.gpgsign=false',
+      ...args
+    ],
+    { cwd: dir, encoding: 'utf8' }
+  ).trim()
+}
+
 test.afterEach(async () => {
   await launched?.close() // quits the app AND stops the test daemon
 })
@@ -54,6 +74,8 @@ test('The review pane lists the changes beside the terminals, opens diffs as tab
   let pr: PullRequestPage
   let termId = ''
   let widened = 0
+  let sha1 = ''
+  let sha2 = ''
 
   const pages = (): void => {
     shell = new AppShellPage(launched.window)
@@ -143,6 +165,71 @@ test('The review pane lists the changes beside the terminals, opens diffs as tab
     await expect(diff.tabs).toHaveCount(1)
     await expect(diff.tab('README.md')).toHaveAttribute('data-active', 'true')
     await expect(diff.patch).toContainText('+Retries with backoff.')
+  })
+
+  await test.step('Two commits: the summary counts them and the list shows both files', async () => {
+    git(workspace.path, 'add', 'README.md')
+    git(workspace.path, 'commit', '--quiet', '-m', 'Document retries')
+    writeFileSync(join(workspace.path, 'NOTES.md'), '# notes\n\nBackoff caps at 30s.\n')
+    git(workspace.path, 'add', 'NOTES.md')
+    git(workspace.path, 'commit', '--quiet', '-m', 'Add notes')
+    sha2 = git(workspace.path, 'rev-parse', 'HEAD')
+    sha1 = git(workspace.path, 'rev-parse', 'HEAD~1')
+    await changes.refresh.click()
+    await expect(changes.summary).toHaveText('Commits 2 vs origin/main')
+    await expect(changes.summary).toHaveAttribute('title', /· 2 files ·/)
+    await expect(changes.file(0)).toHaveAttribute('data-path', 'NOTES.md')
+    await expect(changes.file(1)).toHaveAttribute('data-path', 'README.md')
+    await expect(changes.file(2)).toHaveCount(0)
+  })
+
+  await test.step('The Commits menu narrows the list to one commit, and All commits restores it', async () => {
+    await changes.commitsMenu.click()
+    await expect(changes.commitItems).toHaveCount(3)
+    await expect(changes.commitItems.nth(0)).toHaveAttribute('data-testid', 'changes-commit-all')
+    await expect(changes.commitAll).toHaveAttribute('aria-checked', 'true')
+    await expect(changes.commitItems.nth(1)).toHaveAttribute(
+      'data-testid',
+      `changes-commit-${sha2}`
+    )
+    await expect(changes.commitItems.nth(2)).toHaveAttribute(
+      'data-testid',
+      `changes-commit-${sha1}`
+    )
+    await expect(changes.commit(sha2)).toContainText(`${sha2.slice(0, 7)} Add notes`)
+    await expect(changes.commit(sha1)).toContainText(`${sha1.slice(0, 7)} Document retries`)
+    await expect(changes.commit(sha1)).toHaveAttribute('aria-checked', 'false')
+    await changes.commit(sha1).click()
+    await expect(changes.commitItems).toHaveCount(0)
+    await expect(changes.summary).toHaveText(`Commit ${sha1.slice(0, 7)} vs origin/main`)
+    await expect(changes.commits).toHaveText(sha1.slice(0, 7))
+    await expect(changes.file(0)).toHaveAttribute('data-path', 'README.md')
+    await expect(changes.file(1)).toHaveCount(0)
+    await expect(diff.tab('README.md')).toHaveAttribute('data-active', 'true')
+    await expect(diff.patch).toContainText('+Retries with backoff.')
+    await changes.commitsMenu.click()
+    await expect(changes.commit(sha1)).toHaveAttribute('aria-checked', 'true')
+    await changes.commitAll.click()
+    await expect(changes.summary).toHaveText('Commits 2 vs origin/main')
+    await expect(changes.file(0)).toHaveAttribute('data-path', 'NOTES.md')
+    await expect(changes.file(1)).toHaveAttribute('data-path', 'README.md')
+  })
+
+  await test.step('The base menu compares against another branch', async () => {
+    git(repo, 'branch', 'release', sha1)
+    await changes.refresh.click()
+    await changes.baseMenu.click()
+    await expect(changes.baseOption(0)).toHaveAttribute('data-ref', 'origin/main')
+    await expect(changes.baseOption(0)).toHaveAttribute('aria-checked', 'true')
+    await expect(changes.baseRef('main')).toHaveAttribute('aria-checked', 'false')
+    await expect(changes.baseRef('release')).toHaveAttribute('aria-checked', 'false')
+    await launched.window.screenshot({ path: 'test-results/changes-menus.png' })
+    await changes.baseRef('release').click()
+    await expect(changes.baseOptions).toHaveCount(0)
+    await expect(changes.summary).toHaveText('Commits 1 vs release')
+    await expect(changes.base).toHaveText('release')
+    await expect(changes.file(0)).toHaveAttribute('data-path', 'NOTES.md')
+    await expect(changes.file(1)).toHaveCount(0)
   })
 
   await test.step('Dragging the resizer 80px left widens the pane by about 80px', async () => {
@@ -271,8 +358,19 @@ test('The review pane lists the changes beside the terminals, opens diffs as tab
     await expect(pr.headerLink).toContainText('#7 · open · Add retry logic')
     await expect(terminal.pane(0).diffTabs).toHaveCount(1)
     await expect(diff.tab('README.md')).toHaveAttribute('data-active', 'true')
+    // The base chosen before the quit is remembered: README.md is unchanged against it.
+    await review.tabChanges.click()
+    await expect(changes.base).toHaveText('release')
+    await expect(changes.summary).toHaveText('Commits 1 vs release')
+    await expect(diff.empty).toHaveText('No changes in README.md')
+    await changes.baseMenu.click()
+    await expect(changes.baseRef('release')).toHaveAttribute('aria-checked', 'true')
+    await changes.baseRef('origin/main').click()
+    await expect(changes.summary).toHaveText('Commits 2 vs origin/main')
     await expect(diff.patch).toContainText('+Retries with backoff.')
     await expect(terminal.tab(termId)).toBeVisible()
+    await review.tabPr.click()
+    await expect(review.root).toHaveAttribute('data-tab', 'pr')
   })
 
   await test.step('⌘W closes the selected diff tab; the terminal tab is active again', async () => {
@@ -302,7 +400,7 @@ test('The review pane lists the changes beside the terminals, opens diffs as tab
     await topbar.reviewToggle.click()
     await review.tabChanges.click()
     await expect(review.root).toHaveAttribute('data-tab', 'changes')
-    await expect(changes.file(0)).toContainText('README.md')
+    await expect(changes.file(1)).toContainText('README.md')
     expect(await review.state()).toEqual({ open: true, tab: 'changes', width: widened })
   })
 })
