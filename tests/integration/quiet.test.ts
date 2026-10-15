@@ -9,6 +9,7 @@ import { DaemonClient } from '@shared/client'
 import type { Events } from '@shared/protocol'
 import type { TaskState } from '@shared/types'
 import { startTestDaemon, type TestDaemon } from '../../src/testing/daemon-harness'
+import { makeHookEvent } from '../../src/testing/fixtures'
 import { addBareOrigin, makeTempRepo } from '../../src/testing/temp-repo'
 
 let daemon: TestDaemon | undefined
@@ -258,5 +259,36 @@ describe('quiet hours', () => {
       await expect.poll(() => changes.length, { timeout: 5_000 }).toBeGreaterThanOrEqual(2)
       expect(summaries).toHaveLength(1)
     }, 20_000)
+
+    it('covers a workspace that was working during the window', async () => {
+      let offset = new Date(2026, 9, 13, 18, 0).getTime() - Date.now()
+      daemon = await startTestDaemon({
+        config: `${QUIET()}\n[notifications]\nmorning_summary = true\n`,
+        now: () => Date.now() + offset
+      })
+      const d = daemon
+      const summaries = record(d.client, 'quiet.morningSummary')
+      const project = await d.client.request('project.add', { path: makeTempRepo(d.home) })
+      const ws = await d.client.request('workspace.create', {
+        projectId: project.id,
+        name: 'app-1432-retry-logic'
+      })
+      await expect
+        .poll(async () => (await d.client.request('workspace.get', { id: ws.id })).status, {
+          timeout: 10_000
+        })
+        .toBe('idle')
+      await d.client.request('hook.event', {
+        workspaceId: ws.id,
+        payload: makeHookEvent('UserPromptSubmit', { cwd: ws.path })
+      })
+
+      offset = new Date(2026, 9, 14, 6, 59, 58).getTime() - Date.now()
+
+      await expect.poll(() => summaries.length, { timeout: 15_000 }).toBe(1)
+      expect(summaries[0].report.workspaces).toEqual([
+        expect.objectContaining({ id: ws.id, name: ws.name, status: 'working' })
+      ])
+    }, 30_000)
   })
 })

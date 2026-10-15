@@ -7,6 +7,7 @@ import type { QueueState, Report } from '@shared/protocol'
 import type { Task } from '@shared/types'
 import { runCli, runCliWith } from '../../src/testing/cli'
 import { startTestDaemon, type TestDaemon } from '../../src/testing/daemon-harness'
+import { makeHookEvent } from '../../src/testing/fixtures'
 import { addBareOrigin, makeTempRepo } from '../../src/testing/temp-repo'
 
 let daemon: TestDaemon
@@ -98,6 +99,36 @@ describe('que add, run, task list, report', () => {
     expect(shown.stdout).toContain(join(daemon.home, 'logs', 'tasks', `${task.id}.log`))
     const status = JSON.parse((await runCli('queue', 'status', '--json')).stdout) as QueueState
     expect(status).toMatchObject({ open: false, queued: 1 })
+  }, 30_000)
+
+  it('carries the interactive workspaces in --json and prints them as text', async () => {
+    const project = await daemon.client.request('project.add', { path: makeTempRepo(daemon.home) })
+    const ws = await daemon.client.request('workspace.create', {
+      projectId: project.id,
+      name: 'app-1432-retry-logic'
+    })
+    await expect
+      .poll(async () => (await daemon.client.request('workspace.get', { id: ws.id })).status, {
+        timeout: 10_000
+      })
+      .toBe('idle')
+    await daemon.client.request('hook.event', {
+      workspaceId: ws.id,
+      payload: makeHookEvent('UserPromptSubmit', { cwd: ws.path })
+    })
+
+    const json = await runCli('report', '--json', '--since', '1h')
+
+    expect(json.code).toBe(0)
+    const report = JSON.parse(json.stdout) as Report
+    expect(report.workspaces).toEqual([
+      expect.objectContaining({ id: ws.id, name: ws.name, status: 'working', commitsAhead: 0 })
+    ])
+    expect(report.totals).toMatchObject({ workspaces: 1, needsInput: 0, tasks: 0 })
+    const text = await runCli('report', '--since', '1h')
+    expect(text.stdout).toContain('Workspaces (1)')
+    expect(text.stdout).toContain(`  ${ws.name} · ${project.name} · working`)
+    expect(text.stdout).not.toContain('No tasks in this window.')
   }, 30_000)
 
   it('fails with a message for a bad --since and for a missing target', async () => {
