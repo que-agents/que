@@ -6,6 +6,7 @@ import type {
   QuietState,
   Task,
   TermInfo,
+  Ticket,
   UserConfig,
   Workspace,
   WorkspaceDigest
@@ -173,6 +174,27 @@ export function makeUserConfig(overrides: Partial<UserConfig> = {}): UserConfig 
       unlockMinutes: 20
     },
     notifications: { chimeOnComplete: true, chimeOnNeedsInput: false, morningSummary: false },
+    ...overrides
+  }
+}
+
+/** A ticket assigned to the user, as tickets.list reports it. */
+export function makeTicket(overrides: Partial<Ticket> = {}): Ticket {
+  return {
+    key: 'APP-1432',
+    summary: 'Add retry logic to the uploader',
+    status: 'In Progress',
+    statusCategory: 'indeterminate',
+    priority: 'Medium',
+    type: 'Story',
+    assignee: 'Ryan',
+    projectKey: 'APP',
+    projectName: 'Uploader',
+    url: 'https://example.atlassian.net/browse/APP-1432',
+    labels: [],
+    updatedAt: '2026-10-14T01:12:00.000Z',
+    syncedAt: '2026-10-14T01:15:00.000Z',
+    workspaceId: null,
     ...overrides
   }
 }

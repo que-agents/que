@@ -15,6 +15,9 @@ import type {
   Task,
   TaskState,
   TermInfo,
+  Ticket,
+  TicketsListResult,
+  TicketsSyncState,
   UpdateInfo,
   UserConfig,
   Workspace,
@@ -281,6 +284,39 @@ class FakeBridge {
         state: async () => ({ ...this.queue }),
         on: (event, cb) => this.subscribe(event, cb as Listener)
       },
+      tickets: {
+        list: async () => this.ticketsResult(),
+        sync: async () => {
+          this.ticketSyncs += 1
+          this.ticketsSync = { ...this.ticketsSync, lastSyncAt: new Date().toISOString() }
+          const r = this.ticketsResult()
+          this.emit('tickets.synced', r)
+          return r
+        },
+        start: async ({ key, projectId, session }) => {
+          this.refuseIfQuiet('tickets.start')
+          const ticket = this.tickets.get(key)
+          if (!ticket) throw notFound('ticket', key)
+          if (session) {
+            const t = await this.api.term.create({ cwd: '/Users/dev', cols: 80, rows: 24 })
+            return { kind: 'session', terminalId: t.id }
+          }
+          const target = projectId ?? this.ticketProjects.get(ticket.projectKey) ?? null
+          if (!target) return { kind: 'needs_project', projects: [...this.projects.values()] }
+          this.ticketProjects.set(ticket.projectKey, target)
+          const ws = await this.api.workspace.create({
+            projectId: target,
+            name: `${key.toLowerCase()} ${ticket.summary}`
+          })
+          this.tickets.set(key, { ...ticket, workspaceId: ws.id })
+          this.emit('tickets.synced', this.ticketsResult())
+          return { kind: 'workspace', workspace: ws }
+        },
+        projectFor: async ({ key }) => ({
+          projectId: this.ticketProjects.get(this.tickets.get(key)?.projectKey ?? '') ?? null
+        }),
+        on: (event, cb) => this.subscribe(event, cb as Listener)
+      },
       report: {
         get: async (p) => {
           this.refuseIfQuiet('report.get')
@@ -515,8 +551,41 @@ class FakeBridge {
   }
 
   /** Empties the book and drops listeners. setup.ts calls it after every test. */
+  private tickets = new Map<string, Ticket>()
+  /** Tracker project key → que project id, as the daemon learns it. */
+  private ticketProjects = new Map<string, string>()
+  private ticketsSync: TicketsSyncState = { lastSyncAt: null, error: null, count: 0 }
+  ticketSyncs = 0
+
+  private ticketsResult(): TicketsListResult {
+    return {
+      tickets: [...this.tickets.values()].map((t) => ({ ...t })),
+      sync: { ...this.ticketsSync, count: this.tickets.size }
+    }
+  }
+
+  /** Seeds a ticket as the daemon would list it. */
+  seedTicket(t: Ticket): void {
+    this.tickets.set(t.key, { ...t })
+  }
+
+  /** Makes the next sync report this error (null clears it) and announces it. */
+  setTicketsError(error: string | null): void {
+    this.ticketsSync = { ...this.ticketsSync, error }
+    this.emit('tickets.synced', this.ticketsResult())
+  }
+
+  /** Teaches the mapping a tracker project key → que project id. */
+  mapTicketProject(projectKey: string, projectId: string): void {
+    this.ticketProjects.set(projectKey, projectId)
+  }
+
   reset(): void {
     this.projects.clear()
+    this.tickets.clear()
+    this.ticketProjects.clear()
+    this.ticketsSync = { lastSyncAt: null, error: null, count: 0 }
+    this.ticketSyncs = 0
     this.workspaces.clear()
     this.digests = []
     this.terminals.clear()

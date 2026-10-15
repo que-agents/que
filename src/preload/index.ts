@@ -76,6 +76,13 @@ const api: QueApi = {
   report: {
     get: (p) => call('report.get', p)
   },
+  tickets: {
+    list: () => call('tickets.list'),
+    sync: () => call('tickets.sync'),
+    start: (p) => call('tickets.start', p),
+    projectFor: (p) => call('tickets.projectFor', p),
+    on: (event, cb) => subscribe(event, cb as (data: unknown) => void)
+  },
   app: {
     homedir: () => ipcRenderer.invoke('app:homedir'),
     openFolder: () => ipcRenderer.invoke('dialog:openFolder'),

@@ -5,13 +5,14 @@ import os from 'node:os'
 import { join } from 'node:path'
 import { parse as parseToml, stringify as stringifyToml } from 'smol-toml'
 import {
+  JiraConfig,
+  WEEKDAYS,
   type DayWindow,
   type NotificationsConfig,
   type PermissionMode,
   type QuietHoursConfig,
   type QuietWindow,
   type UserConfig,
-  WEEKDAYS,
   type Weekday
 } from './types'
 
@@ -53,12 +54,22 @@ export function defaultConfig(env: ConfigEnv): UserConfig {
     allowBypassPermissions: false,
     protectedBranches: ['main', 'master', 'release'],
     quietHours: defaultQuietHours(),
-    notifications: defaultNotifications()
+    notifications: defaultNotifications(),
+    jira: defaultJira()
   }
 }
 
 export function defaultQuietHours(): QuietHoursConfig {
   return { enabled: true, default: { start: '19:00', end: '07:00' }, days: {}, unlockMinutes: 20 }
+}
+
+export const DEFAULT_JQL =
+  'assignee = currentUser() AND statusCategory != Done ORDER BY updated DESC'
+export const DEFAULT_START_PROMPT =
+  'Read .que/ticket.md, the ticket this workspace is for. Restate the goal in a sentence, look at the code it touches, and propose a plan before changing anything.'
+
+export function defaultJira(): JiraConfig {
+  return { jql: DEFAULT_JQL, pollMinutes: 5, startPrompt: DEFAULT_START_PROMPT, projects: {} }
 }
 
 export function defaultNotifications(): NotificationsConfig {
@@ -195,6 +206,46 @@ function parseQuietHours(v: unknown, errors: ConfigError[]): QuietHoursConfig {
   return q
 }
 
+function parseJira(v: unknown, errors: ConfigError[]): JiraConfig {
+  const j = defaultJira()
+  if (v === undefined) return j
+  if (typeof v !== 'object' || v === null || Array.isArray(v)) {
+    errors.push({ key: 'jira', message: 'must be a table' })
+    return j
+  }
+  const t = v as Record<string, unknown>
+  const text = (key: string): string | undefined => {
+    const x = t[key]
+    if (x === undefined) return undefined
+    if (typeof x !== 'string' || x.trim() === '') {
+      errors.push({ key: `jira.${key}`, message: 'must be a non-empty string' })
+      return undefined
+    }
+    return x
+  }
+  j.jql = text('jql') ?? j.jql
+  j.startPrompt = text('start_prompt') ?? j.startPrompt
+  const minutes = t.poll_minutes
+  if (minutes !== undefined) {
+    if (typeof minutes !== 'number' || !(minutes > 0)) {
+      errors.push({ key: 'jira.poll_minutes', message: 'must be a positive number' })
+    } else j.pollMinutes = minutes
+  }
+  const projects = t.projects
+  if (projects !== undefined) {
+    if (typeof projects !== 'object' || projects === null || Array.isArray(projects)) {
+      errors.push({ key: 'jira.projects', message: 'must be a table of tracker key = que project' })
+    } else {
+      for (const [k, name] of Object.entries(projects as Record<string, unknown>)) {
+        if (typeof name !== 'string' || name.trim() === '') {
+          errors.push({ key: `jira.projects.${k}`, message: 'must be a que project name' })
+        } else j.projects[k] = name
+      }
+    }
+  }
+  return j
+}
+
 function parseNotifications(v: unknown, errors: ConfigError[]): NotificationsConfig {
   const n = defaultNotifications()
   if (v === undefined) return n
@@ -243,6 +294,7 @@ export function parseConfig(text: string, env: ConfigEnv): ConfigResult<UserConf
   config.protectedBranches = stringList(t, 'protected_branches', errors) ?? config.protectedBranches
   config.quietHours = parseQuietHours(t.quiet_hours, errors)
   config.notifications = parseNotifications(t.notifications, errors)
+  config.jira = parseJira(t.jira, errors)
 
   if (t.repos !== undefined) {
     if (typeof t.repos !== 'object' || t.repos === null || Array.isArray(t.repos)) {
