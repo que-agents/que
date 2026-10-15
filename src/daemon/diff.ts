@@ -135,6 +135,9 @@ export async function workspaceDiff(
     base,
     head: ws.branch,
     commitsAhead: commits,
+    commits: [],
+    bases: [base],
+    commit: null,
     files: files.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0)),
     generatedAt: new Date(now()).toISOString()
   })
