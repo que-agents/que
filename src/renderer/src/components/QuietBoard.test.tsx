@@ -92,11 +92,11 @@ describe('QuietBoard', () => {
         )
       })
       expect(screen.getByTestId('quiet-board-counts')).toHaveTextContent(
-        '2 workspaces · 1 working · 1 needs input'
+        '2 workspaces · 1 working · 1 need input · 0 stuck'
       )
     })
 
-    it('shows a row per live task and per workspace with a live terminal, and nothing else to act on', async () => {
+    it('shows a row per live task and per workspace that is working, waiting, stuck or has a live terminal, and nothing else to act on', async () => {
       seed()
 
       render(<App board now={clock} />)
@@ -126,12 +126,38 @@ describe('QuietBoard', () => {
           .getAllByRole('cell')
           .map((c) => c.textContent)
       ).toEqual(['app-1432-retry-logic', 'uploader', 'working', '-', '1h 15m', '-', '-', '-'])
-      expect(screen.queryByTestId(`quiet-board-row-${auth.id}`)).not.toBeInTheDocument()
+      expect(screen.getByTestId(`quiet-board-row-${auth.id}`)).toBeInTheDocument()
       expect(screen.queryByTestId(`quiet-board-row-${stuck.id}`)).not.toBeInTheDocument()
       expect(screen.getAllByRole('button')).toEqual([screen.getByTestId('quiet-board-unlock')])
       expect(screen.queryByRole('link')).not.toBeInTheDocument()
       expect(screen.queryByRole('tab')).not.toBeInTheDocument()
       expect(await window.que.term.list()).toHaveLength(1) // the board never opens a terminal
+    })
+  })
+
+  describe('workspaces without a terminal', () => {
+    it('lists a waiting workspace first, with since when it needs input', async () => {
+      seed()
+      fakeBridge.seedWorkspace({ ...auth, statusAt: new Date(2026, 9, 14, 1, 30).toISOString() })
+
+      render(<App board now={clock} />)
+
+      const first = (await screen.findAllByTestId(/^quiet-board-row-/))[0]
+      expect(first).toHaveAttribute('data-testid', `quiet-board-row-${auth.id}`)
+      expect(
+        within(first)
+          .getAllByRole('cell')
+          .map((c) => c.textContent)
+      ).toEqual([
+        'app-1451-token-refresh',
+        'uploader',
+        'needs input · since 01:30',
+        '-',
+        '-',
+        '-',
+        '-',
+        '-'
+      ])
     })
   })
 
