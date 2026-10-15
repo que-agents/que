@@ -6,6 +6,7 @@ import {
   makeProject,
   makePullRequest,
   makeTask,
+  makeTicket,
   makeTermInfo,
   makeWorkspace
 } from '@renderer/testing/fixtures'
@@ -418,5 +419,25 @@ describe('Sidebar', () => {
         expect((await window.que.term.list()).filter((t) => !t.workspaceId)).toHaveLength(2)
       })
     })
+  })
+})
+
+describe('Sidebar tickets entry', () => {
+  it('counts the open tickets and opens the view', async () => {
+    const user = userEvent.setup()
+    fakeBridge.seedTicket(makeTicket({ key: 'APP-1' }))
+    fakeBridge.seedTicket(makeTicket({ key: 'APP-2', statusCategory: 'new' }))
+    fakeBridge.seedTicket(makeTicket({ key: 'APP-3', statusCategory: 'done' }))
+    render(<App />)
+
+    const entry = await screen.findByRole('button', { name: /^Tickets/ })
+    await waitFor(() => expect(screen.getByTestId('sidebar-tickets-count')).toHaveTextContent('2'))
+    expect(screen.queryByTestId('sidebar-tickets-error')).not.toBeInTheDocument()
+    expect(entry).not.toHaveAttribute('aria-current')
+
+    await user.click(entry)
+
+    expect(await screen.findByTestId('tickets-view')).toBeInTheDocument()
+    expect(entry).toHaveAttribute('aria-current', 'page')
   })
 })
