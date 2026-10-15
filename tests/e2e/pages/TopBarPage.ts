@@ -1,5 +1,5 @@
-// The selected workspace's header: name, branch, status, and its actions with
-// its dialog (create draft PR).
+// The selected workspace's header: name, branch, status, split or join, and the
+// review pane toggle; and the create draft PR dialog (opened from the Pull request tab).
 import type { Locator, Page } from '@playwright/test'
 
 export class TopBarPage {
@@ -9,11 +9,10 @@ export class TopBarPage {
   branch: Locator
   status: Locator
   prLink: Locator
-  openEditorButton: Locator
   splitBesideButton: Locator
   splitBelowButton: Locator
   joinButton: Locator
-  createPrButton: Locator
+  reviewToggle: Locator
   createPrDialog: Locator
   createPrTitle: Locator
   createPrSubmit: Locator
@@ -28,11 +27,10 @@ export class TopBarPage {
     this.branch = page.getByTestId('topbar-branch')
     this.status = page.getByTestId('topbar-status')
     this.prLink = page.getByTestId('topbar-pr')
-    this.openEditorButton = page.getByTestId('topbar-open-editor')
     this.splitBesideButton = page.getByTestId('topbar-split-beside')
     this.splitBelowButton = page.getByTestId('topbar-split-below')
     this.joinButton = page.getByTestId('topbar-join')
-    this.createPrButton = page.getByTestId('topbar-create-pr')
+    this.reviewToggle = page.getByTestId('topbar-review')
     this.createPrDialog = page.getByTestId('dialog-create-pr')
     this.createPrTitle = page.getByTestId('dialog-create-pr-title')
     this.createPrSubmit = page.getByTestId('dialog-create-pr-submit')

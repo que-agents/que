@@ -1,12 +1,13 @@
 // The review journey end to end: a workspace made from the CLI with a file
-// edited in its worktree; the top bar opens the review pane on Changes beside
-// the terminals, which stay as they are; clicking the file opens its diff as a
+// edited in its worktree; the top bar's toggle opens the review pane on Changes,
+// a full-height column at the window's right edge beside the terminals, which
+// stay as they are; clicking the file opens its diff as a
 // tab beside the terminal tab (once, however often it is clicked); the pane
 // drags wider; Pull request shows no pull request, then one appears (through
 // the fake GitHub CLI) with its checks and conversation, and Refresh picks up a
 // new comment; the app quits and relaunches on the same home and the pane, its
 // tab, its width and the diff tab come back; ⌘W closes the diff tab, and the
-// pane closes and opens again.
+// pane closes and opens again on the tab it was left on.
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { expect, test } from '@playwright/test'
@@ -18,12 +19,14 @@ import {
   fakeReview,
   setFakePullRequest
 } from '../../src/testing/fakes'
+import { AppShellPage } from './pages/AppShellPage'
 import { ChangesPage } from './pages/ChangesPage'
 import { DiffPage } from './pages/DiffPage'
 import { PullRequestPage } from './pages/PullRequestPage'
 import { ReviewPage } from './pages/ReviewPage'
 import { SidebarPage } from './pages/SidebarPage'
 import { TerminalPage } from './pages/TerminalPage'
+import { TopBarPage } from './pages/TopBarPage'
 import { type LaunchedApp, launchApp, newQueHome } from './utils/app'
 import { queJson } from './utils/que'
 import { makeRepo } from './utils/repo'
@@ -41,7 +44,9 @@ test('The review pane lists the changes beside the terminals, opens diffs as tab
   const prsFile = join(queHome, 'fake-gh-prs.json')
   let project: Project
   let workspace: Workspace
+  let shell: AppShellPage
   let sidebar: SidebarPage
+  let topbar: TopBarPage
   let terminal: TerminalPage
   let review: ReviewPage
   let changes: ChangesPage
@@ -51,7 +56,9 @@ test('The review pane lists the changes beside the terminals, opens diffs as tab
   let widened = 0
 
   const pages = (): void => {
+    shell = new AppShellPage(launched.window)
     sidebar = new SidebarPage(launched.window)
+    topbar = new TopBarPage(launched.window)
     terminal = new TerminalPage(launched.window)
     review = new ReviewPage(launched.window)
     changes = new ChangesPage(launched.window)
@@ -74,12 +81,13 @@ test('The review pane lists the changes beside the terminals, opens diffs as tab
     termId = await terminal.waitForActiveTerminal()
   })
 
-  await test.step('Edit a file; Changes opens the review pane beside the terminal', async () => {
+  await test.step('Edit a file; the toggle opens the review pane on Changes beside the terminal', async () => {
     writeFileSync(join(workspace.path, 'README.md'), '# uploader\n\nRetries with backoff.\n')
-    await changes.toggle.click()
+    await expect(topbar.reviewToggle).toHaveAttribute('aria-pressed', 'false')
+    await topbar.reviewToggle.click()
     await expect(review.root).toBeVisible()
     await expect(review.root).toHaveAttribute('data-tab', 'changes')
-    await expect(changes.toggle).toHaveAttribute('aria-pressed', 'true')
+    await expect(topbar.reviewToggle).toHaveAttribute('aria-pressed', 'true')
     expect(await review.state()).toMatchObject({ open: true, tab: 'changes' })
     await expect(terminal.tab(termId)).toBeVisible()
     await expect(terminal.viewport).toBeVisible()
@@ -88,6 +96,25 @@ test('The review pane lists the changes beside the terminals, opens diffs as tab
     await expect(changes.file(0)).toContainText('README.md')
     await expect(changes.file(0)).toContainText('+2')
     await expect(changes.file(0)).toHaveAttribute('data-path', 'README.md')
+  })
+
+  await test.step('The pane runs the full height of the window, like the sidebar', async () => {
+    const shellBox = await shell.root.boundingBox()
+    const paneBox = await review.root.boundingBox()
+    const sidebarBox = await sidebar.root.boundingBox()
+    expect(shellBox).not.toBeNull()
+    expect(paneBox).not.toBeNull()
+    expect(sidebarBox).not.toBeNull()
+    expect(paneBox?.y).toBe(0)
+    expect(paneBox?.height).toBe(shellBox?.height)
+    expect(sidebarBox?.y).toBe(0)
+    expect(sidebarBox?.height).toBe(shellBox?.height)
+    // The pane sits at the window's right edge; the top bar ends where it begins.
+    expect((paneBox?.x ?? 0) + (paneBox?.width ?? 0)).toBe(
+      (shellBox?.x ?? 0) + (shellBox?.width ?? 0)
+    )
+    const topbarBox = await topbar.root.boundingBox()
+    expect((topbarBox?.x ?? 0) + (topbarBox?.width ?? 0)).toBeLessThanOrEqual(paneBox?.x ?? 0)
   })
 
   await test.step('Clicking the file opens its diff as a tab beside the terminal tab', async () => {
@@ -132,14 +159,14 @@ test('The review pane lists the changes beside the terminals, opens diffs as tab
     await launched.window.screenshot({ path: 'test-results/review-pane.png' })
   })
 
-  await test.step('Pull request switches the pane over: no pull request yet', async () => {
-    await pr.toggle.click()
+  await test.step('The Pull request tab switches the pane over: no pull request yet', async () => {
+    await review.tabPr.click()
     await expect(review.root).toHaveAttribute('data-tab', 'pr')
     await expect(review.tabPr).toHaveAttribute('aria-selected', 'true')
-    await expect(pr.toggle).toHaveAttribute('aria-pressed', 'true')
-    await expect(changes.toggle).toHaveAttribute('aria-pressed', 'false')
+    await expect(review.tabChanges).toHaveAttribute('aria-selected', 'false')
+    await expect(topbar.reviewToggle).toHaveAttribute('aria-pressed', 'true')
     await expect(pr.empty).toHaveText('No pull request yet')
-    await expect(pr.create).toBeVisible()
+    await expect(pr.create).toHaveText('Create draft PR')
     expect(await review.state()).toMatchObject({ open: true, tab: 'pr' })
     await expect(diff.tab('README.md')).toBeVisible()
   })
@@ -255,11 +282,22 @@ test('The review pane lists the changes beside the terminals, opens diffs as tab
     await expect(terminal.tab(termId)).toBeVisible()
   })
 
-  await test.step('The close button closes the pane; Changes opens it again on Changes', async () => {
+  await test.step('The toggle closes the pane and opens it again on the tab it was left on', async () => {
+    await topbar.reviewToggle.click()
+    await expect(review.root).toHaveCount(0)
+    await expect(topbar.reviewToggle).toHaveAttribute('aria-pressed', 'false')
+    await topbar.reviewToggle.click()
+    await expect(review.root).toHaveAttribute('data-tab', 'pr')
+    await expect(topbar.reviewToggle).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  await test.step('The close button closes the pane; the toggle opens it again, then Changes', async () => {
     await review.close.click()
     await expect(review.root).toHaveCount(0)
     expect((await review.state()).open).toBe(false)
-    await changes.toggle.click()
+    await expect(topbar.reviewToggle).toHaveAttribute('aria-pressed', 'false')
+    await topbar.reviewToggle.click()
+    await review.tabChanges.click()
     await expect(review.root).toHaveAttribute('data-tab', 'changes')
     await expect(changes.file(0)).toContainText('README.md')
     expect(await review.state()).toEqual({ open: true, tab: 'changes', width: widened })

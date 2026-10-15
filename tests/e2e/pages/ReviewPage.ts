@@ -1,4 +1,4 @@
-// The review pane at the right of the main area: its two tabs, its close
+// The review pane, a full-height column at the right of the window: its two tabs, its close
 // button, the resizer on its left edge, and its state from the test hook.
 import type { Locator, Page } from '@playwright/test'
 

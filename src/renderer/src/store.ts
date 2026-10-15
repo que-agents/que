@@ -508,11 +508,14 @@ export class QueStore {
     else void this.fetchPrThread(key)
   }
 
-  /** Closes the pane when it is open on that tab, else opens it there. */
-  toggleReview(tab: ReviewTab): void {
+  /**
+   * With no tab, closes the pane when it is open, else opens it on its remembered tab.
+   * With a tab, closes the pane when it is open on that tab, else opens it there.
+   */
+  toggleReview(tab?: ReviewTab): void {
     const { open, tab: current } = this.state.review
-    if (open && current === tab) this.closeReview()
-    else this.openReview(tab)
+    if (open && (tab === undefined || current === tab)) this.closeReview()
+    else this.openReview(tab ?? current)
   }
 
   closeReview(): void {

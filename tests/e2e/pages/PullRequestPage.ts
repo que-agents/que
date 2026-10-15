@@ -1,11 +1,10 @@
-// A workspace's pull request in the review pane: the top bar button that opens
-// the pane on it, the header, the checks, the conversation and the footer. The
-// pane's tab itself is ReviewPage.tabPr.
+// A workspace's pull request in the review pane: the header, the checks, the
+// conversation and the footer (Create draft PR without one). The pane's tab
+// itself is ReviewPage.tabPr; its toggle is TopBarPage.reviewToggle.
 import type { Locator, Page } from '@playwright/test'
 
 export class PullRequestPage {
   page: Page
-  toggle: Locator
   root: Locator
   empty: Locator
   error: Locator
@@ -26,7 +25,6 @@ export class PullRequestPage {
 
   constructor(page: Page) {
     this.page = page
-    this.toggle = page.getByTestId('topbar-pull-request')
     this.root = page.getByTestId('pr-view')
     this.empty = page.getByTestId('pr-empty')
     this.error = page.getByTestId('pr-error')
