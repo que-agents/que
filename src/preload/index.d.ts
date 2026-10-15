@@ -159,6 +159,7 @@ export type WorkspaceEventName =
   | 'workspace.updated'
   | 'workspace.removed'
   | 'workspace.status'
+  | 'workspace.changed'
 
 export type WorkspaceEvents = Pick<Events, WorkspaceEventName>
 

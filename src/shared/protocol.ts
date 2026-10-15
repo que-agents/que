@@ -459,6 +459,8 @@ export interface Events {
   'workspace.updated': Workspace
   'workspace.removed': { id: string }
   'workspace.status': WorkspaceStatusEvent
+  /** Its worktree changed on disk (a write, a commit): the daemon computes nothing until asked. */
+  'workspace.changed': { id: string }
   'task.created': Task
   'task.status': TaskStatusEvent
   /** Cost, turns, session, branch, or PR changed. */
