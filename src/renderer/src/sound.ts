@@ -1,26 +1,34 @@
 // The completion chime: a short generated two-tone (Web Audio, no asset),
 // played in work hours only. The player is injectable so tests can count
 // chimes without an AudioContext.
-import type { NotificationsConfig, QuietState } from '../../preload/index.d'
+import type { ChimeKind, NotificationsConfig, QuietState } from '../../preload/index.d'
 
-export type ChimeKind = 'complete' | 'needs_input'
+export type { ChimeKind }
 
 export interface ChimePlayer {
   play(kind: ChimeKind): void
 }
 
+/** The workspace statuses a session's turn can end from. */
+const TURN_STATES: ReadonlySet<string> = new Set(['working', 'needs_input', 'stuck'])
+
 /**
- * Which chime a task or workspace status deserves, if any: `done` (when
- * chime_on_complete) and needing input (when chime_on_needs_input), never
- * during quiet hours, unlocked or not.
+ * Which chime a task or workspace status deserves, if any. Complete (when
+ * chime_on_complete) for a task reaching `done`, or a session finishing a
+ * turn: a workspace going `idle` from `working`, `needs_input` or `stuck`
+ * (`idle` from anything else, or with no previous status, is not a turn
+ * ending). Needing input (when chime_on_needs_input) for `needs_input` or a
+ * task stuck needing input. Never during quiet hours, unlocked or not, and
+ * never before the quiet state and config have loaded.
  */
 export function shouldChime(
-  event: { state: string; reason?: string | null },
+  event: { state: string; reason?: string | null; prev?: string | null },
   quiet: QuietState | null,
   cfg: NotificationsConfig | undefined
 ): ChimeKind | null {
   if (!quiet || quiet.inQuietHours || !cfg) return null
-  if (event.state === 'done') return cfg.chimeOnComplete ? 'complete' : null
+  const turnEnded = event.state === 'idle' && TURN_STATES.has(event.prev ?? '')
+  if (event.state === 'done' || turnEnded) return cfg.chimeOnComplete ? 'complete' : null
   const needsInput =
     event.state === 'needs_input' || (event.state === 'stuck' && event.reason === 'needs_input')
   if (needsInput) return cfg.chimeOnNeedsInput ? 'needs_input' : null

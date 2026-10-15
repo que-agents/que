@@ -19,6 +19,7 @@ import type {
   WorkspaceDiff
 } from '../../preload/index.d'
 import type { SidebarSort } from './sidebar-order'
+import { isLiveTask, latestTasks } from './format'
 import { chime, shouldChime } from './sound'
 
 const DEFAULT_COLS = 80
@@ -345,7 +346,10 @@ export class QueStore {
           const next = { ...ws, status: e.status, statusReason: e.reason ?? null, statusAt: e.at }
           return { workspaces: { ...s.workspaces, [e.id]: next } }
         })
-        if (prev !== e.status) this.maybeChime({ state: e.status, reason: e.reason })
+        // A live task's workspace ends its turn before the task finishes; the task chimes on done.
+        const owned = latestTasks(this.state.tasks).get(e.id)
+        if (e.status === 'idle' && owned && isLiveTask(owned.state)) return
+        if (prev !== e.status) this.maybeChime({ state: e.status, reason: e.reason, prev })
       }),
       task.on('task.created', (t) => this.set((s) => ({ tasks: { ...s.tasks, [t.id]: t } }))),
       task.on('task.updated', (t) => this.set((s) => ({ tasks: { ...s.tasks, [t.id]: t } }))),
@@ -370,8 +374,8 @@ export class QueStore {
     )
   }
 
-  /** A short chime for a finished task (or one needing input), in work hours only. */
-  private maybeChime(event: { state: string; reason?: string | null }): void {
+  /** A short chime for a finished task or turn (or one needing input), in work hours only. */
+  private maybeChime(event: { state: string; reason?: string | null; prev?: string | null }): void {
     if (this.options.board) return
     const kind = shouldChime(event, this.state.quiet, this.state.config?.config.notifications)
     if (kind) chime(kind)

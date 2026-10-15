@@ -73,6 +73,8 @@ test('a task queued from the CLI runs overnight-style, shows in the sidebar, and
     await sidebar.waitForWorkspaceStatus(workspaceId, 'done', 60_000)
     await expect(sidebar.workspacePr(workspaceId)).toHaveAttribute('href', /\/pull\/\d+$/)
     expect(launched.ghCalls()).toContainEqual(expect.arrayContaining(['pr', 'create', '--draft']))
+    // One chime for the whole run: on done, not when the task's session ended its turn.
+    await expect.poll(() => shell.chimes()).toEqual(['complete'])
   })
 
   await test.step('The sidebar chip follows the pull request from draft to merged', async () => {

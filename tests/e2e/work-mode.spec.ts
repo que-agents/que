@@ -1,6 +1,7 @@
 // Work mode end to end: a project registered with the CLI, a workspace made
 // from the sidebar dialog, its terminal opened automatically, a claude session
-// in it reaching needs input on the sidebar badge (and in `que status`), Open
+// in it finishing a turn with one chime (recorded, never played, under e2e) and
+// reaching needs input on the sidebar badge (and in `que status`), Open
 // in editor launching the editor on the worktree, and the project removed from
 // its context menu with the workspace and its worktree.
 import fs from 'node:fs'
@@ -8,6 +9,7 @@ import { expect, test } from '@playwright/test'
 import type { StatusJson } from '../../src/cli/workspaces'
 import type { TermInfo } from '../../src/shared/protocol'
 import type { Project, Workspace } from '../../src/shared/types'
+import { AppShellPage } from './pages/AppShellPage'
 import { SidebarPage } from './pages/SidebarPage'
 import { TerminalPage } from './pages/TerminalPage'
 import { TopBarPage } from './pages/TopBarPage'
@@ -30,6 +32,7 @@ test('a workspace made in the sidebar runs claude, shows needs input, opens in t
   let sidebar: SidebarPage
   let terminal: TerminalPage
   let topbar: TopBarPage
+  let shell: AppShellPage
   const statusOf = () =>
     queJson<StatusJson>(queHome, 'status', '--json').workspaces.find((w) => w.id === workspace.id)
 
@@ -43,6 +46,7 @@ test('a workspace made in the sidebar runs claude, shows needs input, opens in t
     sidebar = new SidebarPage(launched.window)
     terminal = new TerminalPage(launched.window)
     topbar = new TopBarPage(launched.window)
+    shell = new AppShellPage(launched.window)
     await sidebar.waitForLoad()
     await expect(sidebar.project(project.id)).toBeVisible()
   })
@@ -107,6 +111,14 @@ test('a workspace made in the sidebar runs claude, shows needs input, opens in t
       .toMatch(/^[0-9a-f-]{36}$/)
   })
 
+  await test.step('Say hello; the session answers and the turn ends with one chime', async () => {
+    await launched.window.keyboard.type('hello')
+    await launched.window.keyboard.press('Enter')
+    await terminal.expectScreenToContain('● Fake reply to: hello')
+    await sidebar.waitForWorkspaceStatus(workspace.id, 'idle')
+    await expect.poll(() => shell.chimes()).toEqual(['complete'])
+  })
+
   await test.step('Ask for something that needs permission; the badge says needs input', async () => {
     await launched.window.keyboard.type('/needs-input')
     await launched.window.keyboard.press('Enter')
@@ -114,6 +126,8 @@ test('a workspace made in the sidebar runs claude, shows needs input, opens in t
     await expect(sidebar.workspaceStatus(workspace.id)).toHaveText('needs input')
     await expect(topbar.status).toHaveAttribute('data-status', 'needs_input')
     expect(statusOf()?.status).toBe('needs_input')
+    // The needs-input chime is off by default.
+    expect(await shell.chimes()).toEqual(['complete'])
   })
 
   await test.step('Drag the divider; the sidebar widens by the same amount', async () => {

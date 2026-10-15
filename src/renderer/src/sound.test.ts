@@ -16,6 +16,30 @@ describe('shouldChime', () => {
     expect(shouldChime({ state: 'done' }, workHours, defaults)).toBe('complete')
   })
 
+  it('chimes when a session finishes a turn in work hours', () => {
+    expect(shouldChime({ state: 'idle', prev: 'working' }, workHours, defaults)).toBe('complete')
+    expect(shouldChime({ state: 'idle', prev: 'needs_input' }, workHours, defaults)).toBe(
+      'complete'
+    )
+    expect(shouldChime({ state: 'idle', prev: 'stuck' }, workHours, defaults)).toBe('complete')
+  })
+
+  it('stays silent for idle that does not end a turn', () => {
+    expect(shouldChime({ state: 'idle', prev: 'idle' }, workHours, defaults)).toBeNull()
+    expect(shouldChime({ state: 'idle', prev: 'preparing' }, workHours, defaults)).toBeNull()
+    expect(shouldChime({ state: 'idle', prev: 'exited' }, workHours, defaults)).toBeNull()
+    expect(shouldChime({ state: 'idle' }, workHours, defaults)).toBeNull()
+    expect(shouldChime({ state: 'idle', prev: null }, workHours, defaults)).toBeNull()
+  })
+
+  it('stays silent for a finished turn in quiet hours, unlocked or not, or with the chime off', () => {
+    const turnEnded = { state: 'idle', prev: 'working' }
+
+    expect(shouldChime(turnEnded, quiet, defaults)).toBeNull()
+    expect(shouldChime(turnEnded, unlocked, defaults)).toBeNull()
+    expect(shouldChime(turnEnded, workHours, { ...defaults, chimeOnComplete: false })).toBeNull()
+  })
+
   it('never chimes during quiet hours, unlocked or not', () => {
     expect(shouldChime({ state: 'done' }, quiet, defaults)).toBeNull()
     expect(shouldChime({ state: 'done' }, unlocked, defaults)).toBeNull()

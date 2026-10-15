@@ -52,6 +52,17 @@ export function isLiveTask(state: TaskState): boolean {
   return LIVE.has(state)
 }
 
+/** The newest task that ran (or runs) in each workspace. */
+export function latestTasks(tasks: Record<string, Task>): Map<string, Task> {
+  const out = new Map<string, Task>()
+  for (const t of Object.values(tasks)) {
+    if (!t.workspaceId) continue
+    const prev = out.get(t.workspaceId)
+    if (!prev || t.createdAt > prev.createdAt) out.set(t.workspaceId, t)
+  }
+  return out
+}
+
 /** `$0.42`; whole cents, never `$0.4200001`. */
 export function formatCost(usd: number): string {
   return `$${usd.toFixed(2)}`
