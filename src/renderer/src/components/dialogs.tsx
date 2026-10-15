@@ -1,8 +1,8 @@
 // The work-mode dialogs. Each owns its form state, calls one store action,
 // and shows the daemon's error inline instead of closing.
-import { type FormEvent, useState } from 'react'
+import { type FormEvent, useEffect, useState } from 'react'
 import type { Project, Workspace } from '../../../preload/index.d'
-import { workspaceSlug } from '../../../shared/slug'
+import { nameFromTitle, titleOf } from '../../../shared/brief'
 import { useQue, useStore } from '../store'
 import Dialog from './Dialog'
 
@@ -45,19 +45,22 @@ export function NewWorkspaceDialog({
 }): React.JSX.Element {
   const store = useStore()
   const { connected } = useQue()
-  const [name, setName] = useState('')
+  const [brief, setBrief] = useState('')
   const [baseRef, setBaseRef] = useState('')
+  const [start, setStart] = useState(true)
   const { busy, error, run } = useSubmit()
-  const slug = workspaceSlug(name)
+  const slug = nameFromTitle(titleOf(brief))
   const id = 'dialog-new-workspace'
+  const canSubmit = !!slug && !busy && connected
 
-  const submit = (e: FormEvent): void => {
-    e.preventDefault()
-    if (!slug) return
+  const submit = (e?: FormEvent): void => {
+    e?.preventDefault()
+    if (!canSubmit) return
     void run(async () => {
       await store.createWorkspace({
         projectId: project.id,
-        name: slug,
+        brief,
+        start,
         ...(baseRef.trim() ? { baseRef: baseRef.trim() } : {})
       })
       onClose()
@@ -68,34 +71,53 @@ export function NewWorkspaceDialog({
     <Dialog title={`New workspace in ${project.name}`} testId={id} onClose={onClose}>
       <form onSubmit={submit}>
         <label>
-          Name
-          <input
-            data-testid={`${id}-name`}
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="APP-1432 retry logic"
-            autoComplete="off"
-            spellCheck={false}
+          What are you doing?
+          <textarea
+            data-testid={`${id}-brief`}
+            value={brief}
+            onChange={(e) => setBrief(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                e.preventDefault()
+                submit()
+              }
+            }}
+            placeholder={
+              'Add retry logic to the uploader\n\nBack off exponentially; give up after three tries.'
+            }
+            rows={5}
           />
         </label>
         <p className="hint" data-testid={`${id}-slug`} aria-live="polite">
-          {name.trim() === ''
-            ? 'Branch and folder are named after it.'
+          {brief.trim() === ''
+            ? 'The first line names the branch and folder.'
             : slug
               ? `Branch and folder: ${slug}`
-              : "Use letters, digits, '.', '_' or '-' (up to 64)."}
+              : 'Start the first line with a letter or digit.'}
         </p>
-        <label>
-          Base ref (optional)
+        <label className="check">
           <input
-            data-testid={`${id}-base`}
-            value={baseRef}
-            onChange={(e) => setBaseRef(e.target.value)}
-            placeholder={`origin/${project.defaultBranch}`}
-            autoComplete="off"
-            spellCheck={false}
+            type="checkbox"
+            data-testid={`${id}-start`}
+            checked={start}
+            onChange={(e) => setStart(e.target.checked)}
           />
+          Start claude with this brief
         </label>
+        <details className="dialog-advanced">
+          <summary>Advanced</summary>
+          <label>
+            Base ref (optional)
+            <input
+              data-testid={`${id}-base`}
+              value={baseRef}
+              onChange={(e) => setBaseRef(e.target.value)}
+              placeholder={`origin/${project.defaultBranch}`}
+              autoComplete="off"
+              spellCheck={false}
+            />
+          </label>
+        </details>
         <FormError error={error} testId={id} />
         <div className="dialog-actions">
           <button type="button" onClick={onClose}>
@@ -105,9 +127,90 @@ export function NewWorkspaceDialog({
             type="submit"
             className="primary"
             data-testid={`${id}-submit`}
-            disabled={!slug || busy || !connected}
+            disabled={!canSubmit}
           >
             {busy ? 'Creating…' : 'Create workspace'}
+          </button>
+        </div>
+      </form>
+    </Dialog>
+  )
+}
+
+export function RenameWorkspaceDialog({
+  workspace,
+  onClose
+}: {
+  workspace: Workspace
+  onClose: () => void
+}): React.JSX.Element {
+  const store = useStore()
+  const { connected } = useQue()
+  const [title, setTitle] = useState(workspace.title ?? workspace.name)
+  const [renameBranch, setRenameBranch] = useState(false)
+  const [branchRenamable, setBranchRenamable] = useState(false)
+  const { busy, error, run } = useSubmit()
+  const id = 'dialog-rename-workspace'
+  const branch = nameFromTitle(title)
+
+  useEffect(() => {
+    let live = true
+    store.canRenameBranch(workspace.id).then(
+      (allowed) => {
+        if (live) setBranchRenamable(allowed)
+      },
+      () => {}
+    )
+    return () => {
+      live = false
+    }
+  }, [store, workspace.id])
+
+  const submit = (e: FormEvent): void => {
+    e.preventDefault()
+    void run(async () => {
+      await store.renameWorkspace(workspace.id, title.trim(), renameBranch && branchRenamable)
+      onClose()
+    })
+  }
+
+  return (
+    <Dialog title={`Rename ${workspace.title ?? workspace.name}`} testId={id} onClose={onClose}>
+      <form onSubmit={submit}>
+        <label>
+          Title
+          <input
+            data-testid={`${id}-title`}
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            autoComplete="off"
+          />
+        </label>
+        <p className="hint">The folder keeps its name, {workspace.name}.</p>
+        {branchRenamable && (
+          <label className="check">
+            <input
+              type="checkbox"
+              data-testid={`${id}-branch`}
+              checked={renameBranch}
+              onChange={(e) => setRenameBranch(e.target.checked)}
+            />
+            Also rename the branch
+            {branch && branch !== workspace.branch ? ` to ${branch}` : ''}
+          </label>
+        )}
+        <FormError error={error} testId={id} />
+        <div className="dialog-actions">
+          <button type="button" onClick={onClose}>
+            Cancel
+          </button>
+          <button
+            type="submit"
+            className="primary"
+            data-testid={`${id}-submit`}
+            disabled={title.trim() === '' || (renameBranch && !branch) || busy || !connected}
+          >
+            Rename
           </button>
         </div>
       </form>

@@ -23,6 +23,11 @@ export function shQuote(s: string): string {
   return `'${s.replace(/'/g, `'\\''`)}'`
 }
 
+/** What is typed into a terminal to start an interactive claude on a first prompt. */
+export function claudeCommand(prompt: string): string {
+  return `claude ${shQuote(prompt)}\r`
+}
+
 function isExecutableFile(p: string): boolean {
   try {
     const st = fs.statSync(p)

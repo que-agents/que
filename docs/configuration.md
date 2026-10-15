@@ -28,6 +28,7 @@ max_budget_usd = 5
 # default_permission_mode = "acceptEdits"   # unset: que.toml or Claude Code decides
 allow_bypass_permissions = false
 protected_branches = ["main", "master", "release"]
+start_prompt = "Read .que/brief.md. Restate the goal, read the relevant code, and propose a plan before editing anything."
 
 [quiet_hours]
 enabled = true
@@ -65,6 +66,7 @@ start_prompt = "Read .que/ticket.md, the ticket this workspace is for. Restate t
 | `default_permission_mode` | Permission mode for headless runs when a repo's `que.toml` sets none. |
 | `allow_bypass_permissions` | Must be `true`, and the repo must opt in, before a task may run with `bypassPermissions`. |
 | `protected_branches` | Branches the finisher never pushes, besides each project's default branch. |
+| `start_prompt` | The first prompt typed into `claude` when a workspace made from a brief is started (New workspace with "Start claude with this brief" on). The brief is in `.que/brief.md`. |
 | `quiet_hours.enabled` | Quiet mode on or off. |
 | `quiet_hours.default` | The nightly window, `[start, end]` in local 24-hour time. It may cross midnight. |
 | `quiet_hours.<day>` | A per-day override (`sunday` … `saturday`, keyed by the day the window starts): a window, or `"none"`. |

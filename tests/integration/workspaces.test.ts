@@ -5,6 +5,7 @@ import fs from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { DaemonClient } from '@shared/client'
+import { DEFAULT_WORKSPACE_START_PROMPT } from '@shared/config'
 import type { Events } from '@shared/protocol'
 import { startTestDaemon, type TestDaemon } from '../../src/testing/daemon-harness'
 import { readFakeLog } from '../../src/testing/fakes'
@@ -225,6 +226,210 @@ worktree_include = ["config/local", "missing.json"]
       })
     }, 20_000)
   })
+})
+
+describe('workspaces from a brief', () => {
+  const brief = 'Fix the flaky upload test\n\nIt times out on slow CI runners; raise the timeout.'
+
+  it('takes the title from the first line, names the workspace after it, and writes the brief', async () => {
+    const repo = makeTempRepo(daemon.home)
+    const project = await client.request('project.add', { path: repo })
+
+    const ws = await client.request('workspace.create', { projectId: project.id, brief })
+
+    expect(ws).toMatchObject({
+      name: 'fix-the-flaky-upload-test',
+      branch: 'fix-the-flaky-upload-test',
+      path: join(daemon.home, 'worktrees', 'uploader', 'fix-the-flaky-upload-test'),
+      title: 'Fix the flaky upload test',
+      brief
+    })
+    expect(fs.readFileSync(join(ws.path, '.que', 'brief.md'), 'utf8')).toBe(
+      `# Fix the flaky upload test\n\n${brief}\n`
+    )
+    expect(gitIn(ws.path, 'status', '--porcelain')).toBe('')
+    expect(await client.request('workspace.get', { id: ws.id })).toMatchObject({
+      title: 'Fix the flaky upload test',
+      brief
+    })
+  }, 20_000)
+
+  it('prefers a given title, and keeps a given name exactly', async () => {
+    const project = await client.request('project.add', { path: makeTempRepo(daemon.home) })
+
+    const titled = await client.request('workspace.create', {
+      projectId: project.id,
+      title: 'Speed up the diff view',
+      brief
+    })
+    const named = await client.request('workspace.create', {
+      projectId: project.id,
+      name: 'app-1490-upload-timeout',
+      brief
+    })
+
+    expect(titled).toMatchObject({
+      name: 'speed-up-the-diff-view',
+      title: 'Speed up the diff view'
+    })
+    expect(named).toMatchObject({
+      name: 'app-1490-upload-timeout',
+      title: 'Fix the flaky upload test'
+    })
+  }, 20_000)
+
+  it('adds -2, -3 when the name, branch, or folder is taken', async () => {
+    const repo = makeTempRepo(daemon.home)
+    gitIn(repo, 'branch', 'fix-the-flaky-upload-test')
+    const project = await client.request('project.add', { path: repo })
+
+    const second = await client.request('workspace.create', { projectId: project.id, brief })
+    const third = await client.request('workspace.create', { projectId: project.id, brief })
+
+    expect(second).toMatchObject({ name: 'fix-the-flaky-upload-test-2' })
+    expect(third).toMatchObject({ name: 'fix-the-flaky-upload-test-3' })
+    await expect(
+      client.request('workspace.create', {
+        projectId: project.id,
+        name: 'fix-the-flaky-upload-test-2',
+        brief
+      })
+    ).rejects.toMatchObject({ code: 'conflict' })
+  }, 20_000)
+
+  it('falls back to ws-<id> for a title with nothing to name, and refuses neither', async () => {
+    const project = await client.request('project.add', { path: makeTempRepo(daemon.home) })
+
+    const ws = await client.request('workspace.create', { projectId: project.id, brief: '✨🚀' })
+
+    expect(ws.name).toBe(`ws-${ws.id.slice(3, 11)}`)
+    expect(ws.title).toBe('✨🚀')
+    await expect(
+      client.request('workspace.create', { projectId: project.id, brief: '  \n ' })
+    ).rejects.toMatchObject({ code: 'bad_request' })
+  }, 20_000)
+})
+
+describe('workspace.start', () => {
+  it('opens the first terminal at once and types claude on the start prompt once setup ends', async () => {
+    const gate = join(daemon.home, 'setup-gate')
+    const repo = makeTempRepo(daemon.home, {
+      queToml: `setup = "until [ -f '${gate}' ]; do sleep 0.05; done"\n`
+    })
+    const project = await client.request('project.add', { path: repo })
+    const ws = await client.request('workspace.create', { projectId: project.id, brief: 'Fix it' })
+
+    const { terminalId } = await client.request('workspace.start', { id: ws.id })
+
+    expect(await client.request('term.list', { workspaceId: ws.id })).toMatchObject([
+      { id: terminalId, cwd: ws.path, alive: true }
+    ])
+    expect((await client.request('workspace.get', { id: ws.id })).status).toBe('preparing')
+    expect(readFakeLog(daemon.claudeLog)).toEqual([])
+
+    fs.writeFileSync(gate, '')
+
+    await expect
+      .poll(
+        () =>
+          readFakeLog(daemon.claudeLog).some((c) =>
+            c.argv.includes(DEFAULT_WORKSPACE_START_PROMPT)
+          ),
+        { timeout: 15_000 }
+      )
+      .toBe(true)
+    const again = await client.request('workspace.start', { id: ws.id })
+    expect(again.terminalId).toBe(terminalId)
+    expect(await client.request('term.list', { workspaceId: ws.id })).toHaveLength(1)
+  }, 30_000)
+
+  it('answers not_found for an unknown workspace', async () => {
+    await expect(
+      client.request('workspace.start', { id: 'ws_missing00000' })
+    ).rejects.toMatchObject({ code: 'not_found' })
+  })
+})
+
+describe('workspace.rename', () => {
+  async function created() {
+    const repo = makeTempRepo(daemon.home)
+    const project = await client.request('project.add', { path: repo })
+    const ws = await client.request('workspace.create', {
+      projectId: project.id,
+      brief: 'Fix the flaky upload test'
+    })
+    return { repo, ws }
+  }
+
+  it('changes the title, announces it, and keeps the branch and folder', async () => {
+    const { ws } = await created()
+    const updated = record(client, 'workspace.updated')
+
+    const renamed = await client.request('workspace.rename', {
+      id: ws.id,
+      title: '  Raise the upload test timeout '
+    })
+
+    expect(renamed).toMatchObject({
+      title: 'Raise the upload test timeout',
+      name: ws.name,
+      branch: ws.branch,
+      path: ws.path
+    })
+    expect(updated).toEqual([renamed])
+    expect(await client.request('workspace.get', { id: ws.id })).toEqual(renamed)
+    await expect(
+      client.request('workspace.rename', { id: ws.id, title: ' ' })
+    ).rejects.toMatchObject({ code: 'bad_request' })
+  }, 20_000)
+
+  it('renames a branch never pushed to the new title, but not over an existing one', async () => {
+    const { repo, ws } = await created()
+    gitIn(repo, 'branch', 'taken-branch-name')
+    expect(await client.request('workspace.canRenameBranch', { id: ws.id })).toEqual({
+      allowed: true
+    })
+
+    const renamed = await client.request('workspace.rename', {
+      id: ws.id,
+      title: 'Raise the upload test timeout',
+      renameBranch: true
+    })
+
+    expect(renamed).toMatchObject({ branch: 'raise-the-upload-test-timeout', path: ws.path })
+    expect(gitIn(ws.path, 'rev-parse', '--abbrev-ref', 'HEAD')).toBe(
+      'raise-the-upload-test-timeout'
+    )
+    await expect(
+      client.request('workspace.rename', {
+        id: ws.id,
+        title: 'Taken branch name',
+        renameBranch: true
+      })
+    ).rejects.toMatchObject({ code: 'conflict' })
+    expect((await client.request('workspace.get', { id: ws.id })).title).toBe(
+      'Raise the upload test timeout'
+    )
+  }, 20_000)
+
+  it('keeps the name of a branch that is on origin', async () => {
+    const { repo, ws } = await created()
+    addBareOrigin(repo)
+    gitIn(ws.path, 'push', '--quiet', 'origin', ws.branch)
+    gitIn(ws.path, 'fetch', '--quiet', 'origin')
+
+    expect(await client.request('workspace.canRenameBranch', { id: ws.id })).toEqual({
+      allowed: false
+    })
+    await expect(
+      client.request('workspace.rename', {
+        id: ws.id,
+        title: 'Raise the upload test timeout',
+        renameBranch: true
+      })
+    ).rejects.toMatchObject({ code: 'conflict' })
+    expect(gitIn(ws.path, 'rev-parse', '--abbrev-ref', 'HEAD')).toBe(ws.branch)
+  }, 20_000)
 })
 
 describe('workspace.createPr', () => {

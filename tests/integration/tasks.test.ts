@@ -108,6 +108,14 @@ describe('runner and finisher', () => {
       'Add retry logic to the uploader'
     )
     const ws = await d.client.request('workspace.get', { id: done.workspaceId as string })
+    expect(ws).toMatchObject({
+      name: 'add-retry-logic-to-the-uploader',
+      title: 'Add retry logic to the uploader',
+      brief
+    })
+    expect(fs.readFileSync(join(ws.path, '.que', 'brief.md'), 'utf8')).toBe(
+      `# Add retry logic to the uploader\n\n${brief}\n`
+    )
     expect(gitIn(ws.path, 'status', '--porcelain')).toBe('')
     const [pr] = readFakeLog(d.ghLog)
     expect(pr.argv.slice(0, 5)).toEqual([

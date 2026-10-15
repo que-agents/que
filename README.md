@@ -93,6 +93,7 @@ max_budget_usd = 5
 # default_permission_mode = "acceptEdits"   # unset: que.toml or Claude Code decides
 allow_bypass_permissions = false
 protected_branches = ["main", "master", "release"]
+start_prompt = "Read .que/brief.md. Restate the goal, read the relevant code, and propose a plan before editing anything."
 
 [quiet_hours]
 enabled = true
@@ -154,7 +155,7 @@ Generated from `que --help`; options and arguments are in [docs/cli.md](docs/cli
 | `que term attach [options] <id>` | attach this TTY to a terminal (Ctrl-] detaches) |
 | `que project add [options] <path>` | register a git repository |
 | `que project list [options]` | list projects |
-| `que work [options] <name>` | create a workspace (git worktree) and print its path |
+| `que work [options] [brief]` | create a workspace (git worktree) from a brief and print its path; its first line is the title, and names the branch and folder |
 | `que ws list [options]` | list workspaces |
 | `que ws remove [options] <workspace>` | remove a workspace: kill its terminals, run teardown, remove the worktree |
 | `que ws diff [options] <workspace>` | what a workspace changed against its base, committed and uncommitted, with its commits |

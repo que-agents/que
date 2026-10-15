@@ -190,6 +190,7 @@ export function makeUserConfig(overrides: Partial<UserConfig> = {}): UserConfig 
       startPrompt: 'Read .que/ticket.md and propose a plan before changing anything.',
       projects: {}
     },
+    startPrompt: 'Read .que/brief.md and propose a plan before editing anything.',
     ...overrides
   }
 }

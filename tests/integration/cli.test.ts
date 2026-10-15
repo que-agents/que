@@ -102,7 +102,32 @@ describe('que work and que ws', () => {
     expect(fs.readFileSync(join(path, '.setup-done'), 'utf8')).toBe('ok')
     expect(gitIn(path, 'rev-parse', '--abbrev-ref', 'HEAD')).toBe('app-1432-retry-logic')
     const listed = JSON.parse((await runCli('ws', 'list', '--json')).stdout) as Workspace[]
-    expect(listed).toEqual([expect.objectContaining({ path, status: 'idle' })])
+    expect(listed).toEqual([
+      expect.objectContaining({ path, status: 'idle', title: 'APP-1432 retry logic' })
+    ])
+  }, 30_000)
+
+  it('takes a multi-line brief, or a --name, and refuses neither', async () => {
+    const repo = makeTempRepo(daemon.home)
+    const brief = 'Raise the upload timeout\n\nThe upload test times out on slow runners.'
+
+    const fromBrief = await runCli('work', brief, '-r', repo, '--json')
+    const named = await runCli('work', brief, '--name', 'APP-1490 timeout', '-r', repo, '--json')
+    const neither = await runCli('work', '-r', repo)
+
+    expect(JSON.parse(fromBrief.stdout)).toMatchObject({
+      name: 'raise-the-upload-timeout',
+      title: 'Raise the upload timeout',
+      brief
+    })
+    expect(JSON.parse(named.stdout)).toMatchObject({
+      name: 'app-1490-timeout',
+      title: 'Raise the upload timeout'
+    })
+    expect(neither.code).toBe(2)
+    expect(neither.stderr).toContain('give a brief (what you are doing) or --name')
+    const table = (await runCli('ws', 'list')).stdout
+    expect(table).toContain('Raise the upload timeout')
   }, 30_000)
 
   it('resolves -r through the config registry and fails when setup fails', async () => {

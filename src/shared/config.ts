@@ -55,7 +55,8 @@ export function defaultConfig(env: ConfigEnv): UserConfig {
     protectedBranches: ['main', 'master', 'release'],
     quietHours: defaultQuietHours(),
     notifications: defaultNotifications(),
-    jira: defaultJira()
+    jira: defaultJira(),
+    startPrompt: DEFAULT_WORKSPACE_START_PROMPT
   }
 }
 
@@ -67,6 +68,9 @@ export const DEFAULT_JQL =
   'assignee = currentUser() AND statusCategory != Done ORDER BY updated DESC'
 export const DEFAULT_START_PROMPT =
   'Read .que/ticket.md, the ticket this workspace is for. Restate the goal in a sentence, look at the code it touches, and propose a plan before changing anything.'
+/** The first prompt typed into claude in a workspace made from a brief (`start_prompt`). */
+export const DEFAULT_WORKSPACE_START_PROMPT =
+  'Read .que/brief.md. Restate the goal, read the relevant code, and propose a plan before editing anything.'
 
 export function defaultJira(): JiraConfig {
   return {
@@ -310,6 +314,12 @@ export function parseConfig(text: string, env: ConfigEnv): ConfigResult<UserConf
   config.quietHours = parseQuietHours(t.quiet_hours, errors)
   config.notifications = parseNotifications(t.notifications, errors)
   config.jira = parseJira(t.jira, errors)
+  const startPrompt = t.start_prompt
+  if (startPrompt !== undefined) {
+    if (typeof startPrompt !== 'string' || startPrompt.trim() === '') {
+      errors.push({ key: 'start_prompt', message: 'must be a non-empty string' })
+    } else config.startPrompt = startPrompt
+  }
 
   if (t.repos !== undefined) {
     if (typeof t.repos !== 'object' || t.repos === null || Array.isArray(t.repos)) {

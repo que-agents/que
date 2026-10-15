@@ -44,7 +44,7 @@ import { workspaceDiff } from './diff'
 import { readWorkspaceFile, workspaceFiles } from './files'
 import { WorkspaceManager, workspaceTerminalEnv } from './workspaces'
 import { WorktreeWatcher } from './watcher'
-import { defaultCliScript, installWrapper, resolveCliRunner } from './wrapper'
+import { claudeCommand, defaultCliScript, installWrapper, resolveCliRunner } from './wrapper'
 
 export interface ServerOptions {
   host: PtyHost
@@ -315,6 +315,27 @@ export class DaemonServer {
     this.log(`term ${t.id} created pid=${t.proc.pid} cwd=${t.cwd}`)
     this.broadcast('term.created', { id: t.id })
     return t
+  }
+
+  /**
+   * Starts claude on the start prompt in the workspace's first terminal (opened when it has
+   * none). Answers with the terminal at once; the command is typed once setup has ended.
+   */
+  private startWorkspace(id: string, cols = 120, rows = 30): { terminalId: string } {
+    const ws = this.workspaces.get(id)
+    const first =
+      this.opts.host.list().find((t) => t.alive && t.workspaceId === ws.id) ??
+      this.createTerminal(
+        { cwd: ws.path, cols, rows, name: ws.name },
+        { workspaceId: ws.id, env: workspaceTerminalEnv(ws, this.paths, this.socketPath) }
+      )
+    const command = claudeCommand(this.configOrDefault().startPrompt)
+    void this.workspaces.whenReady(ws.id).then(() => {
+      const t = this.opts.host.get(first.id)
+      if (t?.alive) t.write(command)
+      else this.log(`workspace ${ws.id}: terminal ${first.id} is gone; claude not started`)
+    })
+    return { terminalId: first.id }
   }
 
   private killTerminal(id: string): boolean {
@@ -625,10 +646,22 @@ export class DaemonServer {
       case 'workspace.create':
         return this.workspaces.create({
           projectId: str(p, 'projectId'),
-          name: str(p, 'name'),
+          name: optString(p, 'name'),
+          title: optString(p, 'title'),
+          brief: optString(p, 'brief'),
           baseRef: optString(p, 'baseRef'),
           branch: optString(p, 'branch')
         })
+      case 'workspace.start':
+        return this.startWorkspace(str(p, 'id'), optNumber(p, 'cols'), optNumber(p, 'rows'))
+      case 'workspace.rename':
+        return this.workspaces.rename({
+          id: str(p, 'id'),
+          title: str(p, 'title'),
+          renameBranch: optBool(p, 'renameBranch')
+        })
+      case 'workspace.canRenameBranch':
+        return { allowed: await this.workspaces.canRenameBranch(str(p, 'id')) }
       case 'workspace.list':
         return this.workspaces.list(optString(p, 'projectId'))
       case 'workspace.get':

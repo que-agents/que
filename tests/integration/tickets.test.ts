@@ -163,8 +163,13 @@ describe('starting a ticket', () => {
     const ws = r.workspace
     expect(ws).toMatchObject({
       name: 'app-1432-add-retry-logic-to-the-uploader',
+      title: 'APP-1432 Add retry logic to the uploader',
       projectId: project.id
     })
+    expect(ws.brief).toContain('# APP-1432 Add retry logic to the uploader')
+    expect(fs.readFileSync(join(ws.path, '.que', 'brief.md'), 'utf8')).toContain(
+      'https://example.atlassian.net/browse/APP-1432'
+    )
 
     const brief = fs.readFileSync(join(ws.path, '.que', 'ticket.md'), 'utf8')
     expect(brief).toContain('# APP-1432 Add retry logic to the uploader')

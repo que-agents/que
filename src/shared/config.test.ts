@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  DEFAULT_WORKSPACE_START_PROMPT,
   defaultJira,
   mergeConfigPatch,
   parseConfig,
@@ -34,7 +35,8 @@ describe('parseConfig', () => {
           unlockMinutes: 20
         },
         notifications: { chimeOnComplete: true, chimeOnNeedsInput: false, morningSummary: false },
-        jira: defaultJira()
+        jira: defaultJira(),
+        startPrompt: DEFAULT_WORKSPACE_START_PROMPT
       }
     })
   })
@@ -51,6 +53,7 @@ max_budget_usd = 12.5
 default_permission_mode = "plan"
 allow_bypass_permissions = true
 protected_branches = ["main", "production"]
+start_prompt = "Read .que/brief.md and ask before editing."
 
 [repos.uploader]
 path = "/Users/dev/code/uploader"
@@ -81,7 +84,8 @@ path = "/Users/dev/code/api"
         protectedBranches: ['main', 'production'],
         quietHours: expect.objectContaining({ enabled: true }),
         notifications: expect.objectContaining({ chimeOnComplete: true }),
-        jira: defaultJira()
+        jira: defaultJira(),
+        startPrompt: 'Read .que/brief.md and ask before editing.'
       }
     })
   })
@@ -174,6 +178,7 @@ default_branch = "main"
 default_permission_mode = "yolo"
 allow_bypass_permissions = "yes"
 protected_branches = "main"
+start_prompt = " "
 `,
       env
     )
@@ -187,7 +192,8 @@ protected_branches = "main"
           message: 'must be one of default, acceptEdits, plan, bypassPermissions, dontAsk, auto'
         },
         { key: 'allow_bypass_permissions', message: 'must be true or false' },
-        { key: 'protected_branches', message: 'must be a list of strings' }
+        { key: 'protected_branches', message: 'must be a list of strings' },
+        { key: 'start_prompt', message: 'must be a non-empty string' }
       ]
     })
   })

@@ -64,6 +64,27 @@ describe('Sidebar', () => {
       expect(stuck).toHaveAttribute('title', 'stuck: no_heartbeat')
     })
 
+    it('shows the title instead of the name, with the brief then the path on hover', async () => {
+      const briefed = makeWorkspace({
+        id: 'ws_01hzx7b2n4qe',
+        name: 'speed-up-the-diff-view-for-large-change',
+        title: 'Speed up the diff view for large changesets',
+        brief: 'Speed up the diff view for large changesets\n\nVirtualize the file list.'
+      })
+      fakeBridge.seedProject(uploader)
+      fakeBridge.seedWorkspace(briefed)
+      render(<App />)
+
+      expect(await screen.findByTestId(`sidebar-workspace-${briefed.id}-name`)).toHaveTextContent(
+        'Speed up the diff view for large changesets'
+      )
+      expect(screen.queryByText(briefed.name)).not.toBeInTheDocument()
+      expect(screen.getByTestId(`sidebar-workspace-${briefed.id}-open`)).toHaveAttribute(
+        'title',
+        `Speed up the diff view for large changesets\n\nVirtualize the file list.\n${briefed.path}`
+      )
+    })
+
     it('collapses a project', async () => {
       const user = userEvent.setup()
       seed()
@@ -272,6 +293,61 @@ describe('Sidebar', () => {
       expect(screen.queryByTestId(`sidebar-workspace-${board.id}`)).not.toBeInTheDocument()
     })
 
+    it('renames a workspace from its menu, and the branch too when it was never pushed', async () => {
+      const user = userEvent.setup()
+      seed()
+      render(<App />)
+
+      await user.click(
+        await screen.findByRole('button', { name: 'More actions for app-1432-retry-logic' })
+      )
+      await user.click(screen.getByRole('menuitem', { name: 'Rename…' }))
+      const dialog = screen.getByRole('dialog', { name: 'Rename app-1432-retry-logic' })
+      const title = within(dialog).getByRole('textbox', { name: 'Title' })
+      expect(title).toHaveValue('app-1432-retry-logic')
+      await user.clear(title)
+      await user.type(title, 'Retry uploads with backoff')
+      await user.click(
+        await within(dialog).findByRole('checkbox', {
+          name: 'Also rename the branch to retry-uploads-with-backoff'
+        })
+      )
+      await user.click(within(dialog).getByRole('button', { name: 'Rename' }))
+
+      await waitFor(() => {
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+      })
+      expect(fakeBridge.renameCalls()).toEqual([
+        { id: retry.id, title: 'Retry uploads with backoff', renameBranch: true }
+      ])
+      expect(screen.getByTestId(`sidebar-workspace-${retry.id}-name`)).toHaveTextContent(
+        'Retry uploads with backoff'
+      )
+    })
+
+    it('offers no branch rename for a pushed branch', async () => {
+      const user = userEvent.setup()
+      seed()
+      fakeBridge.setBranchPushed(board.id)
+      render(<App />)
+
+      await user.click(
+        await screen.findByRole('button', { name: 'More actions for app-1440-quiet-board' })
+      )
+      await user.click(screen.getByRole('menuitem', { name: 'Rename…' }))
+      const dialog = screen.getByRole('dialog', { name: 'Rename app-1440-quiet-board' })
+      await user.clear(within(dialog).getByRole('textbox', { name: 'Title' }))
+      await user.type(within(dialog).getByRole('textbox', { name: 'Title' }), 'Quiet board polish')
+      await user.click(within(dialog).getByRole('button', { name: 'Rename' }))
+
+      await waitFor(() => {
+        expect(fakeBridge.renameCalls()).toEqual([
+          { id: board.id, title: 'Quiet board polish', renameBranch: false }
+        ])
+      })
+      expect(screen.queryByRole('checkbox', { name: /rename the branch/ })).not.toBeInTheDocument()
+    })
+
     it('opens the workspace in the editor from its menu', async () => {
       const user = userEvent.setup()
       seed()
@@ -351,7 +427,7 @@ describe('Sidebar', () => {
         within(menu)
           .getAllByRole('menuitem')
           .map((m) => m.textContent)
-      ).toEqual(['Open in editor', 'Remove…'])
+      ).toEqual(['Rename…', 'Open in editor', 'Remove…'])
       await user.keyboard('{Escape}')
 
       expect(screen.queryByRole('menu')).not.toBeInTheDocument()

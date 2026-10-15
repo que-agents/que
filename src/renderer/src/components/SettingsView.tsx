@@ -28,6 +28,8 @@ interface Form {
   site: string
   pollMinutes: string
   startPrompt: string
+  /** The top-level `start_prompt`, for a workspace made from a brief. */
+  workspacePrompt: string
 }
 
 /** Monday first, as people read a week. */
@@ -62,7 +64,8 @@ function toForm(c: UserConfig): Form {
     jql: c.jira.jql,
     site: c.jira.site ?? '',
     pollMinutes: String(c.jira.pollMinutes),
-    startPrompt: c.jira.startPrompt
+    startPrompt: c.jira.startPrompt,
+    workspacePrompt: c.startPrompt
   }
 }
 
@@ -84,6 +87,9 @@ function validate(f: Form): string[] {
   const poll = Number(f.pollMinutes)
   if (f.pollMinutes.trim() === '' || !Number.isFinite(poll) || poll <= 0) {
     errors.push('Sync minutes must be a positive number')
+  }
+  if (f.workspacePrompt.trim() === '') {
+    errors.push('The workspace start prompt cannot be empty')
   }
   if (f.startPrompt.trim() === '') errors.push('The start prompt cannot be empty')
   return errors
@@ -132,6 +138,7 @@ function patchOf(f: Form): Record<string, unknown> {
       poll_minutes: Number(f.pollMinutes),
       start_prompt: f.startPrompt
     },
+    start_prompt: f.workspacePrompt,
     protected_branches: f.protectedBranches
       .split(',')
       .map((b) => b.trim())
@@ -320,6 +327,21 @@ export default function SettingsView(): React.JSX.Element {
               onChange={(e) => update({ morningSummary: e.target.checked })}
             />
             Morning summary when quiet hours end
+          </label>
+        </fieldset>
+        <fieldset>
+          <legend>New workspaces</legend>
+          <label>
+            Start prompt
+            <textarea
+              rows={3}
+              data-testid="settings-workspace-prompt"
+              value={form.workspacePrompt}
+              onChange={(e) => update({ workspacePrompt: e.target.value })}
+            />
+            <span className="hint">
+              Typed into claude when a workspace starts from its brief (.que/brief.md)
+            </span>
           </label>
         </fieldset>
         <fieldset>
