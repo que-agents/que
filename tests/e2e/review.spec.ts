@@ -2,11 +2,20 @@
 // in its worktree; the Changes tab opens beside its terminal tab with the
 // file's counts and patch; a split beside takes the Pull request tab; the app
 // quits and relaunches on the same home and both view tabs come back in their
-// panes; the top bar closes the Changes tab again.
+// panes; a pull request appears (through the fake GitHub CLI) and the tab fills
+// in with its checks and conversation, Refresh picks up a new comment; the top
+// bar closes the Changes tab again.
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { expect, test } from '@playwright/test'
 import type { Project, Workspace } from '../../src/shared/types'
+import {
+  fakeCheckRun,
+  fakeComment,
+  fakeLineComment,
+  fakeReview,
+  setFakePullRequest
+} from '../../src/testing/fakes'
 import { ChangesPage } from './pages/ChangesPage'
 import { PullRequestPage } from './pages/PullRequestPage'
 import { SidebarPage } from './pages/SidebarPage'
@@ -23,7 +32,9 @@ test.afterEach(async () => {
 
 test('Changes and Pull request open as tabs beside the terminals and survive a relaunch', async () => {
   const repo = makeRepo({ origin: true })
-  const queHome = newQueHome()
+  // The tracker polls every second here, so a pull request shows up right after it is seeded.
+  const queHome = newQueHome('pr_poll_seconds = 1\n[quiet_hours]\nenabled = false\n')
+  const prsFile = join(queHome, 'fake-gh-prs.json')
   let project: Project
   let workspace: Workspace
   let sidebar: SidebarPage
@@ -78,7 +89,6 @@ test('Changes and Pull request open as tabs beside the terminals and survive a r
     await expect(terminal.pane(1).viewTab('pr')).toHaveAttribute('data-active', 'true')
     await expect(pr.empty).toHaveText('No pull request yet')
     await expect(pr.create).toBeVisible()
-    // The step for real checks and comments goes here once the daemon serves the thread.
     await expect
       .poll(async () => (await terminal.panes()).map((p) => p.activeTab))
       .toEqual(['view:changes', 'view:pr'])
@@ -98,6 +108,92 @@ test('Changes and Pull request open as tabs beside the terminals and survive a r
     await expect
       .poll(async () => (await terminal.panes()).map((p) => p.activeTab))
       .toEqual(['view:changes', 'view:pr'])
+  })
+
+  await test.step('A pull request appears: its checks and conversation fill the tab', async () => {
+    setFakePullRequest(prsFile, workspace.branch, {
+      number: 7,
+      url: 'https://github.com/rquellh/que/pull/7',
+      title: 'Add retry logic',
+      isDraft: false,
+      reviewDecision: 'CHANGES_REQUESTED',
+      updatedAt: '2026-10-14T03:05:00Z',
+      statusCheckRollup: [
+        fakeCheckRun({ name: 'build' }),
+        fakeCheckRun({
+          name: 'lint',
+          conclusion: 'FAILURE',
+          detailsUrl: 'https://github.com/rquellh/que/actions/runs/42'
+        })
+      ],
+      comments: [
+        fakeComment({
+          author: 'reviewer',
+          body: 'Looks close. One nit below.',
+          createdAt: '2026-10-14T03:00:00Z'
+        })
+      ],
+      reviews: [
+        fakeReview({
+          author: 'reviewer',
+          state: 'CHANGES_REQUESTED',
+          body: 'Please add a test for the retry cap.',
+          submittedAt: '2026-10-14T03:02:00Z'
+        })
+      ],
+      lineComments: [
+        fakeLineComment({
+          author: 'reviewer',
+          body: 'Backoff should be capped.',
+          path: 'README.md',
+          line: 3,
+          createdAt: '2026-10-14T03:01:00Z'
+        })
+      ]
+    })
+    await expect(pr.headerLink).toContainText('#7 · open · Add retry logic', { timeout: 15_000 })
+    await expect(pr.headerLink).toHaveAttribute('href', 'https://github.com/rquellh/que/pull/7')
+    await expect(pr.review).toHaveAttribute('data-review', 'changes_requested')
+    await expect(pr.checksSummary).toHaveText('1 passing · 1 failing')
+    await expect(pr.check(0)).toHaveAttribute('data-state', 'failing')
+    await expect(pr.check(0)).toContainText('lint')
+    await expect(pr.checkLink(0)).toHaveAttribute(
+      'href',
+      'https://github.com/rquellh/que/actions/runs/42'
+    )
+    await expect(pr.check(1)).toHaveAttribute('data-state', 'passing')
+    await expect(pr.check(1)).toContainText('build')
+    // Oldest first: the comment, the line comment, then the review.
+    await expect(pr.comment(0)).toHaveAttribute('data-kind', 'comment')
+    await expect(pr.comment(0)).toContainText('Looks close. One nit below.')
+    await expect(pr.comment(1)).toHaveAttribute('data-kind', 'line')
+    await expect(pr.comment(1)).toContainText('README.md:3')
+    await expect(pr.comment(1)).toContainText('Backoff should be capped.')
+    await expect(pr.comment(2)).toHaveAttribute('data-kind', 'review')
+    await expect(pr.comment(2)).toContainText('changes requested')
+    await expect(pr.comment(2)).toContainText('Please add a test for the retry cap.')
+    await expect(pr.footerLink).toHaveAttribute('href', 'https://github.com/rquellh/que/pull/7')
+    await launched.window.screenshot({ path: 'test-results/review-pull-request-filled.png' })
+  })
+
+  await test.step('Refresh fetches the conversation again and shows a new comment', async () => {
+    setFakePullRequest(prsFile, workspace.branch, {
+      comments: [
+        fakeComment({
+          author: 'reviewer',
+          body: 'Looks close. One nit below.',
+          createdAt: '2026-10-14T03:00:00Z'
+        }),
+        fakeComment({
+          author: 'author',
+          body: 'Capped it; test added.',
+          createdAt: '2026-10-14T03:10:00Z'
+        })
+      ]
+    })
+    await pr.refresh.click()
+    await expect(pr.comment(3)).toContainText('Capped it; test added.')
+    await expect(pr.comment(3)).toHaveAttribute('data-kind', 'comment')
   })
 
   await test.step('The top bar closes the Changes tab while it is the active tab', async () => {
