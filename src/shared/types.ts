@@ -137,6 +137,47 @@ export interface QuietHoursConfig {
   unlockMinutes: number
 }
 
+/** A ticket assigned to the user in the issue tracker, as last synced. */
+export interface Ticket {
+  key: string
+  summary: string
+  status: string
+  statusCategory: 'new' | 'indeterminate' | 'done' | 'unknown'
+  priority: string | null
+  type: string
+  assignee: string | null
+  projectKey: string
+  projectName: string
+  /** The ticket's page in the tracker. */
+  url: string
+  labels: string[]
+  updatedAt: string | null
+  /** When que last synced this ticket. */
+  syncedAt: string
+  /** The workspace started for it from que, if any. */
+  workspaceId: string | null
+}
+
+/** How the last ticket sync went. */
+export interface TicketsSyncState {
+  lastSyncAt: string | null
+  /** Why the last sync failed, or null. */
+  error: string | null
+  count: number
+}
+
+/** The `[jira]` table of the config file. */
+export interface JiraConfig {
+  /** The filter for the ticket queue. */
+  jql: string
+  /** Minutes between syncs. */
+  pollMinutes: number
+  /** The first prompt typed into claude when a ticket is started. */
+  startPrompt: string
+  /** Tracker project key → que project name, learned when the user picks. */
+  projects: Record<string, string>
+}
+
 export interface NotificationsConfig {
   /** Chime when a task finishes (work hours only). */
   chimeOnComplete: boolean
@@ -182,6 +223,7 @@ export interface UserConfig {
   protectedBranches: string[]
   quietHours: QuietHoursConfig
   notifications: NotificationsConfig
+  jira: JiraConfig
 }
 
 /** A newer que release, found by the app's daily update check. */

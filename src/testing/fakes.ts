@@ -85,3 +85,86 @@ export function setFakePullRequest(file: string, branch: string, patch: Partial<
   }
   fs.writeFileSync(file, JSON.stringify(all, null, 2))
 }
+
+/** One issue as `acli jira workitem search/view --json` prints it. */
+export interface FakeIssue {
+  key: string
+  id: string
+  self: string
+  fields: {
+    summary: string
+    status: { name: string; statusCategory: { key: string } }
+    priority: { name: string } | null
+    issuetype: { name: string }
+    assignee: { displayName: string } | null
+    project: { key: string; name: string }
+    labels: string[]
+    updated: string
+    description: unknown
+  }
+}
+
+/** An issue in acli's shape; `overrides` replace top-level keys and merge into `fields`. */
+export function makeFakeIssue(
+  overrides: Partial<Omit<FakeIssue, 'fields'>> & { fields?: Partial<FakeIssue['fields']> } = {}
+): FakeIssue {
+  const { fields, ...top } = overrides
+  const key = top.key ?? 'APP-1432'
+  return {
+    key,
+    id: '10432',
+    self: 'https://example.atlassian.net/rest/api/3/issue/10432',
+    ...top,
+    fields: {
+      summary: 'Add retry logic to the uploader',
+      status: { name: 'In Progress', statusCategory: { key: 'indeterminate' } },
+      priority: { name: 'Medium' },
+      issuetype: { name: 'Story' },
+      assignee: { displayName: 'Test User' },
+      project: { key: 'APP', name: 'Uploader' },
+      labels: [],
+      updated: '2026-10-13T09:30:00.000+0000',
+      description: {
+        type: 'doc',
+        version: 1,
+        content: [
+          {
+            type: 'paragraph',
+            content: [
+              { type: 'text', text: 'Uploads fail on flaky networks and are never retried.' }
+            ]
+          },
+          { type: 'heading', attrs: { level: 2 }, content: [{ type: 'text', text: 'Acceptance' }] },
+          {
+            type: 'bulletList',
+            content: [
+              {
+                type: 'listItem',
+                content: [
+                  { type: 'paragraph', content: [{ type: 'text', text: 'Retry three times' }] }
+                ]
+              },
+              {
+                type: 'listItem',
+                content: [
+                  { type: 'paragraph', content: [{ type: 'text', text: 'Back off between tries' }] }
+                ]
+              }
+            ]
+          },
+          {
+            type: 'codeBlock',
+            attrs: { language: 'ts' },
+            content: [{ type: 'text', text: 'await retry(() => upload(file))' }]
+          }
+        ]
+      },
+      ...fields
+    }
+  }
+}
+
+/** Writes the fake acli's issue file ($QUE_FAKE_ACLI_TICKETS). */
+export function writeFakeTickets(file: string, issues: FakeIssue[]): void {
+  fs.writeFileSync(file, JSON.stringify(issues, null, 2))
+}

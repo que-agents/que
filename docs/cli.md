@@ -33,6 +33,10 @@ hand; run `npm run docs` after changing a command.
 | `que queue close [options]` | stop starting queued tasks (running ones finish) |
 | `que queue status [options]` | show the queue |
 | `que report [options]` | the morning report: what the queue did |
+| `que tickets list [options]` | list the cached tickets (the default) |
+| `que tickets sync [options]` | fetch the queue from the tracker now |
+| `que tickets start [options] <key>` | make a workspace for a ticket, write it as a brief, and start claude on it |
+| `que tickets open [options] <key>` | open a ticket's page in the browser |
 | `que unlock [options] [minutes]` | unlock detail during quiet hours for a while (default: quiet_hours.unlock_minutes) |
 | `que lock [options]` | end an unlock early |
 | `que quiet status [options]` | whether quiet hours are on, until when, and any unlock |
@@ -382,6 +386,55 @@ Options:
   --since <when>  ISO time or a duration back from now (12h, 90m, 2d)
   --json          print JSON
   -h, --help      display help for command
+```
+
+### que tickets list
+
+```text
+Usage: que tickets list [options]
+
+list the cached tickets (the default)
+
+Options:
+  --json      print the tickets and sync state as JSON
+  -h, --help  display help for command
+```
+
+### que tickets sync
+
+```text
+Usage: que tickets sync [options]
+
+fetch the queue from the tracker now
+
+Options:
+  --json      print the tickets and sync state as JSON
+  -h, --help  display help for command
+```
+
+### que tickets start
+
+```text
+Usage: que tickets start [options] <key>
+
+make a workspace for a ticket, write it as a brief, and start claude on it
+
+Options:
+  -p, --project <project>  que project (name, path, or id) when not yet learned
+  --session                a loose terminal in your home directory instead of a
+                           workspace
+  -h, --help               display help for command
+```
+
+### que tickets open
+
+```text
+Usage: que tickets open [options] <key>
+
+open a ticket's page in the browser
+
+Options:
+  -h, --help  display help for command
 ```
 
 ### que unlock

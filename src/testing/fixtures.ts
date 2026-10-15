@@ -2,7 +2,7 @@
 // Realistic values, opaque ids, typed against the real shared types.
 import type { HookEvent, HookEventName, StreamResult } from '@shared/protocol'
 import { defaultConfig, defaultQuietHours } from '@shared/config'
-import type { QuietHoursConfig, Task, UserConfig, Workspace } from '@shared/types'
+import type { QuietHoursConfig, Task, Ticket, UserConfig, Workspace } from '@shared/types'
 
 let sessionCounter = 0
 let wsCounter = 0
@@ -105,6 +105,27 @@ export function makeTask(overrides: Partial<Task> = {}): Task {
     pausedUntil: null,
     createdAt: '2026-10-13T21:05:00.000Z',
     updatedAt: '2026-10-13T21:05:00.000Z',
+    ...overrides
+  }
+}
+
+/** A ticket assigned to the user, as tickets.list reports it. */
+export function makeTicket(overrides: Partial<Ticket> = {}): Ticket {
+  return {
+    key: 'APP-1432',
+    summary: 'Add retry logic to the uploader',
+    status: 'In Progress',
+    statusCategory: 'indeterminate',
+    priority: 'Medium',
+    type: 'Story',
+    assignee: 'Ryan',
+    projectKey: 'APP',
+    projectName: 'Uploader',
+    url: 'https://example.atlassian.net/browse/APP-1432',
+    labels: [],
+    updatedAt: '2026-10-14T01:12:00.000Z',
+    syncedAt: '2026-10-14T01:15:00.000Z',
+    workspaceId: null,
     ...overrides
   }
 }

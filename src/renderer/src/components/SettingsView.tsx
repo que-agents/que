@@ -24,6 +24,9 @@ interface Form {
   chimeNeedsInput: boolean
   morningSummary: boolean
   protectedBranches: string
+  jql: string
+  pollMinutes: string
+  startPrompt: string
 }
 
 /** Monday first, as people read a week. */
@@ -54,7 +57,10 @@ function toForm(c: UserConfig): Form {
     chimeComplete: c.notifications.chimeOnComplete,
     chimeNeedsInput: c.notifications.chimeOnNeedsInput,
     morningSummary: c.notifications.morningSummary,
-    protectedBranches: c.protectedBranches.join(', ')
+    protectedBranches: c.protectedBranches.join(', '),
+    jql: c.jira.jql,
+    pollMinutes: String(c.jira.pollMinutes),
+    startPrompt: c.jira.startPrompt
   }
 }
 
@@ -73,6 +79,11 @@ function validate(f: Form): string[] {
   if (f.unlockMinutes.trim() === '' || !Number.isFinite(minutes) || minutes <= 0) {
     errors.push('Unlock minutes must be a positive number')
   }
+  const poll = Number(f.pollMinutes)
+  if (f.pollMinutes.trim() === '' || !Number.isFinite(poll) || poll <= 0) {
+    errors.push('Sync minutes must be a positive number')
+  }
+  if (f.startPrompt.trim() === '') errors.push('The start prompt cannot be empty')
   return errors
 }
 
@@ -113,6 +124,7 @@ function patchOf(f: Form): Record<string, unknown> {
       chime_on_needs_input: f.chimeNeedsInput,
       morning_summary: f.morningSummary
     },
+    jira: { jql: f.jql, poll_minutes: Number(f.pollMinutes), start_prompt: f.startPrompt },
     protected_branches: f.protectedBranches
       .split(',')
       .map((b) => b.trim())
@@ -302,6 +314,49 @@ export default function SettingsView(): React.JSX.Element {
             />
             Morning summary when quiet hours end
           </label>
+        </fieldset>
+        <fieldset>
+          <legend>Tickets</legend>
+          <label>
+            Filter
+            <input
+              data-testid="settings-tickets-jql"
+              value={form.jql}
+              onChange={(e) => update({ jql: e.target.value })}
+              autoComplete="off"
+              spellCheck={false}
+            />
+          </label>
+          <label>
+            Sync every (minutes)
+            <input
+              type="number"
+              min="1"
+              data-testid="settings-tickets-poll"
+              value={form.pollMinutes}
+              onChange={(e) => update({ pollMinutes: e.target.value })}
+            />
+          </label>
+          <label>
+            Start prompt
+            <textarea
+              rows={3}
+              data-testid="settings-tickets-prompt"
+              value={form.startPrompt}
+              onChange={(e) => update({ startPrompt: e.target.value })}
+            />
+          </label>
+          <div data-testid="settings-tickets-projects" className="projects-learned">
+            {Object.keys(config.config.jira.projects).length === 0 ? (
+              <p className="hint">No projects learned yet.</p>
+            ) : (
+              Object.entries(config.config.jira.projects).map(([key, name]) => (
+                <div key={key}>
+                  {key} → {name}
+                </div>
+              ))
+            )}
+          </div>
         </fieldset>
         <fieldset>
           <legend>Pull requests</legend>
