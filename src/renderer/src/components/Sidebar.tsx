@@ -5,96 +5,11 @@ import { SCRATCH, useQue, useStore } from '../store'
 import { countOpenTickets } from '../ticket-tree'
 import { filterSidebar, matches, sortProjects, sortWorkspaces } from '../sidebar-order'
 import { FolderPlusIcon, PlusIcon, SearchIcon, SortIcon } from './icons'
+import Menu, { type MenuItem, type Point } from './Menu'
 import { PrChip, StatusBadge, TaskBadge } from './StatusBadge'
-
-interface MenuItem {
-  label: string
-  testId: string
-  action: () => void
-}
-
-interface Point {
-  x: number
-  y: number
-}
 
 /** Which row's menu is open, and where: under its ⋯ button, or at the pointer. */
 type OpenMenu = { kind: 'project' | 'workspace'; id: string; at?: Point }
-
-const MENU_WIDTH = 180
-const MENU_ITEM_HEIGHT = 28
-
-/**
- * A row's actions. Anchored under the row's ⋯ button, or placed at the pointer
- * for a right-click (kept inside the window). The first item takes focus;
- * Escape or a click elsewhere closes it.
- */
-function ActionMenu({
-  label,
-  testId,
-  items,
-  at,
-  onClose
-}: {
-  label: string
-  testId: string
-  items: MenuItem[]
-  at?: Point
-  onClose: () => void
-}): React.JSX.Element {
-  const { connected } = useQue()
-  const ref = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    ref.current?.querySelector<HTMLElement>('[role=menuitem]')?.focus()
-    const onDown = (e: MouseEvent): void => {
-      if (!ref.current?.contains(e.target as Node)) onClose()
-    }
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') onClose()
-    }
-    document.addEventListener('mousedown', onDown)
-    document.addEventListener('keydown', onKey)
-    return () => {
-      document.removeEventListener('mousedown', onDown)
-      document.removeEventListener('keydown', onKey)
-    }
-  }, [onClose])
-
-  const style = at
-    ? {
-        left: Math.max(0, Math.min(at.x, window.innerWidth - MENU_WIDTH)),
-        top: Math.max(0, Math.min(at.y, window.innerHeight - MENU_ITEM_HEIGHT * items.length - 12)),
-        right: 'auto'
-      }
-    : undefined
-
-  return (
-    <div
-      className={at ? 'menu at-pointer' : 'menu'}
-      role="menu"
-      aria-label={label}
-      ref={ref}
-      style={style}
-    >
-      {items.map((item) => (
-        <button
-          key={item.testId}
-          type="button"
-          role="menuitem"
-          data-testid={`${testId}-${item.testId}`}
-          disabled={!connected}
-          onClick={() => {
-            onClose()
-            item.action()
-          }}
-        >
-          {item.label}
-        </button>
-      ))}
-    </div>
-  )
-}
 
 /**
  * A task-owned workspace shows its task: the task's state while it is live
@@ -365,7 +280,7 @@ export default function Sidebar(): React.JSX.Element {
                   ⋯
                 </button>
                 {projectMenu && (
-                  <ActionMenu
+                  <Menu
                     label={`Actions for ${p.name}`}
                     testId={`sidebar-project-${p.id}-menu`}
                     items={projectItems(p)}
@@ -424,7 +339,7 @@ export default function Sidebar(): React.JSX.Element {
                           ⋯
                         </button>
                         {workspaceMenu && (
-                          <ActionMenu
+                          <Menu
                             label={`Actions for ${w.name}`}
                             testId={`sidebar-workspace-${w.id}-menu`}
                             items={workspaceItems(w)}
