@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { Ticket } from '../../../preload/index.d'
 import { formatAge } from '../format'
+import { matches } from '../sidebar-order'
 import { useQue, useStore } from '../store'
 
 /** `synced 14:05` in local time, or `synced never`. */
@@ -20,7 +21,8 @@ function ordered(tickets: Ticket[]): Ticket[] {
 /** The tickets assigned to the user, with Start on each. */
 export default function TicketsView(): React.JSX.Element {
   const store = useStore()
-  const { connected, tickets, ticketsSync, workspaces } = useQue()
+  const { connected, tickets, ticketsSync, workspaces, filter } = useQue()
+  const shown = ordered(tickets.filter((t) => matches(filter, t.key, t.summary)))
   const [syncing, setSyncing] = useState(false)
 
   const sync = async (): Promise<void> => {
@@ -63,8 +65,13 @@ export default function TicketsView(): React.JSX.Element {
             No tickets assigned to you.
           </p>
         )}
+        {tickets.length > 0 && shown.length === 0 && (
+          <p className="empty-note" data-testid="tickets-nomatch">
+            Nothing matches
+          </p>
+        )}
         <ul>
-          {ordered(tickets).map((t) => {
+          {shown.map((t) => {
             const ws = t.workspaceId ? workspaces[t.workspaceId] : undefined
             return (
               <li

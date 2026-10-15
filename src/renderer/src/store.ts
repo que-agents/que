@@ -18,6 +18,7 @@ import type {
   Workspace,
   WorkspaceDiff
 } from '../../preload/index.d'
+import type { SidebarSort } from './sidebar-order'
 import { chime, shouldChime } from './sound'
 
 const DEFAULT_COLS = 80
@@ -131,6 +132,10 @@ export interface QueState {
   quiet: QuietState | null
   /** The user config (config.get); null until loaded. */
   config: ConfigGetResult | null
+  /** The sidebar filter text; empty shows everything. Not remembered. */
+  filter: string
+  /** How projects and workspaces are ordered; remembered. */
+  sort: SidebarSort
 }
 
 export interface StoreOptions {
@@ -143,6 +148,16 @@ export interface StoreOptions {
 /** Quiet hours are on and detail is not unlocked: terminals and reports are refused. */
 export function isLocked(q: QuietState | null): boolean {
   return Boolean(q?.inQuietHours && !q.unlockedUntil)
+}
+
+const SORT_KEY = 'que.sidebarSort'
+
+function loadSort(): SidebarSort {
+  try {
+    return localStorage.getItem(SORT_KEY) === 'activity' ? 'activity' : 'name'
+  } catch {
+    return 'name'
+  }
 }
 
 function toTab(t: TermInfo, reattached: boolean): TermTab {
@@ -186,7 +201,9 @@ export class QueStore {
     changesOpen: {},
     dialog: null,
     quiet: null,
-    config: null
+    config: null,
+    filter: '',
+    sort: loadSort()
   }
   private listeners = new Set<() => void>()
   private offs: Array<() => void> = []
@@ -397,6 +414,19 @@ export class QueStore {
 
   dismissError(): void {
     this.set({ error: null })
+  }
+
+  setFilter(text: string): void {
+    this.set({ filter: text })
+  }
+
+  setSort(sort: SidebarSort): void {
+    try {
+      localStorage.setItem(SORT_KEY, sort)
+    } catch {
+      // Nothing to remember into; the sort still applies for this session.
+    }
+    this.set({ sort })
   }
 
   openDialog(dialog: DialogState): void {

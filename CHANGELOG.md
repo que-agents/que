@@ -8,6 +8,7 @@ All notable changes to que are recorded here. The format follows
 
 ### Added
 
+- Filter the sidebar with `⌘K`: sessions, projects and workspaces narrow as you type, and so does the tickets list; sort projects by name or last activity from the Projects head.
 - A Changes view for a workspace: what it changed against its base, file by file with the patch, committed and uncommitted, read-only.
 - `que ws diff <workspace>` and `workspace.diff`: what a workspace changed against its base, committed and uncommitted, file by file with patches.
 - Split a workspace's terminals in two: ⌘D beside, ⌘⇧D below, ⌘⌥ arrows to move between panes, or use the split and join buttons in the top bar; drag the divider; the layout is remembered and both panes reattach after a relaunch.

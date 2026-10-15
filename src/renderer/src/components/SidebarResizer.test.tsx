@@ -65,6 +65,20 @@ describe('SidebarResizer', () => {
       expect(sep).toHaveAttribute('aria-valuenow', '180')
     })
 
+    it('lands where the pointer is released, even when the last move never arrived', async () => {
+      const user = userEvent.setup()
+      await openApp()
+      const sep = separator()
+
+      await user.pointer([
+        { keys: '[MouseLeft>]', target: sep, coords: { x: 256, clientX: 256 } },
+        { keys: '[/MouseLeft]', target: sep, coords: { x: 356, clientX: 356 } }
+      ])
+
+      expect(sep).toHaveAttribute('aria-valuenow', '356')
+      expect(appWidth()).toBe('356px')
+    })
+
     it('goes back to the default on double-click', async () => {
       const user = userEvent.setup()
       localStorage.setItem('que.sidebarWidth', '400')

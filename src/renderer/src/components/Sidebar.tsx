@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import type { Project, Task, Workspace } from '../../../preload/index.d'
 import { isLiveTask } from '../format'
 import { SCRATCH, useQue, useStore } from '../store'
-import { FolderPlusIcon, PlusIcon } from './icons'
+import { filterSidebar, matches, sortProjects, sortWorkspaces } from '../sidebar-order'
+import { FolderPlusIcon, PlusIcon, SortIcon } from './icons'
 import { PrChip, StatusBadge, TaskBadge } from './StatusBadge'
 
 interface MenuItem {
@@ -119,14 +120,31 @@ function WorkspaceBadge({ w, task }: { w: Workspace; task?: Task }): React.JSX.E
 
 export default function Sidebar(): React.JSX.Element {
   const store = useStore()
-  const { projects, workspaces, view, connected, loaded, tasks, tickets, ticketsSync } = useQue()
-  const openTickets = tickets.filter((t) => t.statusCategory !== 'done').length
+  const {
+    projects,
+    workspaces,
+    view,
+    connected,
+    loaded,
+    tasks,
+    tickets,
+    ticketsSync,
+    filter,
+    sort
+  } = useQue()
+  const filtering = filter.trim() !== ''
+  const openTickets = tickets.filter(
+    (t) => t.statusCategory !== 'done' && matches(filter, t.key, t.summary)
+  ).length
   const owned = latestTasks(tasks)
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set())
   const [menu, setMenu] = useState<OpenMenu | null>(null)
   const closeMenu = useRef(() => setMenu(null)).current
   const selected = view.kind === 'terminals' ? view.key : null
-  const sessions = store.tabs(SCRATCH)
+  const allSessions = store.tabs(SCRATCH)
+  const sessions = allSessions.filter((t) => matches(filter, t.name, t.cwd))
+  const narrowed = filterSidebar(filter, projects, Object.values(workspaces))
+  const shownProjects = sortProjects(narrowed.projects, Object.values(workspaces), sort)
   const activeSession = selected === SCRATCH ? store.activeTab(SCRATCH) : null
 
   const toggle = (id: string): void =>
@@ -182,6 +200,23 @@ export default function Sidebar(): React.JSX.Element {
 
   return (
     <aside className="sidebar" data-testid="sidebar" aria-label="Sidebar">
+      <div className="sidebar-filter">
+        <input
+          type="search"
+          data-testid="sidebar-filter"
+          aria-label="Filter"
+          placeholder="Filter"
+          value={filter}
+          onChange={(e) => store.setFilter(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key !== 'Escape') return
+            e.preventDefault()
+            store.setFilter('')
+            e.currentTarget.blur()
+          }}
+        />
+        {filter === '' && <span className="kbd">⌘K</span>}
+      </div>
       <nav aria-label="Sessions" data-testid="sidebar-sessions">
         <div className="section-head">
           <h2>Sessions</h2>
@@ -200,7 +235,11 @@ export default function Sidebar(): React.JSX.Element {
             <PlusIcon />
           </button>
         </div>
-        {sessions.length === 0 ? (
+        {allSessions.length > 0 && sessions.length === 0 ? (
+          <p className="empty-note" data-testid="sidebar-sessions-nomatch">
+            Nothing matches
+          </p>
+        ) : sessions.length === 0 ? (
           <p className="empty-note" data-testid="sidebar-sessions-empty">
             No sessions. Press + to open a terminal.
           </p>
@@ -258,26 +297,44 @@ export default function Sidebar(): React.JSX.Element {
       <nav aria-label="Projects">
         <div className="section-head">
           <h2>Projects</h2>
-          <button
-            type="button"
-            className="ghost icon"
-            data-testid="sidebar-add-project"
-            aria-label="Add project"
-            title="Add project: a git repository"
-            disabled={!connected}
-            onClick={() => void store.addProject()}
-          >
-            <FolderPlusIcon />
-          </button>
+          <div className="head-actions">
+            <button
+              type="button"
+              className="ghost icon"
+              data-testid="sidebar-add-project"
+              aria-label="Add project"
+              title="Add project: a git repository"
+              disabled={!connected}
+              onClick={() => void store.addProject()}
+            >
+              <FolderPlusIcon />
+            </button>
+            <button
+              type="button"
+              className="ghost icon"
+              data-testid="sidebar-sort"
+              data-sort={sort}
+              aria-label={sort === 'name' ? 'Sorted by name' : 'Sorted by last activity'}
+              title={sort === 'name' ? 'Sort by last activity' : 'Sort by name'}
+              onClick={() => store.setSort(sort === 'name' ? 'activity' : 'name')}
+            >
+              <SortIcon />
+            </button>
+          </div>
         </div>
         {loaded && projects.length === 0 && (
           <p className="empty-note" data-testid="sidebar-empty">
             Add a git repository to start a workspace.
           </p>
         )}
-        {projects.map((p) => {
-          const open = !collapsed.has(p.id)
-          const list = Object.values(workspaces).filter((w) => w.projectId === p.id)
+        {loaded && filtering && projects.length > 0 && shownProjects.length === 0 && (
+          <p className="empty-note" data-testid="sidebar-projects-nomatch">
+            Nothing matches
+          </p>
+        )}
+        {shownProjects.map((p) => {
+          const open = filtering || !collapsed.has(p.id)
+          const list = sortWorkspaces(narrowed.workspacesOf(p.id), sort)
           const projectMenu = menuFor('project', p.id)
           return (
             <div key={p.id} className="project" data-testid={`sidebar-project-${p.id}`}>
