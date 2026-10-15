@@ -10,6 +10,7 @@ export default function TopBar({ termKey }: { termKey: string }): React.JSX.Elem
   const ws = termKey === SCRATCH ? undefined : workspaces[termKey]
   const project = ws ? projects.find((p) => p.id === ws.projectId) : undefined
   const split = Boolean(store.layout(termKey).split)
+  const changesOpen = Boolean(useQue().changesOpen[termKey])
   const cwd = store.activeTab(termKey)?.cwd ?? ws?.path ?? ''
 
   return (
@@ -101,6 +102,15 @@ export default function TopBar({ termKey }: { termKey: string }): React.JSX.Elem
         )}
         {ws && (
           <>
+            <button
+              type="button"
+              aria-pressed={changesOpen}
+              data-testid="topbar-changes"
+              disabled={!connected}
+              onClick={() => store.toggleChanges(termKey)}
+            >
+              Changes
+            </button>
             <button
               type="button"
               data-testid="topbar-open-editor"
