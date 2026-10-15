@@ -3,7 +3,7 @@ import type { Project, Task, Workspace } from '../../../preload/index.d'
 import { isLiveTask } from '../format'
 import { SCRATCH, useQue, useStore } from '../store'
 import { FolderPlusIcon, PlusIcon } from './icons'
-import { StatusBadge, TaskBadge } from './StatusBadge'
+import { PrChip, StatusBadge, TaskBadge } from './StatusBadge'
 
 interface MenuItem {
   label: string
@@ -325,16 +325,21 @@ export default function Sidebar(): React.JSX.Element {
                           <span className="name">{w.name}</span>
                           <WorkspaceBadge w={w} task={owned.get(w.id)} />
                         </button>
-                        {owned.get(w.id)?.state === 'done' && owned.get(w.id)?.prUrl && (
-                          <a
-                            className="pr-link"
-                            href={owned.get(w.id)?.prUrl ?? undefined}
-                            target="_blank"
-                            rel="noreferrer"
-                            data-testid={`sidebar-workspace-${w.id}-pr`}
-                          >
-                            PR #{owned.get(w.id)?.prUrl?.split('/').pop()}
-                          </a>
+                        {w.pr ? (
+                          <PrChip pr={w.pr} testId={`sidebar-workspace-${w.id}-pr`} />
+                        ) : (
+                          owned.get(w.id)?.state === 'done' &&
+                          owned.get(w.id)?.prUrl && (
+                            <a
+                              className="pr-link"
+                              href={owned.get(w.id)?.prUrl ?? undefined}
+                              target="_blank"
+                              rel="noreferrer"
+                              data-testid={`sidebar-workspace-${w.id}-pr`}
+                            >
+                              PR #{owned.get(w.id)?.prUrl?.split('/').pop()}
+                            </a>
+                          )
                         )}
                         <button
                           type="button"

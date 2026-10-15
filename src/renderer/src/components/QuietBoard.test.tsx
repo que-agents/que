@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { fakeBridge } from '@renderer/testing/fake-bridge'
 import {
   makeProject,
+  makePullRequest,
   makeQuietState,
   makeTask,
   makeTermInfo,
@@ -109,6 +110,7 @@ describe('QuietBoard', () => {
         'Add retry logic to the uploader',
         'uploader',
         'running',
+        '-',
         '42m 00s',
         '2m ago',
         '14',
@@ -123,13 +125,31 @@ describe('QuietBoard', () => {
         within(ws)
           .getAllByRole('cell')
           .map((c) => c.textContent)
-      ).toEqual(['app-1432-retry-logic', 'uploader', 'working', '1h 15m', '-', '-', '-'])
+      ).toEqual(['app-1432-retry-logic', 'uploader', 'working', '-', '1h 15m', '-', '-', '-'])
       expect(screen.queryByTestId(`quiet-board-row-${auth.id}`)).not.toBeInTheDocument()
       expect(screen.queryByTestId(`quiet-board-row-${stuck.id}`)).not.toBeInTheDocument()
       expect(screen.getAllByRole('button')).toEqual([screen.getByTestId('quiet-board-unlock')])
       expect(screen.queryByRole('link')).not.toBeInTheDocument()
       expect(screen.queryByRole('tab')).not.toBeInTheDocument()
       expect(await window.que.term.list()).toHaveLength(1) // the board never opens a terminal
+    })
+  })
+
+  describe('pull requests', () => {
+    it('shows the PR state, marked when checks fail, and a dash without one', async () => {
+      seed()
+      fakeBridge.setWorkspacePr(retry.id, makePullRequest({ state: 'open', checks: 'failing' }))
+
+      render(<App board now={clock} />)
+
+      const ws = await screen.findByTestId(`quiet-board-row-${retry.id}`)
+      await waitFor(() => {
+        expect(within(ws).getAllByRole('cell')[3]).toHaveTextContent('open ✕')
+      })
+      fakeBridge.setWorkspacePr(retry.id, null)
+      await waitFor(() => {
+        expect(within(ws).getAllByRole('cell')[3]).toHaveTextContent(/^-$/)
+      })
     })
   })
 

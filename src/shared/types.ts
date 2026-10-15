@@ -31,6 +31,19 @@ export interface Workspace {
   archivedAt: string | null
   /** The draft pull request opened from this workspace (workspace.createPr). */
   prUrl: string | null
+  /** The workspace branch's pull request as GitHub last reported it; null when none. */
+  pr: PullRequest | null
+}
+
+/** A pull request as the daemon last saw it on GitHub. */
+export interface PullRequest {
+  url: string
+  number: number
+  title: string
+  state: 'draft' | 'open' | 'merged' | 'closed'
+  checks: 'none' | 'pending' | 'passing' | 'failing'
+  review: 'approved' | 'changes_requested' | 'review_required' | null
+  checkedAt: string
 }
 
 /** Workspace counts per status, for the tray and `que status`. */
