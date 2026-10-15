@@ -82,6 +82,7 @@ describe('buildReport', () => {
       state: 'done',
       reason: null,
       workspace: 'add-retry-logic',
+      workspaceId: 'ws_01hzx3k9c2qf',
       branch: 'add-retry-logic',
       prUrl: 'https://github.com/rquellh/que/pull/88',
       durationMs: 42.5 * 60_000,
@@ -101,7 +102,9 @@ describe('buildReport', () => {
       prs: 1,
       turns: 17,
       costUsd: 2.22,
-      durationMs: (42.5 + 5 + 30) * 60_000
+      durationMs: (42.5 + 5 + 30) * 60_000,
+      workspaces: 0,
+      needsInput: 0
     })
   })
 
