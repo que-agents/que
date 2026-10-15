@@ -55,7 +55,7 @@ function seedWorkspace(): void {
 
 /** Opens the review pane on Changes. */
 async function openChanges(user: ReturnType<typeof userEvent.setup>): Promise<void> {
-  await user.click(screen.getByTestId('topbar-changes'))
+  await user.click(screen.getByTestId('topbar-review'))
   await screen.findByTestId('changes-list')
 }
 

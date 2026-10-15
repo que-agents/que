@@ -53,6 +53,22 @@ export function SplitBesideIcon(): React.JSX.Element {
   )
 }
 
+/**
+ * A rounded rectangle with a vertical divider toward its right edge: the review pane.
+ * While the pane is open its right part is filled.
+ */
+export function PanelRightIcon({ filled = false }: { filled?: boolean }): React.JSX.Element {
+  return (
+    <svg {...base} aria-hidden="true">
+      {filled && (
+        <path d="M10 3h2.5A1.5 1.5 0 0 1 14 4.5v7a1.5 1.5 0 0 1-1.5 1.5H10z" fill="currentColor" />
+      )}
+      <rect x="2" y="3" width="12" height="10" rx="1.5" />
+      <path d="M10 3v10" />
+    </svg>
+  )
+}
+
 /** A rounded rectangle with a horizontal line through the middle: split into two stacked. */
 export function SplitBelowIcon(): React.JSX.Element {
   return (

@@ -2,7 +2,7 @@
 // from the sidebar dialog, its terminal opened automatically, a claude session
 // in it finishing a turn with one chime (recorded, never played, under e2e) and
 // reaching needs input on the sidebar badge (and in `que status`), Open
-// in editor launching the editor on the worktree, and the project removed from
+// in editor (in the review pane's Changes) launching the editor on the worktree, and the project removed from
 // its context menu with the workspace and its worktree.
 import fs from 'node:fs'
 import { expect, test } from '@playwright/test'
@@ -10,6 +10,7 @@ import type { StatusJson } from '../../src/cli/workspaces'
 import type { TermInfo } from '../../src/shared/protocol'
 import type { Project, Workspace } from '../../src/shared/types'
 import { AppShellPage } from './pages/AppShellPage'
+import { ChangesPage } from './pages/ChangesPage'
 import { SidebarPage } from './pages/SidebarPage'
 import { TerminalPage } from './pages/TerminalPage'
 import { TopBarPage } from './pages/TopBarPage'
@@ -32,6 +33,7 @@ test('a workspace made in the sidebar runs claude, shows needs input, opens in t
   let sidebar: SidebarPage
   let terminal: TerminalPage
   let topbar: TopBarPage
+  let changes: ChangesPage
   let shell: AppShellPage
   const statusOf = () =>
     queJson<StatusJson>(queHome, 'status', '--json').workspaces.find((w) => w.id === workspace.id)
@@ -46,6 +48,7 @@ test('a workspace made in the sidebar runs claude, shows needs input, opens in t
     sidebar = new SidebarPage(launched.window)
     terminal = new TerminalPage(launched.window)
     topbar = new TopBarPage(launched.window)
+    changes = new ChangesPage(launched.window)
     shell = new AppShellPage(launched.window)
     await sidebar.waitForLoad()
     await expect(sidebar.project(project.id)).toBeVisible()
@@ -143,8 +146,9 @@ test('a workspace made in the sidebar runs claude, shows needs input, opens in t
     expect((await sidebar.root.boundingBox())?.width).toBe(356)
   })
 
-  await test.step('Open in editor launches the editor on the worktree', async () => {
-    await topbar.openEditorButton.click()
+  await test.step("Open in editor, in the review pane's Changes, launches the editor on the worktree", async () => {
+    await topbar.reviewToggle.click()
+    await changes.openEditor.click()
     await expect.poll(() => launched.codeCalls()).toContainEqual(['-n', workspace.path])
     await launched.window.screenshot({ path: 'test-results/wp4-work-mode.png' })
   })

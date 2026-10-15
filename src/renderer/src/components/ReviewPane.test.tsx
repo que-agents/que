@@ -41,7 +41,7 @@ describe('ReviewPane', () => {
       const term = await openWorkspace(user)
       expect(screen.queryByTestId('review-pane')).not.toBeInTheDocument()
 
-      await user.click(screen.getByTestId('topbar-changes'))
+      await user.click(screen.getByTestId('topbar-review'))
 
       const pane = screen.getByTestId('review-pane')
       expect(pane).toHaveAttribute('data-tab', 'changes')
@@ -56,13 +56,14 @@ describe('ReviewPane', () => {
       expect(screen.getByTestId('review-resizer')).toHaveAttribute('aria-valuenow', '320')
     })
 
-    it('opens on Pull request from the top bar and fetches the conversation once', async () => {
+    it('shows the Pull request tab and fetches the conversation once', async () => {
       const user = userEvent.setup()
       seed()
       render(<App />)
       await openWorkspace(user)
+      await user.click(screen.getByTestId('topbar-review'))
 
-      await user.click(screen.getByTestId('topbar-pull-request'))
+      await user.click(screen.getByTestId('review-tab-pr'))
 
       const pane = screen.getByTestId('review-pane')
       expect(pane).toHaveAttribute('data-tab', 'pr')
@@ -70,25 +71,18 @@ describe('ReviewPane', () => {
       expect(fakeBridge.prThreadCalls()).toEqual([{ id: retry.id, refresh: false }])
     })
 
-    it('closes from the button already pressed, and moves over from the other one', async () => {
+    it('runs the full height of the window beside the top bar, not under it', async () => {
       const user = userEvent.setup()
       seed()
       render(<App />)
       await openWorkspace(user)
-      const changes = screen.getByTestId('topbar-changes')
-      const pr = screen.getByTestId('topbar-pull-request')
 
-      await user.click(changes)
-      await user.click(pr)
+      await user.click(screen.getByTestId('topbar-review'))
 
-      expect(screen.getByTestId('review-pane')).toHaveAttribute('data-tab', 'pr')
-      expect(pr).toHaveAttribute('aria-pressed', 'true')
-      expect(changes).toHaveAttribute('aria-pressed', 'false')
-
-      await user.click(pr)
-
-      expect(screen.queryByTestId('review-pane')).not.toBeInTheDocument()
-      expect(pr).toHaveAttribute('aria-pressed', 'false')
+      const pane = screen.getByTestId('review-pane')
+      expect(pane.parentElement).toBe(screen.getByTestId('app-shell'))
+      expect(within(pane).queryByTestId('topbar')).not.toBeInTheDocument()
+      expect(screen.getByTestId('app-shell')).toHaveStyle({ '--review-width': '320px' })
     })
 
     it('switches between its tabs and closes from its own button', async () => {
@@ -96,7 +90,7 @@ describe('ReviewPane', () => {
       seed()
       render(<App />)
       await openWorkspace(user)
-      await user.click(screen.getByTestId('topbar-changes'))
+      await user.click(screen.getByTestId('topbar-review'))
 
       await user.click(screen.getByRole('tab', { name: 'Pull request' }))
 
@@ -111,7 +105,7 @@ describe('ReviewPane', () => {
       await user.click(screen.getByRole('button', { name: 'Close review' }))
 
       expect(screen.queryByTestId('review-pane')).not.toBeInTheDocument()
-      expect(screen.getByTestId('topbar-changes')).toHaveAttribute('aria-pressed', 'false')
+      expect(screen.getByTestId('topbar-review')).toHaveAttribute('aria-pressed', 'false')
     })
   })
 
@@ -121,7 +115,7 @@ describe('ReviewPane', () => {
       seed()
       render(<App />)
       await openWorkspace(user)
-      await user.click(screen.getByTestId('topbar-changes'))
+      await user.click(screen.getByTestId('topbar-review'))
       const resizer = screen.getByRole('separator', { name: 'Resize review' })
       expect(resizer).toHaveAttribute('data-testid', 'review-resizer')
       expect(resizer).toHaveAttribute('aria-orientation', 'vertical')
@@ -148,7 +142,8 @@ describe('ReviewPane', () => {
       seed()
       const first = render(<App />)
       await openWorkspace(user)
-      await user.click(screen.getByTestId('topbar-pull-request'))
+      await user.click(screen.getByTestId('topbar-review'))
+      await user.click(screen.getByTestId('review-tab-pr'))
       screen.getByTestId('review-resizer').focus()
       await user.keyboard('{ArrowLeft}{ArrowLeft}{ArrowLeft}')
       first.unmount()
