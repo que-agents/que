@@ -78,12 +78,15 @@ remove. The quiet board uses the same tones as plain text.
 - Two panes are divided by a 7px track like the sidebar's: invisible until hover,
   focus or drag, then a 1px accent line. The focused pane's tab strip carries a
   1px accent line at its top; with one pane there is none.
-- View tabs (Changes, Pull request) sit in a pane's tab strip after its terminal tabs:
-  a line icon and a label, never a status dot or badge. They open from the top bar's
-  `Changes` and `Pull request` buttons (which close them again while they are the
-  focused pane's tab) and close with ⌘W like a terminal tab. A split with a view tab in
-  the second pane is the review pane: the session on one side, its diff or pull request
-  on the other.
+- The review pane sits at the right of the main area, beside the terminal panes, on
+  `--bg-side` behind a 1px hairline: 320px wide, dragged between 240 and 520px on a 7px
+  track like the sidebar's (double-click resets, arrow keys move it), and remembered
+  with its tab. Its strip holds two tabs, Changes and Pull request, drawn like a pane's
+  tabs, and a close button at the right end; the top bar's `Changes` and `Pull request`
+  buttons open it on that tab, or close it when it is already there. Clicking a file in
+  Changes opens that file's diff as a tab in the middle, in the focused pane's strip
+  beside the session tabs: a line icon and the file's name, never a status dot, closed
+  with ⌘W like a terminal tab. Nothing replaces or hides the terminals.
 - Row actions (the ⋯ button) show on hover, focus, or while their menu is open.
 - The window has no native title bar. The traffic lights sit in the 40px strip
   above the sidebar's content; that strip and the top bar's empty space drag

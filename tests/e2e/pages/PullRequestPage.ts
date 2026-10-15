@@ -1,6 +1,6 @@
-// A workspace's Pull request tab: the top bar button that opens and closes it,
-// the header, the checks, the conversation and the footer. The tab itself is in
-// TerminalPage.viewTab('pr').
+// A workspace's pull request in the review pane: the top bar button that opens
+// the pane on it, the header, the checks, the conversation and the footer. The
+// pane's tab itself is ReviewPage.tabPr.
 import type { Locator, Page } from '@playwright/test'
 
 export class PullRequestPage {
