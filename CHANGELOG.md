@@ -8,6 +8,8 @@ All notable changes to que are recorded here. The format follows
 
 ### Added
 
+- `workspace.diff` takes a `base` to compare against and a `commit` to narrow the files to that commit's own changes, and returns the branch's commits and the refs worth comparing against.
+- `que ws diff --base <ref>` and `--commit <sha>`; the text output lists the branch's commits with their age.
 - `que ws pr <workspace>`: a workspace's pull request with each check (state, workflow, how long it took) and its conversation, comments, reviews and line comments oldest first; `--json` and `--refresh`.
 - The daemon keeps every check run behind a pull request's checks, so a finished check updates the workspace, and answers `workspace.prThread` with the conversation, cached until the pull request changes.
 - A review pane at the right of the window with two tabs: Changes, the files a workspace changed, each opening its diff as a tab beside the terminals; and Pull request, its checks and conversation. Drag to resize; the pane and its tab are remembered.
