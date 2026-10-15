@@ -46,3 +46,42 @@ export function readWrapperLog(path: string): WrapperRun[] {
       return { pid: Number(pid), args }
     })
 }
+
+/** One entry of the fake gh's pull request file ($QUE_FAKE_GH_PRS), as `gh pr list` reports it. */
+export interface FakePr {
+  number: number
+  url: string
+  title: string
+  state: 'OPEN' | 'CLOSED' | 'MERGED'
+  isDraft: boolean
+  headRefName?: string
+  reviewDecision: string
+  statusCheckRollup: Array<Record<string, unknown>>
+  mergedAt: string | null
+}
+
+/** Reads the fake gh's pull requests, keyed by head branch; {} when there are none. */
+export function readFakePullRequests(file: string): Record<string, FakePr> {
+  if (!fs.existsSync(file)) return {}
+  return JSON.parse(fs.readFileSync(file, 'utf8')) as Record<string, FakePr>
+}
+
+/** Merges `patch` into the branch's fake pull request, creating it with defaults first. */
+export function setFakePullRequest(file: string, branch: string, patch: Partial<FakePr>): void {
+  const all = readFakePullRequests(file)
+  const existing: Partial<FakePr> = all[branch] ?? {}
+  all[branch] = {
+    number: 1,
+    url: 'https://github.com/rquellh/que/pull/1',
+    title: 'Add retry logic',
+    state: 'OPEN',
+    isDraft: true,
+    headRefName: branch,
+    reviewDecision: '',
+    statusCheckRollup: [],
+    mergedAt: null,
+    ...existing,
+    ...patch
+  }
+  fs.writeFileSync(file, JSON.stringify(all, null, 2))
+}

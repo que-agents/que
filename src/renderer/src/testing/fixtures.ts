@@ -120,6 +120,7 @@ export function makeUserConfig(overrides: Partial<UserConfig> = {}): UserConfig 
     worktreeRoot: '/Users/dev/.que/worktrees',
     stallTimeoutMinutes: 5,
     statusPollSeconds: 10,
+    prPollSeconds: 60,
     repos: {},
     concurrency: 2,
     maxTurns: 50,
