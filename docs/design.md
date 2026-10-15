@@ -78,19 +78,24 @@ remove. The quiet board uses the same tones as plain text.
 - Two panes are divided by a 7px track like the sidebar's: invisible until hover,
   focus or drag, then a 1px accent line. The focused pane's tab strip carries a
   1px accent line at its top; with one pane there is none.
-- The review pane sits at the right of the main area, beside the terminal panes, on
-  `--bg-side` behind a 1px hairline: 320px wide, dragged between 240 and 520px on a 7px
-  track like the sidebar's (double-click resets, arrow keys move it), and remembered
-  with its tab. Its strip holds two tabs, Changes and Pull request, drawn like a pane's
-  tabs, and a close button at the right end; the top bar's `Changes` and `Pull request`
-  buttons open it on that tab, or close it when it is already there. Clicking a file in
-  Changes opens that file's diff as a tab in the middle, in the focused pane's strip
-  beside the session tabs: a line icon and the file's name, never a status dot, closed
-  with ⌘W like a terminal tab. Nothing replaces or hides the terminals.
+- The review pane is a full-height column at the right of the window, the sidebar's
+  mirror: it runs from the window's top edge to the bottom on `--bg-side` behind a 1px
+  hairline, and the top bar spans only the middle column. It is 320px wide, dragged
+  between 240 and 520px on a 7px track like the sidebar's (double-click resets, arrow
+  keys move it), and remembered with its tab. Its strip is 40px tall, lined up with the
+  top bar above a solid hairline, and holds two tabs, Changes and Pull request, drawn
+  like a pane's tabs, and a close button at the right end. One icon button at the right
+  end of the top bar (a frame with a divider toward its right edge, filled while open)
+  toggles the pane on its remembered tab, and so does ⌘B. `Open in editor` is a ghost
+  button in the Changes header beside Refresh; `Create draft PR` is in the Pull request
+  footer while the workspace has no pull request. Clicking a file in Changes opens that
+  file's diff as a tab in the middle, in the focused pane's strip beside the session
+  tabs: a line icon and the file's name, never a status dot, closed with ⌘W like a
+  terminal tab. Nothing replaces or hides the terminals.
 - Row actions (the ⋯ button) show on hover, focus, or while their menu is open.
 - The window has no native title bar. The traffic lights sit in the 40px strip
-  above the sidebar's content; that strip and the top bar's empty space drag
-  the window.
+  above the sidebar's content; that strip, the top bar's empty space and the review
+  pane strip's empty space drag the window.
 - The sidebar's divider drags between 180 and 520px, double-click resets it, and
   the arrow keys move it when it has focus; the width is remembered.
 - Search is an icon in the title strip (`button.ghost.icon`, a magnifier), in line
@@ -101,8 +106,10 @@ remove. The quiet board uses the same tones as plain text.
   carries a sort toggle (`button.ghost.icon`, three lines of decreasing length)
   between name and last activity; the choice is remembered.
 - The top bar reads `project / workspace`, with the branch after it only when
-  the branch is not the workspace's own name; the title truncates with an ellipsis
-  before the buttons give way. The pull request chip is `PR #n · state`; failing
+  the branch is not the workspace's own name, then the status, the pull request chip
+  and the working directory; at its right end, split or join and the review pane
+  toggle, all icon buttons. The title truncates with an ellipsis before the buttons
+  give way. The pull request chip is `PR #n · state`; failing
   checks and a requested change are its tone, and its tooltip spells them out.
 
 ## Adding something

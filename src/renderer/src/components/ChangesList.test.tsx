@@ -37,7 +37,7 @@ async function openChanges(user: ReturnType<typeof userEvent.setup>): Promise<st
   await waitFor(() => {
     expect(pane.dataset.activeTerm).not.toBe('')
   })
-  await user.click(screen.getByRole('button', { name: 'Changes' }))
+  await user.click(screen.getByRole('button', { name: 'Review pane' }))
   return pane.dataset.activeTerm as string
 }
 
@@ -140,6 +140,26 @@ describe('ChangesList', () => {
 
       expect(await screen.findByTestId('changes-file-1')).toHaveTextContent('README.md')
       expect(screen.getByTestId('changes-summary')).toHaveTextContent('2 files')
+    })
+
+    it('opens the worktree in the editor, and not while disconnected', async () => {
+      const user = userEvent.setup()
+      seed()
+      await openChanges(user)
+      const open = await screen.findByRole('button', { name: 'Open in editor' })
+      expect(open).toHaveAttribute('data-testid', 'changes-open-editor')
+
+      await user.click(open)
+
+      await waitFor(() => {
+        expect(fakeBridge.openInEditorCalls()).toEqual([retry.path])
+      })
+
+      fakeBridge.disconnect()
+
+      await waitFor(() => {
+        expect(open).toBeDisabled()
+      })
     })
   })
 

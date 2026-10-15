@@ -1,5 +1,5 @@
 import { SCRATCH, useQue, useStore } from '../store'
-import { JoinPanesIcon, SplitBelowIcon, SplitBesideIcon } from './icons'
+import { JoinPanesIcon, PanelRightIcon, SplitBelowIcon, SplitBesideIcon } from './icons'
 import { PrChip, StatusBadge } from './StatusBadge'
 import UnlockStatus from './UnlockStatus'
 
@@ -99,45 +99,18 @@ export default function TopBar({ termKey }: { termKey: string }): React.JSX.Elem
           </>
         )}
         {ws && (
-          <>
-            <button
-              type="button"
-              aria-pressed={review.open && review.tab === 'changes'}
-              title="Changes: the changed files, in the review pane"
-              data-testid="topbar-changes"
-              disabled={!connected}
-              onClick={() => store.toggleReview('changes')}
-            >
-              Changes
-            </button>
-            <button
-              type="button"
-              aria-pressed={review.open && review.tab === 'pr'}
-              title="Pull request: its checks and conversation, in the review pane"
-              data-testid="topbar-pull-request"
-              data-pr-state={ws.pr?.state ?? 'none'}
-              disabled={!connected}
-              onClick={() => store.toggleReview('pr')}
-            >
-              Pull request
-            </button>
-            <button
-              type="button"
-              data-testid="topbar-open-editor"
-              disabled={!connected}
-              onClick={() => void store.openInEditor(ws.path)}
-            >
-              Open in editor
-            </button>
-            <button
-              type="button"
-              data-testid="topbar-create-pr"
-              disabled={!connected}
-              onClick={() => store.openDialog({ kind: 'create-pr', workspaceId: ws.id })}
-            >
-              Create draft PR
-            </button>
-          </>
+          <button
+            type="button"
+            className="ghost icon"
+            aria-label="Review pane"
+            aria-pressed={review.open}
+            title="Review pane: changes and pull request (⌘B)"
+            data-testid="topbar-review"
+            disabled={!connected}
+            onClick={() => store.toggleReview()}
+          >
+            <PanelRightIcon filled={review.open} />
+          </button>
         )}
       </div>
     </header>
