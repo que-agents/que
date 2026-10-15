@@ -8,7 +8,8 @@ import { diffId, useQue, useStore } from '../store'
  */
 export default function ChangesList({ termKey }: { termKey: string }): React.JSX.Element {
   const store = useStore()
-  const { connected, diffs, diffErrors } = useQue()
+  const { connected, diffs, diffErrors, workspaces } = useQue()
+  const ws = workspaces[termKey]
   const diff = diffs[termKey] ?? null
   const error = diffErrors[termKey] ?? null
   const files = diff?.files ?? []
@@ -61,6 +62,17 @@ export default function ChangesList({ termKey }: { termKey: string }): React.JSX
         >
           Refresh
         </button>
+        {ws && (
+          <button
+            type="button"
+            className="ghost"
+            data-testid="changes-open-editor"
+            disabled={!connected}
+            onClick={() => void store.openInEditor(ws.path)}
+          >
+            Open in editor
+          </button>
+        )}
       </header>
       {error && (
         <p className="form-error changes-error" role="alert" data-testid="changes-error">

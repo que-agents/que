@@ -29,6 +29,10 @@ All notable changes to que are recorded here. The format follows
 
 ### Changed
 
+- The top bar has one review pane toggle, an icon at its right end, in place of its `Changes`, `Pull request`, `Open in editor` and `Create draft PR` buttons; `⌘B` toggles the pane too.
+- `Open in editor` lives in the review pane's Changes tab, beside Refresh.
+- `Create draft PR` lives only in the review pane's Pull request tab, while the workspace has no pull request.
+- The review pane runs the window's full height at its right edge, like the sidebar, with the top bar beside it.
 - The Changes view no longer replaces the terminals: the list lives in the review pane and a file's diff opens as a tab in the middle.
 - The sidebar filter is a search icon in the title strip, in line with the window buttons; it pops the field out on click or `⌘K` and folds away when cleared.
 - The Tickets entry sits in the sidebar's bottom group with Report and Settings, which stays pinned to the bottom of the window above a solid line.
