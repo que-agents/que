@@ -1,5 +1,5 @@
 // The ticket journey: the tickets assigned to the user (from the fake tracker
-// CLI) listed in the app; one started: que asks which project the first time,
+// CLI) listed in the app under their epic, with a working link; one started: que asks which project the first time,
 // makes the workspace under it, writes the ticket as a brief, opens the
 // workspace terminal and starts claude on the start prompt; the choice is
 // remembered in the config file and the ticket row now points at the workspace.
@@ -7,7 +7,12 @@ import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { expect, test } from '@playwright/test'
 import type { Project, Workspace } from '../../src/shared/types'
-import { makeFakeIssue, writeFakeTickets } from '../../src/testing/fakes'
+import {
+  fakeParentOf,
+  makeFakeEpic,
+  makeFakeIssue,
+  writeFakeTickets
+} from '../../src/testing/fakes'
 import { SidebarPage } from './pages/SidebarPage'
 import { TicketsPage } from './pages/TicketsPage'
 import { TopBarPage } from './pages/TopBarPage'
@@ -26,7 +31,11 @@ test('a ticket assigned to me becomes a workspace with claude started on its bri
   // Tickets sync every 120 ms here, so the list fills right after launch.
   const queHome = newQueHome('[jira]\npoll_minutes = 0.002\n[quiet_hours]\nenabled = false\n')
   const env = testEnv(queHome)
-  writeFakeTickets(env.QUE_FAKE_ACLI_TICKETS, [makeFakeIssue()])
+  const epic = makeFakeEpic()
+  writeFakeTickets(env.QUE_FAKE_ACLI_TICKETS, [
+    epic,
+    makeFakeIssue({ fields: { parent: fakeParentOf(epic) } })
+  ])
   let project: Project
   let workspace: Workspace
   let sidebar: SidebarPage
@@ -46,6 +55,17 @@ test('a ticket assigned to me becomes a workspace with claude started on its bri
     await expect(tickets.sidebarCount).toHaveText('1')
     await tickets.sidebarEntry.click()
     await expect(tickets.ticket('APP-1432')).toContainText('Add retry logic to the uploader')
+  })
+
+  await test.step('The ticket sits under its epic, which has no Start; the link points at the site', async () => {
+    await expect(tickets.epic('APP-1400')).toHaveAttribute('data-level', 'epic')
+    await expect(tickets.epic('APP-1400')).toContainText('Uploader reliability')
+    await expect(tickets.start('APP-1400')).toHaveCount(0)
+    await expect(tickets.ticket('APP-1432')).toHaveAttribute('data-parent', 'APP-1400')
+    await expect(tickets.open('APP-1432')).toHaveAttribute(
+      'href',
+      'https://example.atlassian.net/browse/APP-1432'
+    )
   })
 
   await test.step('Start it; que asks which project the first time', async () => {
@@ -73,7 +93,10 @@ test('a ticket assigned to me becomes a workspace with claude started on its bri
     await expect(sidebar.workspace(workspace.id)).toBeVisible()
     await expect(topbar.title).toHaveText(workspace.name)
     expect(existsSync(join(workspace.path, '.que', 'ticket.md'))).toBe(true)
-    expect(readFileSync(join(workspace.path, '.que', 'ticket.md'), 'utf8')).toContain('# APP-1432')
+    const brief = readFileSync(join(workspace.path, '.que', 'ticket.md'), 'utf8')
+    expect(brief).toContain('# APP-1432')
+    expect(brief).toContain('## Epic APP-1400: Uploader reliability')
+    expect(brief).toContain('Make uploads survive flaky networks')
   })
 
   await test.step('claude was started on the start prompt', async () => {

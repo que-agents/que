@@ -95,8 +95,20 @@ export interface FakeIssue {
     summary: string
     status: { name: string; statusCategory: { key: string } }
     priority: { name: string } | null
-    issuetype: { name: string }
+    issuetype: { name: string; hierarchyLevel?: number; subtask?: boolean }
     assignee: { displayName: string } | null
+    /** The parent, as `view --fields parent` returns it. */
+    parent?: {
+      key: string
+      id: string
+      self: string
+      fields: {
+        summary: string
+        status: { name: string; statusCategory: { key: string } }
+        priority: { name: string } | null
+        issuetype: { name: string; hierarchyLevel?: number; subtask?: boolean }
+      }
+    }
     project: { key: string; name: string }
     labels: string[]
     updated: string
@@ -119,7 +131,7 @@ export function makeFakeIssue(
       summary: 'Add retry logic to the uploader',
       status: { name: 'In Progress', statusCategory: { key: 'indeterminate' } },
       priority: { name: 'Medium' },
-      issuetype: { name: 'Story' },
+      issuetype: { name: 'Story', hierarchyLevel: 0, subtask: false },
       assignee: { displayName: 'Test User' },
       project: { key: 'APP', name: 'Uploader' },
       labels: [],
@@ -167,4 +179,42 @@ export function makeFakeIssue(
 /** Writes the fake acli's issue file ($QUE_FAKE_ACLI_TICKETS). */
 export function writeFakeTickets(file: string, issues: FakeIssue[]): void {
   fs.writeFileSync(file, JSON.stringify(issues, null, 2))
+}
+
+/** An epic in acli's shape: the overview its children work towards. */
+export function makeFakeEpic(
+  overrides: Partial<Omit<FakeIssue, 'fields'>> & { fields?: Partial<FakeIssue['fields']> } = {}
+): FakeIssue {
+  return makeFakeIssue({
+    key: 'APP-1400',
+    id: '10400',
+    self: 'https://example.atlassian.net/rest/api/3/issue/10400',
+    ...overrides,
+    fields: {
+      summary: 'Uploader reliability',
+      issuetype: { name: 'Epic', hierarchyLevel: 1, subtask: false },
+      description: {
+        type: 'doc',
+        version: 1,
+        content: [
+          {
+            type: 'paragraph',
+            content: [{ type: 'text', text: 'Make uploads survive flaky networks end to end.' }]
+          }
+        ]
+      },
+      ...overrides.fields
+    }
+  })
+}
+
+/** The `parent` field a child carries, pointing at `issue`. */
+export function fakeParentOf(issue: FakeIssue): NonNullable<FakeIssue['fields']['parent']> {
+  const { summary, status, priority, issuetype } = issue.fields
+  return {
+    key: issue.key,
+    id: issue.id,
+    self: issue.self,
+    fields: { summary, status, priority, issuetype }
+  }
 }

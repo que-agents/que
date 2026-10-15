@@ -198,4 +198,107 @@ describe('TicketsView', () => {
       expect(within(view).queryByTestId('tickets-empty')).not.toBeInTheDocument()
     })
   })
+
+  describe('hierarchy', () => {
+    const epicA = makeTicket({
+      key: 'EP-1',
+      summary: 'Faster uploads',
+      level: 'epic',
+      assigned: false,
+      url: ''
+    })
+    const epicB = makeTicket({ key: 'EP-2', summary: 'Quiet auth', level: 'epic' })
+    const childA = makeTicket({ key: 'APP-10', summary: 'Chunk the body', parentKey: 'EP-1' })
+    const subtask = makeTicket({
+      key: 'APP-11',
+      summary: 'Pick a chunk size',
+      level: 'subtask',
+      parentKey: 'APP-10'
+    })
+    const childB = makeTicket({ key: 'APP-20', summary: 'Rotate tokens', parentKey: 'EP-2' })
+    const childC = makeTicket({ key: 'APP-21', summary: 'Other work', parentKey: 'EP-2' })
+    const loose = makeTicket({ key: 'WEB-1', summary: 'Fix the footer' })
+
+    function seed(...tickets: ReturnType<typeof makeTicket>[]): void {
+      for (const t of tickets) fakeBridge.seedTicket(t)
+    }
+
+    it('shows epic headers without Start, children with Start, and the not-yours mark', async () => {
+      const user = userEvent.setup()
+      seed(epicA, childA, subtask, epicB, childB, loose)
+      const view = await openTickets(user)
+
+      const header = within(view).getByTestId('ticket-EP-1')
+      expect(header).toHaveAttribute('data-level', 'epic')
+      expect(header).toHaveClass('epic')
+      expect(header).toHaveTextContent('Faster uploads')
+      expect(within(header).queryByRole('button')).not.toBeInTheDocument()
+      expect(within(view).getByTestId('ticket-EP-1-unassigned')).toHaveTextContent('not yours')
+      expect(within(view).queryByTestId('ticket-EP-2-unassigned')).not.toBeInTheDocument()
+
+      const child = within(view).getByTestId('ticket-APP-10')
+      expect(child).toHaveAttribute('data-parent', 'EP-1')
+      expect(within(child).getByRole('button', { name: 'Start' })).toBeEnabled()
+      const sub = within(view).getByTestId('ticket-APP-11')
+      expect(sub).toHaveAttribute('data-parent', 'APP-10')
+      expect(sub).toHaveAttribute('data-level', 'subtask')
+      expect(within(view).getByTestId('ticket-WEB-1')).not.toHaveAttribute('data-parent')
+
+      const order = within(view)
+        .getAllByTestId(/^ticket-[A-Z]+-\d+$/)
+        .map((r) => r.dataset.testid)
+      expect(order).toEqual([
+        'ticket-EP-1',
+        'ticket-APP-10',
+        'ticket-APP-11',
+        'ticket-EP-2',
+        'ticket-APP-20',
+        'ticket-WEB-1'
+      ])
+    })
+
+    it('puts a no-epic separator before loose tickets only when there are groups', async () => {
+      const user = userEvent.setup()
+      seed(epicB, childB, loose)
+      const view = await openTickets(user)
+      expect(within(view).getByTestId('tickets-loose')).toHaveTextContent('no epic')
+    })
+
+    it('has no separator when every ticket is loose', async () => {
+      const user = userEvent.setup()
+      seed(loose)
+      const view = await openTickets(user)
+      expect(within(view).getByTestId('ticket-WEB-1')).toBeInTheDocument()
+      expect(within(view).queryByTestId('tickets-loose')).not.toBeInTheDocument()
+    })
+
+    it('links an epic to its url, and omits the link when it has none', async () => {
+      const user = userEvent.setup()
+      seed(epicA, epicB)
+      const view = await openTickets(user)
+      expect(within(view).getByTestId('ticket-EP-2-open')).toHaveAttribute('href', epicB.url)
+      expect(within(view).queryByTestId('ticket-EP-1-open')).not.toBeInTheDocument()
+    })
+
+    it('keeps the epic for a matching child, and shows all children for a matching epic', async () => {
+      const user = userEvent.setup()
+      seed(epicA, childA, epicB, childB, childC)
+      const view = await openTickets(user)
+
+      await user.type(screen.getByTestId('sidebar-filter'), 'rotate')
+      expect(within(view).getByTestId('ticket-EP-2')).toBeInTheDocument()
+      expect(within(view).getByTestId('ticket-APP-20')).toBeInTheDocument()
+      expect(within(view).queryByTestId('ticket-APP-21')).not.toBeInTheDocument()
+      expect(within(view).queryByTestId('ticket-EP-1')).not.toBeInTheDocument()
+
+      await user.clear(screen.getByTestId('sidebar-filter'))
+      await user.type(screen.getByTestId('sidebar-filter'), 'quiet auth')
+      expect(within(view).getByTestId('ticket-APP-20')).toBeInTheDocument()
+      expect(within(view).getByTestId('ticket-APP-21')).toBeInTheDocument()
+      expect(within(view).queryByTestId('ticket-APP-10')).not.toBeInTheDocument()
+
+      await user.type(screen.getByTestId('sidebar-filter'), 'zzz')
+      expect(within(view).getByTestId('tickets-nomatch')).toBeInTheDocument()
+    })
+  })
 })

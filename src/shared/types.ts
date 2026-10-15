@@ -138,6 +138,9 @@ export interface QuietHoursConfig {
 }
 
 /** A ticket assigned to the user in the issue tracker, as last synced. */
+/** Where a ticket sits in the tracker's hierarchy. */
+export type TicketLevel = 'epic' | 'standard' | 'subtask'
+
 export interface Ticket {
   key: string
   summary: string
@@ -145,6 +148,12 @@ export interface Ticket {
   statusCategory: 'new' | 'indeterminate' | 'done' | 'unknown'
   priority: string | null
   type: string
+  /** An epic, a standard issue, or a subtask of one. */
+  level: TicketLevel
+  /** The key of the ticket this one sits under, when known. */
+  parentKey: string | null
+  /** False for a parent que knows only through its children (not in the search). */
+  assigned: boolean
   assignee: string | null
   projectKey: string
   projectName: string
@@ -172,6 +181,8 @@ export interface JiraConfig {
   jql: string
   /** Minutes between syncs. */
   pollMinutes: number
+  /** The tracker site host for links; learned from the CLI's auth status when null. */
+  site: string | null
   /** The first prompt typed into claude when a ticket is started. */
   startPrompt: string
   /** Tracker project key → que project name, learned when the user picks. */

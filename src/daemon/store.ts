@@ -116,7 +116,11 @@ const MIGRATIONS: string[] = [
      synced_at TEXT NOT NULL,
      workspace_id TEXT
    );`,
-  `ALTER TABLE tickets ADD COLUMN position INTEGER NOT NULL DEFAULT 0;`
+  `ALTER TABLE tickets ADD COLUMN position INTEGER NOT NULL DEFAULT 0;`,
+  `ALTER TABLE tickets ADD COLUMN parent_key TEXT;`,
+  `ALTER TABLE tickets ADD COLUMN level TEXT NOT NULL DEFAULT 'standard';`,
+  `ALTER TABLE tickets ADD COLUMN assigned INTEGER NOT NULL DEFAULT 1;`,
+  `ALTER TABLE tickets ADD COLUMN parent_checked_at TEXT;`
 ]
 
 const STATUS_LOG_RETENTION_MS = 30 * 24 * 3_600_000
@@ -138,6 +142,10 @@ export function newId(prefix: 'prj_' | 'ws_' | 'tsk_'): string {
 }
 
 interface TicketRow {
+  parent_key: string | null
+  parent_checked_at: string | null
+  level: string
+  assigned: number
   key: string
   summary: string
   status: string
@@ -163,6 +171,9 @@ function ticketFromRow(r: TicketRow): Ticket {
     // Unreadable labels are no labels.
   }
   return {
+    parentKey: r.parent_key ?? null,
+    level: r.level === 'epic' || r.level === 'subtask' ? r.level : 'standard',
+    assigned: r.assigned !== 0,
     key: r.key,
     summary: r.summary,
     status: r.status,
@@ -675,18 +686,20 @@ export class Store {
 
   // ---- tickets --------------------------------------------------------------
 
-  /** Inserts or updates tickets by key (position is the index in `tickets`), keeping the workspace each one was started in. */
+  /** Inserts or updates tickets by key (position is the index in `tickets`), keeping the workspace and the parent check time each one has. */
   upsertTickets(tickets: Ticket[]): void {
     const stmt = this.db.prepare(
       `INSERT INTO tickets (key, summary, status, status_category, priority, type, assignee,
-         project_key, project_name, url, labels_json, updated_at, synced_at, position)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         project_key, project_name, url, labels_json, updated_at, synced_at, position,
+         parent_key, level, assigned)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(key) DO UPDATE SET summary = excluded.summary, status = excluded.status,
          status_category = excluded.status_category, priority = excluded.priority,
          type = excluded.type, assignee = excluded.assignee, project_key = excluded.project_key,
          project_name = excluded.project_name, url = excluded.url,
          labels_json = excluded.labels_json, updated_at = excluded.updated_at,
-         synced_at = excluded.synced_at, position = excluded.position`
+         synced_at = excluded.synced_at, position = excluded.position,
+         parent_key = excluded.parent_key, level = excluded.level, assigned = excluded.assigned`
     )
     this.db.exec('BEGIN')
     try {
@@ -705,7 +718,10 @@ export class Store {
           JSON.stringify(t.labels),
           t.updatedAt,
           t.syncedAt,
-          position
+          position,
+          t.parentKey,
+          t.level,
+          t.assigned ? 1 : 0
         )
       }
       this.db.exec('COMMIT')
@@ -715,10 +731,10 @@ export class Store {
     }
   }
 
-  /** Every cached ticket, in the order the last search returned them. */
+  /** Every cached ticket, in the order of the last sync (a parent sits with its children). */
   listTickets(): Ticket[] {
     const rows = this.db
-      .prepare('SELECT * FROM tickets ORDER BY position, key')
+      .prepare('SELECT * FROM tickets ORDER BY position, assigned DESC, key')
       .all() as unknown as TicketRow[]
     return rows.map(ticketFromRow)
   }
@@ -730,14 +746,39 @@ export class Store {
     return r ? ticketFromRow(r) : undefined
   }
 
-  /** Drops tickets that are not in `keys`, except those with a workspace. */
+  /** When the ticket's parent was last looked up (null: never, or no such ticket). */
+  getTicketParentCheckedAt(key: string): string | null {
+    const r = this.db.prepare('SELECT parent_checked_at FROM tickets WHERE key = ?').get(key) as
+      | { parent_checked_at: string | null }
+      | undefined
+    return r?.parent_checked_at ?? null
+  }
+
+  /** Records a ticket's parent (null: none) and when it was looked up. */
+  setTicketParent(key: string, parentKey: string | null, checkedAt: string): void {
+    this.db
+      .prepare('UPDATE tickets SET parent_key = ?, parent_checked_at = ? WHERE key = ?')
+      .run(parentKey, checkedAt, key)
+  }
+
+  /**
+   * Drops tickets that are not in `keys`, except those with a workspace, and
+   * the parents que knows only through children (`assigned = 0`) once no
+   * remaining ticket points at them.
+   */
   deleteTicketsNotIn(keys: string[]): void {
     const keep = new Set(keys)
     const del = this.db.prepare('DELETE FROM tickets WHERE key = ?')
     const rows = this.db
-      .prepare('SELECT key FROM tickets WHERE workspace_id IS NULL')
+      .prepare('SELECT key FROM tickets WHERE workspace_id IS NULL AND assigned != 0')
       .all() as unknown as Array<{ key: string }>
     for (const r of rows) if (!keep.has(r.key)) del.run(r.key)
+    this.db
+      .prepare(
+        `DELETE FROM tickets WHERE assigned = 0 AND workspace_id IS NULL
+           AND key NOT IN (SELECT parent_key FROM tickets WHERE parent_key IS NOT NULL)`
+      )
+      .run()
   }
 
   setTicketWorkspace(key: string, workspaceId: string | null): void {
