@@ -8,6 +8,7 @@ All notable changes to que are recorded here. The format follows
 
 ### Added
 
+- Tickets know their epic: the queue groups tickets under their epics, a started ticket's brief carries the epic's overview, and `que tickets list` prints the tree.
 - Filter the sidebar with `⌘K`: sessions, projects and workspaces narrow as you type, and so does the tickets list; sort projects by name or last activity from the Projects head.
 - A Changes view for a workspace: what it changed against its base, file by file with the patch, committed and uncommitted, read-only.
 - `que ws diff <workspace>` and `workspace.diff`: what a workspace changed against its base, committed and uncommitted, file by file with patches.
@@ -18,6 +19,7 @@ All notable changes to que are recorded here. The format follows
 
 ### Fixed
 
+- Ticket links pointed at the tracker's API host; they now use the site from the CLI's auth status or `[jira] site`.
 - Ticket sync asked the Jira CLI for `project` and `updated`, which its search refuses; que now requests only the allowed fields, takes the project from the key, and keeps the queue in the JQL's order.
 - Launched from Finder, the app now resolves the login shell's PATH for the daemon, so `claude` and `gh` are found the same way they are in a terminal; `que doctor` reports what is on the daemon's PATH.
 

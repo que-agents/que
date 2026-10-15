@@ -154,6 +154,17 @@ JQL's `ORDER BY` decides it. A failure stores the first line of stderr in the `k
 the sync error (the list stays), logs once, and is cleared by the next success.
 `tickets.list` only reads the cache.
 
+Ticket links are `https://<site>/browse/<key>`, with the site from `[jira] site` or else from
+`acli jira auth status` (read once per sync and cached; the search's `self` URLs point at an
+internal API host). The search cannot return a ticket's parent, so after it the daemon runs
+`workitem view KEY --fields parent` for every non-epic ticket whose parent was never checked
+or was checked over a day ago (at most four at a time; a failure is logged and retried next
+sync) and stores `parent_key` and `parent_checked_at`. A parent the search did not return is
+kept as a synthesized ticket (`assigned = false`) built from the view's parent fields; it takes
+the position of its first child, just before it, and is dropped when no ticket points at it any
+more. Epics are overviews: `tickets.start` refuses them, and a started ticket's brief ends
+with its parent's summary and description.
+
 `tickets.start` fetches the full ticket with `acli jira workitem view`, flattens
 its description (`adf-text.ts`) and renders a brief. The ticket's tracker project
 picks the que project through `[jira.projects]`; with no mapping the daemon
