@@ -8,7 +8,14 @@ import type { DaemonClient } from '../shared/client'
 import { formatConfigErrors, loadConfig } from '../shared/config'
 import { queHome, quePaths } from '../shared/paths'
 import type { DiffFile, WorkspaceDiff, WorkspaceStatusEvent } from '../shared/protocol'
-import type { Project, PullRequest, QuietState, Workspace } from '../shared/types'
+import type {
+  PrCheck,
+  PrThread,
+  Project,
+  PullRequest,
+  QuietState,
+  Workspace
+} from '../shared/types'
 import { attach } from './attach'
 import {
   assertNotQuiet,
@@ -38,6 +45,43 @@ export function formatDiff(d: WorkspaceDiff): string {
     lines.push(
       `${DIFF_GLYPH[f.status]} ${name}  +${f.additions} -${f.deletions}${f.dirty ? ' *' : ''}`
     )
+  }
+  return lines.join('\n')
+}
+
+/** `1m 21s` between two ISO times; null unless both are known and in order. */
+export function formatDuration(from: string | null, to: string | null): string | null {
+  if (!from || !to) return null
+  const ms = Date.parse(to) - Date.parse(from)
+  if (!Number.isFinite(ms) || ms < 0) return null
+  const s = Math.round(ms / 1000)
+  if (s < 60) return `${s}s`
+  if (s < 3600) return `${Math.floor(s / 60)}m ${s % 60}s`
+  return `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`
+}
+
+function formatCheck(c: PrCheck): string {
+  const source = c.source ? ` (${c.source})` : ''
+  const took = formatDuration(c.startedAt, c.completedAt)
+  return `${c.state.padEnd(7)}  ${c.name}${source}${took ? `  ${took}` : ''}`
+}
+
+/** The text `que ws pr` prints: the pull request, its checks, and its conversation. */
+export function formatPrView(pr: PullRequest, thread: PrThread | null): string {
+  const lines = [`#${pr.number} ${pr.state} · ${pr.title}`, pr.url]
+  if (pr.updatedAt) lines.push(`updated ${pr.updatedAt}`)
+  const runs = pr.checkRuns ?? []
+  lines.push('', 'checks')
+  if (runs.length === 0) lines.push('no checks')
+  for (const c of runs) lines.push(formatCheck(c))
+  lines.push('', 'thread')
+  const entries = thread?.entries ?? []
+  if (entries.length === 0) lines.push('no comments')
+  for (const e of entries) {
+    const what = e.kind === 'review' && e.state ? e.state.replace('_', ' ') : e.kind
+    const where = e.kind === 'line' && e.path ? ` · ${e.path}${e.line ? `:${e.line}` : ''}` : ''
+    lines.push(`${e.author} · ${e.at} · ${what}${where}`)
+    for (const l of e.body.trimEnd().split('\n')) if (e.body.trim()) lines.push(`  ${l}`)
   }
   return lines.join('\n')
 }
@@ -246,6 +290,22 @@ export function registerWorkspaceCommands(program: Command): void {
         const w = await findWorkspace(c, ref)
         const diff = await c.request('workspace.diff', { id: w.id })
         console.log(opts.json ? JSON.stringify(diff, null, 2) : formatDiff(diff))
+      })
+    )
+  ws.command('pr <workspace>')
+    .description("a workspace's pull request: its checks and its conversation")
+    .option('--json', 'print JSON ({ pr, thread })')
+    .option('--refresh', 'fetch the conversation again instead of using the cached one')
+    .action((ref: string, opts: { json?: boolean; refresh?: boolean }) =>
+      withClient(async (c) => {
+        await assertNotQuiet(c)
+        const w = await findWorkspace(c, ref)
+        const pr = (await c.request('workspace.get', { id: w.id })).pr
+        const thread = pr
+          ? await c.request('workspace.prThread', { id: w.id, refresh: opts.refresh === true })
+          : null
+        if (opts.json) return console.log(JSON.stringify({ pr, thread }, null, 2))
+        console.log(pr ? formatPrView(pr, thread) : 'no pull request')
       })
     )
   ws.command('terminal <workspace>')

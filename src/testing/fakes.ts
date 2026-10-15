@@ -94,6 +94,109 @@ export function setFakePullRequest(file: string, branch: string, patch: Partial<
   fs.writeFileSync(file, JSON.stringify(all, null, 2))
 }
 
+// Builders for the fake gh's pull request data, in GitHub's own field names,
+// so tests and specs never re-type them. Each id counts up from 1001.
+let fakeGhId = 1000
+const nextFakeGhId = (): number => ++fakeGhId
+const FAKE_AT = '2026-10-14T03:00:00Z'
+
+/** One `statusCheckRollup` CheckRun; a completed success unless told otherwise. */
+export function fakeCheckRun(p: {
+  name: string
+  conclusion?: string | null
+  status?: string
+  workflowName?: string
+  detailsUrl?: string
+  startedAt?: string
+  completedAt?: string
+}): Record<string, unknown> {
+  const status = p.status ?? 'COMPLETED'
+  const completed = status === 'COMPLETED'
+  return {
+    __typename: 'CheckRun',
+    name: p.name,
+    status,
+    conclusion: p.conclusion === undefined ? (completed ? 'SUCCESS' : null) : p.conclusion,
+    workflowName: p.workflowName ?? 'CI',
+    detailsUrl: p.detailsUrl ?? `https://github.com/rquellh/que/actions/runs/${nextFakeGhId()}`,
+    startedAt: p.startedAt ?? '2026-10-14T02:58:00Z',
+    completedAt: completed ? (p.completedAt ?? '2026-10-14T02:59:21Z') : null
+  }
+}
+
+/** One `statusCheckRollup` StatusContext (a commit status). */
+export function fakeStatusContext(p: {
+  context: string
+  state: 'EXPECTED' | 'ERROR' | 'FAILURE' | 'PENDING' | 'SUCCESS'
+  targetUrl?: string
+}): Record<string, unknown> {
+  return {
+    __typename: 'StatusContext',
+    context: p.context,
+    state: p.state,
+    targetUrl: p.targetUrl ?? null,
+    createdAt: FAKE_AT
+  }
+}
+
+/** One issue comment, as `gh pr view --json comments` prints it. */
+export function fakeComment(p: {
+  author: string
+  body: string
+  createdAt?: string
+  url?: string
+}): Record<string, unknown> {
+  const id = nextFakeGhId()
+  return {
+    id: `IC_${id}`,
+    author: { login: p.author },
+    body: p.body,
+    createdAt: p.createdAt ?? FAKE_AT,
+    url: p.url ?? `https://github.com/rquellh/que/pull/1#issuecomment-${id}`
+  }
+}
+
+/** One review, as `gh pr view --json reviews` prints it. */
+export function fakeReview(p: {
+  author: string
+  state: 'APPROVED' | 'CHANGES_REQUESTED' | 'COMMENTED' | 'DISMISSED' | 'PENDING'
+  body?: string
+  submittedAt?: string
+}): Record<string, unknown> {
+  const id = nextFakeGhId()
+  return {
+    id: `PRR_${id}`,
+    author: { login: p.author },
+    body: p.body ?? '',
+    state: p.state,
+    submittedAt: p.submittedAt ?? FAKE_AT,
+    url: `https://github.com/rquellh/que/pull/1#pullrequestreview-${id}`
+  }
+}
+
+/** One review comment on a line, as the REST `pulls/{n}/comments` list returns it. */
+export function fakeLineComment(p: {
+  author: string
+  body: string
+  path: string
+  line: number
+  hunk?: string
+  createdAt?: string
+}): Record<string, unknown> {
+  const id = nextFakeGhId()
+  return {
+    id,
+    user: { login: p.author },
+    body: p.body,
+    created_at: p.createdAt ?? FAKE_AT,
+    html_url: `https://github.com/rquellh/que/pull/1#discussion_r${id}`,
+    path: p.path,
+    line: p.line,
+    original_line: p.line,
+    diff_hunk: p.hunk ?? `@@ -1,3 +1,4 @@\n context\n+${p.body.split('\n')[0]}`
+  }
+}
+
 /** One issue as `acli jira workitem search/view --json` prints it. */
 export interface FakeIssue {
   key: string
