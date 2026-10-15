@@ -318,6 +318,8 @@ export class QueStore {
   private fileListSeq = new Map<string, number>()
   /** Workspaces whose worktree change is being followed, and those with another change waiting. */
   private following = new Set<string>()
+  /** The workspace this store asked the daemon to watch, if any. */
+  private watchedKey: string | null = null
   private followAgain = new Set<string>()
   /** File reads in flight, keyed by workspace and path. */
   private fileLoads = new Map<string, Promise<void>>()
@@ -354,7 +356,23 @@ export class QueStore {
   private set(update: Partial<QueState> | ((s: QueState) => Partial<QueState>)): void {
     const patch = typeof update === 'function' ? update(this.state) : update
     this.state = { ...this.state, ...patch }
+    if (patch.view) this.watchShown()
     for (const cb of this.listeners) cb()
+  }
+
+  /**
+   * Asks the daemon to watch the worktree of the workspace this window shows, and no other, so
+   * `workspace.changed` names it whatever the pane shows (a terminal, a diff, a file). Failures
+   * are dropped: the Refresh button still works without the watch.
+   */
+  private watchShown(): void {
+    const key = this.currentKey()
+    const want = key !== null && key !== SCRATCH && !this.options.board ? key : null
+    if (want === this.watchedKey) return
+    const was = this.watchedKey
+    this.watchedKey = want
+    if (was !== null) void this.api.workspace.unwatch({ id: was }).catch(() => {})
+    if (want !== null) void this.api.workspace.watch({ id: want }).catch(() => {})
   }
 
   // ---- lifecycle ------------------------------------------------------------
@@ -575,9 +593,10 @@ export class QueStore {
   }
 
   /**
-   * Shows a workspace's terminals. The daemon only watches the shown workspace's worktree, so
-   * what the pane and the view tabs show for the new one is fetched again rather than served
-   * from the cache, in case it changed while another was shown.
+   * Shows a workspace's terminals. The daemon only watches the shown workspace's worktree (the
+   * view change asks it to, in watchShown), so what the pane and the view tabs show for the new
+   * one is fetched again rather than served from the cache, in case it changed while another
+   * was shown.
    */
   showTerminals(key: string): void {
     const was = this.currentKey()
@@ -627,11 +646,12 @@ export class QueStore {
   /**
    * The daemon saw the worktree change on disk. For the shown workspace, fetch again what is on
    * screen: the diff (in its scope) while the pane or a view tab is open, and the listing and the
-   * open file tabs too while Files or a file tab is. One change at a time: a change arriving
+   * open file tabs too while Files or a file tab is; nothing while quiet hours are locked, when
+   * those fetches are refused. One change at a time: a change arriving
    * while one is followed is followed once more after it lands.
    */
   private followChange(id: string): void {
-    if (id !== this.currentKey()) return
+    if (id !== this.currentKey() || isLocked(this.state.quiet)) return
     if (this.following.has(id)) {
       this.followAgain.add(id)
       return
