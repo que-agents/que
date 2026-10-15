@@ -3,6 +3,7 @@ import os from 'node:os'
 import { join } from 'node:path'
 import { app, BrowserWindow, dialog, ipcMain, Notification, shell } from 'electron'
 import { DaemonClient } from '../shared/client'
+import { loginShellPath, mergePath } from '../shared/login-path'
 import { queHome } from '../shared/paths'
 import type { EventName, MethodName, Report } from '../shared/protocol'
 import type { QuietState, UpdateInfo } from '../shared/types'
@@ -325,6 +326,13 @@ function registerIpc(): void {
 }
 
 app.whenReady().then(async () => {
+  // A Finder launch has launchd's PATH; the daemon and editors inherit ours,
+  // so resolve the login shell's once, before the first daemon start.
+  if (!e2e) {
+    const login = await loginShellPath()
+    process.env.PATH = mergePath(process.env.PATH, login)
+    console.log(login ? 'PATH: merged the login shell PATH' : 'PATH: login shell PATH unavailable')
+  }
   registerIpc()
   installMenu()
   const quietCall = (method: 'quiet.unlock' | 'quiet.lock'): void => {

@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from 'vite
 import { DaemonError } from '@shared/client'
 import type { MethodName } from '@shared/protocol'
 import { startTestDaemon, type TestDaemon } from '../../src/testing/daemon-harness'
+import { FAKES_BIN } from '../../src/testing/fakes'
 
 let daemon: TestDaemon
 let onShutdown: Mock<() => void>
@@ -23,6 +24,7 @@ describe('daemon', () => {
 
       expect(r).toMatchObject({ version: 'test', pid: process.pid, nodeVersion: process.version })
       expect(Number.isNaN(Date.parse(r.startedAt))).toBe(false)
+      expect(r.path).toContain(FAKES_BIN)
     })
   })
 
