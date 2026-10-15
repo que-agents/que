@@ -49,9 +49,14 @@ describe('ChangesList', () => {
 
       await openChanges(user)
 
-      expect(await screen.findByTestId('changes-summary')).toHaveTextContent(
+      const summary = await screen.findByTestId('changes-summary')
+      expect(summary).toHaveTextContent('Commits 2 vs origin/main')
+      expect(summary).toHaveAttribute(
+        'title',
         'app-1432-retry-logic vs origin/main · 2 commits ahead · 2 files · +16 −3'
       )
+      expect(screen.getByTestId('changes-commits')).toHaveTextContent('2')
+      expect(screen.getByTestId('changes-base')).toHaveTextContent('origin/main')
       const first = screen.getByTestId('changes-file-0')
       expect(first).toHaveTextContent('Msrc/upload/put.ts+12 −3')
       expect(first).toHaveAttribute('data-path', 'src/upload/put.ts')
@@ -136,10 +141,15 @@ describe('ChangesList', () => {
       await screen.findByTestId('changes-file-0')
 
       fakeBridge.seedDiff(makeWorkspaceDiff({ workspaceId: retry.id, files: [put, readme] }))
-      await user.click(screen.getByTestId('changes-refresh'))
+      const refresh = screen.getByRole('button', { name: 'Refresh' })
+      expect(refresh).toHaveAttribute('data-testid', 'changes-refresh')
+      await user.click(refresh)
 
       expect(await screen.findByTestId('changes-file-1')).toHaveTextContent('README.md')
-      expect(screen.getByTestId('changes-summary')).toHaveTextContent('2 files')
+      expect(screen.getByTestId('changes-summary')).toHaveAttribute(
+        'title',
+        expect.stringContaining('· 2 files ·')
+      )
     })
 
     it('opens the worktree in the editor, and not while disconnected', async () => {

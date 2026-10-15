@@ -1,5 +1,5 @@
-// A workspace's Changes list in the review pane: the summary, Refresh, Open in
-// editor, and the file rows. The pane's toggle is TopBarPage.reviewToggle; a
+// A workspace's Changes list in the review pane: the summary line (its commit
+// count and base), Refresh, Open in editor, and the file rows. The pane's toggle is TopBarPage.reviewToggle; a
 // file's diff tab is DiffPage.
 import type { Locator, Page } from '@playwright/test'
 
@@ -7,6 +7,8 @@ export class ChangesPage {
   page: Page
   root: Locator
   summary: Locator
+  commits: Locator
+  base: Locator
   files: Locator
   empty: Locator
   error: Locator
@@ -18,6 +20,8 @@ export class ChangesPage {
     this.page = page
     this.root = page.getByTestId('changes-list')
     this.summary = page.getByTestId('changes-summary')
+    this.commits = page.getByTestId('changes-commits')
+    this.base = page.getByTestId('changes-base')
     this.files = page.getByTestId('changes-files')
     this.empty = page.getByTestId('changes-empty')
     this.error = page.getByTestId('changes-error')

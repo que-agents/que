@@ -1398,25 +1398,30 @@ body.resizing .review-resizer {
   flex-direction: column;
 }
 
-/* The summary on its own line, wrapping as the pane narrows; the actions in a row under it. */
+/* One quiet line: `Commits n vs base`, truncating as the pane narrows; icon actions at its end. */
 .changes-bar {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 8px 12px;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px 4px 12px;
   border-bottom: 1px solid var(--border);
 }
 
 .changes-summary {
+  flex: 1;
+  min-width: 0;
   margin: 0;
-  font: 11px var(--mono);
-  color: var(--fg-muted);
-  overflow-wrap: anywhere;
+  font: 12px var(--sans);
+  color: var(--fg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .changes-actions {
   display: flex;
-  gap: 6px;
+  flex: none;
+  gap: 2px;
 }
 
 .changes-error {
