@@ -346,9 +346,10 @@ export class QueStore {
           const next = { ...ws, status: e.status, statusReason: e.reason ?? null, statusAt: e.at }
           return { workspaces: { ...s.workspaces, [e.id]: next } }
         })
-        // A live task's workspace ends its turn before the task finishes; the task chimes on done.
+        // A live task's workspace never chimes on its own: its session ends a turn before the
+        // task finishes, and asks for input as the task does; the task's own status chimes.
         const owned = latestTasks(this.state.tasks).get(e.id)
-        if (e.status === 'idle' && owned && isLiveTask(owned.state)) return
+        if (owned && isLiveTask(owned.state)) return
         if (prev !== e.status) this.maybeChime({ state: e.status, reason: e.reason, prev })
       }),
       task.on('task.created', (t) => this.set((s) => ({ tasks: { ...s.tasks, [t.id]: t } }))),

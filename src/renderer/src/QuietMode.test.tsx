@@ -202,4 +202,25 @@ describe('completion chime', () => {
       expect(played).toEqual(['needs_input'])
     })
   })
+
+  it('chimes once when a task needs input: for the task, not for its workspace too', async () => {
+    const played = recordChimes()
+    fakeBridge.seedProject(makeProject())
+    fakeBridge.seedWorkspace({ ...retry, status: 'working' })
+    fakeBridge.seedTask(task)
+    fakeBridge.setConfig({
+      notifications: { chimeOnComplete: true, chimeOnNeedsInput: true, morningSummary: false }
+    })
+    render(<App now={clock} />)
+    const badge = `sidebar-workspace-${retry.id}-status`
+    await screen.findByTestId(badge)
+
+    fakeBridge.setStatus(retry.id, 'needs_input')
+    expect(played).toEqual([])
+    fakeBridge.setTaskState(task.id, 'stuck', 'needs_input')
+
+    await waitFor(() => {
+      expect(played).toEqual(['needs_input'])
+    })
+  })
 })
