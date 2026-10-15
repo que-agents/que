@@ -100,6 +100,36 @@ describe('App', () => {
     })
   })
 
+  describe('filter shortcut', () => {
+    it('focuses the sidebar filter with Cmd+K and selects its text', async () => {
+      const user = userEvent.setup()
+      fakeBridge.seedTerminal(uploader)
+      render(<App />)
+      const filter = (await screen.findByTestId('sidebar-filter')) as HTMLInputElement
+      await user.type(filter, 'abc')
+      filter.blur()
+      expect(filter).not.toHaveFocus()
+
+      await user.keyboard('{Meta>}k{/Meta}')
+
+      expect(filter).toHaveFocus()
+      expect(filter.selectionStart).toBe(0)
+      expect(filter.selectionEnd).toBe(3)
+    })
+
+    it('leaves Cmd+K alone while a dialog is open', async () => {
+      const user = userEvent.setup()
+      fakeBridge.seedProject(makeProject())
+      render(<App />)
+      await user.click(await screen.findByRole('button', { name: /^New workspace in/ }))
+      await screen.findByRole('dialog')
+
+      await user.keyboard('{Meta>}k{/Meta}')
+
+      expect(screen.getByTestId('sidebar-filter')).not.toHaveFocus()
+    })
+  })
+
   describe('status updates', () => {
     it('marks a tab exited when its process exits', async () => {
       fakeBridge.seedTerminal(uploader)

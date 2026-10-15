@@ -165,4 +165,28 @@ describe('TicketsView', () => {
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     })
   })
+
+  describe('filter', () => {
+    it('narrows the rows by key or summary, and says when nothing matches', async () => {
+      const user = userEvent.setup()
+      fakeBridge.seedTicket(retry)
+      fakeBridge.seedTicket(refresh)
+      const view = await openTickets(user)
+
+      await user.type(screen.getByTestId('sidebar-filter'), 'auth')
+
+      expect(within(view).queryByTestId('ticket-APP-1432')).not.toBeInTheDocument()
+      expect(within(view).getByTestId('ticket-APP-1440')).toBeInTheDocument()
+      expect(within(view).queryByTestId('tickets-nomatch')).not.toBeInTheDocument()
+
+      await user.clear(screen.getByTestId('sidebar-filter'))
+      await user.type(screen.getByTestId('sidebar-filter'), 'app-1432')
+      expect(within(view).getByTestId('ticket-APP-1432')).toBeInTheDocument()
+      expect(within(view).queryByTestId('ticket-APP-1440')).not.toBeInTheDocument()
+
+      await user.type(screen.getByTestId('sidebar-filter'), 'zzz')
+      expect(within(view).getByTestId('tickets-nomatch')).toHaveTextContent('Nothing matches')
+      expect(within(view).queryByTestId('tickets-empty')).not.toBeInTheDocument()
+    })
+  })
 })
