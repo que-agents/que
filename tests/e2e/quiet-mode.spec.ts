@@ -65,7 +65,7 @@ test('quiet hours show only the board; an unlock brings detail back until it run
       new RegExp(`^que · quiet hours · \\d\\d:\\d\\d · detail unlocks at ${windowEnd}$`)
     )
     await expect(board.counts).toContainText('0 running · 0 paused · 0 stuck · 0 done')
-    await expect(board.counts).toContainText('1 workspace · 0 working · 0 needs input')
+    await expect(board.counts).toContainText('1 workspace · 0 working · 0 need input · 0 stuck')
     await expect(board.row(workspace.id)).toContainText('app-1500-quiet-board')
     await expect(board.row(workspace.id)).toHaveAttribute('data-state', 'idle')
     await expect(board.unlockButton).toHaveText('Unlock 0.1 min')
