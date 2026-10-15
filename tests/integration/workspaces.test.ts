@@ -316,6 +316,9 @@ describe('workspace.start', () => {
     const repo = makeTempRepo(daemon.home, {
       queToml: `setup = "until [ -f '${gate}' ]; do sleep 0.05; done"\n`
     })
+    const instructions = join(daemon.home, 'instructions.md')
+    fs.writeFileSync(instructions, 'Delegate broad searches to a smaller model.\n')
+    await client.request('config.set', { patch: { instructions_file: instructions } })
     const project = await client.request('project.add', { path: repo })
     const ws = await client.request('workspace.create', { projectId: project.id, brief: 'Fix it' })
 
@@ -338,6 +341,11 @@ describe('workspace.start', () => {
         { timeout: 15_000 }
       )
       .toBe(true)
+    const [started] = readFakeLog(daemon.claudeLog)
+    expect(started.argv).toEqual(
+      expect.arrayContaining(['--append-system-prompt-file', instructions])
+    )
+    expect(started.argv[started.argv.indexOf('--append-system-prompt-file') + 1]).toBe(instructions)
     const again = await client.request('workspace.start', { id: ws.id })
     expect(again.terminalId).toBe(terminalId)
     expect(await client.request('term.list', { workspaceId: ws.id })).toHaveLength(1)

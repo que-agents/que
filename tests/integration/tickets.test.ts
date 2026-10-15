@@ -167,9 +167,11 @@ describe('starting a ticket', () => {
       projectId: project.id
     })
     expect(ws.brief).toContain('# APP-1432 Add retry logic to the uploader')
-    expect(fs.readFileSync(join(ws.path, '.que', 'brief.md'), 'utf8')).toContain(
-      'https://example.atlassian.net/browse/APP-1432'
+    const briefFile = fs.readFileSync(join(ws.path, '.que', 'brief.md'), 'utf8')
+    expect(briefFile.startsWith('# APP-1432 Add retry logic to the uploader\n\nhttps://')).toBe(
+      true
     )
+    expect(briefFile.match(/^# /gm)).toHaveLength(1)
 
     const brief = fs.readFileSync(join(ws.path, '.que', 'ticket.md'), 'utf8')
     expect(brief).toContain('# APP-1432 Add retry logic to the uploader')

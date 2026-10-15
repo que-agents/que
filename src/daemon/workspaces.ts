@@ -4,7 +4,7 @@
 import { type ChildProcess, execFile, spawn } from 'node:child_process'
 import fs from 'node:fs'
 import { basename, dirname, isAbsolute, join, normalize, resolve } from 'node:path'
-import { nameFromTitle, titleOf } from '../shared/brief'
+import { briefFile, nameFromTitle, titleOf } from '../shared/brief'
 import {
   formatConfigErrors,
   loadConfig,
@@ -282,7 +282,7 @@ export class WorkspaceManager {
     copyIncludes(project.path, path, repo.worktreeInclude, (m) => this.log(m))
     if (brief) {
       fs.mkdirSync(join(path, '.que'), { recursive: true })
-      fs.writeFileSync(join(path, '.que', 'brief.md'), `# ${title}\n\n${brief.trimEnd()}\n`)
+      fs.writeFileSync(join(path, '.que', 'brief.md'), briefFile(title ?? '', brief))
       await excludeQueDir(path)
     }
 

@@ -9,6 +9,16 @@ export function titleOf(brief: string): string {
   return line.length > 80 ? `${line.slice(0, 79).trimEnd()}…` : line
 }
 
+/**
+ * What `.que/brief.md` holds: `# <title>`, a blank line, then the brief; or the brief alone
+ * when its first non-empty line is already a `# ` heading.
+ */
+export function briefFile(title: string, brief: string): string {
+  const body = `${brief.trimEnd()}\n`
+  const first = brief.split('\n').find((l) => l.trim() !== '') ?? ''
+  return first.trimStart().startsWith('# ') ? body : `# ${title}\n\n${body}`
+}
+
 /** A workspace name from a title: its slug cut to 48 characters, or null when nothing usable is left. */
 export function nameFromTitle(title: string): string | null {
   const slug = slugify(title)
