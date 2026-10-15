@@ -24,6 +24,35 @@ export function FolderPlusIcon(): React.JSX.Element {
   )
 }
 
+/** A rounded rectangle with a vertical line through the middle: split into two side by side. */
+export function SplitBesideIcon(): React.JSX.Element {
+  return (
+    <svg {...base} aria-hidden="true">
+      <rect x="2" y="3" width="12" height="10" rx="1.5" />
+      <path d="M8 3v10" />
+    </svg>
+  )
+}
+
+/** A rounded rectangle with a horizontal line through the middle: split into two stacked. */
+export function SplitBelowIcon(): React.JSX.Element {
+  return (
+    <svg {...base} aria-hidden="true">
+      <rect x="2" y="3" width="12" height="10" rx="1.5" />
+      <path d="M2 8h12" />
+    </svg>
+  )
+}
+
+/** The rectangle alone: join two panes back into one. */
+export function JoinPanesIcon(): React.JSX.Element {
+  return (
+    <svg {...base} aria-hidden="true">
+      <rect x="2" y="3" width="12" height="10" rx="1.5" />
+    </svg>
+  )
+}
+
 /** A plus: open or create one more of something. */
 export function PlusIcon(): React.JSX.Element {
   return (

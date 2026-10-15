@@ -74,6 +74,9 @@ remove. The quiet board uses the same tones as plain text.
   `components/icons.tsx`, drawn in the current text colour: faint in a ghost
   button, bright on hover. The button carries the accessible name. No icon
   font or library.
+- Two panes are divided by a 7px track like the sidebar's: invisible until hover,
+  focus or drag, then a 1px accent line. The focused pane's tab strip carries a
+  1px accent line at its top; with one pane there is none.
 - Row actions (the ⋯ button) show on hover, focus, or while their menu is open.
 - The window has no native title bar. The traffic lights sit in the 40px strip
   above the sidebar's content; that strip and the top bar's empty space drag

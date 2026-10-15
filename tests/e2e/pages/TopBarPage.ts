@@ -10,6 +10,9 @@ export class TopBarPage {
   status: Locator
   prLink: Locator
   openEditorButton: Locator
+  splitBesideButton: Locator
+  splitBelowButton: Locator
+  joinButton: Locator
   createPrButton: Locator
   createPrDialog: Locator
   createPrTitle: Locator
@@ -26,6 +29,9 @@ export class TopBarPage {
     this.status = page.getByTestId('topbar-status')
     this.prLink = page.getByTestId('topbar-pr')
     this.openEditorButton = page.getByTestId('topbar-open-editor')
+    this.splitBesideButton = page.getByTestId('topbar-split-beside')
+    this.splitBelowButton = page.getByTestId('topbar-split-below')
+    this.joinButton = page.getByTestId('topbar-join')
     this.createPrButton = page.getByTestId('topbar-create-pr')
     this.createPrDialog = page.getByTestId('dialog-create-pr')
     this.createPrTitle = page.getByTestId('dialog-create-pr-title')
