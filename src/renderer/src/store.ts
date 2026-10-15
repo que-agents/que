@@ -5,6 +5,7 @@ import { createContext, useContext, useSyncExternalStore } from 'react'
 import type {
   ConfigGetResult,
   ConfigSetParams,
+  PrThread,
   Project,
   QueApi,
   QuietState,
@@ -19,6 +20,18 @@ import type {
   WorkspaceDiff
 } from '../../preload/index.d'
 import type { SidebarSort } from './sidebar-order'
+import {
+  clampRatio,
+  isRemembered,
+  NO_SPLIT,
+  type PaneLayout,
+  parseLayout,
+  RATIO_DEFAULT,
+  reconcileLayout,
+  type ViewKind,
+  viewId,
+  viewKindOf
+} from './layout'
 import { isLiveTask, latestTasks } from './format'
 import { chime, shouldChime } from './sound'
 
@@ -40,63 +53,10 @@ export interface TermTab {
   createdAt: string
 }
 
-/** One workspace's terminals in one or two panes (a tree of depth one). */
-export interface PaneLayout {
-  /** null: one pane. Otherwise the second pane sits beside (row) or below (column) the first. */
-  split: { direction: 'row' | 'column'; ratio: number } | null
-  /** Terminal ids shown in the second pane; every other tab of the key is in the first. */
-  second: string[]
-  /** The selected tab per pane; null means the pane's newest tab. */
-  active: [string | null, string | null]
-  focused: 0 | 1
-}
+export { RATIO_DEFAULT, RATIO_MAX, RATIO_MIN, viewId, viewKindOf } from './layout'
+export type { PaneLayout, ViewKind } from './layout'
 
-export const RATIO_MIN = 0.2
-export const RATIO_MAX = 0.8
-export const RATIO_DEFAULT = 0.5
 const LAYOUT_PREFIX = 'que.layout.'
-const NO_SPLIT: PaneLayout = { split: null, second: [], active: [null, null], focused: 0 }
-
-function clampRatio(r: number): number {
-  const n = Number.isFinite(r) ? r : RATIO_DEFAULT
-  return Math.round(Math.min(RATIO_MAX, Math.max(RATIO_MIN, n)) * 1000) / 1000
-}
-
-/** Parses a remembered layout; null when it is not a split. */
-function parseLayout(raw: string | null): PaneLayout | null {
-  if (!raw) return null
-  try {
-    const v = JSON.parse(raw) as Partial<PaneLayout> | null
-    const sp = v?.split
-    if (!sp || (sp.direction !== 'row' && sp.direction !== 'column')) return null
-    const id = (x: unknown): string | null => (typeof x === 'string' ? x : null)
-    return {
-      split: { direction: sp.direction, ratio: clampRatio(Number(sp.ratio)) },
-      second: Array.isArray(v?.second) ? v.second.filter((x) => typeof x === 'string') : [],
-      active: [id(v?.active?.[0]), id(v?.active?.[1])],
-      focused: v?.focused === 1 ? 1 : 0
-    }
-  } catch {
-    return null
-  }
-}
-
-/**
- * The layout with ids of vanished terminals dropped. A split whose second pane
- * is empty collapses; one whose first pane is empty hands over the second.
- */
-function reconcileLayout(l: PaneLayout, ids: ReadonlySet<string>, tabIds: string[]): PaneLayout {
-  if (!l.split) return l
-  const second = l.second.filter((id) => ids.has(id))
-  const active: [string | null, string | null] = [
-    l.active[0] && ids.has(l.active[0]) && !second.includes(l.active[0]) ? l.active[0] : null,
-    l.active[1] && second.includes(l.active[1]) ? l.active[1] : null
-  ]
-  const firstCount = tabIds.filter((id) => !second.includes(id)).length
-  if (second.length === 0) return { ...NO_SPLIT, active: [active[0], null] }
-  if (firstCount === 0) return { ...NO_SPLIT, active: [active[1], null] }
-  return { ...l, second, active }
-}
 
 export type View =
   | { kind: 'terminals'; key: string }
@@ -126,8 +86,10 @@ export interface QueState {
   view: View
   /** The pane layout per terminal key; a key without one has a single pane. */
   layouts: Record<string, PaneLayout>
-  /** Per terminal key: the Changes view replaces the panes. Not remembered. */
-  changesOpen: Record<string, boolean>
+  /** Per workspace: its pull request's conversation as last fetched (null: no pull request). */
+  prThreads: Record<string, PrThread | null>
+  /** Per workspace: why the last conversation fetch failed, or null. */
+  prThreadErrors: Record<string, string | null>
   dialog: DialogState | null
   /** The daemon's quiet-hours state; null until loaded. */
   quiet: QuietState | null
@@ -203,7 +165,8 @@ export class QueStore {
     ticketsSync: { lastSyncAt: null, error: null, count: 0 },
     view: { kind: 'terminals', key: SCRATCH },
     layouts: {},
-    changesOpen: {},
+    prThreads: {},
+    prThreadErrors: {},
     dialog: null,
     quiet: null,
     config: null,
@@ -383,7 +346,15 @@ export class QueStore {
   }
 
   private upsertWorkspace(ws: Workspace): void {
+    const prev = this.state.workspaces[ws.id]?.pr ?? null
     this.set((s) => ({ workspaces: { ...s.workspaces, [ws.id]: ws } }))
+    // An open Pull request tab follows its pull request: fetch again when it appears,
+    // disappears, or changes upstream.
+    const next = ws.pr ?? null
+    const changed =
+      (prev === null) !== (next === null) ||
+      (prev !== null && next !== null && prev.updatedAt !== next.updatedAt)
+    if (changed && this.layout(ws.id).views.includes('pr')) void this.fetchPrThread(ws.id)
     if (!this.state.projects.some((p) => p.id === ws.projectId)) {
       // A project.added that raced the workspace event; fetch the list.
       void this.api.project.list().then(
@@ -461,12 +432,74 @@ export class QueStore {
     void this.visit(key)
   }
 
-  toggleChanges(key: string): void {
-    this.showChanges(key, !this.state.changesOpen[key])
+  /**
+   * Opens a view tab and selects it: where it already is, or else in the focused pane.
+   */
+  openView(key: string, kind: ViewKind): void {
+    const l = this.layout(key)
+    const id = viewId(kind)
+    if (l.views.includes(kind)) {
+      this.selectTerminal(key, id)
+      return
+    }
+    const pane = l.split ? l.focused : 0
+    this.setLayout(key, {
+      ...l,
+      views: [...l.views, kind],
+      second: pane === 1 ? [...l.second, id] : l.second,
+      active: pane === 0 ? [id, l.active[1]] : [l.active[0], id],
+      focused: pane
+    })
   }
 
-  showChanges(key: string, open: boolean): void {
-    this.set((s) => ({ changesOpen: { ...s.changesOpen, [key]: open } }))
+  /** Closes the view when it is the focused pane's active tab, else opens (or selects) it. */
+  toggleView(key: string, kind: ViewKind): void {
+    if (this.paneActiveId(key, this.focusedPane(key)) === viewId(kind)) this.closeView(key, kind)
+    else this.openView(key, kind)
+  }
+
+  /** Closes a view tab; its pane selects the neighbouring tab, and an emptied split collapses. */
+  closeView(key: string, kind: ViewKind): void {
+    const l = this.layout(key)
+    if (!l.views.includes(kind)) return
+    const id = viewId(kind)
+    const pane = l.second.includes(id) ? 1 : 0
+    const ids = this.paneIds(key, pane)
+    const at = ids.indexOf(id)
+    const neighbour = ids[at - 1] ?? ids[at + 1] ?? null
+    const active: PaneLayout['active'] = [...l.active]
+    if (this.paneActiveId(key, pane) === id) active[pane] = neighbour
+    const next: PaneLayout = {
+      ...l,
+      views: l.views.filter((v) => v !== kind),
+      second: l.second.filter((x) => x !== id),
+      active
+    }
+    const tabIds = this.tabs(key).map((t) => t.id)
+    this.setLayout(key, reconcileLayout(next, new Set(tabIds), tabIds))
+  }
+
+  /** Closes the focused pane's active tab: a view tab, or a terminal (which is killed). */
+  closeActiveTab(key: string): void {
+    const id = this.paneActiveId(key, this.focusedPane(key))
+    const kind = viewKindOf(id)
+    if (kind) this.closeView(key, kind)
+    else if (id) void this.closeTerminal(id)
+  }
+
+  /** Fetches a workspace's pull request conversation; a failure (quiet hours too) is kept for the view. */
+  async fetchPrThread(key: string, refresh = false): Promise<void> {
+    try {
+      const thread = await this.api.workspace.prThread(
+        refresh ? { id: key, refresh: true } : { id: key }
+      )
+      this.set((s) => ({
+        prThreads: { ...s.prThreads, [key]: thread },
+        prThreadErrors: { ...s.prThreadErrors, [key]: null }
+      }))
+    } catch (err) {
+      this.set((s) => ({ prThreadErrors: { ...s.prThreadErrors, [key]: message(err) } }))
+    }
   }
 
   /** The workspace's diff against its base; errors (quiet hours too) are for the view to show. */
@@ -554,7 +587,7 @@ export class QueStore {
     return config
   }
 
-  /** Selects a tab within the pane that holds it, and focuses that pane. */
+  /** Selects a tab (a terminal or a view) within the pane that holds it, and focuses that pane. */
   selectTerminal(key: string, id: string): void {
     const l = this.layout(key)
     const pane = l.second.includes(id) ? 1 : 0
@@ -574,16 +607,34 @@ export class QueStore {
     return this.state.layouts[key] ?? NO_SPLIT
   }
 
-  /** The tabs of one pane, oldest first. */
+  /** The terminal tabs of one pane, oldest first. */
   paneTabs(key: string, pane: 0 | 1): TermTab[] {
     const second = this.layout(key).second
     return this.tabs(key).filter((t) => second.includes(t.id) === (pane === 1))
   }
 
-  /** The selected tab of a pane, else its newest. */
+  /** The view tabs of one pane, in the order they were opened. */
+  paneViews(key: string, pane: 0 | 1): ViewKind[] {
+    const l = this.layout(key)
+    return l.views.filter((v) => l.second.includes(viewId(v)) === (pane === 1))
+  }
+
+  /** Every tab id of one pane: its terminals, then its views. */
+  private paneIds(key: string, pane: 0 | 1): string[] {
+    return [...this.paneTabs(key, pane).map((t) => t.id), ...this.paneViews(key, pane).map(viewId)]
+  }
+
+  /** The selected tab id (a terminal or a view) of a pane, else its newest tab. */
+  paneActiveId(key: string, pane: 0 | 1): string | null {
+    const ids = this.paneIds(key, pane)
+    const want = this.layout(key).active[pane]
+    return (want && ids.includes(want) ? want : ids.at(-1)) ?? null
+  }
+
+  /** The selected terminal of a pane; null when the pane shows a view tab or holds no terminal. */
   paneActive(key: string, pane: 0 | 1): TermTab | null {
-    const tabs = this.paneTabs(key, pane)
-    return tabs.find((t) => t.id === this.layout(key).active[pane]) ?? tabs.at(-1) ?? null
+    const id = this.paneActiveId(key, pane)
+    return this.paneTabs(key, pane).find((t) => t.id === id) ?? null
   }
 
   focusedPane(key: string): 0 | 1 {
@@ -640,10 +691,11 @@ export class QueStore {
 
   /** Splits the key in two with a new terminal in the second pane (or adds one to it). */
   async splitPane(key: string, direction: 'row' | 'column'): Promise<void> {
-    const first = this.paneActive(key, 0)?.id ?? null
+    const first = this.paneActiveId(key, 0)
     await this.openIn(key, (id) => {
       const l = this.layout(key)
       this.setLayout(key, {
+        ...l,
         split: l.split ?? { direction, ratio: RATIO_DEFAULT },
         second: [...l.second, id],
         active: [l.split ? l.active[0] : first, id],
@@ -656,7 +708,11 @@ export class QueStore {
   joinPanes(key: string): void {
     const l = this.layout(key)
     if (!l.split) return
-    this.setLayout(key, { ...NO_SPLIT, active: [l.active[l.focused] ?? l.active[0], null] })
+    this.setLayout(key, {
+      ...NO_SPLIT,
+      views: l.views,
+      active: [l.active[l.focused] ?? l.active[0], null]
+    })
   }
 
   setRatio(key: string, ratio: number): void {
@@ -672,14 +728,14 @@ export class QueStore {
   private setLayout(key: string, layout: PaneLayout): void {
     this.set((s) => ({ layouts: { ...s.layouts, [key]: layout } }))
     try {
-      if (layout.split) localStorage.setItem(LAYOUT_PREFIX + key, JSON.stringify(layout))
+      if (isRemembered(layout)) localStorage.setItem(LAYOUT_PREFIX + key, JSON.stringify(layout))
       else localStorage.removeItem(LAYOUT_PREFIX + key)
     } catch {
       // Nothing to remember into; the layout still applies for this session.
     }
   }
 
-  /** Restores the remembered layouts, dropping terminals that no longer exist. */
+  /** Restores the remembered layouts and view tabs, dropping terminals that no longer exist. */
   private hydrateLayouts(): void {
     const layouts: Record<string, PaneLayout> = {}
     try {
@@ -691,7 +747,7 @@ export class QueStore {
         if (!parsed) continue
         const tabIds = this.tabs(key).map((t) => t.id)
         const l = reconcileLayout(parsed, new Set(tabIds), tabIds)
-        if (l.split) layouts[key] = l
+        if (isRemembered(l)) layouts[key] = l
       }
     } catch {
       return
@@ -725,7 +781,7 @@ export class QueStore {
     return this.state.terminals.filter((t) => t.key === key)
   }
 
-  /** The selected tab of the focused pane. */
+  /** The selected terminal of the focused pane, else of the first pane. */
   activeTab(key: string): TermTab | null {
     return this.paneActive(key, this.focusedPane(key)) ?? this.paneActive(key, 0)
   }
