@@ -289,3 +289,69 @@ export function RemoveWorkspaceDialog({
     </Dialog>
   )
 }
+
+export function StartTicketDialog({
+  ticketKey,
+  projects,
+  onClose
+}: {
+  ticketKey: string
+  projects: Project[]
+  onClose: () => void
+}): React.JSX.Element {
+  const store = useStore()
+  const { connected } = useQue()
+  const [choice, setChoice] = useState(projects[0]?.id ?? 'session')
+  const { busy, error, run } = useSubmit()
+  const id = 'dialog-start-ticket'
+
+  const submit = (e: FormEvent): void => {
+    e.preventDefault()
+    void run(async () => {
+      await store.startTicket(
+        ticketKey,
+        choice === 'session' ? { session: true } : { projectId: choice }
+      )
+      onClose()
+    })
+  }
+
+  return (
+    <Dialog title={`Start ${ticketKey}`} testId={id} onClose={onClose}>
+      <form onSubmit={submit}>
+        <p className="hint">
+          que does not know which project this ticket belongs to yet; it remembers your choice.
+        </p>
+        <label>
+          Project
+          <select
+            data-testid={`${id}-project`}
+            value={choice}
+            onChange={(e) => setChoice(e.target.value)}
+          >
+            {projects.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+            <option value="session">A session, no project</option>
+          </select>
+        </label>
+        <FormError error={error} testId={id} />
+        <div className="dialog-actions">
+          <button type="button" onClick={onClose}>
+            Cancel
+          </button>
+          <button
+            type="submit"
+            className="primary"
+            data-testid={`${id}-submit`}
+            disabled={busy || !connected}
+          >
+            {busy ? 'Starting…' : 'Start'}
+          </button>
+        </div>
+      </form>
+    </Dialog>
+  )
+}

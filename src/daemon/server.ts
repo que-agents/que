@@ -38,6 +38,7 @@ import { TaskQueue } from './queue'
 import { SYSTEM_PROMPT } from './runner'
 import { PrService } from './prs'
 import { StatusService } from './status'
+import { TicketService } from './tickets'
 import { Store } from './store'
 import { WorkspaceManager, workspaceTerminalEnv } from './workspaces'
 import { defaultCliScript, installWrapper, resolveCliRunner } from './wrapper'
@@ -116,6 +117,7 @@ export class DaemonServer {
   readonly store: Store
   readonly status: StatusService
   readonly prs: PrService
+  readonly tickets: TicketService
   readonly workspaces: WorkspaceManager
   readonly tasks: TaskQueue
   readonly quiet: QuietService
@@ -170,6 +172,32 @@ export class DaemonServer {
       emit,
       config: () => this.configOrDefault(),
       log: (m) => this.log(m)
+    })
+    this.tickets = new TicketService({
+      store: this.store,
+      config: () => this.configOrDefault(),
+      emit,
+      log: (m) => this.log(m),
+      home: this.paths.home,
+      projects: () => this.workspaces.listProjects(),
+      createWorkspace: (p) => this.workspaces.create(p),
+      openTerminal: async (workspaceId) => {
+        const ws = this.workspaces.get(workspaceId)
+        const t = this.createTerminal(
+          { cwd: ws.path, cols: 120, rows: 30, name: ws.name },
+          { workspaceId: ws.id, env: workspaceTerminalEnv(ws, this.paths, this.socketPath) }
+        )
+        return { id: t.id }
+      },
+      createSession: async (cwd) => ({ id: this.createTerminal({ cwd, cols: 120, rows: 30 }).id }),
+      writeTerminal: (id, data) => {
+        const t = opts.host.get(id)
+        if (!t) throw new RpcError(ErrorCodes.NotFound, `no terminal ${id}`)
+        t.write(data)
+      },
+      learnProject: async (projectKey, projectName) => {
+        this.setConfig({ jira: { projects: { [projectKey]: projectName } } }, false)
+      }
     })
     this.quiet = new QuietService({
       store: this.store,
@@ -381,6 +409,7 @@ export class DaemonServer {
         this.tasks.start()
         this.quiet.start()
         this.prs.start()
+        this.tickets.start()
         server.on('error', (err) => this.log(`server error: ${err.message}`))
         try {
           fs.chmodSync(socketPath, 0o600)
@@ -405,6 +434,8 @@ export class DaemonServer {
       this.quiet.stop()
       this.prs.stop()
       await this.prs.drain()
+      this.tickets.stop()
+      await this.tickets.drain()
       await this.tasks.shutdown()
       this.status.stop()
       this.workspaces.close()
@@ -617,6 +648,18 @@ export class DaemonServer {
         return this.quiet.lock()
       case 'quiet.log':
         return this.quiet.log(optString(p, 'since'))
+      case 'tickets.list':
+        return this.tickets.list()
+      case 'tickets.sync':
+        return this.tickets.sync()
+      case 'tickets.start':
+        return this.tickets.startTicket({
+          key: str(p, 'key'),
+          projectId: optString(p, 'projectId'),
+          session: optBool(p, 'session')
+        })
+      case 'tickets.projectFor':
+        return { projectId: this.tickets.projectFor(str(p, 'key')) }
       case 'config.get':
         return this.getConfig()
       case 'config.set':

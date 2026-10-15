@@ -211,7 +211,11 @@ const QUIET_POLICY: Record<MethodName, 'refused' | 'allowed'> = {
   'quiet.lock': 'allowed',
   'quiet.log': 'allowed',
   'config.get': 'allowed',
-  'config.set': 'allowed'
+  'config.set': 'allowed',
+  'tickets.list': 'allowed',
+  'tickets.sync': 'allowed',
+  'tickets.projectFor': 'allowed',
+  'tickets.start': 'refused'
 }
 
 describe('safety: quiet hours', () => {
