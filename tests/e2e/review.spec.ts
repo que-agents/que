@@ -4,14 +4,18 @@
 // stay as they are; clicking the file opens its diff as a
 // tab beside the terminal tab (once, however often it is clicked); with the
 // edit and a second file committed, the Commits menu narrows the list to one
-// commit and back, and the base menu compares against another branch; the pane
+// commit and back, and the base menu compares against another branch; the Files
+// tab shows the worktree as a tree with an untracked file under a folded
+// directory, opens an unchanged file as a read-only tab and a changed one as its
+// diff, collapses a directory, and Refresh drops a deleted file; the pane
 // drags wider; Pull request shows no pull request, then one appears (through
 // the fake GitHub CLI) with its checks and conversation, and Refresh picks up a
 // new comment; the app quits and relaunches on the same home and the pane, its
-// tab, its width, the chosen base and the diff tab come back; ⌘W closes the diff tab, and the
-// pane closes and opens again on the tab it was left on.
+// tab, its width, the chosen base, the diff tab and the file tab come back; ⌘W
+// closes the diff tab and the file tab, and the pane closes and opens again on
+// the tab it was left on.
 import { execFileSync } from 'node:child_process'
-import { writeFileSync } from 'node:fs'
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { expect, test } from '@playwright/test'
 import type { Project, Workspace } from '../../src/shared/types'
@@ -25,6 +29,8 @@ import {
 import { AppShellPage } from './pages/AppShellPage'
 import { ChangesPage } from './pages/ChangesPage'
 import { DiffPage } from './pages/DiffPage'
+import { FilesPage } from './pages/FilesPage'
+import { FileViewPage } from './pages/FileViewPage'
 import { PullRequestPage } from './pages/PullRequestPage'
 import { ReviewPage } from './pages/ReviewPage'
 import { SidebarPage } from './pages/SidebarPage'
@@ -71,6 +77,8 @@ test('The review pane lists the changes beside the terminals, opens diffs as tab
   let review: ReviewPage
   let changes: ChangesPage
   let diff: DiffPage
+  let files: FilesPage
+  let fileView: FileViewPage
   let pr: PullRequestPage
   let termId = ''
   let widened = 0
@@ -85,6 +93,8 @@ test('The review pane lists the changes beside the terminals, opens diffs as tab
     review = new ReviewPage(launched.window)
     changes = new ChangesPage(launched.window)
     diff = new DiffPage(launched.window)
+    files = new FilesPage(launched.window)
+    fileView = new FileViewPage(launched.window)
     pr = new PullRequestPage(launched.window)
   }
 
@@ -232,6 +242,89 @@ test('The review pane lists the changes beside the terminals, opens diffs as tab
     await expect(changes.file(1)).toHaveCount(0)
   })
 
+  await test.step('An untracked file: the Files tab shows the tree, changed files marked', async () => {
+    mkdirSync(join(workspace.path, 'src/upload'), { recursive: true })
+    writeFileSync(join(workspace.path, 'src/upload/retry.ts'), 'export const retries = 3\n')
+    // The diff is fetched on demand: refresh it here so the tree opens with the change known.
+    await changes.refresh.click()
+    await expect(changes.file(1)).toHaveAttribute('data-path', 'src/upload/retry.ts')
+    await review.tabFiles.click()
+    await expect(review.root).toHaveAttribute('data-tab', 'files')
+    await expect(review.tabFiles).toHaveAttribute('aria-selected', 'true')
+    expect(await review.state()).toMatchObject({ open: true, tab: 'files' })
+    await expect(files.summary).toHaveText('Files 4 · 2 changed')
+    await expect(files.count).toHaveText('4')
+    await expect(files.rows).toHaveCount(5)
+    // Directories first, the one-entry chain folded into one row, open because it holds a change.
+    await expect(files.row(0)).toHaveAttribute('data-path', 'src/upload')
+    await expect(files.row(0)).toHaveAttribute('data-kind', 'dir')
+    await expect(files.row(0)).toHaveAttribute('aria-expanded', 'true')
+    await expect(files.row(0)).toHaveAttribute('aria-level', '1')
+    await expect(files.row(0)).toContainText('src/upload')
+    await expect(files.rowCount(0)).toHaveText('1')
+    await expect(files.row(1)).toHaveAttribute('data-path', 'src/upload/retry.ts')
+    await expect(files.row(1)).toHaveAttribute('data-kind', 'file')
+    await expect(files.row(1)).toHaveAttribute('aria-level', '2')
+    await expect(files.row(1)).toContainText('retry.ts?')
+    // Then the root files, case-insensitively: README.md after que.toml.
+    await expect(files.row(2)).toHaveAttribute('data-path', 'NOTES.md')
+    await expect(files.row(2)).toHaveAttribute('aria-level', '1')
+    await expect(files.row(2)).toContainText('NOTES.mdA')
+    await expect(files.row(3)).toHaveAttribute('data-path', 'que.toml')
+    await expect(files.row(3)).toHaveText('que.toml')
+    await expect(files.row(4)).toHaveAttribute('data-path', 'README.md')
+    await expect(files.row(4)).toHaveText('README.md')
+    await expect(terminal.tab(termId)).toBeVisible()
+  })
+
+  await test.step('An unchanged file opens as a read-only tab; a changed one opens its diff', async () => {
+    await files.rowByPath('que.toml').click()
+    await expect(fileView.tab('que.toml')).toHaveAttribute('data-active', 'true')
+    await expect(fileView.tabs).toHaveCount(1)
+    await expect(terminal.tab(termId)).toBeVisible()
+    await expect.poll(async () => (await terminal.panes())[0]?.activeTab).toBe('view:file:que.toml')
+    await expect(fileView.root('que.toml')).toBeVisible()
+    await expect(fileView.header).toHaveText('que.toml')
+    // The line number, then the line.
+    await expect(fileView.text).toHaveText('1setup = "true"')
+    await expect(files.rowByPath('que.toml')).toHaveAttribute('data-active', 'true')
+    await files.rowByPath('que.toml').click()
+    await expect(fileView.tabs).toHaveCount(1)
+    await files.rowByPath('NOTES.md').click()
+    await expect(diff.tab('NOTES.md')).toHaveAttribute('data-active', 'true')
+    await expect(diff.patch).toContainText('+Backoff caps at 30s.')
+    await expect(fileView.tab('NOTES.md')).toHaveCount(0)
+    await expect(files.rowByPath('NOTES.md')).toHaveAttribute('data-active', 'true')
+    await expect(files.rowByPath('que.toml')).toHaveAttribute('data-active', 'false')
+    // Closing the diff tab selects its neighbour, the file tab.
+    await diff.tabClose('NOTES.md').click()
+    await expect(diff.tabs).toHaveCount(1)
+    await expect(fileView.tab('que.toml')).toHaveAttribute('data-active', 'true')
+    await expect(fileView.text).toHaveText('1setup = "true"')
+    await launched.window.screenshot({ path: 'test-results/files-tab.png' })
+  })
+
+  await test.step('A directory row collapses and opens again', async () => {
+    await files.rowByPath('src/upload').click()
+    await expect(files.rowByPath('src/upload')).toHaveAttribute('aria-expanded', 'false')
+    await expect(files.rowByPath('src/upload/retry.ts')).toHaveCount(0)
+    await expect(files.rows).toHaveCount(4)
+    await files.rowByPath('src/upload').click()
+    await expect(files.rowByPath('src/upload')).toHaveAttribute('aria-expanded', 'true')
+    await expect(files.row(1)).toHaveAttribute('data-path', 'src/upload/retry.ts')
+  })
+
+  await test.step('Refresh drops a deleted file and its directory', async () => {
+    rmSync(join(workspace.path, 'src'), { recursive: true })
+    await files.refresh.click()
+    await expect(files.rowByPath('src/upload')).toHaveCount(0)
+    await expect(files.count).toHaveText('3')
+    await expect(files.summary).toHaveText('Files 3 · 1 changed')
+    await expect(files.row(0)).toHaveAttribute('data-path', 'NOTES.md')
+    await expect(fileView.tab('que.toml')).toHaveAttribute('data-active', 'true')
+    await expect(fileView.text).toHaveText('1setup = "true"')
+  })
+
   await test.step('Dragging the resizer 80px left widens the pane by about 80px', async () => {
     const before = (await review.state()).width
     expect(before).toBe(320)
@@ -347,17 +440,30 @@ test('The review pane lists the changes beside the terminals, opens diffs as tab
     await expect(pr.comment(3)).toHaveAttribute('data-kind', 'comment')
   })
 
-  await test.step('Quit the app; relaunch on the same home: the pane and the diff tab come back', async () => {
+  await test.step('Back on the Files tab with the diff tab selected, before the quit', async () => {
+    await review.tabFiles.click()
+    await expect(review.root).toHaveAttribute('data-tab', 'files')
+    await diff.tabSelect('README.md').click()
+    await expect(diff.tab('README.md')).toHaveAttribute('data-active', 'true')
+    await expect(fileView.tab('que.toml')).toHaveAttribute('data-active', 'false')
+  })
+
+  await test.step('Quit the app; relaunch on the same home: the pane, the diff tab and the file tab come back', async () => {
     await launched.app.close() // the app only, NOT launched.close(), which also stops the daemon
     launched = await launchApp({ queHome: launched.queHome })
     pages()
     await sidebar.waitForLoad()
     await sidebar.workspaceOpen(workspace.id).click()
+    await expect(review.root).toHaveAttribute('data-tab', 'files')
+    expect(await review.state()).toEqual({ open: true, tab: 'files', width: widened })
+    await expect(files.summary).toHaveText('Files 3 · 1 changed')
+    await expect(fileView.tab('que.toml')).toHaveAttribute('data-active', 'false')
+    await expect(terminal.pane(0).diffTabs).toHaveCount(1)
+    await expect(diff.tab('README.md')).toHaveAttribute('data-active', 'true')
+    await review.tabPr.click()
     await expect(review.root).toHaveAttribute('data-tab', 'pr')
     expect(await review.state()).toEqual({ open: true, tab: 'pr', width: widened })
     await expect(pr.headerLink).toContainText('#7 · open · Add retry logic')
-    await expect(terminal.pane(0).diffTabs).toHaveCount(1)
-    await expect(diff.tab('README.md')).toHaveAttribute('data-active', 'true')
     // The base chosen before the quit is remembered: README.md is unchanged against it.
     await review.tabChanges.click()
     await expect(changes.base).toHaveText('release')
@@ -371,6 +477,10 @@ test('The review pane lists the changes beside the terminals, opens diffs as tab
     await expect(terminal.tab(termId)).toBeVisible()
     await review.tabPr.click()
     await expect(review.root).toHaveAttribute('data-tab', 'pr')
+    // The file tab came back too and still shows the file.
+    await fileView.tabSelect('que.toml').click()
+    await expect(fileView.tab('que.toml')).toHaveAttribute('data-active', 'true')
+    await expect(fileView.text).toHaveText('1setup = "true"')
   })
 
   await test.step('⌘W closes the selected diff tab; the terminal tab is active again', async () => {
@@ -381,6 +491,17 @@ test('The review pane lists the changes beside the terminals, opens diffs as tab
     await expect.poll(async () => (await terminal.panes())[0]?.activeTab).toBe(termId)
     await expect(terminal.viewport).toBeVisible()
     await expect(terminal.tab(termId)).toBeVisible()
+    await expect(fileView.tab('que.toml')).toBeVisible()
+  })
+
+  await test.step('⌘W closes the selected file tab too', async () => {
+    await fileView.tabSelect('que.toml').click()
+    await expect(fileView.root('que.toml')).toBeVisible()
+    await launched.window.keyboard.press('Meta+w')
+    await expect(fileView.tabs).toHaveCount(0)
+    await expect(fileView.root('que.toml')).toHaveCount(0)
+    await expect.poll(async () => (await terminal.panes())[0]?.activeTab).toBe(termId)
+    await expect(terminal.viewport).toBeVisible()
   })
 
   await test.step('The toggle closes the pane and opens it again on the tab it was left on', async () => {
