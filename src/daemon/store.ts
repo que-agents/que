@@ -248,7 +248,8 @@ function toWorkspace(r: WorkspaceRow): Workspace {
     sessionId: r.session_id,
     createdAt: r.created_at,
     archivedAt: r.archived_at,
-    prUrl: r.pr_url ?? null
+    prUrl: r.pr_url ?? null,
+    pr: null
   }
 }
 
