@@ -24,6 +24,15 @@ export function FolderPlusIcon(): React.JSX.Element {
   )
 }
 
+/** Three horizontal lines of decreasing length: sort. */
+export function SortIcon(): React.JSX.Element {
+  return (
+    <svg {...base} aria-hidden="true">
+      <path d="M2.5 4h11M2.5 8h7.5M2.5 12h4" />
+    </svg>
+  )
+}
+
 /** A rounded rectangle with a vertical line through the middle: split into two side by side. */
 export function SplitBesideIcon(): React.JSX.Element {
   return (

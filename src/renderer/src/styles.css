@@ -286,11 +286,54 @@ h2 {
   overflow-y: auto;
 }
 
+.sidebar-filter {
+  position: relative;
+  flex: none;
+  padding: 0 6px;
+}
+
+.sidebar-filter input {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 5px 34px 5px 8px;
+  font: 12px / 16px var(--mono);
+  color: var(--fg);
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  outline: none;
+  appearance: none;
+}
+
+.sidebar-filter input:focus {
+  border-color: var(--accent);
+}
+
+.sidebar-filter input::placeholder {
+  color: var(--fg-faint);
+}
+
+.sidebar-filter .kbd {
+  position: absolute;
+  top: 50%;
+  right: 14px;
+  transform: translateY(-50%);
+  font: 10px / 16px var(--mono);
+  color: var(--fg-faint);
+  pointer-events: none;
+}
+
 .section-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 0 6px 6px;
+}
+
+.head-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
 }
 
 .sidebar ul {
