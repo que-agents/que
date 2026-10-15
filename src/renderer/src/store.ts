@@ -574,9 +574,16 @@ export class QueStore {
     this.set({ dialog: null })
   }
 
+  /**
+   * Shows a workspace's terminals. The daemon only watches the shown workspace's worktree, so
+   * what the pane and the view tabs show for the new one is fetched again rather than served
+   * from the cache, in case it changed while another was shown.
+   */
   showTerminals(key: string): void {
+    const was = this.currentKey()
     this.set({ view: { kind: 'terminals', key } })
     void this.visit(key)
+    if (key !== was && key !== SCRATCH) void this.refetchShown(key)
   }
 
   // ---- the review pane ------------------------------------------------------
