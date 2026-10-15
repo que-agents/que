@@ -2,11 +2,13 @@ import { describe, expect, it } from 'vitest'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { fakeBridge } from '@renderer/testing/fake-bridge'
-import { makeTermInfo } from '@renderer/testing/fixtures'
+import { makeProject, makeTermInfo, makeWorkspace } from '@renderer/testing/fixtures'
 import App from '../App'
 
 const one = makeTermInfo({ name: 'one', cwd: '/Users/dev/a' })
 const two = makeTermInfo({ name: 'two', cwd: '/Users/dev/b' })
+
+const retry = makeWorkspace({ id: 'ws_01hzx3k9c2qf', name: 'app-1432-retry-logic' })
 
 const SPLIT_BESIDE = '{Meta>}d{/Meta}'
 const SPLIT_BELOW = '{Meta>}{Shift>}d{/Shift}{/Meta}'
@@ -18,6 +20,21 @@ function seed(): void {
 
 function tabsIn(pane: number): HTMLElement[] {
   return within(screen.getByTestId(`pane-${pane}`)).getAllByRole('tab')
+}
+
+/** Opens the workspace and waits for its first terminal; returns that terminal's id. */
+async function openWorkspace(user: ReturnType<typeof userEvent.setup>): Promise<string> {
+  await user.click(await screen.findByTestId(`sidebar-workspace-${retry.id}-open`))
+  const pane = await screen.findByTestId('pane-0')
+  await waitFor(() => {
+    expect(pane.dataset.activeTerm).not.toBe('')
+  })
+  return pane.dataset.activeTerm as string
+}
+
+function seedWorkspace(): void {
+  fakeBridge.seedProject(makeProject())
+  fakeBridge.seedWorkspace(retry)
 }
 
 /** Splits beside and waits for the second pane to hold its new terminal. */
@@ -332,6 +349,102 @@ describe('Panes', () => {
       await screen.findByTestId('pane-0')
       expect(screen.queryByTestId('pane-1')).not.toBeInTheDocument()
       expect(tabsIn(0)).toHaveLength(2)
+    })
+  })
+
+  describe('view tabs', () => {
+    it('opens Changes beside the terminal tab; selecting either shows it', async () => {
+      const user = userEvent.setup()
+      seedWorkspace()
+      render(<App />)
+      const term = await openWorkspace(user)
+
+      await user.click(screen.getByTestId('topbar-changes'))
+
+      const pane = screen.getByTestId('pane-0')
+      expect(screen.getByTestId(`terminal-tab-${term}`)).toBeInTheDocument()
+      expect(screen.getByTestId('view-tab-changes')).toHaveAttribute('data-active', 'true')
+      expect(screen.getByTestId('view-tab-changes-select')).toHaveTextContent('Changes')
+      expect(pane).toHaveAttribute('data-active-tab', 'view:changes')
+      expect(pane).toHaveAttribute('data-active-term', '')
+      expect(within(pane).getByTestId('changes-view')).toBeInTheDocument()
+
+      await user.click(screen.getByTestId(`terminal-tab-${term}-select`))
+
+      expect(pane).toHaveAttribute('data-active-term', term)
+      expect(screen.getByTestId('view-tab-changes')).toHaveAttribute('data-active', 'false')
+      expect(screen.queryByTestId('changes-view')).not.toBeInTheDocument()
+
+      await user.click(screen.getByTestId('view-tab-changes-select'))
+
+      expect(pane).toHaveAttribute('data-active-tab', 'view:changes')
+    })
+
+    it('closes with Cmd+W and the close button, selecting the neighbour, killing nothing', async () => {
+      const user = userEvent.setup()
+      seedWorkspace()
+      render(<App />)
+      const term = await openWorkspace(user)
+      await user.click(screen.getByTestId('topbar-changes'))
+      await user.click(screen.getByTestId('topbar-pull-request'))
+      const pane = screen.getByTestId('pane-0')
+      expect(pane).toHaveAttribute('data-active-tab', 'view:pr')
+
+      await user.keyboard('{Meta>}w{/Meta}')
+
+      expect(screen.queryByTestId('view-tab-pr')).not.toBeInTheDocument()
+      expect(pane).toHaveAttribute('data-active-tab', 'view:changes')
+
+      await user.click(screen.getByRole('button', { name: 'Close Changes' }))
+
+      expect(screen.queryByTestId('view-tab-changes')).not.toBeInTheDocument()
+      expect(pane).toHaveAttribute('data-active-term', term)
+      expect(fakeBridge.getTerminal(term)).toBeDefined()
+    })
+
+    it('opens in the focused second pane, which outlives its last terminal', async () => {
+      const user = userEvent.setup()
+      seedWorkspace()
+      render(<App />)
+      await openWorkspace(user)
+      const created = await splitBeside(user)
+
+      await user.click(screen.getByTestId('topbar-pull-request'))
+
+      const second = screen.getByTestId('pane-1')
+      expect(within(second).getByTestId('view-tab-pr')).toHaveAttribute('data-active', 'true')
+      expect(within(second).getByTestId('pr-view')).toBeInTheDocument()
+
+      await user.click(screen.getByTestId(`terminal-tab-${created}-close`))
+
+      await waitFor(() => {
+        expect(fakeBridge.getTerminal(created)).toBeUndefined()
+      })
+      expect(screen.getByTestId('pane-1')).toHaveAttribute('data-active-tab', 'view:pr')
+      expect(within(screen.getByTestId('pane-1')).getAllByRole('tab')).toHaveLength(1)
+    })
+
+    it('comes back in its pane after the app reloads', async () => {
+      const user = userEvent.setup()
+      seedWorkspace()
+      const first = render(<App />)
+      const term = await openWorkspace(user)
+      await user.click(screen.getByTestId('topbar-changes'))
+      await splitBeside(user)
+      await user.click(screen.getByTestId('topbar-pull-request'))
+      first.unmount()
+
+      render(<App />)
+      await user.click(await screen.findByTestId(`sidebar-workspace-${retry.id}-open`))
+
+      const left = await screen.findByTestId('pane-0')
+      expect(within(left).getByTestId('view-tab-changes')).toHaveAttribute('data-active', 'true')
+      expect(within(left).getByTestId(`terminal-tab-${term}`)).toBeInTheDocument()
+      expect(within(screen.getByTestId('pane-1')).getByTestId('view-tab-pr')).toHaveAttribute(
+        'data-active',
+        'true'
+      )
+      expect(screen.getByTestId('pane-1')).toHaveAttribute('data-focused', 'true')
     })
   })
 })

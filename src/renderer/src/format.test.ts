@@ -39,6 +39,14 @@ describe('formatCost and formatDuration', () => {
     expect(formatDuration(7_620_000)).toBe('2h 07m')
     expect(formatDuration(-5)).toBe('0s')
   })
+
+  it('formats the span between two timestamps, empty when either is unknown', () => {
+    expect(formatDuration('2026-10-14T01:00:00.000Z', '2026-10-14T01:01:21.000Z')).toBe('1m 21s')
+    expect(formatDuration('2026-10-14T01:00:00.000Z', '2026-10-14T01:00:09.400Z')).toBe('9s')
+    expect(formatDuration('2026-10-14T01:00:00.000Z', null)).toBe('')
+    expect(formatDuration(null, '2026-10-14T01:00:09.000Z')).toBe('')
+    expect(formatDuration('not a time', '2026-10-14T01:00:09.000Z')).toBe('')
+  })
 })
 
 describe('newestFirst', () => {

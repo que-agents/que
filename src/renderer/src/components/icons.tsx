@@ -80,3 +80,34 @@ export function PlusIcon(): React.JSX.Element {
     </svg>
   )
 }
+
+/** A plus over a minus: a file's changes. */
+export function DiffIcon(): React.JSX.Element {
+  return (
+    <svg {...base} aria-hidden="true">
+      <path d="M8 2.5v6M5 5.5h6M5 12h6" />
+    </svg>
+  )
+}
+
+/** Two branches, one merging into the other: a pull request. */
+export function PullRequestIcon(): React.JSX.Element {
+  return (
+    <svg {...base} aria-hidden="true">
+      <circle cx="4.5" cy="3.75" r="1.5" />
+      <circle cx="4.5" cy="12.25" r="1.5" />
+      <circle cx="11.5" cy="12.25" r="1.5" />
+      <path d="M4.5 5.25v5.5M11.5 10.75V6.25a1.5 1.5 0 0 0-1.5-1.5H7.5M9 3.25l-1.5 1.5L9 6.25" />
+    </svg>
+  )
+}
+
+/** A box with an arrow leaving its corner: open elsewhere. */
+export function ExternalLinkIcon(): React.JSX.Element {
+  return (
+    <svg {...base} aria-hidden="true">
+      <path d="M12.25 9v3.25a1 1 0 0 1-1 1h-7.5a1 1 0 0 1-1-1v-7.5a1 1 0 0 1 1-1H7" />
+      <path d="M9.5 2.75h3.75v3.75M13.25 2.75 7.5 8.5" />
+    </svg>
+  )
+}

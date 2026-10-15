@@ -8,6 +8,7 @@ All notable changes to que are recorded here. The format follows
 
 ### Added
 
+- Changes and Pull request tabs: a workspace's changed files with their diffs, and its pull request's checks and conversation, open as tabs beside its terminals (from the top bar; ⌘W closes them; a split with a view tab in the second pane is a review pane).
 - Tickets know their epic: the queue groups tickets under their epics, a started ticket's brief carries the epic's overview, and `que tickets list` prints the tree.
 - Filter the sidebar with `⌘K`: sessions, projects and workspaces narrow as you type, and so does the tickets list; sort projects by name or last activity from the Projects head.
 - A Changes view for a workspace: what it changed against its base, file by file with the patch, committed and uncommitted, read-only.
@@ -26,6 +27,7 @@ All notable changes to que are recorded here. The format follows
 
 ### Changed
 
+- The Changes view no longer replaces the terminals; it is a tab.
 - The sidebar filter is a search icon in the title strip, in line with the window buttons; it pops the field out on click or `⌘K` and folds away when cleared.
 - The Tickets entry sits in the sidebar's bottom group with Report and Settings, which stays pinned to the bottom of the window above a solid line.
 
