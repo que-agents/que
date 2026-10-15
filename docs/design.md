@@ -78,6 +78,12 @@ remove. The quiet board uses the same tones as plain text.
 - Two panes are divided by a 7px track like the sidebar's: invisible until hover,
   focus or drag, then a 1px accent line. The focused pane's tab strip carries a
   1px accent line at its top; with one pane there is none.
+- View tabs (Changes, Pull request) sit in a pane's tab strip after its terminal tabs:
+  a line icon and a label, never a status dot or badge. They open from the top bar's
+  `Changes` and `Pull request` buttons (which close them again while they are the
+  focused pane's tab) and close with ⌘W like a terminal tab. A split with a view tab in
+  the second pane is the review pane: the session on one side, its diff or pull request
+  on the other.
 - Row actions (the ⋯ button) show on hover, focus, or while their menu is open.
 - The window has no native title bar. The traffic lights sit in the 40px strip
   above the sidebar's content; that strip and the top bar's empty space drag
@@ -92,7 +98,9 @@ remove. The quiet board uses the same tones as plain text.
   carries a sort toggle (`button.ghost.icon`, three lines of decreasing length)
   between name and last activity; the choice is remembered.
 - The top bar reads `project / workspace`, with the branch after it only when
-  the branch is not the workspace's own name.
+  the branch is not the workspace's own name; the title truncates with an ellipsis
+  before the buttons give way. The pull request chip is `PR #n · state`; failing
+  checks and a requested change are its tone, and its tooltip spells them out.
 
 ## Adding something
 

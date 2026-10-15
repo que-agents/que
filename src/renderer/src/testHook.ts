@@ -3,7 +3,10 @@ import { type ChimeKind, setChimePlayer } from './sound'
 
 export interface PaneInfo {
   index: number
+  /** The pane's terminal, or null while a view tab is selected. */
   activeTermId: string | null
+  /** The selected tab: a terminal id or a view id (`view:changes`, `view:pr`). */
+  activeTab: string | null
   focused: boolean
 }
 

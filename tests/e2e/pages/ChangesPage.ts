@@ -1,4 +1,5 @@
-// A workspace's Changes view: the top bar toggle, the summary, the file list and the patch.
+// A workspace's Changes tab: the top bar button that opens and closes it, the
+// summary, the file list and the patch. The tab itself is in TerminalPage.viewTab('changes').
 import type { Locator, Page } from '@playwright/test'
 
 export class ChangesPage {
