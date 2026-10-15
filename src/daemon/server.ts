@@ -41,6 +41,7 @@ import { StatusService } from './status'
 import { TicketService } from './tickets'
 import { Store } from './store'
 import { workspaceDiff } from './diff'
+import { readWorkspaceFile, workspaceFiles } from './files'
 import { WorkspaceManager, workspaceTerminalEnv } from './workspaces'
 import { defaultCliScript, installWrapper, resolveCliRunner } from './wrapper'
 
@@ -606,6 +607,10 @@ export class DaemonServer {
           commit: optString(p, 'commit')
         })
       }
+      case 'workspace.files':
+        return workspaceFiles(this.workspaces.get(str(p, 'id')), Date.now)
+      case 'workspace.readFile':
+        return readWorkspaceFile(this.workspaces.get(str(p, 'id')), str(p, 'path'))
       case 'workspace.prThread': {
         const ws = this.workspaces.get(str(p, 'id'))
         return this.prs.thread(ws.id, optBool(p, 'refresh') === true)
