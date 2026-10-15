@@ -58,6 +58,13 @@ chime_on_complete = ${d.notifications.chimeOnComplete}
 chime_on_needs_input = ${d.notifications.chimeOnNeedsInput}
 morning_summary = ${d.notifications.morningSummary}
 
+[jira]
+jql = ${JSON.stringify(d.jira.jql)}
+poll_minutes = ${d.jira.pollMinutes}
+start_prompt = ${JSON.stringify(d.jira.startPrompt)}
+# [jira.projects]                # learned the first time you pick a project for a ticket
+# APP = "uploader"               # tracker project key = que project name
+
 # [repos.uploader]               # a name for \`que work -r uploader\`
 # path = "~/code/uploader"
 # default_branch = "main"`
