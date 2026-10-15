@@ -4,7 +4,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { TicketsListResult } from '@shared/protocol'
 import { runCli } from '../../src/testing/cli'
 import { startTestDaemon, type TestDaemon } from '../../src/testing/daemon-harness'
-import { makeFakeIssue, writeFakeTickets } from '../../src/testing/fakes'
+import {
+  fakeParentOf,
+  makeFakeEpic,
+  makeFakeIssue,
+  writeFakeTickets
+} from '../../src/testing/fakes'
 import { makeTempRepo } from '../../src/testing/temp-repo'
 
 let daemon: TestDaemon
@@ -71,5 +76,53 @@ describe('que tickets start', () => {
     const r = await runCli('tickets', 'start', 'APP-1432', '--session')
     expect(r.code).toBe(0)
     expect(r.stdout.trim()).toMatch(/^session \S+$/)
+  })
+})
+
+describe('que tickets with epics', () => {
+  beforeEach(async () => {
+    const epic = makeFakeEpic()
+    const stray = makeFakeEpic({ key: 'APP-1300', fields: { summary: 'Not mine' } })
+    writeFakeTickets(daemon.acliTickets, [
+      epic,
+      makeFakeIssue({
+        key: 'APP-1401',
+        fields: { summary: 'First', parent: fakeParentOf(epic) }
+      }),
+      makeFakeIssue({
+        key: 'APP-1402',
+        fields: { summary: 'Second', parent: fakeParentOf(stray) }
+      }),
+      makeFakeIssue({ key: 'APP-1500', fields: { summary: 'Loose' } })
+    ])
+    await daemon.client.request('tickets.sync', {})
+    await expect
+      .poll(async () => (await daemon.client.request('tickets.list', {})).tickets.length)
+      .toBe(5)
+  })
+
+  it('prints a tree: epics with their tickets indented, loose tickets last', async () => {
+    const lines = (await runCli('tickets')).stdout.trim().split('\n')
+    expect(lines[0]).toMatch(/^KEY\s+SUMMARY/)
+    const [e1, c1, e2, c2, loose] = lines.slice(1)
+    expect(e1).toBe('APP-1400  Uploader reliability  In Progress')
+    expect(c1).toMatch(/^ {2}APP-1401 +First +In Progress +Medium/)
+    expect(e2).toBe('APP-1300  Not mine  In Progress (not yours)')
+    expect(c2).toMatch(/^ {2}APP-1402 +Second /)
+    expect(loose).toMatch(/^APP-1500 +Loose /)
+  })
+
+  it('carries level, parentKey and assigned in the JSON', async () => {
+    const list = JSON.parse((await runCli('tickets', '--json')).stdout) as TicketsListResult
+    const by = Object.fromEntries(list.tickets.map((t) => [t.key, t]))
+    expect(by['APP-1400']).toMatchObject({ level: 'epic', parentKey: null, assigned: true })
+    expect(by['APP-1300']).toMatchObject({ level: 'epic', assigned: false })
+    expect(by['APP-1401']).toMatchObject({ level: 'standard', parentKey: 'APP-1400' })
+  })
+
+  it('refuses to start an epic', async () => {
+    const r = await runCli('tickets', 'start', 'APP-1400')
+    expect(r.code).toBe(1)
+    expect(r.stderr).toContain('APP-1400 is an epic, an overview; start one of its tickets')
   })
 })
