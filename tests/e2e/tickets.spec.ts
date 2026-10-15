@@ -78,9 +78,12 @@ test('a ticket assigned to me becomes a workspace with claude started on its bri
 
   await test.step('claude was started on the start prompt', async () => {
     await expect
-      .poll(() => launched.claudeCalls().some((argv) => argv.join(' ').includes('.que/ticket.md')), {
-        timeout: 20_000
-      })
+      .poll(
+        () => launched.claudeCalls().some((argv) => argv.join(' ').includes('.que/ticket.md')),
+        {
+          timeout: 20_000
+        }
+      )
       .toBe(true)
   })
 
