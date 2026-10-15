@@ -1398,20 +1398,25 @@ body.resizing .review-resizer {
   flex-direction: column;
 }
 
+/* The summary on its own line, wrapping as the pane narrows; the actions in a row under it. */
 .changes-bar {
   display: flex;
-  align-items: center;
-  gap: 10px;
+  flex-direction: column;
+  gap: 6px;
   padding: 8px 12px;
   border-bottom: 1px solid var(--border);
 }
 
 .changes-summary {
-  flex: 1;
-  min-width: 0;
   margin: 0;
   font: 11px var(--mono);
   color: var(--fg-muted);
+  overflow-wrap: anywhere;
+}
+
+.changes-actions {
+  display: flex;
+  gap: 6px;
 }
 
 .changes-error {
