@@ -3,12 +3,14 @@ import {
   CreatePrDialog,
   NewWorkspaceDialog,
   RemoveProjectDialog,
-  RemoveWorkspaceDialog
+  RemoveWorkspaceDialog,
+  StartTicketDialog
 } from './components/dialogs'
 import { hhmm } from '../../daemon/quiet-hours'
 import QuietBoard from './components/QuietBoard'
 import ReportView from './components/ReportView'
 import SettingsView from './components/SettingsView'
+import TicketsView from './components/TicketsView'
 import Sidebar from './components/Sidebar'
 import SidebarResizer, { useSidebarWidth } from './components/SidebarResizer'
 import TerminalTabs from './components/TerminalTabs'
@@ -30,6 +32,8 @@ function Dialogs(): React.JSX.Element | null {
       const project = projects.find((p) => p.id === dialog.projectId)
       return project ? <RemoveProjectDialog project={project} onClose={close} /> : null
     }
+    case 'start-ticket':
+      return <StartTicketDialog ticketKey={dialog.key} projects={dialog.projects} onClose={close} />
     default: {
       const ws = workspaces[dialog.workspaceId]
       if (!ws) return null
@@ -117,6 +121,8 @@ function Shell(): React.JSX.Element {
           </>
         ) : view.kind === 'settings' ? (
           <SettingsView />
+        ) : view.kind === 'tickets' ? (
+          <TicketsView />
         ) : (
           <ReportView />
         )}
