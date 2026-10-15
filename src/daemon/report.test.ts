@@ -181,6 +181,8 @@ describe('buildReport', () => {
       state: 'draft' as const,
       checks: 'failing' as const,
       review: null,
+      checkRuns: [],
+      updatedAt: null,
       checkedAt: '2026-10-14T02:00:00.000Z'
     }
     const digests = [

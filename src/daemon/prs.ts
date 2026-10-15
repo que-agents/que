@@ -1,14 +1,18 @@
 // Keeps each workspace's pull request fresh: polls `gh pr list` for the
 // workspace's branch, stores what changed, and emits workspace.updated.
+// Also answers workspace.prThread: the conversation is fetched on demand and
+// cached until the tracker sees the pull request's updatedAt move.
 import { execFile } from 'node:child_process'
 import type { UserConfig } from '../shared/config'
-import type { Project, PullRequest, Workspace } from '../shared/types'
+import type { Project, PrThread, PullRequest, Workspace } from '../shared/types'
+import { ghFailed, notFound } from './errors'
 import { isProtectedBranch } from './finisher'
 import { parsePullRequest, samePullRequest } from './pr-state'
+import { jsonPages, parsePrThread } from './pr-thread'
 import type { Emit } from './status'
 import type { Store } from './store'
 
-const FIELDS = 'number,url,title,state,isDraft,reviewDecision,statusCheckRollup,mergedAt'
+const FIELDS = 'number,url,title,state,isDraft,reviewDecision,statusCheckRollup,mergedAt,updatedAt'
 /** A merged or closed pull request is only re-checked on every Nth tick. */
 const SETTLED_EVERY = 5
 
@@ -24,27 +28,67 @@ export interface PrServiceOptions {
   pollMs?: number
 }
 
-function ghPrList(branch: string, cwd: string, signal: AbortSignal): Promise<unknown[]> {
+/** Runs `gh <args>` in cwd and parses what it prints as JSON. */
+function ghJson(args: string[], cwd: string, signal: AbortSignal): Promise<unknown> {
   return new Promise((resolve, reject) => {
     execFile(
       'gh',
-      ['pr', 'list', '--head', branch, '--state', 'all', '--limit', '1', '--json', FIELDS],
-      { cwd, encoding: 'utf8', timeout: 15_000, signal },
+      args,
+      { cwd, encoding: 'utf8', timeout: 15_000, signal, maxBuffer: 32 * 1024 * 1024 },
       (err, stdout, stderr) => {
         if (err) {
           const detail = String(stderr).trim().split('\n')[0] || err.message
           return reject(new Error(detail))
         }
         try {
-          const parsed = JSON.parse(stdout) as unknown
-          if (!Array.isArray(parsed)) throw new Error('not a list')
-          resolve(parsed)
+          resolve(JSON.parse(stdout) as unknown)
         } catch {
           reject(new Error('gh printed output that is not JSON'))
         }
       }
     ).stdin?.end()
   })
+}
+
+async function ghPrList(branch: string, cwd: string, signal: AbortSignal): Promise<unknown[]> {
+  const parsed = await ghJson(
+    ['pr', 'list', '--head', branch, '--state', 'all', '--limit', '1', '--json', FIELDS],
+    cwd,
+    signal
+  )
+  if (!Array.isArray(parsed)) throw new Error('gh printed output that is not JSON')
+  return parsed
+}
+
+/**
+ * `gh api --paginate` prints one JSON array per page, back to back; this joins
+ * them. A single page parses as is.
+ */
+function ghLineComments(number: number, cwd: string, signal: AbortSignal): Promise<unknown> {
+  return new Promise((resolve, reject) => {
+    execFile(
+      'gh',
+      ['api', `repos/{owner}/{repo}/pulls/${number}/comments`, '--paginate'],
+      { cwd, encoding: 'utf8', timeout: 15_000, signal, maxBuffer: 32 * 1024 * 1024 },
+      (err, stdout, stderr) => {
+        if (err) {
+          const detail = String(stderr).trim().split('\n')[0] || err.message
+          return reject(new Error(detail))
+        }
+        try {
+          resolve(jsonPages(stdout).flatMap((page) => (Array.isArray(page) ? page : [page])))
+        } catch {
+          reject(new Error('gh printed output that is not JSON'))
+        }
+      }
+    ).stdin?.end()
+  })
+}
+
+interface CachedThread {
+  thread: PrThread
+  number: number
+  forUpdatedAt: string | null
 }
 
 export class PrService {
@@ -57,6 +101,9 @@ export class PrService {
   /** Workspaces whose last check failed (and were logged), until one succeeds. */
   private failing = new Set<string>()
   private readonly now: () => number
+  /** Each workspace's last fetched conversation, valid while its pull request's updatedAt holds. */
+  private threads = new Map<string, CachedThread>()
+  private threadFetches = new Map<string, Promise<PrThread>>()
 
   constructor(private opts: PrServiceOptions) {
     this.now = opts.now ?? Date.now
@@ -108,6 +155,59 @@ export class PrService {
     if (ws && !ws.archivedAt) await this.check(ws)
   }
 
+  /**
+   * The workspace's pull request conversation: cached until the tracker sees
+   * the pull request change, or fetched now with `refresh`. Null without a pull request.
+   */
+  async thread(id: string, refresh = false): Promise<PrThread | null> {
+    const ws = this.opts.store.getWorkspace(id)
+    if (!ws || ws.archivedAt) throw notFound(`no workspace ${id}`)
+    const pr = ws.pr
+    if (!pr) {
+      this.threads.delete(id)
+      return null
+    }
+    const cached = this.threads.get(id)
+    if (
+      !refresh &&
+      cached &&
+      cached.number === pr.number &&
+      cached.forUpdatedAt === (pr.updatedAt ?? null)
+    ) {
+      return cached.thread
+    }
+    const running = this.threadFetches.get(id)
+    if (running) return running
+    const fetch = this.fetchThread(ws, pr).finally(() => this.threadFetches.delete(id))
+    this.threadFetches.set(id, fetch)
+    return fetch
+  }
+
+  /** Drops what is cached for a workspace (it was removed). */
+  forget(id: string): void {
+    this.threads.delete(id)
+  }
+
+  private async fetchThread(ws: Workspace, pr: PullRequest): Promise<PrThread> {
+    let view: unknown
+    let lines: unknown
+    try {
+      ;[view, lines] = await Promise.all([
+        ghJson(
+          ['pr', 'view', String(pr.number), '--json', 'comments,reviews'],
+          ws.path,
+          this.abort.signal
+        ),
+        ghLineComments(pr.number, ws.path, this.abort.signal)
+      ])
+    } catch (err) {
+      throw ghFailed((err as Error).message)
+    }
+    const thread = parsePrThread(view, lines, ws.id, pr.number, new Date(this.now()).toISOString())
+    this.threads.set(ws.id, { thread, number: pr.number, forUpdatedAt: pr.updatedAt ?? null })
+    return thread
+  }
+
   /** Resolves once every check that was running when stop() was called has ended. */
   async drain(): Promise<void> {
     await Promise.allSettled([...this.inflight])
@@ -139,6 +239,7 @@ export class PrService {
     const next: PullRequest | null = parsePullRequest(items[0], new Date(this.now()).toISOString())
     const current = this.opts.store.getWorkspace(ws.id)
     if (!current || current.archivedAt) return
+    if (!next) this.threads.delete(ws.id)
     if (samePullRequest(current.pr, next)) return
     this.opts.store.setWorkspacePr(ws.id, next)
     const updated = this.opts.store.getWorkspace(ws.id)

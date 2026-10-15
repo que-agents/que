@@ -13,3 +13,7 @@ export class RpcError extends Error {
 export const badRequest = (msg: string): RpcError => new RpcError(ErrorCodes.BadRequest, msg)
 export const notFound = (msg: string): RpcError => new RpcError(ErrorCodes.NotFound, msg)
 export const conflict = (msg: string): RpcError => new RpcError(ErrorCodes.Conflict, msg)
+
+/** The GitHub CLI failed; the message is its first stderr line. */
+export const GH_FAILED = 'gh_failed'
+export const ghFailed = (msg: string): RpcError => new RpcError(GH_FAILED, msg)

@@ -5,6 +5,8 @@ import type {
   ConfigGetResult,
   ConfigSetParams,
   Events,
+  PrThread,
+  PrThreadEntry,
   Project,
   PullRequest,
   QueApi,
@@ -382,6 +384,13 @@ class FakeBridge {
             }
           )
         },
+        prThread: async ({ id, refresh }) => {
+          this.refuseIfQuiet('workspace.prThread')
+          this.workspace(id)
+          this.prThreadCallLog.push({ id, refresh: refresh === true })
+          const seeded = this.prThreads.get(id)
+          return seeded ? structuredClone(seeded) : null
+        },
         createPr: async ({ id, title }) => {
           this.refuseIfQuiet('workspace.createPr')
           const ws = this.workspace(id)
@@ -603,9 +612,27 @@ class FakeBridge {
     this.diffs.set(diff.workspaceId, structuredClone(diff))
   }
 
+  private prThreads = new Map<string, PrThread>()
+  private prThreadCallLog: Array<{ id: string; refresh: boolean }> = []
+
+  /** What workspace.prThread answers for a workspace; an entries array means number 1, fetched now. */
+  seedPrThread(workspaceId: string, thread: Omit<PrThread, 'workspaceId'> | PrThreadEntry[]): void {
+    const full: PrThread = Array.isArray(thread)
+      ? { workspaceId, number: 1, entries: thread, fetchedAt: new Date().toISOString() }
+      : { ...thread, workspaceId }
+    this.prThreads.set(workspaceId, structuredClone(full))
+  }
+
+  /** Every workspace.prThread call, in order. */
+  prThreadCalls(): Array<{ id: string; refresh: boolean }> {
+    return this.prThreadCallLog.map((c) => ({ ...c }))
+  }
+
   reset(): void {
     this.projects.clear()
     this.diffs.clear()
+    this.prThreads.clear()
+    this.prThreadCallLog = []
     this.tickets.clear()
     this.ticketProjects.clear()
     this.ticketsSync = { lastSyncAt: null, error: null, count: 0 }
