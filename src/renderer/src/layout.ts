@@ -1,22 +1,24 @@
-// A workspace's tabs in one or two panes: its terminals, then its view tabs
-// (Changes, Pull request). Pure: parsing a remembered layout and fitting it to
-// the terminals that still exist.
+// A workspace's tabs in one or two panes: its terminals, then its diff tabs
+// (one changed file's diff each). Pure: parsing a remembered layout and fitting
+// it to the terminals that still exist.
 
-/** A tab that shows a view of the workspace instead of a terminal. */
-export type ViewKind = 'changes' | 'pr'
+const DIFF_PREFIX = 'view:diff:'
 
-export const VIEW_KINDS: readonly ViewKind[] = ['changes', 'pr']
-
-/** The tab id of a view: `view:changes`, `view:pr`. */
-export function viewId(kind: ViewKind): string {
-  return `view:${kind}`
+/** The tab id of a file's diff: `view:diff:<path>`, the path verbatim. */
+export function diffId(path: string): string {
+  return DIFF_PREFIX + path
 }
 
-/** The view a tab id names, or null for a terminal id. */
-export function viewKindOf(id: string | null): ViewKind | null {
-  if (!id?.startsWith('view:')) return null
-  const kind = id.slice('view:'.length)
-  return (VIEW_KINDS as readonly string[]).includes(kind) ? (kind as ViewKind) : null
+/** The file a diff tab id shows, or null for any other id (a terminal's). */
+export function diffPathOf(id: string | null): string | null {
+  if (!id?.startsWith(DIFF_PREFIX)) return null
+  const path = id.slice(DIFF_PREFIX.length)
+  return path === '' ? null : path
+}
+
+/** Whether a tab id is a view tab (a file's diff) rather than a terminal. */
+export function isViewId(id: string | null): boolean {
+  return diffPathOf(id) !== null
 }
 
 /** One workspace's tabs in one or two panes (a tree of depth one). */
@@ -28,8 +30,8 @@ export interface PaneLayout {
   /** The selected tab id per pane; null means the pane's newest tab. */
   active: [string | null, string | null]
   focused: 0 | 1
-  /** The open view tabs, in the order they were opened. */
-  views: ViewKind[]
+  /** The open view tab ids (`view:diff:<path>`), in the order they were opened. */
+  views: string[]
 }
 
 export const RATIO_MIN = 0.2
@@ -63,10 +65,10 @@ export function parseLayout(raw: string | null): PaneLayout | null {
       sp && (sp.direction === 'row' || sp.direction === 'column')
         ? { direction: sp.direction, ratio: clampRatio(Number(sp.ratio)) }
         : null
-    const views: ViewKind[] = []
+    const views: string[] = []
     if (Array.isArray(v?.views)) {
-      for (const k of v.views) {
-        if ((VIEW_KINDS as readonly unknown[]).includes(k) && !views.includes(k)) views.push(k)
+      for (const k of v.views as unknown[]) {
+        if (typeof k === 'string' && isViewId(k) && !views.includes(k)) views.push(k)
       }
     }
     if (!split && views.length === 0) return null
@@ -95,7 +97,7 @@ export function reconcileLayout(
   tabIds: string[]
 ): PaneLayout {
   if (!l.split) return l
-  const views = l.views.map(viewId)
+  const views = l.views
   const live = (id: string): boolean => ids.has(id) || views.includes(id)
   const second = l.second.filter(live)
   const active: [string | null, string | null] = [

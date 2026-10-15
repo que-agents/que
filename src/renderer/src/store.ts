@@ -28,9 +28,8 @@ import {
   parseLayout,
   RATIO_DEFAULT,
   reconcileLayout,
-  type ViewKind,
-  viewId,
-  viewKindOf
+  diffId,
+  isViewId
 } from './layout'
 import { isLiveTask, latestTasks } from './format'
 import { chime, shouldChime } from './sound'
@@ -53,10 +52,48 @@ export interface TermTab {
   createdAt: string
 }
 
-export { RATIO_DEFAULT, RATIO_MAX, RATIO_MIN, viewId, viewKindOf } from './layout'
-export type { PaneLayout, ViewKind } from './layout'
+export { diffId, diffPathOf, isViewId, RATIO_DEFAULT, RATIO_MAX, RATIO_MIN } from './layout'
+export type { PaneLayout } from './layout'
 
 const LAYOUT_PREFIX = 'que.layout.'
+
+/** The review pane's tabs. */
+export type ReviewTab = 'changes' | 'pr'
+
+/** The review pane at the right of the main area; one for the app, remembered. */
+export interface ReviewState {
+  open: boolean
+  tab: ReviewTab
+  width: number
+}
+
+export const REVIEW_MIN = 240
+export const REVIEW_MAX = 520
+export const REVIEW_DEFAULT = 320
+const REVIEW_KEY = 'que.review'
+
+export function clampReviewWidth(w: number): number {
+  const n = Number.isFinite(w) ? w : REVIEW_DEFAULT
+  return Math.min(REVIEW_MAX, Math.max(REVIEW_MIN, Math.round(n)))
+}
+
+/** The remembered review pane, or the defaults (closed, on Changes, 320px) for anything unreadable. */
+function loadReview(): ReviewState {
+  const fallback: ReviewState = { open: false, tab: 'changes', width: REVIEW_DEFAULT }
+  try {
+    const raw = localStorage.getItem(REVIEW_KEY)
+    if (!raw) return fallback
+    const v = JSON.parse(raw) as Partial<ReviewState> | null
+    if (!v || typeof v !== 'object') return fallback
+    return {
+      open: v.open === true,
+      tab: v.tab === 'pr' ? 'pr' : 'changes',
+      width: typeof v.width === 'number' ? clampReviewWidth(v.width) : REVIEW_DEFAULT
+    }
+  } catch {
+    return fallback
+  }
+}
 
 export type View =
   | { kind: 'terminals'; key: string }
@@ -90,6 +127,12 @@ export interface QueState {
   prThreads: Record<string, PrThread | null>
   /** Per workspace: why the last conversation fetch failed, or null. */
   prThreadErrors: Record<string, string | null>
+  /** Per workspace: its diff against its base as last fetched. */
+  diffs: Record<string, WorkspaceDiff>
+  /** Per workspace: why the last diff fetch failed, or null. */
+  diffErrors: Record<string, string | null>
+  /** The review pane: open or not, on which tab, how wide. Remembered. */
+  review: ReviewState
   dialog: DialogState | null
   /** The daemon's quiet-hours state; null until loaded. */
   quiet: QuietState | null
@@ -167,6 +210,9 @@ export class QueStore {
     layouts: {},
     prThreads: {},
     prThreadErrors: {},
+    diffs: {},
+    diffErrors: {},
+    review: loadReview(),
     dialog: null,
     quiet: null,
     config: null,
@@ -183,6 +229,9 @@ export class QueStore {
   /** Terminals being created by this store, which place them themselves. */
   private creating = 0
   private createdMeanwhile = new Set<string>()
+  /** Fetches in flight, so a pane and a list asking at once share one request. */
+  private diffLoads = new Map<string, Promise<void>>()
+  private prThreadLoads = new Map<string, Promise<void>>()
 
   constructor(
     private api: QueApi,
@@ -348,13 +397,19 @@ export class QueStore {
   private upsertWorkspace(ws: Workspace): void {
     const prev = this.state.workspaces[ws.id]?.pr ?? null
     this.set((s) => ({ workspaces: { ...s.workspaces, [ws.id]: ws } }))
-    // An open Pull request tab follows its pull request: fetch again when it appears,
-    // disappears, or changes upstream.
+    // The review pane open on Pull request follows the shown workspace's pull request:
+    // fetch again when it appears, disappears, or changes upstream.
     const next = ws.pr ?? null
     const changed =
       (prev === null) !== (next === null) ||
       (prev !== null && next !== null && prev.updatedAt !== next.updatedAt)
-    if (changed && this.layout(ws.id).views.includes('pr')) void this.fetchPrThread(ws.id)
+    const { review } = this.state
+    if (changed && review.open && review.tab === 'pr' && this.currentKey() === ws.id) {
+      void this.fetchPrThread(ws.id)
+    } else if (changed && ws.id in this.state.prThreads) {
+      // Not on screen: forget the stale conversation so the next look fetches it.
+      this.set((s) => ({ prThreads: without(s.prThreads, ws.id) }))
+    }
     if (!this.state.projects.some((p) => p.id === ws.projectId)) {
       // A project.added that raced the workspace event; fetch the list.
       void this.api.project.list().then(
@@ -432,37 +487,70 @@ export class QueStore {
     void this.visit(key)
   }
 
-  /**
-   * Opens a view tab and selects it: where it already is, or else in the focused pane.
-   */
-  openView(key: string, kind: ViewKind): void {
+  // ---- the review pane ------------------------------------------------------
+
+  private setReview(patch: Partial<ReviewState>): void {
+    const review = { ...this.state.review, ...patch }
+    this.set({ review })
+    try {
+      localStorage.setItem(REVIEW_KEY, JSON.stringify(review))
+    } catch {
+      // Nothing to remember into; the pane still applies for this session.
+    }
+  }
+
+  /** Opens the review pane on a tab and loads what it shows for the current workspace. */
+  openReview(tab: ReviewTab): void {
+    this.setReview({ open: true, tab })
+    const key = this.currentKey()
+    if (key === null || key === SCRATCH) return
+    if (tab === 'changes') void this.ensureDiff(key)
+    else void this.fetchPrThread(key)
+  }
+
+  /** Closes the pane when it is open on that tab, else opens it there. */
+  toggleReview(tab: ReviewTab): void {
+    const { open, tab: current } = this.state.review
+    if (open && current === tab) this.closeReview()
+    else this.openReview(tab)
+  }
+
+  closeReview(): void {
+    this.setReview({ open: false })
+  }
+
+  setReviewTab(tab: ReviewTab): void {
+    this.setReview({ tab })
+  }
+
+  setReviewWidth(px: number): void {
+    this.setReview({ width: clampReviewWidth(px) })
+  }
+
+  // ---- diff tabs ------------------------------------------------------------
+
+  /** Opens a file's diff tab and selects it: where it already is, or else in the focused pane. */
+  openDiff(key: string, path: string): void {
     const l = this.layout(key)
-    const id = viewId(kind)
-    if (l.views.includes(kind)) {
+    const id = diffId(path)
+    if (l.views.includes(id)) {
       this.selectTerminal(key, id)
       return
     }
     const pane = l.split ? l.focused : 0
     this.setLayout(key, {
       ...l,
-      views: [...l.views, kind],
+      views: [...l.views, id],
       second: pane === 1 ? [...l.second, id] : l.second,
       active: pane === 0 ? [id, l.active[1]] : [l.active[0], id],
       focused: pane
     })
   }
 
-  /** Closes the view when it is the focused pane's active tab, else opens (or selects) it. */
-  toggleView(key: string, kind: ViewKind): void {
-    if (this.paneActiveId(key, this.focusedPane(key)) === viewId(kind)) this.closeView(key, kind)
-    else this.openView(key, kind)
-  }
-
   /** Closes a view tab; its pane selects the neighbouring tab, and an emptied split collapses. */
-  closeView(key: string, kind: ViewKind): void {
+  closeView(key: string, id: string): void {
     const l = this.layout(key)
-    if (!l.views.includes(kind)) return
-    const id = viewId(kind)
+    if (!l.views.includes(id)) return
     const pane = l.second.includes(id) ? 1 : 0
     const ids = this.paneIds(key, pane)
     const at = ids.indexOf(id)
@@ -471,7 +559,7 @@ export class QueStore {
     if (this.paneActiveId(key, pane) === id) active[pane] = neighbour
     const next: PaneLayout = {
       ...l,
-      views: l.views.filter((v) => v !== kind),
+      views: l.views.filter((v) => v !== id),
       second: l.second.filter((x) => x !== id),
       active
     }
@@ -479,32 +567,72 @@ export class QueStore {
     this.setLayout(key, reconcileLayout(next, new Set(tabIds), tabIds))
   }
 
-  /** Closes the focused pane's active tab: a view tab, or a terminal (which is killed). */
+  /** Closes the focused pane's active tab: a diff tab, or a terminal (which is killed). */
   closeActiveTab(key: string): void {
     const id = this.paneActiveId(key, this.focusedPane(key))
-    const kind = viewKindOf(id)
-    if (kind) this.closeView(key, kind)
+    if (id && isViewId(id)) this.closeView(key, id)
     else if (id) void this.closeTerminal(id)
   }
 
   /** Fetches a workspace's pull request conversation; a failure (quiet hours too) is kept for the view. */
-  async fetchPrThread(key: string, refresh = false): Promise<void> {
-    try {
-      const thread = await this.api.workspace.prThread(
-        refresh ? { id: key, refresh: true } : { id: key }
-      )
-      this.set((s) => ({
-        prThreads: { ...s.prThreads, [key]: thread },
-        prThreadErrors: { ...s.prThreadErrors, [key]: null }
-      }))
-    } catch (err) {
-      this.set((s) => ({ prThreadErrors: { ...s.prThreadErrors, [key]: message(err) } }))
-    }
+  fetchPrThread(key: string, refresh = false): Promise<void> {
+    const load = (async () => {
+      try {
+        const thread = await this.api.workspace.prThread(
+          refresh ? { id: key, refresh: true } : { id: key }
+        )
+        this.set((s) => ({
+          prThreads: { ...s.prThreads, [key]: thread },
+          prThreadErrors: { ...s.prThreadErrors, [key]: null }
+        }))
+      } catch (err) {
+        this.set((s) => ({ prThreadErrors: { ...s.prThreadErrors, [key]: message(err) } }))
+      }
+    })()
+    return this.track(this.prThreadLoads, key, load)
   }
 
-  /** The workspace's diff against its base; errors (quiet hours too) are for the view to show. */
-  fetchDiff(id: string): Promise<WorkspaceDiff> {
-    return this.api.workspace.diff({ id })
+  /** Fetches the conversation unless it is loaded or on its way. */
+  ensurePrThread(key: string): Promise<void> {
+    if (key in this.state.prThreads) return Promise.resolve()
+    return this.prThreadLoads.get(key) ?? this.fetchPrThread(key)
+  }
+
+  /** Fetches a workspace's diff against its base; a failure (quiet hours too) is kept for the views. */
+  fetchDiff(key: string): Promise<void> {
+    const load = (async () => {
+      try {
+        const diff = await this.api.workspace.diff({ id: key })
+        this.set((s) => ({
+          diffs: { ...s.diffs, [key]: diff },
+          diffErrors: { ...s.diffErrors, [key]: null }
+        }))
+      } catch (err) {
+        this.set((s) => ({
+          diffs: without(s.diffs, key),
+          diffErrors: { ...s.diffErrors, [key]: message(err) }
+        }))
+      }
+    })()
+    return this.track(this.diffLoads, key, load)
+  }
+
+  /** Fetches the diff unless it is loaded or on its way. */
+  ensureDiff(key: string): Promise<void> {
+    if (key in this.state.diffs) return Promise.resolve()
+    return this.diffLoads.get(key) ?? this.fetchDiff(key)
+  }
+
+  private track(
+    loads: Map<string, Promise<void>>,
+    key: string,
+    load: Promise<void>
+  ): Promise<void> {
+    loads.set(key, load)
+    void load.finally(() => {
+      if (loads.get(key) === load) loads.delete(key)
+    })
+    return load
   }
 
   showReport(): void {
@@ -613,15 +741,15 @@ export class QueStore {
     return this.tabs(key).filter((t) => second.includes(t.id) === (pane === 1))
   }
 
-  /** The view tabs of one pane, in the order they were opened. */
-  paneViews(key: string, pane: 0 | 1): ViewKind[] {
+  /** The view (diff) tab ids of one pane, in the order they were opened. */
+  paneViews(key: string, pane: 0 | 1): string[] {
     const l = this.layout(key)
-    return l.views.filter((v) => l.second.includes(viewId(v)) === (pane === 1))
+    return l.views.filter((v) => l.second.includes(v) === (pane === 1))
   }
 
   /** Every tab id of one pane: its terminals, then its views. */
   private paneIds(key: string, pane: 0 | 1): string[] {
-    return [...this.paneTabs(key, pane).map((t) => t.id), ...this.paneViews(key, pane).map(viewId)]
+    return [...this.paneTabs(key, pane).map((t) => t.id), ...this.paneViews(key, pane)]
   }
 
   /** The selected tab id (a terminal or a view) of a pane, else its newest tab. */
