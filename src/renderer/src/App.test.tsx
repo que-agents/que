@@ -100,6 +100,50 @@ describe('App', () => {
     })
   })
 
+  describe('review shortcut', () => {
+    it('toggles the review pane with Cmd+B, on the tab it was left on', async () => {
+      const user = userEvent.setup()
+      const retry = makeWorkspace({ id: 'ws_01hzx3k9c2qf', name: 'app-1432-retry-logic' })
+      fakeBridge.seedProject(makeProject())
+      fakeBridge.seedWorkspace(retry)
+      render(<App />)
+      await user.click(await screen.findByTestId(`sidebar-workspace-${retry.id}-open`))
+      const toggle = await screen.findByRole('button', { name: 'Review pane' })
+
+      await user.keyboard('{Meta>}b{/Meta}')
+
+      expect(screen.getByTestId('review-pane')).toHaveAttribute('data-tab', 'changes')
+      expect(toggle).toHaveAttribute('aria-pressed', 'true')
+      await user.click(screen.getByRole('tab', { name: 'Pull request' }))
+
+      await user.keyboard('{Meta>}b{/Meta}')
+
+      expect(screen.queryByTestId('review-pane')).not.toBeInTheDocument()
+      expect(toggle).toHaveAttribute('aria-pressed', 'false')
+
+      await user.keyboard('{Meta>}b{/Meta}')
+
+      expect(screen.getByTestId('review-pane')).toHaveAttribute('data-tab', 'pr')
+    })
+
+    it('leaves Cmd+B alone while a dialog is open', async () => {
+      const user = userEvent.setup()
+      const retry = makeWorkspace({ id: 'ws_01hzx3k9c2qf', name: 'app-1432-retry-logic' })
+      fakeBridge.seedProject(makeProject())
+      fakeBridge.seedWorkspace(retry)
+      render(<App />)
+      await user.click(await screen.findByTestId(`sidebar-workspace-${retry.id}-open`))
+      await user.click(await screen.findByRole('button', { name: 'Review pane' }))
+      await user.click(screen.getByRole('tab', { name: 'Pull request' }))
+      await user.click(await screen.findByRole('button', { name: 'Create draft PR' }))
+      expect(screen.getByRole('dialog')).toBeInTheDocument()
+
+      await user.keyboard('{Meta>}b{/Meta}')
+
+      expect(screen.getByTestId('review-pane')).toBeInTheDocument()
+    })
+  })
+
   describe('search shortcut', () => {
     it('opens the sidebar search with Cmd+K, focused', async () => {
       const user = userEvent.setup()
@@ -192,16 +236,17 @@ describe('App', () => {
       fakeBridge.seedWorkspace(retry)
       render(<App />)
       await user.click(await screen.findByTestId(`sidebar-workspace-${retry.id}-open`))
-      expect(await screen.findByRole('button', { name: 'Create draft PR' })).toBeEnabled()
+      await user.click(await screen.findByRole('button', { name: 'Review pane' }))
+      expect(await screen.findByRole('button', { name: 'Open in editor' })).toBeEnabled()
 
       fakeBridge.disconnect()
 
       await waitFor(() => {
-        expect(screen.getByRole('button', { name: 'Create draft PR' })).toBeDisabled()
+        expect(screen.getByRole('button', { name: 'Open in editor' })).toBeDisabled()
       })
       for (const name of [
-        'Changes',
-        'Open in editor',
+        'Review pane',
+        'Refresh',
         'New terminal',
         'Split beside',
         'Split below',
@@ -211,6 +256,10 @@ describe('App', () => {
         expect(screen.getByRole('button', { name })).toBeDisabled()
       }
       expect(screen.getByRole('button', { name: 'New workspace in uploader' })).toBeDisabled()
+
+      await user.click(screen.getByRole('tab', { name: 'Pull request' }))
+
+      expect(await screen.findByRole('button', { name: 'Create draft PR' })).toBeDisabled()
     })
   })
 })
