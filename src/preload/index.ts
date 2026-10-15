@@ -61,6 +61,8 @@ const api: QueApi = {
     prThread: (p) => call('workspace.prThread', p),
     files: (p) => call('workspace.files', p),
     readFile: (p) => call('workspace.readFile', p),
+    watch: (p) => call('workspace.watch', p),
+    unwatch: (p) => call('workspace.unwatch', p),
     on: (event, cb) => subscribe(event, cb as (data: unknown) => void)
   },
   task: {

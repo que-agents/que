@@ -402,6 +402,39 @@ describe('ChangesList', () => {
   describe('following the worktree', () => {
     const cache = makeWorkspace({ id: 'ws_01hzx4m7d8rt', name: 'app-1440-cache-warmup' })
 
+    it('asks the daemon to watch the shown workspace, with a diff tab active too', async () => {
+      const user = userEvent.setup()
+      seed()
+      await openChanges(user)
+      await waitFor(() => {
+        expect(fakeBridge.watched()).toEqual([retry.id])
+      })
+
+      await user.click(await screen.findByTestId('changes-file-1'))
+
+      expect(screen.getByTestId('pane-0')).toHaveAttribute('data-active-tab', 'view:diff:README.md')
+      expect(fakeBridge.watched()).toEqual([retry.id])
+      expect(fakeBridge.watchCalls()).toEqual([{ id: retry.id, on: true }])
+    })
+
+    it('unwatches the workspace it leaves and watches the one it shows', async () => {
+      const user = userEvent.setup()
+      seed([put])
+      fakeBridge.seedWorkspace(cache)
+      await openChanges(user)
+
+      await user.click(screen.getByTestId(`sidebar-workspace-${cache.id}-open`))
+
+      await waitFor(() => {
+        expect(fakeBridge.watched()).toEqual([cache.id])
+      })
+      expect(fakeBridge.watchCalls()).toEqual([
+        { id: retry.id, on: true },
+        { id: retry.id, on: false },
+        { id: cache.id, on: true }
+      ])
+    })
+
     it('fetches the diff again when switching to a workspace shown before', async () => {
       const user = userEvent.setup()
       seed([put])
@@ -505,6 +538,19 @@ describe('ChangesList', () => {
         'added'
       )
       expect(within(view).getByTestId('diff-header')).toHaveTextContent('README.md · +2 −0')
+    })
+
+    it('fetches nothing for a change while quiet hours are locked', async () => {
+      const user = userEvent.setup()
+      seed([put])
+      await openChanges(user)
+      await screen.findByTestId('changes-file-0')
+      const before = fakeBridge.diffCalls().length
+
+      fakeBridge.setQuietState({ inQuietHours: true, unlockedUntil: null })
+      fakeBridge.changeWorkspace(retry.id)
+
+      expect(fakeBridge.diffCalls()).toHaveLength(before)
     })
 
     it('ignores a change to another workspace', async () => {

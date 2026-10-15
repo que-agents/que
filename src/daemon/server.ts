@@ -79,6 +79,8 @@ type AfterSend = (fn: () => void) => void
 
 class Connection {
   readonly subs = new Map<string, Subscription>()
+  /** The workspaces this connection asked to watch with workspace.watch. */
+  readonly watches = new Set<string>()
   private decoder: MessageDecoder<Request>
 
   constructor(
@@ -394,6 +396,7 @@ export class DaemonServer {
         socket.on('close', () => {
           // Subscriptions are per-connection; terminals keep running.
           conn.subs.clear()
+          conn.watches.clear()
           this.conns.delete(conn)
           this.syncWatches()
         })
@@ -462,8 +465,8 @@ export class DaemonServer {
   }
 
   /**
-   * Watches the worktree of every workspace with a live terminal some
-   * connection is attached to, and nothing else.
+   * Watches the worktree of every workspace some connection asked to watch
+   * (workspace.watch) or has a live terminal attached in, and nothing else.
    */
   private syncWatches(): void {
     if (this.closed) {
@@ -472,6 +475,11 @@ export class DaemonServer {
     }
     const wanted = new Map<string, string>()
     for (const c of this.conns) {
+      for (const id of c.watches) {
+        if (wanted.has(id)) continue
+        const ws = this.store.getWorkspace(id)
+        if (ws && !ws.archivedAt) wanted.set(ws.id, ws.path)
+      }
       for (const termId of c.subs.keys()) {
         const t = this.opts.host.get(termId)
         if (!t?.alive || !t.workspaceId || wanted.has(t.workspaceId)) continue
@@ -645,6 +653,14 @@ export class DaemonServer {
           commit: optString(p, 'commit')
         })
       }
+      case 'workspace.watch':
+        conn.watches.add(this.workspaces.get(str(p, 'id')).id)
+        this.syncWatches()
+        return { ok: true }
+      case 'workspace.unwatch':
+        conn.watches.delete(str(p, 'id'))
+        this.syncWatches()
+        return { ok: true }
       case 'workspace.files':
         return workspaceFiles(this.workspaces.get(str(p, 'id')), Date.now)
       case 'workspace.readFile':
