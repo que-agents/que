@@ -15,7 +15,8 @@ import type {
   Ticket,
   TicketsSyncState,
   UpdateInfo,
-  Workspace
+  Workspace,
+  WorkspaceDiff
 } from '../../preload/index.d'
 import { chime, shouldChime } from './sound'
 
@@ -123,6 +124,8 @@ export interface QueState {
   view: View
   /** The pane layout per terminal key; a key without one has a single pane. */
   layouts: Record<string, PaneLayout>
+  /** Per terminal key: the Changes view replaces the panes. Not remembered. */
+  changesOpen: Record<string, boolean>
   dialog: DialogState | null
   /** The daemon's quiet-hours state; null until loaded. */
   quiet: QuietState | null
@@ -180,6 +183,7 @@ export class QueStore {
     ticketsSync: { lastSyncAt: null, error: null, count: 0 },
     view: { kind: 'terminals', key: SCRATCH },
     layouts: {},
+    changesOpen: {},
     dialog: null,
     quiet: null,
     config: null
@@ -406,6 +410,19 @@ export class QueStore {
   showTerminals(key: string): void {
     this.set({ view: { kind: 'terminals', key } })
     void this.visit(key)
+  }
+
+  toggleChanges(key: string): void {
+    this.showChanges(key, !this.state.changesOpen[key])
+  }
+
+  showChanges(key: string, open: boolean): void {
+    this.set((s) => ({ changesOpen: { ...s.changesOpen, [key]: open } }))
+  }
+
+  /** The workspace's diff against its base; errors (quiet hours too) are for the view to show. */
+  fetchDiff(id: string): Promise<WorkspaceDiff> {
+    return this.api.workspace.diff({ id })
   }
 
   showReport(): void {

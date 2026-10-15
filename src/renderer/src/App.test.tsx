@@ -157,6 +157,7 @@ describe('App', () => {
         expect(screen.getByRole('button', { name: 'Create draft PR' })).toBeDisabled()
       })
       for (const name of [
+        'Changes',
         'Open in editor',
         'New terminal',
         'Split beside',
