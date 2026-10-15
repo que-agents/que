@@ -43,6 +43,7 @@ import { Store } from './store'
 import { workspaceDiff } from './diff'
 import { readWorkspaceFile, workspaceFiles } from './files'
 import { WorkspaceManager, workspaceTerminalEnv } from './workspaces'
+import { WorktreeWatcher } from './watcher'
 import { defaultCliScript, installWrapper, resolveCliRunner } from './wrapper'
 
 export interface ServerOptions {
@@ -126,6 +127,10 @@ export class DaemonServer {
   /** The last good user config and the file stamp it was read at. */
   private config: UserConfig
   private configStamp = ''
+  /** Watches the worktrees of workspaces with an attached terminal (workspace.changed). */
+  readonly watcher = new WorktreeWatcher((id) => this.broadcast('workspace.changed', { id }), {
+    log: (m) => this.log(m)
+  })
 
   constructor(private opts: ServerOptions) {
     this.startedAt = opts.startedAt ?? new Date().toISOString()
@@ -207,6 +212,7 @@ export class DaemonServer {
       config: () => this.configOrDefault(),
       detachAll: () => {
         for (const c of this.conns) c.subs.clear()
+        this.syncWatches()
       },
       report: (since) => this.tasks.report(since),
       log: (m) => this.log(m),
@@ -231,6 +237,7 @@ export class DaemonServer {
           const live = host.list().some((t) => t.alive && t.workspaceId === wsId)
           if (!live) this.status.apply(wsId, { kind: 'terminal_exit' })
         }
+        this.syncWatches()
       })
     )
   }
@@ -312,6 +319,7 @@ export class DaemonServer {
     if (!this.opts.host.kill(id)) return false
     this.log(`term ${id} killed`)
     for (const c of this.conns) c.subs.delete(id)
+    this.syncWatches()
     this.broadcast('term.killed', { id })
     return true
   }
@@ -387,6 +395,7 @@ export class DaemonServer {
           // Subscriptions are per-connection; terminals keep running.
           conn.subs.clear()
           this.conns.delete(conn)
+          this.syncWatches()
         })
       })
       server.once('error', reject)
@@ -440,6 +449,7 @@ export class DaemonServer {
       await this.tickets.drain()
       await this.tasks.shutdown()
       this.status.stop()
+      this.watcher.close()
       this.workspaces.close()
       this.store.close()
     }
@@ -451,8 +461,32 @@ export class DaemonServer {
     return new Promise((resolve) => server.close(() => resolve()))
   }
 
+  /**
+   * Watches the worktree of every workspace with a live terminal some
+   * connection is attached to, and nothing else.
+   */
+  private syncWatches(): void {
+    if (this.closed) {
+      this.watcher.close()
+      return
+    }
+    const wanted = new Map<string, string>()
+    for (const c of this.conns) {
+      for (const termId of c.subs.keys()) {
+        const t = this.opts.host.get(termId)
+        if (!t?.alive || !t.workspaceId || wanted.has(t.workspaceId)) continue
+        const ws = this.store.getWorkspace(t.workspaceId)
+        if (ws && !ws.archivedAt) wanted.set(ws.id, ws.path)
+      }
+    }
+    this.watcher.sync(wanted)
+  }
+
   broadcast<E extends EventName>(event: E, data: Events[E]): void {
-    if (event === 'workspace.removed') this.prs?.forget((data as Events['workspace.removed']).id)
+    if (event === 'workspace.removed') {
+      this.prs?.forget((data as Events['workspace.removed']).id)
+      this.syncWatches()
+    }
     for (const c of this.conns) c.sendEvent(event, data)
   }
 
@@ -537,14 +571,17 @@ export class DaemonServer {
           t.resize(cols, rows)
           const snapshot = await t.serializeNow()
           afterSend(() => flushPending(conn, t.id, sub))
+          this.syncWatches()
           return { snapshot, cols: t.cols, rows: t.rows }
         } catch (e) {
           if (conn.subs.get(t.id) === sub) conn.subs.delete(t.id)
+          this.syncWatches()
           throw e
         }
       }
       case 'term.detach': {
         conn.subs.delete(str(p, 'id'))
+        this.syncWatches()
         return { ok: true }
       }
       case 'term.write': {
@@ -591,6 +628,7 @@ export class DaemonServer {
       case 'workspace.remove':
         this.tasks.stopWorkspace(str(p, 'id'))
         await this.workspaces.remove({ id: str(p, 'id'), deleteBranch: optBool(p, 'deleteBranch') })
+        this.syncWatches()
         return { ok: true }
       case 'workspace.openTerminal': {
         const ws = this.workspaces.get(str(p, 'id'))
