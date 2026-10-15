@@ -1,8 +1,9 @@
-// A workspace's tabs in one or two panes: its terminals, then its diff tabs
-// (one changed file's diff each). Pure: parsing a remembered layout and fitting
-// it to the terminals that still exist.
+// A workspace's tabs in one or two panes: its terminals, then its view tabs: a
+// changed file's diff, or a file of the worktree read-only. Pure: parsing a
+// remembered layout and fitting it to the terminals that still exist.
 
 const DIFF_PREFIX = 'view:diff:'
+const FILE_PREFIX = 'view:file:'
 
 /** The tab id of a file's diff: `view:diff:<path>`, the path verbatim. */
 export function diffId(path: string): string {
@@ -16,9 +17,21 @@ export function diffPathOf(id: string | null): string | null {
   return path === '' ? null : path
 }
 
-/** Whether a tab id is a view tab (a file's diff) rather than a terminal. */
+/** The tab id of a worktree file's view: `view:file:<path>`, the path verbatim. */
+export function fileId(path: string): string {
+  return FILE_PREFIX + path
+}
+
+/** The file a file tab id shows, or null for any other id. */
+export function filePathOf(id: string | null): string | null {
+  if (!id?.startsWith(FILE_PREFIX)) return null
+  const path = id.slice(FILE_PREFIX.length)
+  return path === '' ? null : path
+}
+
+/** Whether a tab id is a view tab (a diff or a file) rather than a terminal. */
 export function isViewId(id: string | null): boolean {
-  return diffPathOf(id) !== null
+  return diffPathOf(id) !== null || filePathOf(id) !== null
 }
 
 /** One workspace's tabs in one or two panes (a tree of depth one). */

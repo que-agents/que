@@ -174,6 +174,30 @@ export interface WorkspaceDiff {
   generatedAt: string
 }
 
+/** Every tracked and untracked file of a worktree, never the ignored ones. */
+export interface WorkspaceFiles {
+  workspaceId: string
+  /** Relative paths, deduplicated and sorted; at most 20,000. */
+  files: string[]
+  /** True when the listing was cut at the cap. */
+  truncated: boolean
+  generatedAt: string
+}
+
+/** One file of a worktree, read for the file view. */
+export interface WorkspaceFile {
+  workspaceId: string
+  path: string
+  /** The text, or null for a binary file. */
+  content: string | null
+  /** A NUL byte in the first 8 KB marks a file binary. */
+  binary: boolean
+  /** Bytes on disk. */
+  size: number
+  /** True when `content` was cut at MAX_FILE_CHARS (500,000). */
+  truncated: boolean
+}
+
 export interface WorkspaceCreatePrParams {
   id: string
   /** The commit message for uncommitted changes, and the pull request title. */
@@ -375,6 +399,8 @@ export interface Methods {
   }
   /** The pull request's conversation (comments, reviews, line comments); null without a pull request. */
   'workspace.prThread': { params: { id: string; refresh?: boolean }; result: PrThread | null }
+  'workspace.files': { params: { id: string }; result: WorkspaceFiles }
+  'workspace.readFile': { params: { id: string; path: string }; result: WorkspaceFile }
   'hook.event': { params: HookEventParams; result: Ok }
   'task.add': { params: TaskAddParams; result: Task }
   'task.list': { params: TaskListParams | undefined; result: Task[] }
@@ -409,6 +435,8 @@ export const QUIET_REFUSED_METHODS = [
   'workspace.createPr',
   'workspace.diff',
   'workspace.prThread',
+  'workspace.files',
+  'workspace.readFile',
   'report.get',
   'task.add',
   'queue.open',

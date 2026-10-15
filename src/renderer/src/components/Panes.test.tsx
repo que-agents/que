@@ -7,7 +7,9 @@ import {
   makeProject,
   makeTermInfo,
   makeWorkspace,
-  makeWorkspaceDiff
+  makeWorkspaceDiff,
+  makeWorkspaceFile,
+  makeWorkspaceFiles
 } from '@renderer/testing/fixtures'
 import App from '../App'
 
@@ -475,6 +477,81 @@ describe('Panes', () => {
       expect(within(pane).getByTestId('view-tab-diff')).toHaveAttribute('data-active', 'true')
       expect(within(pane).getByTestId(`terminal-tab-${term}`)).toBeInTheDocument()
       expect(await within(pane).findByTestId('diff-patch')).toHaveTextContent('+# Uploader')
+    })
+  })
+  describe('file tabs', () => {
+    it('opens a worktree file beside the terminal tab with its own testids, and closes it', async () => {
+      const user = userEvent.setup()
+      seedWorkspace()
+      fakeBridge.seedFiles(makeWorkspaceFiles({ workspaceId: retry.id }))
+      fakeBridge.seedFile(makeWorkspaceFile({ workspaceId: retry.id, path: 'src/index.ts' }))
+      render(<App />)
+      const term = await openWorkspace(user)
+      await openChanges(user)
+      await user.click(screen.getByTestId('changes-file-0'))
+      await user.click(screen.getByTestId('review-tab-files'))
+      const index = await screen.findByTestId('files-row-5')
+      expect(index).toHaveAttribute('data-path', 'src/index.ts')
+
+      await user.click(index)
+
+      const pane = screen.getByTestId('pane-0')
+      const tab = within(pane).getByTestId('view-tab-file')
+      expect(tab).toHaveAttribute('data-path', 'src/index.ts')
+      expect(tab).toHaveAttribute('data-active', 'true')
+      const select = within(tab).getByTestId('view-tab-file-select')
+      expect(select).toHaveTextContent('index.ts')
+      expect(select).toHaveAttribute('title', 'src/index.ts')
+      expect(select).toHaveAttribute('data-path', 'src/index.ts')
+      expect(within(pane).getByTestId('view-tab-diff')).toHaveAttribute('data-active', 'false')
+      expect(
+        tabsIn(0)
+          .map((t) => t.textContent)
+          .slice(1)
+      ).toEqual(['put.ts', 'index.ts'])
+      expect(pane).toHaveAttribute('data-active-tab', 'view:file:src/index.ts')
+      expect(await within(pane).findByTestId('file-text')).toHaveTextContent(
+        'export const retries = 3'
+      )
+      expect(screen.queryByTestId('diff-view')).not.toBeInTheDocument()
+
+      const close = within(tab).getByTestId('view-tab-file-close')
+      expect(close).toHaveAttribute('data-path', 'src/index.ts')
+      await user.click(close)
+
+      expect(screen.queryByTestId('view-tab-file')).not.toBeInTheDocument()
+      expect(pane).toHaveAttribute('data-active-tab', 'view:diff:src/upload/put.ts')
+      expect(screen.getByTestId(`terminal-tab-${term}`)).toBeInTheDocument()
+    })
+
+    it('comes back beside a diff tab after the app reloads', async () => {
+      const user = userEvent.setup()
+      seedWorkspace()
+      fakeBridge.seedFiles(makeWorkspaceFiles({ workspaceId: retry.id }))
+      fakeBridge.seedFile(makeWorkspaceFile({ workspaceId: retry.id, path: 'package.json' }))
+      const first = render(<App />)
+      await openWorkspace(user)
+      await openChanges(user)
+      await user.click(screen.getByTestId('changes-file-0'))
+      await user.click(screen.getByTestId('review-tab-files'))
+      const pkg = await screen.findByTestId('files-row-7')
+      expect(pkg).toHaveAttribute('data-path', 'package.json')
+      await user.click(pkg)
+      first.unmount()
+
+      render(<App />)
+      await user.click(await screen.findByTestId(`sidebar-workspace-${retry.id}-open`))
+
+      const pane = await screen.findByTestId('pane-0')
+      expect(within(pane).getByTestId('view-tab-diff')).toHaveAttribute(
+        'data-path',
+        'src/upload/put.ts'
+      )
+      expect(within(pane).getByTestId('view-tab-file')).toHaveAttribute('data-active', 'true')
+      expect(await within(pane).findByTestId('file-view')).toHaveAttribute(
+        'data-path',
+        'package.json'
+      )
     })
   })
 })

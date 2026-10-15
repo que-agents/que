@@ -7,7 +7,12 @@ import { summarize, trayTitle } from '../daemon/status-engine'
 import type { DaemonClient } from '../shared/client'
 import { formatConfigErrors, loadConfig } from '../shared/config'
 import { queHome, quePaths } from '../shared/paths'
-import type { DiffFile, WorkspaceDiff, WorkspaceStatusEvent } from '../shared/protocol'
+import type {
+  DiffFile,
+  WorkspaceDiff,
+  WorkspaceFiles,
+  WorkspaceStatusEvent
+} from '../shared/protocol'
 import type {
   PrCheck,
   PrThread,
@@ -53,6 +58,13 @@ export function formatDiff(d: WorkspaceDiff, now = Date.now()): string {
       `${DIFF_GLYPH[f.status]} ${name}  +${f.additions} -${f.deletions}${f.dirty ? ' *' : ''}`
     )
   }
+  return lines.join('\n')
+}
+
+/** The text `que ws files` prints: one path per line, and a note when the listing was cut. */
+export function formatFiles(f: WorkspaceFiles): string {
+  const lines = [...f.files]
+  if (f.truncated) lines.push(`… and more (listing cut at ${f.files.length})`)
   return lines.join('\n')
 }
 
@@ -305,6 +317,17 @@ export function registerWorkspaceCommands(program: Command): void {
           ...(opts.commit !== undefined ? { commit: opts.commit } : {})
         })
         console.log(opts.json ? JSON.stringify(diff, null, 2) : formatDiff(diff))
+      })
+    )
+  ws.command('files <workspace>')
+    .description("every file of a workspace's worktree, tracked and untracked, never ignored")
+    .option('--json', 'print JSON')
+    .action((ref: string, opts: { json?: boolean }) =>
+      withClient(async (c) => {
+        await assertNotQuiet(c)
+        const w = await findWorkspace(c, ref)
+        const listing = await c.request('workspace.files', { id: w.id })
+        console.log(opts.json ? JSON.stringify(listing, null, 2) : formatFiles(listing))
       })
     )
   ws.command('pr <workspace>')

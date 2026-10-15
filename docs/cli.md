@@ -21,6 +21,7 @@ hand; run `npm run docs` after changing a command.
 | `que ws list [options]` | list workspaces |
 | `que ws remove [options] <workspace>` | remove a workspace: kill its terminals, run teardown, remove the worktree |
 | `que ws diff [options] <workspace>` | what a workspace changed against its base, committed and uncommitted, with its commits |
+| `que ws files [options] <workspace>` | every file of a workspace's worktree, tracked and untracked, never ignored |
 | `que ws pr [options] <workspace>` | a workspace's pull request: its checks and its conversation |
 | `que ws terminal [options] <workspace>` | print the id of the workspace's latest live terminal, opening one if needed |
 | `que status [options]` | summary and per-workspace status |
@@ -244,6 +245,18 @@ Options:
   --base <ref>    compare against this ref instead of the default branch
   --commit <sha>  only that commit's own changes
   -h, --help      display help for command
+```
+
+### que ws files
+
+```text
+Usage: que ws files [options] <workspace>
+
+every file of a workspace's worktree, tracked and untracked, never ignored
+
+Options:
+  --json      print JSON
+  -h, --help  display help for command
 ```
 
 ### que ws pr
