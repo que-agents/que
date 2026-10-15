@@ -88,7 +88,11 @@ remove. The quiet board uses the same tones as plain text.
   end of the top bar (a frame with a divider toward its right edge, filled while open)
   toggles the pane on its remembered tab, and so does ⌘B. The Changes header is one
   line, `Commits n vs base` (the count and `vs` muted, the full counts in its tooltip),
-  with refresh and open-in-editor icon buttons at its right end; `Create draft PR` is
+  with refresh and open-in-editor icon buttons at its right end. Each half of the line
+  opens a menu: `Commits n` lists the commits, newest first with their age, and narrows
+  the files to one (the line then reads `Commit <sha>`, its subject in the tooltip), and
+  `vs base` picks the ref to compare against, remembered per workspace; the current
+  choice is marked with the active fill; `Create draft PR` is
   in the Pull request footer while the workspace has no pull request. Clicking a file in Changes opens that
   file's diff as a tab in the middle, in the focused pane's strip beside the session
   tabs: a line icon and the file's name, never a status dot, closed with ⌘W like a

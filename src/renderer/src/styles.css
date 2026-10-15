@@ -483,7 +483,7 @@ h2 {
   position: fixed;
 }
 
-.menu [role="menuitem"] {
+.menu [role^="menuitem"] {
   background: none;
   border: none;
   border-radius: 2px;
@@ -492,11 +492,17 @@ h2 {
   color: var(--fg-secondary);
 }
 
-.menu [role="menuitem"]:hover:not(:disabled),
-.menu [role="menuitem"]:focus-visible {
+.menu [role^="menuitem"]:hover:not(:disabled),
+.menu [role^="menuitem"]:focus-visible {
   background: var(--bg-hover);
   color: var(--fg);
   outline: none;
+}
+
+/* The current choice in a menu of choices. */
+.menu [aria-checked="true"] {
+  background: var(--bg-active);
+  color: var(--fg);
 }
 
 .empty-note {
@@ -1398,8 +1404,10 @@ body.resizing .review-resizer {
   flex-direction: column;
 }
 
-/* One quiet line: `Commits n vs base`, truncating as the pane narrows; icon actions at its end. */
+/* One quiet line: `Commits n vs base`, truncating as the pane narrows; icon actions at its end.
+   Both halves of the line open a menu: the commits to narrow to, the ref to compare against. */
 .changes-bar {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -1422,6 +1430,28 @@ body.resizing .review-resizer {
   display: flex;
   flex: none;
   gap: 2px;
+}
+
+/* A part of the summary line that opens a menu: text at rest, a ghost button on hover. */
+button.changes-pick {
+  padding: 1px 3px;
+  font-weight: inherit;
+  color: var(--fg);
+}
+
+.changes-menu {
+  left: 6px;
+  right: auto;
+  max-width: calc(100% - 12px);
+  max-height: 50vh;
+  overflow-y: auto;
+}
+
+.changes-menu [role^="menuitem"] {
+  flex: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .changes-error {
