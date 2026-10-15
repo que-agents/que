@@ -1,6 +1,8 @@
 // The main window's chrome: the top bar, the app-level error banner, and the
-// tray title (read through the QUE_E2E test hook; the menu bar is out of reach).
+// tray title and the chimes played (read through the QUE_E2E test hook; the menu
+// bar is out of reach, and under e2e the chimes are recorded, never heard).
 import type { Locator, Page } from '@playwright/test'
+import type { ChimeKind } from '../../../src/preload/index.d'
 
 export class AppShellPage {
   page: Page
@@ -21,5 +23,9 @@ export class AppShellPage {
 
   async trayTitle(): Promise<string> {
     return this.page.evaluate(() => window.__que?.trayTitle() ?? Promise.resolve(''))
+  }
+
+  async chimes(): Promise<ChimeKind[]> {
+    return this.page.evaluate(() => window.__que?.chimes() ?? [])
   }
 }

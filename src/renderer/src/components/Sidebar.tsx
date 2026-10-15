@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Project, Task, Workspace } from '../../../preload/index.d'
-import { isLiveTask } from '../format'
+import { isLiveTask, latestTasks } from '../format'
 import { SCRATCH, useQue, useStore } from '../store'
 import { countOpenTickets } from '../ticket-tree'
 import { filterSidebar, matches, sortProjects, sortWorkspaces } from '../sidebar-order'
@@ -94,17 +94,6 @@ function ActionMenu({
       ))}
     </div>
   )
-}
-
-/** The newest task that ran (or runs) in each workspace. */
-function latestTasks(tasks: Record<string, Task>): Map<string, Task> {
-  const out = new Map<string, Task>()
-  for (const t of Object.values(tasks)) {
-    if (!t.workspaceId) continue
-    const prev = out.get(t.workspaceId)
-    if (!prev || t.createdAt > prev.createdAt) out.set(t.workspaceId, t)
-  }
-  return out
 }
 
 /**
