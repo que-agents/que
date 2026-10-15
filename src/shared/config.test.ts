@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  defaultJira,
   mergeConfigPatch,
   parseConfig,
   parseConfigAssignment,
@@ -32,7 +33,8 @@ describe('parseConfig', () => {
           days: {},
           unlockMinutes: 20
         },
-        notifications: { chimeOnComplete: true, chimeOnNeedsInput: false, morningSummary: false }
+        notifications: { chimeOnComplete: true, chimeOnNeedsInput: false, morningSummary: false },
+        jira: defaultJira()
       }
     })
   })
@@ -78,7 +80,8 @@ path = "/Users/dev/code/api"
         allowBypassPermissions: true,
         protectedBranches: ['main', 'production'],
         quietHours: expect.objectContaining({ enabled: true }),
-        notifications: expect.objectContaining({ chimeOnComplete: true })
+        notifications: expect.objectContaining({ chimeOnComplete: true }),
+        jira: defaultJira()
       }
     })
   })

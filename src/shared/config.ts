@@ -5,7 +5,7 @@ import os from 'node:os'
 import { join } from 'node:path'
 import { parse as parseToml, stringify as stringifyToml } from 'smol-toml'
 import {
-  JiraConfig,
+  type JiraConfig,
   WEEKDAYS,
   type DayWindow,
   type NotificationsConfig,
