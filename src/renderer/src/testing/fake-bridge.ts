@@ -379,6 +379,9 @@ class FakeBridge {
               base: 'origin/main',
               head: ws.branch,
               commitsAhead: 0,
+              commits: [],
+              bases: ['origin/main'],
+              commit: null,
               files: [],
               generatedAt: new Date().toISOString()
             }
