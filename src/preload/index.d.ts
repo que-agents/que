@@ -29,6 +29,8 @@ import type {
   ReportGroup,
   WorkspaceCreateParams,
   WorkspaceCreatePrParams,
+  WorkspaceDiff,
+  DiffFile,
   WorkspaceCreatePrResult,
   WorkspaceListParams,
   WorkspaceOpenTerminalParams,
@@ -84,6 +86,8 @@ export type {
   TermSnapshotResult,
   UpdateInfo,
   Workspace,
+  WorkspaceDiff,
+  DiffFile,
   WorkspaceStatus,
   WorkspaceStatusEvent
 }
@@ -150,6 +154,8 @@ export interface WorkspaceApi {
   openTerminal(params: WorkspaceOpenTerminalParams): Promise<{ id: string }>
   /** Commits what is uncommitted as `title`, pushes, and opens a draft PR. */
   createPr(params: WorkspaceCreatePrParams): Promise<WorkspaceCreatePrResult>
+  /** What the workspace changed against its base, file by file. Refused in quiet hours. */
+  diff(params: { id: string }): Promise<WorkspaceDiff>
   on<E extends WorkspaceEventName>(event: E, cb: (data: Events[E]) => void): () => void
 }
 

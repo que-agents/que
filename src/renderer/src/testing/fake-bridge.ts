@@ -21,6 +21,7 @@ import type {
   UpdateInfo,
   UserConfig,
   Workspace,
+  WorkspaceDiff,
   WorkspaceDigest,
   WorkspaceStatus
 } from '../../../preload/index.d'
@@ -366,6 +367,21 @@ class FakeBridge {
           const ws = this.workspace(id)
           return this.createTerminal({ cwd: ws.path, cols, rows, name: ws.name }, ws.id)
         },
+        diff: async ({ id }) => {
+          this.refuseIfQuiet('workspace.diff')
+          const ws = this.workspace(id)
+          const seeded = this.diffs.get(id)
+          return structuredClone(
+            seeded ?? {
+              workspaceId: ws.id,
+              base: 'origin/main',
+              head: ws.branch,
+              commitsAhead: 0,
+              files: [],
+              generatedAt: new Date().toISOString()
+            }
+          )
+        },
         createPr: async ({ id, title }) => {
           this.refuseIfQuiet('workspace.createPr')
           const ws = this.workspace(id)
@@ -580,8 +596,16 @@ class FakeBridge {
     this.ticketProjects.set(projectKey, projectId)
   }
 
+  private diffs = new Map<string, WorkspaceDiff>()
+
+  /** What workspace.diff answers for a workspace. */
+  seedDiff(diff: WorkspaceDiff): void {
+    this.diffs.set(diff.workspaceId, structuredClone(diff))
+  }
+
   reset(): void {
     this.projects.clear()
+    this.diffs.clear()
     this.tickets.clear()
     this.ticketProjects.clear()
     this.ticketsSync = { lastSyncAt: null, error: null, count: 0 }

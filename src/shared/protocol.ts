@@ -132,6 +132,30 @@ export interface WorkspaceOpenTerminalParams {
   rows: number
 }
 
+/** One file a workspace changed against its base, committed or not. */
+export interface DiffFile {
+  path: string
+  /** For a rename, where it came from. */
+  from: string | null
+  status: 'added' | 'modified' | 'deleted' | 'renamed' | 'untracked'
+  additions: number
+  deletions: number
+  /** True while still uncommitted in the worktree. */
+  dirty: boolean
+  /** The unified patch against the base, or null when binary or too large. */
+  patch: string | null
+}
+
+export interface WorkspaceDiff {
+  workspaceId: string
+  /** The ref the branch is compared against (origin/<default> when it exists). */
+  base: string
+  head: string
+  commitsAhead: number
+  files: DiffFile[]
+  generatedAt: string
+}
+
 export interface WorkspaceCreatePrParams {
   id: string
   /** The commit message for uncommitted changes, and the pull request title. */
@@ -326,6 +350,8 @@ export interface Methods {
   'workspace.remove': { params: WorkspaceRemoveParams; result: Ok }
   'workspace.openTerminal': { params: WorkspaceOpenTerminalParams; result: { id: string } }
   'workspace.createPr': { params: WorkspaceCreatePrParams; result: WorkspaceCreatePrResult }
+  /** What the workspace changed against its base: committed and uncommitted, file by file. */
+  'workspace.diff': { params: { id: string }; result: WorkspaceDiff }
   'hook.event': { params: HookEventParams; result: Ok }
   'task.add': { params: TaskAddParams; result: Task }
   'task.list': { params: TaskListParams | undefined; result: Task[] }
@@ -358,6 +384,7 @@ export const QUIET_REFUSED_METHODS = [
   'term.create',
   'workspace.openTerminal',
   'workspace.createPr',
+  'workspace.diff',
   'report.get',
   'task.add',
   'queue.open',
