@@ -12,6 +12,8 @@ import type {
   Report,
   Task,
   TermInfo,
+  Ticket,
+  TicketsSyncState,
   UpdateInfo,
   Workspace
 } from '../../preload/index.d'
@@ -35,13 +37,18 @@ export interface TermTab {
   createdAt: string
 }
 
-export type View = { kind: 'terminals'; key: string } | { kind: 'report' } | { kind: 'settings' }
+export type View =
+  | { kind: 'terminals'; key: string }
+  | { kind: 'report' }
+  | { kind: 'tickets' }
+  | { kind: 'settings' }
 
 export type DialogState =
   | { kind: 'new-workspace'; projectId: string }
   | { kind: 'remove-project'; projectId: string }
   | { kind: 'create-pr'; workspaceId: string }
   | { kind: 'remove-workspace'; workspaceId: string }
+  | { kind: 'start-ticket'; key: string; projects: Project[] }
 
 export interface QueState {
   loaded: boolean
@@ -52,6 +59,9 @@ export interface QueState {
   workspaces: Record<string, Workspace>
   terminals: TermTab[]
   tasks: Record<string, Task>
+  /** The tickets assigned to the user, as last synced, in the daemon's order. */
+  tickets: Ticket[]
+  ticketsSync: TicketsSyncState
   view: View
   /** The selected tab per terminal key. */
   activeTerm: Record<string, string>
@@ -108,6 +118,8 @@ export class QueStore {
     workspaces: {},
     terminals: [],
     tasks: {},
+    tickets: [],
+    ticketsSync: { lastSyncAt: null, error: null, count: 0 },
     view: { kind: 'terminals', key: SCRATCH },
     activeTerm: {},
     dialog: null,
@@ -170,19 +182,22 @@ export class QueStore {
 
   private async load(): Promise<void> {
     try {
-      const [projects, workspaces, terms, tasks, quiet, config] = await Promise.all([
+      const [projects, workspaces, terms, tasks, quiet, config, tickets] = await Promise.all([
         this.api.project.list(),
         this.api.workspace.list(),
         this.api.term.list(),
         this.api.task.list(),
         this.api.quiet.state(),
-        this.api.config.get()
+        this.api.config.get(),
+        this.api.tickets.list()
       ])
       const live = terms.filter((t) => t.alive)
       this.set((s) => ({
         loaded: true,
         quiet: s.quiet ?? quiet,
         config: s.config ?? config,
+        tickets: tickets.tickets,
+        ticketsSync: tickets.sync,
         projects: mergeProjects(projects, s.projects),
         workspaces: { ...byId(workspaces), ...s.workspaces },
         tasks: { ...byId(tasks), ...s.tasks },
@@ -199,7 +214,7 @@ export class QueStore {
 
   private subscribeEvents(): void {
     if (this.offs.length > 0) return
-    const { term, workspace, task, project, quiet, config } = this.api
+    const { term, workspace, task, project, quiet, config, tickets } = this.api
     this.offs.push(
       quiet.on('quiet.changed', (q) => {
         const was = isLocked(this.state.quiet)
@@ -208,6 +223,7 @@ export class QueStore {
         if (was && !isLocked(q)) void this.visit(this.currentKey())
       }),
       config.on('config.changed', (c) => this.set({ config: c })),
+      tickets.on('tickets.synced', (r) => this.set({ tickets: r.tickets, ticketsSync: r.sync })),
       project.on('project.added', (p) =>
         this.set((s) => ({ projects: mergeProjects(s.projects, [p]) }))
       ),
@@ -332,8 +348,53 @@ export class QueStore {
     this.set({ view: { kind: 'report' } })
   }
 
+  showTickets(): void {
+    this.set({ view: { kind: 'tickets' } })
+  }
+
   showSettings(): void {
     this.set({ view: { kind: 'settings' } })
+  }
+
+  /** Syncs the tickets now; a failure goes to the error banner. */
+  async syncTickets(): Promise<void> {
+    try {
+      const r = await this.api.tickets.sync()
+      this.set({ tickets: r.tickets, ticketsSync: r.sync })
+    } catch (err) {
+      this.fail(err)
+    }
+  }
+
+  /**
+   * Starts a ticket: a workspace in the learned (or chosen) project, or a loose
+   * session. Asks which project when none is known. Throws for the dialog.
+   */
+  async startTicket(
+    key: string,
+    choice?: { projectId: string } | { session: true }
+  ): Promise<void> {
+    const result = await this.api.tickets.start({ key, ...choice })
+    if (result.kind === 'needs_project') {
+      this.openDialog({ kind: 'start-ticket', key, projects: result.projects })
+    } else if (result.kind === 'workspace') {
+      this.upsertWorkspace(result.workspace)
+      this.showTerminals(result.workspace.id)
+    } else {
+      // Add the tab before the view shows, so the view does not open a second terminal.
+      await this.addTerminal(result.terminalId)
+      this.showTerminals(SCRATCH)
+      this.selectTerminal(SCRATCH, result.terminalId)
+    }
+  }
+
+  /** The Start button: like startTicket, with a failure shown in the error banner. */
+  async beginTicket(key: string): Promise<void> {
+    try {
+      await this.startTicket(key)
+    } catch (err) {
+      this.fail(err)
+    }
   }
 
   async unlock(): Promise<void> {

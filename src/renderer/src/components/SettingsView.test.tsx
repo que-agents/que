@@ -215,3 +215,52 @@ describe('SettingsView', () => {
     })
   })
 })
+
+describe('SettingsView tickets', () => {
+  it('loads the filter, interval, prompt and learned projects, and saves the jira patch', async () => {
+    const user = userEvent.setup()
+    fakeBridge.setConfig({
+      jira: {
+        jql: 'assignee = currentUser()',
+        pollMinutes: 7,
+        startPrompt: 'Plan first.',
+        projects: { APP: 'uploader', WEB: 'site' }
+      }
+    })
+    await openSettings(user)
+
+    expect(await screen.findByTestId('settings-tickets-jql')).toHaveValue(
+      'assignee = currentUser()'
+    )
+    expect(screen.getByTestId('settings-tickets-poll')).toHaveValue(7)
+    expect(screen.getByTestId('settings-tickets-prompt')).toHaveValue('Plan first.')
+    const learned = screen.getByTestId('settings-tickets-projects')
+    expect(learned).toHaveTextContent('APP → uploader')
+    expect(learned).toHaveTextContent('WEB → site')
+
+    await user.clear(screen.getByTestId('settings-tickets-poll'))
+    await user.type(screen.getByTestId('settings-tickets-poll'), '10')
+    await user.click(screen.getByTestId('settings-save'))
+
+    await waitFor(() => expect(fakeBridge.configSetCalls()).toHaveLength(1))
+    const patch = fakeBridge.configSetCalls()[0].patch
+    expect(patch).toMatchObject({
+      jira: { jql: 'assignee = currentUser()', poll_minutes: 10, start_prompt: 'Plan first.' }
+    })
+    expect(patch.jira).not.toHaveProperty('projects')
+  })
+
+  it('says when no projects are learned, and refuses an empty prompt', async () => {
+    const user = userEvent.setup()
+    await openSettings(user)
+
+    expect(await screen.findByText('No projects learned yet.')).toBeInTheDocument()
+    await user.clear(screen.getByTestId('settings-tickets-prompt'))
+    await user.click(screen.getByTestId('settings-save'))
+
+    expect(await screen.findByTestId('settings-error')).toHaveTextContent(
+      'The start prompt cannot be empty'
+    )
+    expect(fakeBridge.configSetCalls()).toEqual([])
+  })
+})
