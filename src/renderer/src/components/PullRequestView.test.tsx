@@ -25,7 +25,8 @@ function seed(pr: PullRequest | null = makePullRequest()): void {
 async function openPr(user: ReturnType<typeof userEvent.setup>): Promise<HTMLElement> {
   render(<App now={() => NOW} />)
   await user.click(await screen.findByTestId(`sidebar-workspace-${ID}-open`))
-  await user.click(await screen.findByTestId('topbar-pull-request'))
+  await user.click(await screen.findByTestId('topbar-review'))
+  await user.click(screen.getByTestId('review-tab-pr'))
   return screen.findByTestId('pr-view')
 }
 
@@ -49,6 +50,7 @@ describe('PullRequestView', () => {
       expect(decision).toHaveTextContent(word)
       expect(decision).toHaveClass('status', tone)
       expect(screen.getByTestId('pr-footer-link')).toHaveTextContent('#41 on GitHub')
+      expect(screen.queryByTestId('pr-create')).not.toBeInTheDocument()
     })
 
     it('lists the checks in the order given, with state, source, duration and link', async () => {
@@ -152,7 +154,7 @@ describe('PullRequestView', () => {
   })
 
   describe('no pull request', () => {
-    it('shows the empty state and opens the create dialog', async () => {
+    it('shows the empty state and opens the create dialog from Create draft PR', async () => {
       const user = userEvent.setup()
       seed(null)
 
@@ -161,7 +163,9 @@ describe('PullRequestView', () => {
       expect(screen.getByTestId('pr-empty')).toHaveTextContent('No pull request yet')
       expect(screen.queryByTestId('pr-footer-link')).not.toBeInTheDocument()
 
-      await user.click(screen.getByTestId('pr-create'))
+      const create = screen.getByRole('button', { name: 'Create draft PR' })
+      expect(create).toHaveAttribute('data-testid', 'pr-create')
+      await user.click(create)
 
       expect(await screen.findByTestId('dialog-create-pr')).toBeInTheDocument()
     })

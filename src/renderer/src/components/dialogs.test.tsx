@@ -67,21 +67,12 @@ describe('work-mode dialogs', () => {
     })
   })
 
-  describe('top bar', () => {
-    it('opens the worktree in the editor', async () => {
+  describe('review pane', () => {
+    it('creates a draft PR from Pull request and shows its URL', async () => {
       const user = userEvent.setup()
       await openRetry(user)
-
-      await user.click(await screen.findByRole('button', { name: 'Open in editor' }))
-
-      await waitFor(() => {
-        expect(fakeBridge.openInEditorCalls()).toEqual([retry.path])
-      })
-    })
-
-    it('creates a draft PR and shows its URL', async () => {
-      const user = userEvent.setup()
-      await openRetry(user)
+      await user.click(await screen.findByRole('button', { name: 'Review pane' }))
+      await user.click(screen.getByRole('tab', { name: 'Pull request' }))
 
       await user.click(await screen.findByRole('button', { name: 'Create draft PR' }))
       const dialog = screen.getByRole('dialog', { name: `Draft PR from ${retry.branch}` })

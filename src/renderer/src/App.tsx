@@ -83,6 +83,8 @@ function Shell(): React.JSX.Element {
         run = () => void store.splitPane(termKey, e.shiftKey ? 'column' : 'row')
       } else if (e.shiftKey) {
         return
+      } else if (key === 'b') {
+        run = () => store.toggleReview()
       } else if (key === 't') {
         run = () => void store.newTerminal(termKey)
       } else if (key === 'w') {
@@ -120,7 +122,12 @@ function Shell(): React.JSX.Element {
     <div
       className="app"
       data-testid="app-shell"
-      style={{ '--sidebar-width': `${sidebarWidth}px` } as React.CSSProperties}
+      style={
+        {
+          '--sidebar-width': `${sidebarWidth}px`,
+          '--review-width': `${review.width}px`
+        } as React.CSSProperties
+      }
     >
       <div className="window-drag" aria-hidden="true" />
       <Sidebar />
@@ -151,18 +158,7 @@ function Shell(): React.JSX.Element {
         ) : termKey !== null ? (
           <>
             <TopBar termKey={termKey} />
-            <div
-              className="main-row"
-              style={{ '--review-width': `${review.width}px` } as React.CSSProperties}
-            >
-              <Panes termKey={termKey} />
-              {review.open && (
-                <>
-                  <ReviewResizer width={review.width} onChange={(w) => store.setReviewWidth(w)} />
-                  <ReviewPane termKey={termKey} />
-                </>
-              )}
-            </div>
+            <Panes termKey={termKey} />
           </>
         ) : view.kind === 'settings' ? (
           <SettingsView />
@@ -172,6 +168,12 @@ function Shell(): React.JSX.Element {
           <ReportView />
         )}
       </main>
+      {termKey !== null && review.open && (
+        <>
+          <ReviewResizer width={review.width} onChange={(w) => store.setReviewWidth(w)} />
+          <ReviewPane termKey={termKey} />
+        </>
+      )}
       <Dialogs />
     </div>
   )

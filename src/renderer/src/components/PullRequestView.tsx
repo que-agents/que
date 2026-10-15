@@ -240,7 +240,7 @@ export default function PullRequestView({ termKey }: { termKey: string }): React
             disabled={!connected || !ws}
             onClick={() => store.openDialog({ kind: 'create-pr', workspaceId: termKey })}
           >
-            Create PR
+            Create draft PR
           </button>
         )}
         <button
