@@ -37,6 +37,7 @@ import type {
   WorkspaceCreatePrParams,
   WorkspaceDiff,
   DiffFile,
+  DiffCommit,
   WorkspaceCreatePrResult,
   WorkspaceListParams,
   WorkspaceOpenTerminalParams,
@@ -95,6 +96,7 @@ export type {
   Workspace,
   WorkspaceDiff,
   DiffFile,
+  DiffCommit,
   CheckState,
   PrCheck,
   ReviewState,
@@ -167,7 +169,7 @@ export interface WorkspaceApi {
   /** Commits what is uncommitted as `title`, pushes, and opens a draft PR. */
   createPr(params: WorkspaceCreatePrParams): Promise<WorkspaceCreatePrResult>
   /** What the workspace changed against its base, file by file. Refused in quiet hours. */
-  diff(params: { id: string }): Promise<WorkspaceDiff>
+  diff(params: { id: string; base?: string; commit?: string }): Promise<WorkspaceDiff>
   /** The pull request's conversation: comments, reviews, line comments. Null without a PR. Refused in quiet hours. */
   prThread(params: { id: string; refresh?: boolean }): Promise<PrThread | null>
   on<E extends WorkspaceEventName>(event: E, cb: (data: Events[E]) => void): () => void

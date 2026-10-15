@@ -52,6 +52,11 @@ function rpcError(code: string, message: string): Error {
   return Object.assign(new Error(message), { code })
 }
 
+/** A seeded diff's key: the workspace and the exact scope it answers for. */
+function diffKey(id: string, base?: string, commit?: string): string {
+  return JSON.stringify([id, base ?? '', commit ?? ''])
+}
+
 let idCounter = 0
 function fakeId(prefix: 'prj_' | 'ws_' | 'tsk_'): string {
   idCounter += 1
@@ -369,16 +374,23 @@ class FakeBridge {
           const ws = this.workspace(id)
           return this.createTerminal({ cwd: ws.path, cols, rows, name: ws.name }, ws.id)
         },
-        diff: async ({ id }) => {
+        diff: async ({ id, base, commit }) => {
           this.refuseIfQuiet('workspace.diff')
           const ws = this.workspace(id)
-          const seeded = this.diffs.get(id)
+          this.diffCallLog.push({ id, base: base ?? null, commit: commit ?? null })
+          const scoped = diffKey(id, base, commit)
+          const failure = this.diffFailures.get(scoped)
+          if (failure !== undefined) throw rpcError('bad_request', failure)
+          const seeded = this.diffs.get(scoped) ?? this.diffs.get(diffKey(id))
           return structuredClone(
             seeded ?? {
               workspaceId: ws.id,
               base: 'origin/main',
               head: ws.branch,
               commitsAhead: 0,
+              commits: [],
+              bases: ['origin/main'],
+              commit: null,
               files: [],
               generatedAt: new Date().toISOString()
             }
@@ -606,10 +618,25 @@ class FakeBridge {
   }
 
   private diffs = new Map<string, WorkspaceDiff>()
+  private diffFailures = new Map<string, string>()
+  private diffCallLog: Array<{ id: string; base: string | null; commit: string | null }> = []
 
-  /** What workspace.diff answers for a workspace. */
-  seedDiff(diff: WorkspaceDiff): void {
-    this.diffs.set(diff.workspaceId, structuredClone(diff))
+  /**
+   * What workspace.diff answers for a workspace: in exactly this scope (base and commit), or
+   * without one, the answer for any scope not seeded itself.
+   */
+  seedDiff(diff: WorkspaceDiff, scope: { base?: string; commit?: string } = {}): void {
+    this.diffs.set(diffKey(diff.workspaceId, scope.base, scope.commit), structuredClone(diff))
+  }
+
+  /** Makes workspace.diff in exactly this scope fail with this message (a ref the daemon refuses). */
+  failDiff(id: string, scope: { base?: string; commit?: string }, message: string): void {
+    this.diffFailures.set(diffKey(id, scope.base, scope.commit), message)
+  }
+
+  /** Every workspace.diff call, in order. */
+  diffCalls(): Array<{ id: string; base: string | null; commit: string | null }> {
+    return this.diffCallLog.map((c) => ({ ...c }))
   }
 
   private prThreads = new Map<string, PrThread>()
@@ -631,6 +658,8 @@ class FakeBridge {
   reset(): void {
     this.projects.clear()
     this.diffs.clear()
+    this.diffFailures.clear()
+    this.diffCallLog = []
     this.prThreads.clear()
     this.prThreadCallLog = []
     this.tickets.clear()

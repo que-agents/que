@@ -2,11 +2,15 @@ import { describe, expect, it } from 'vitest'
 import {
   capPatch,
   MAX_PATCH_CHARS,
+  MAX_BASES,
   mergeListings,
+  orderBases,
+  parseLog,
   parseNameStatus,
   parseNumstat,
   parsePorcelainPaths,
-  parseRenamePath
+  parseRenamePath,
+  parseRefs
 } from './diff'
 
 describe('parseRenamePath', () => {
@@ -73,5 +77,103 @@ describe('capPatch', () => {
   it('keeps a patch at the limit and drops one past it', () => {
     expect(capPatch('x'.repeat(MAX_PATCH_CHARS))).not.toBeNull()
     expect(capPatch('x'.repeat(MAX_PATCH_CHARS + 1))).toBeNull()
+  })
+})
+
+describe('parseLog', () => {
+  const A = '9f2c4e1a7b3d5f6e8a0c2b4d6f8e0a1c3b5d7f9e'
+  const B = '1b3d5f7e9a2c4e6f8b0d1a3c5e7f9b2d4f6a8c0e'
+  const C = 'c0ffee0123456789abcdef0123456789abcdef01'
+
+  it('reads three commits newest first, keeping punctuation in subjects', () => {
+    const out = [
+      `${A}\0Retry uploads: back off (2x, max 30s) & log it\0Dana Reyes\x002026-10-14T21:05:00-04:00`,
+      `${B}\0Add the uploader\0Sam Okafor\x002026-10-13T09:00:00-04:00`,
+      `${C}\0Initial commit\0Dana Reyes\x002026-10-12T08:30:00-04:00`
+    ].join('\n')
+
+    expect(parseLog(out)).toEqual([
+      {
+        sha: A,
+        shortSha: '9f2c4e1',
+        subject: 'Retry uploads: back off (2x, max 30s) & log it',
+        author: 'Dana Reyes',
+        at: '2026-10-14T21:05:00-04:00'
+      },
+      {
+        sha: B,
+        shortSha: '1b3d5f7',
+        subject: 'Add the uploader',
+        author: 'Sam Okafor',
+        at: '2026-10-13T09:00:00-04:00'
+      },
+      {
+        sha: C,
+        shortSha: 'c0ffee0',
+        subject: 'Initial commit',
+        author: 'Dana Reyes',
+        at: '2026-10-12T08:30:00-04:00'
+      }
+    ])
+  })
+
+  it('gives no commits for blank output', () => {
+    expect(parseLog('')).toEqual([])
+    expect(parseLog('\n')).toEqual([])
+  })
+})
+
+describe('parseRefs', () => {
+  it('shortens local and origin refs and drops the remote HEAD pointer', () => {
+    const out = [
+      'refs/heads/main',
+      'refs/heads/app-1432-retry-logic',
+      'refs/remotes/origin/HEAD',
+      'refs/remotes/origin/main',
+      'refs/remotes/origin/release',
+      ''
+    ].join('\n')
+    expect(parseRefs(out)).toEqual([
+      'main',
+      'app-1432-retry-logic',
+      'origin/main',
+      'origin/release'
+    ])
+  })
+
+  it('gives no refs for blank output', () => {
+    expect(parseRefs('')).toEqual([])
+    expect(parseRefs('\n')).toEqual([])
+  })
+})
+
+describe('orderBases', () => {
+  it('puts the chosen base first, then the default branch here and on origin', () => {
+    const refs = ['APP-1500-diff-view', 'main', 'release', 'origin/main', 'origin/release']
+
+    expect(orderBases('origin/main', 'main', refs)).toEqual([
+      'origin/main',
+      'main',
+      'APP-1500-diff-view',
+      'release',
+      'origin/release'
+    ])
+  })
+
+  it('keeps a chosen base that is not a branch and skips a default branch that does not exist', () => {
+    expect(orderBases('v1.2.0', 'main', ['release', 'origin/main'])).toEqual([
+      'v1.2.0',
+      'origin/main',
+      'release'
+    ])
+  })
+
+  it('offers at most 50 refs', () => {
+    const refs = Array.from({ length: 80 }, (_, i) => `feature-${i}`)
+
+    const bases = orderBases('main', 'main', ['main', ...refs])
+
+    expect(bases).toHaveLength(MAX_BASES)
+    expect(bases.slice(0, 2)).toEqual(['main', 'feature-0'])
   })
 })

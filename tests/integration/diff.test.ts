@@ -12,10 +12,11 @@ import { addBareOrigin, gitIn, makeTempRepo } from '../../src/testing/temp-repo'
 
 let daemon: TestDaemon
 let ws: Workspace
+let repo: string
 
 beforeEach(async () => {
   daemon = await startTestDaemon()
-  const repo = makeTempRepo(daemon.home)
+  repo = makeTempRepo(daemon.home)
   addBareOrigin(repo)
   const project = await daemon.client.request('project.add', { path: repo })
   const created = await daemon.client.request('workspace.create', {
@@ -123,7 +124,177 @@ describe('workspace.diff', () => {
   })
 })
 
+/**
+ * A `release` branch at main's first commit, and two commits on the workspace:
+ * the older adds uploader.ts, the newer retry.ts. Returns their shas.
+ */
+function branchTwoAhead(): { older: string; newer: string } {
+  gitIn(repo, 'branch', 'release', 'main~1')
+  fs.writeFileSync(join(ws.path, 'uploader.ts'), 'export const upload = 1\n')
+  commitAll('Add the uploader')
+  const older = gitIn(ws.path, 'rev-parse', 'HEAD')
+  fs.writeFileSync(
+    join(ws.path, 'retry.ts'),
+    'export const retries = 3\nexport const backoff = 2\n'
+  )
+  commitAll('Retry uploads: back off (2x) & give up after 3')
+  const newer = gitIn(ws.path, 'rev-parse', 'HEAD')
+  return { older, newer }
+}
+
+describe('workspace.diff commits, bases and narrowing', () => {
+  it('lists the commits newest first and the refs worth comparing against', async () => {
+    const { older, newer } = branchTwoAhead()
+
+    const d = await diff()
+
+    expect(d.commit).toBeNull()
+    expect(d.commitsAhead).toBe(2)
+    expect(d.commits).toEqual([
+      {
+        sha: newer,
+        shortSha: newer.slice(0, 7),
+        subject: 'Retry uploads: back off (2x) & give up after 3',
+        author: 'que test',
+        at: expect.stringMatching(/^2026-10-01T09:00:00(Z|[+-]\d\d:\d\d)$/)
+      },
+      {
+        sha: older,
+        shortSha: older.slice(0, 7),
+        subject: 'Add the uploader',
+        author: 'que test',
+        at: expect.stringMatching(/^2026-10-01T09:00:00/)
+      }
+    ])
+    expect(d.bases.slice(0, 2)).toEqual(['origin/main', 'main'])
+    expect(d.bases).toContain('release')
+    // Never the workspace's own branch, nor the remote's HEAD pointer in any spelling.
+    expect(d.bases).not.toContain(ws.branch)
+    expect(d.bases).not.toContain('origin/HEAD')
+    expect(d.bases).not.toContain('origin')
+  })
+
+  it('compares against another base when asked', async () => {
+    branchTwoAhead()
+
+    const d = await daemon.client.request('workspace.diff', { id: ws.id, base: 'release' })
+
+    expect(d.base).toBe('release')
+    expect(d.bases[0]).toBe('release')
+    expect(d.commitsAhead).toBe(3)
+    expect(d.commits.map((c) => c.subject)).toEqual([
+      'Retry uploads: back off (2x) & give up after 3',
+      'Add the uploader',
+      'Add que.toml'
+    ])
+    expect(d.files.map((f) => [f.path, f.status])).toEqual([
+      ['que.toml', 'added'],
+      ['retry.ts', 'added'],
+      ['uploader.ts', 'added']
+    ])
+  })
+
+  it("narrows the files to one commit's own changes, leaving out the working tree", async () => {
+    const { older, newer } = branchTwoAhead()
+    fs.appendFileSync(join(ws.path, 'README.md'), 'not committed yet\n')
+    fs.writeFileSync(join(ws.path, 'scratch.txt'), 'loose\n')
+
+    const first = await daemon.client.request('workspace.diff', { id: ws.id, commit: older })
+    const second = await daemon.client.request('workspace.diff', {
+      id: ws.id,
+      commit: newer.slice(0, 7)
+    })
+
+    expect(first.commit).toBe(older)
+    expect(first.commitsAhead).toBe(2)
+    expect(first.commits).toHaveLength(2)
+    expect(first.files.map((f) => [f.path, f.status, f.additions, f.dirty])).toEqual([
+      ['uploader.ts', 'added', 1, false]
+    ])
+    expect(file(first, 'uploader.ts')?.patch).toContain('+export const upload = 1')
+    expect(second.commit).toBe(newer)
+    expect(second.files.map((f) => [f.path, f.additions, f.dirty])).toEqual([
+      ['retry.ts', 2, false]
+    ])
+  })
+
+  it('rejects a base that is not a commit', async () => {
+    await expect(
+      daemon.client.request('workspace.diff', { id: ws.id, base: 'no-such-branch' })
+    ).rejects.toMatchObject({
+      code: 'bad_request',
+      message: expect.stringContaining('no-such-branch')
+    })
+  })
+
+  it('rejects a commit that is not on the branch past the base', async () => {
+    const onMain = gitIn(repo, 'rev-parse', 'main')
+
+    await expect(
+      daemon.client.request('workspace.diff', { id: ws.id, commit: onMain })
+    ).rejects.toMatchObject({ code: 'bad_request', message: expect.stringContaining(onMain) })
+    await expect(
+      daemon.client.request('workspace.diff', { id: ws.id, commit: 'deadbeef' })
+    ).rejects.toMatchObject({ code: 'bad_request' })
+  })
+})
+
 describe('que ws diff', () => {
+  it('compares against --base and lists the commits with their age', async () => {
+    branchTwoAhead()
+
+    const text = await runCli('ws', 'diff', ws.name, '--base', 'release')
+    const json = await runCli('ws', 'diff', ws.name, '--base', 'release', '--json')
+
+    expect(text.code).toBe(0)
+    const lines = text.stdout.trim().split('\n')
+    expect(lines[0]).toBe(`${ws.branch} vs release · 3 commits ahead`)
+    expect(lines.slice(1, 4)).toEqual([
+      expect.stringMatching(
+        /^ {2}[0-9a-f]{7} Retry uploads: back off \(2x\) & give up after 3 · \d+[smhd]$/
+      ),
+      expect.stringMatching(/^ {2}[0-9a-f]{7} Add the uploader · \d+[smhd]$/),
+      expect.stringMatching(/^ {2}[0-9a-f]{7} Add que\.toml · \d+[smhd]$/)
+    ])
+    expect(lines.slice(4)).toEqual([
+      'A que.toml  +1 -0',
+      'A retry.ts  +2 -0',
+      'A uploader.ts  +1 -0'
+    ])
+    expect(JSON.parse(json.stdout)).toMatchObject({
+      base: 'release',
+      commitsAhead: 3,
+      commit: null
+    })
+  }, 30_000)
+
+  it("prints one commit's own changes with --commit", async () => {
+    const { older } = branchTwoAhead()
+
+    const text = await runCli('ws', 'diff', ws.name, '--commit', older)
+    const json = await runCli('ws', 'diff', ws.name, '--commit', older, '--json')
+
+    expect(text.code).toBe(0)
+    const lines = text.stdout.trim().split('\n')
+    expect(lines.slice(0, 2)).toEqual([
+      `${ws.branch} vs origin/main · 2 commits ahead`,
+      `commit ${older.slice(0, 7)} Add the uploader`
+    ])
+    expect(lines.at(-1)).toBe('A uploader.ts  +1 -0')
+    expect(lines).toHaveLength(5)
+    expect(JSON.parse(json.stdout)).toMatchObject({
+      commit: older,
+      files: [{ path: 'uploader.ts', dirty: false }]
+    })
+  }, 30_000)
+
+  it('fails with the reason when --commit is not on the branch', async () => {
+    const r = await runCli('ws', 'diff', ws.name, '--commit', 'deadbeef')
+
+    expect(r.code).not.toBe(0)
+    expect(r.stderr).toContain('deadbeef')
+  }, 30_000)
+
   it('prints the header, one line per file, and * for dirty ones', async () => {
     fs.appendFileSync(join(ws.path, 'README.md'), 'more\n')
     fs.writeFileSync(join(ws.path, 'new.txt'), 'a\nb\n')
@@ -135,6 +306,7 @@ describe('que ws diff', () => {
     expect(r.code).toBe(0)
     expect(r.stdout.trim().split('\n')).toEqual([
       `${ws.branch} vs origin/main · 1 commits ahead`,
+      expect.stringMatching(/^ {2}[0-9a-f]{7} Change readme, add new · \d+[smhd]$/),
       'M README.md  +1 -0',
       '? loose.txt  +1 -0 *',
       'A new.txt  +2 -0'

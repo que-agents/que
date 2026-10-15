@@ -82,6 +82,26 @@ describe('DiffView', () => {
       )
       expect(within(view).queryByTestId('diff-patch')).not.toBeInTheDocument()
     })
+
+    it('says the file has no changes when the list narrows to a commit that left it alone', async () => {
+      const user = userEvent.setup()
+      seed()
+      const commit = makeWorkspaceDiff().commits[1]
+      fakeBridge.seedDiff(
+        makeWorkspaceDiff({ workspaceId: retry.id, commit: commit.sha, files: [readme] }),
+        { commit: commit.sha }
+      )
+      const view = await openFirstDiff(user)
+      expect(within(view).getByTestId('diff-patch')).toBeInTheDocument()
+
+      await user.click(screen.getByTestId('changes-commits-menu'))
+      await user.click(screen.getByTestId(`changes-commit-${commit.sha}`))
+
+      expect(await within(view).findByTestId('diff-empty')).toHaveTextContent(
+        'No changes in src/upload/put.ts'
+      )
+      expect(within(view).queryByTestId('diff-patch')).not.toBeInTheDocument()
+    })
   })
 
   describe('errors', () => {

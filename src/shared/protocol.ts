@@ -147,12 +147,29 @@ export interface DiffFile {
   patch: string | null
 }
 
+/** One commit on the branch ahead of its base. */
+export interface DiffCommit {
+  sha: string
+  /** The first seven characters of `sha`. */
+  shortSha: string
+  subject: string
+  author: string
+  /** ISO time of the commit. */
+  at: string
+}
+
 export interface WorkspaceDiff {
   workspaceId: string
-  /** The ref the branch is compared against (origin/<default> when it exists). */
+  /** The ref the branch is compared against: the caller's `base`, else origin/<default> when it exists. */
   base: string
   head: string
   commitsAhead: number
+  /** The commits in `base..HEAD`, newest first, at most 200. */
+  commits: DiffCommit[]
+  /** Refs worth comparing against: `base` first, then the default branch here and on origin, then the other branches, at most 50. */
+  bases: string[]
+  /** The sha the files are narrowed to (that commit's own changes), or null for the whole branch and the working tree. */
+  commit: string | null
   files: DiffFile[]
   generatedAt: string
 }
@@ -352,7 +369,10 @@ export interface Methods {
   'workspace.openTerminal': { params: WorkspaceOpenTerminalParams; result: { id: string } }
   'workspace.createPr': { params: WorkspaceCreatePrParams; result: WorkspaceCreatePrResult }
   /** What the workspace changed against its base: committed and uncommitted, file by file. */
-  'workspace.diff': { params: { id: string }; result: WorkspaceDiff }
+  'workspace.diff': {
+    params: { id: string; base?: string; commit?: string }
+    result: WorkspaceDiff
+  }
   /** The pull request's conversation (comments, reviews, line comments); null without a pull request. */
   'workspace.prThread': { params: { id: string; refresh?: boolean }; result: PrThread | null }
   'hook.event': { params: HookEventParams; result: Ok }
