@@ -245,8 +245,16 @@ export interface QueTestHook {
   activeTermId(): string | null
   /** The focused pane's terminal screen. */
   screenText(): string
-  /** The panes on screen, in order. */
-  panes(): Array<{ index: number; activeTermId: string | null; focused: boolean }>
+  /**
+   * The panes on screen, in order. `activeTab` is the selected tab (a terminal id or a
+   * view id: `view:changes`, `view:pr`); `activeTermId` is null while a view tab is selected.
+   */
+  panes(): Array<{
+    index: number
+    activeTermId: string | null
+    activeTab: string | null
+    focused: boolean
+  }>
   /** The screen of any attached terminal by id ('' when it is not on screen). */
   screenTextOf(termId: string): string
   /** The tray's current title, from the main process. */
