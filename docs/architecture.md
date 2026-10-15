@@ -135,6 +135,22 @@ failed `gh` keeps the stored value and logs one line until a call succeeds
 again. A successful `workspace.createPr` and a task reaching `done` trigger an
 immediate check of that workspace.
 
+Each check run and commit status from the rollup is kept too, as
+`PullRequest.checkRuns`: name, workflow, state (failing, pending, passing,
+skipped), link and times, failing first. The `checks` summary is derived from
+them, and a run that changes counts as a change, so `workspace.updated` fires
+when a check finishes even though `updatedAt` stays put.
+
+`workspace.prThread` (`que ws pr`) answers the conversation: issue comments and
+reviews from `gh pr view <n> --json comments,reviews`, line comments from
+`gh api repos/{owner}/{repo}/pulls/<n>/comments --paginate`, parsed by
+`pr-thread.ts` and sorted oldest first. Threads are fetched on demand, never
+polled: each workspace's thread is cached with the pull request number and
+`updatedAt` it was fetched for, and reused until the tracker stores a different
+one (or the caller passes `refresh`). Concurrent calls share one fetch. A failed
+`gh` raises `gh_failed` and caches nothing; the cache entry goes when the
+workspace is removed or its pull request disappears.
+
 ## The diff view
 
 `workspace.diff` (`que ws diff`) compares a workspace against its base: `origin/<default>` when that remote ref exists, else the default branch. Everything is measured from the merge base of the base and `HEAD`, so committed and uncommitted changes appear together, and untracked files are listed too. Each file carries its status, line counts, whether it is still uncommitted, and a unified patch (null for binary files and patches over 200,000 characters). It only reads: `git diff`, `git status`, and `git ls-files`. Quiet hours refuse it like any other workspace read.

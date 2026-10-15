@@ -21,6 +21,7 @@ hand; run `npm run docs` after changing a command.
 | `que ws list [options]` | list workspaces |
 | `que ws remove [options] <workspace>` | remove a workspace: kill its terminals, run teardown, remove the worktree |
 | `que ws diff [options] <workspace>` | what a workspace changed against its base, committed and uncommitted |
+| `que ws pr [options] <workspace>` | a workspace's pull request: its checks and its conversation |
 | `que ws terminal [options] <workspace>` | print the id of the workspace's latest live terminal, opening one if needed |
 | `que status [options]` | summary and per-workspace status |
 | `que attach [options] <workspace>` | attach to the workspace's latest terminal, opening one if needed (Ctrl-] detaches) |
@@ -239,6 +240,19 @@ what a workspace changed against its base, committed and uncommitted
 
 Options:
   --json      print JSON
+  -h, --help  display help for command
+```
+
+### que ws pr
+
+```text
+Usage: que ws pr [options] <workspace>
+
+a workspace's pull request: its checks and its conversation
+
+Options:
+  --json      print JSON ({ pr, thread })
+  --refresh   fetch the conversation again instead of using the cached one
   -h, --help  display help for command
 ```
 
