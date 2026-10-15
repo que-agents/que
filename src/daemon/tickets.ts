@@ -15,7 +15,7 @@ import type {
   WorkspaceCreateParams
 } from '../shared/protocol'
 import { slugify, workspaceSlug } from '../shared/slug'
-import type { Project, Ticket, Workspace } from '../shared/types'
+import type { Project, Ticket, TicketLevel, Workspace } from '../shared/types'
 import { adfToText } from './adf-text'
 import { RpcError } from './errors'
 import type { Emit } from './status'
@@ -26,6 +26,10 @@ import { git } from './workspaces'
 const SEARCH_FIELDS = 'key,summary,status,priority,issuetype,assignee,labels'
 const VIEW_FIELDS = 'summary,description,status,priority,issuetype,labels'
 const SEARCH_LIMIT = '200'
+const PARENT_FIELDS = 'parent'
+const PARENT_BRIEF_FIELDS = 'summary,description'
+const PARENT_RECHECK_MS = 24 * 3_600_000
+const PARENT_CONCURRENCY = 4
 const FIRST_SYNC_MS = 1000
 const KV_LAST_SYNC = 'tickets.last_sync_at'
 const KV_ERROR = 'tickets.error'
@@ -34,8 +38,17 @@ type Obj = Record<string, unknown>
 const obj = (v: unknown): Obj => (typeof v === 'object' && v !== null ? (v as Obj) : {})
 const str = (v: unknown): string | null => (typeof v === 'string' && v !== '' ? v : null)
 
+/** Epic, standard or subtask, from the issue type's hierarchy level (its name as a fallback). */
+export function levelOf(issuetype: unknown): TicketLevel {
+  const t = obj(issuetype)
+  const level = typeof t.hierarchyLevel === 'number' ? t.hierarchyLevel : null
+  if (t.subtask === true || (level !== null && level < 0)) return 'subtask'
+  if ((level !== null && level >= 1) || str(t.name)?.toLowerCase() === 'epic') return 'epic'
+  return 'standard'
+}
+
 /** One issue from `acli jira workitem search/view --json`, or null without a key and summary. */
-export function parseIssue(raw: unknown, syncedAt: string): Ticket | null {
+export function parseIssue(raw: unknown, syncedAt: string, site = ''): Ticket | null {
   const issue = obj(raw)
   const fields = obj(issue.fields)
   const key = str(issue.key)
@@ -43,13 +56,6 @@ export function parseIssue(raw: unknown, syncedAt: string): Ticket | null {
   if (!key || !summary) return null
   const status = obj(fields.status)
   const category = obj(status.statusCategory).key
-  let url = ''
-  try {
-    const self = str(issue.self)
-    if (self) url = `https://${new URL(self).host}/browse/${key}`
-  } catch {
-    // No usable `self`: no link.
-  }
   const project = obj(fields.project)
   const prefix = key.split('-')[0]
   const labels = Array.isArray(fields.labels)
@@ -65,10 +71,13 @@ export function parseIssue(raw: unknown, syncedAt: string): Ticket | null {
         : 'unknown',
     priority: str(obj(fields.priority).name),
     type: str(obj(fields.issuetype).name) ?? 'Task',
+    level: levelOf(fields.issuetype),
+    parentKey: null,
+    assigned: true,
     assignee: str(obj(fields.assignee).displayName),
     projectKey: str(project.key) ?? prefix,
     projectName: str(project.name) ?? str(project.key) ?? prefix,
-    url,
+    url: site ? `https://${site}/browse/${key}` : '',
     labels,
     updatedAt: str(fields.updated),
     syncedAt,
@@ -77,7 +86,11 @@ export function parseIssue(raw: unknown, syncedAt: string): Ticket | null {
 }
 
 /** The brief a workspace's `.que/ticket.md` holds. */
-export function renderBrief(ticket: Ticket, description: string): string {
+export function renderBrief(
+  ticket: Ticket,
+  description: string,
+  parent?: { key: string; summary: string; isEpic: boolean; description: string }
+): string {
   const lines = [
     `# ${ticket.key} ${ticket.summary}`,
     '',
@@ -86,6 +99,14 @@ export function renderBrief(ticket: Ticket, description: string): string {
   ]
   if (ticket.labels.length > 0) lines.push(`Labels: ${ticket.labels.join(', ')}`)
   lines.push('', '## Description', '', description.trim() || '(none)', '')
+  if (parent) {
+    lines.push(
+      `## ${parent.isEpic ? 'Epic' : 'Parent'} ${parent.key}: ${parent.summary}`,
+      '',
+      parent.description.trim() || '(none)',
+      ''
+    )
+  }
   return lines.join('\n')
 }
 
@@ -150,6 +171,7 @@ export class TicketService {
   private inflight = new Set<Promise<unknown>>()
   private running: Promise<void> | null = null
   private failing = false
+  private site = ''
   private readonly now: () => number
 
   constructor(private opts: TicketServiceOptions) {
@@ -247,6 +269,7 @@ export class TicketService {
       if (this.stopped) return
       const message = (err as Error).message
       store.setKv(KV_ERROR, message)
+      this.site = ''
       if (!this.failing) {
         this.failing = true
         this.opts.log?.(`ticket sync failed: ${message}`)
@@ -256,8 +279,12 @@ export class TicketService {
     }
     if (this.stopped) return
     const at = new Date(this.now()).toISOString()
-    const tickets = issues.flatMap((i) => parseIssue(i, at) ?? [])
-    store.upsertTickets(tickets)
+    const site = await this.siteHost()
+    const tickets = issues.flatMap((i) => parseIssue(i, at, site) ?? [])
+    const ordered = await this.withParents(tickets, at, site)
+    if (this.stopped) return
+    store.upsertTickets(ordered.tickets)
+    for (const [key, parentKey] of ordered.checked) store.setTicketParent(key, parentKey, at)
     store.deleteTicketsNotIn(tickets.map((t) => t.key))
     store.setKv(KV_ERROR, null)
     store.setKv(KV_LAST_SYNC, at)
@@ -266,6 +293,101 @@ export class TicketService {
       this.opts.log?.('ticket sync recovered')
     }
     this.opts.emit('tickets.synced', this.list())
+  }
+
+  /** The tracker's host for links: `[jira] site`, else the CLI's auth status (cached), else ''. */
+  private async siteHost(): Promise<string> {
+    const configured = this.opts.config().jira.site
+    if (configured) return configured
+    if (this.site) return this.site
+    try {
+      const out = await acli(['jira', 'auth', 'status'], this.abort.signal)
+      this.site = /^\s*Site:\s*(\S+)/m.exec(out)?.[1] ?? ''
+    } catch (err) {
+      if (!this.stopped)
+        this.opts.log?.(`reading the tracker site failed: ${(err as Error).message}`)
+    }
+    return this.site
+  }
+
+  /**
+   * Learns the parent of every ticket not checked lately, synthesizes parents the
+   * search did not return, and returns all tickets in list order (a synthesized
+   * parent just before its first child) plus the parents looked up this sync.
+   */
+  private async withParents(
+    found: Ticket[],
+    at: string,
+    site: string
+  ): Promise<{ tickets: Ticket[]; checked: Map<string, string | null> }> {
+    const { store } = this.opts
+    const inSearch = new Set(found.map((t) => t.key))
+    const now = this.now()
+    const parentOf = new Map<string, string | null>()
+    const synthesized = new Map<string, Ticket>()
+    const stale = (t: Ticket): boolean => {
+      const stored = store.getTicket(t.key)
+      const checkedAt = store.getTicketParentCheckedAt(t.key)
+      if (!checkedAt || now - Date.parse(checkedAt) > PARENT_RECHECK_MS) return true
+      const parent = stored?.parentKey
+      return !!parent && !inSearch.has(parent) && !store.getTicket(parent)
+    }
+    for (const t of found) parentOf.set(t.key, store.getTicket(t.key)?.parentKey ?? null)
+    const todo = found.filter((t) => t.level !== 'epic' && stale(t))
+    const checked = new Map<string, string | null>()
+    let next = 0
+    const worker = async (): Promise<void> => {
+      while (next < todo.length && !this.stopped) {
+        const t = todo[next++]
+        try {
+          const stdout = await acli(
+            ['jira', 'workitem', 'view', t.key, '--json', '--fields', PARENT_FIELDS],
+            this.abort.signal
+          )
+          const parent = obj(obj(JSON.parse(stdout)).fields).parent
+          const parentKey = str(obj(parent).key)
+          checked.set(t.key, parentKey)
+          parentOf.set(t.key, parentKey)
+          if (parentKey && !inSearch.has(parentKey) && !synthesized.has(parentKey)) {
+            const p = parseIssue({ key: parentKey, fields: obj(obj(parent).fields) }, at, site)
+            if (p) {
+              synthesized.set(parentKey, {
+                ...p,
+                assigned: false,
+                assignee: null,
+                updatedAt: null,
+                projectKey: parentKey.split('-')[0],
+                projectName: parentKey.split('-')[0]
+              })
+            }
+          }
+        } catch (err) {
+          if (!this.stopped) {
+            this.opts.log?.(`looking up the parent of ${t.key} failed: ${(err as Error).message}`)
+          }
+        }
+      }
+    }
+    await Promise.all(Array.from({ length: PARENT_CONCURRENCY }, worker))
+
+    const out: Ticket[] = []
+    const placed = new Set<string>()
+    for (const t of found) {
+      const parentKey = parentOf.get(t.key) ?? null
+      if (parentKey && !inSearch.has(parentKey) && !placed.has(parentKey)) {
+        const parent = synthesized.get(parentKey) ?? store.getTicket(parentKey)
+        if (parent && !parent.assigned) {
+          placed.add(parentKey)
+          out.push({
+            ...parent,
+            syncedAt: at,
+            url: site ? `https://${site}/browse/${parentKey}` : ''
+          })
+        }
+      }
+      out.push({ ...t, parentKey })
+    }
+    return { tickets: out, checked }
   }
 
   /** The id of the que project a ticket's tracker project is mapped to, or null. */
@@ -282,17 +404,40 @@ export class TicketService {
   }
 
   private async brief(ticket: Ticket): Promise<string> {
-    let description = '(could not be fetched)'
-    try {
+    const view = async (key: string, fields: string): Promise<Obj> => {
       const stdout = await acli(
-        ['jira', 'workitem', 'view', ticket.key, '--json', '--fields', VIEW_FIELDS],
+        ['jira', 'workitem', 'view', key, '--json', '--fields', fields],
         this.abort.signal
       )
-      description = adfToText(obj(obj(JSON.parse(stdout)).fields).description)
+      return obj(obj(JSON.parse(stdout)).fields)
+    }
+    let description = '(could not be fetched)'
+    try {
+      description = adfToText((await view(ticket.key, VIEW_FIELDS)).description)
     } catch (err) {
       this.opts.log?.(`fetching ${ticket.key} failed: ${(err as Error).message}`)
     }
-    return renderBrief(ticket, description)
+    let parent: Parameters<typeof renderBrief>[2]
+    if (ticket.parentKey) {
+      const known = this.opts.store.getTicket(ticket.parentKey)
+      const base = {
+        key: ticket.parentKey,
+        summary: known?.summary ?? '',
+        isEpic: known?.level === 'epic'
+      }
+      try {
+        const f = await view(ticket.parentKey, PARENT_BRIEF_FIELDS)
+        parent = {
+          ...base,
+          summary: str(f.summary) ?? base.summary,
+          description: adfToText(f.description)
+        }
+      } catch (err) {
+        this.opts.log?.(`fetching ${ticket.parentKey} failed: ${(err as Error).message}`)
+        parent = { ...base, description: '(could not be fetched)' }
+      }
+    }
+    return renderBrief(ticket, description, parent)
   }
 
   /** Starts work on a ticket: a workspace under its project, or a loose session. */
@@ -304,6 +449,12 @@ export class TicketService {
     const { store, home } = this.opts
     const ticket = store.getTicket(params.key)
     if (!ticket) throw new RpcError(ErrorCodes.NotFound, `no ticket ${params.key}`)
+    if (ticket.level === 'epic') {
+      throw new RpcError(
+        ErrorCodes.BadRequest,
+        `${ticket.key} is an epic, an overview; start one of its tickets`
+      )
+    }
     const brief = await this.brief(ticket)
 
     if (params.session) {

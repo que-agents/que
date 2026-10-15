@@ -223,6 +223,7 @@ describe('SettingsView tickets', () => {
       jira: {
         jql: 'assignee = currentUser()',
         pollMinutes: 7,
+        site: null,
         startPrompt: 'Plan first.',
         projects: { APP: 'uploader', WEB: 'site' }
       }
@@ -248,6 +249,23 @@ describe('SettingsView tickets', () => {
       jira: { jql: 'assignee = currentUser()', poll_minutes: 10, start_prompt: 'Plan first.' }
     })
     expect(patch.jira).not.toHaveProperty('projects')
+  })
+
+  it('saves the site as null when blank and as the trimmed host otherwise', async () => {
+    const user = userEvent.setup()
+    await openSettings(user)
+    const site = await screen.findByTestId('settings-jira-site')
+    expect(site).toHaveValue('')
+    expect(site).toHaveAttribute('placeholder', 'team.example.net')
+
+    await user.click(screen.getByTestId('settings-save'))
+    await waitFor(() => expect(fakeBridge.configSetCalls()).toHaveLength(1))
+    expect(fakeBridge.configSetCalls()[0].patch.jira).toMatchObject({ site: null })
+
+    await user.type(site, '  team.example.net ')
+    await user.click(screen.getByTestId('settings-save'))
+    await waitFor(() => expect(fakeBridge.configSetCalls()).toHaveLength(2))
+    expect(fakeBridge.configSetCalls()[1].patch.jira).toMatchObject({ site: 'team.example.net' })
   })
 
   it('says when no projects are learned, and refuses an empty prompt', async () => {

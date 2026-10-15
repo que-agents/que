@@ -69,7 +69,13 @@ export const DEFAULT_START_PROMPT =
   'Read .que/ticket.md, the ticket this workspace is for. Restate the goal in a sentence, look at the code it touches, and propose a plan before changing anything.'
 
 export function defaultJira(): JiraConfig {
-  return { jql: DEFAULT_JQL, pollMinutes: 5, startPrompt: DEFAULT_START_PROMPT, projects: {} }
+  return {
+    jql: DEFAULT_JQL,
+    pollMinutes: 5,
+    site: null,
+    startPrompt: DEFAULT_START_PROMPT,
+    projects: {}
+  }
 }
 
 export function defaultNotifications(): NotificationsConfig {
@@ -225,6 +231,15 @@ function parseJira(v: unknown, errors: ConfigError[]): JiraConfig {
   }
   j.jql = text('jql') ?? j.jql
   j.startPrompt = text('start_prompt') ?? j.startPrompt
+  const site = text('site')
+  if (site !== undefined) {
+    const host = site
+      .trim()
+      .replace(/^https?:\/\//, '')
+      .replace(/\/.*$/, '')
+    if (host) j.site = host
+    else errors.push({ key: 'jira.site', message: 'must be a host like team.example.net' })
+  }
   const minutes = t.poll_minutes
   if (minutes !== undefined) {
     if (typeof minutes !== 'number' || !(minutes > 0)) {
