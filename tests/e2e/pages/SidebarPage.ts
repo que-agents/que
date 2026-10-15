@@ -7,6 +7,10 @@ export class SidebarPage {
   page: Page
   root: Locator
   resizer: Locator
+  filter: Locator
+  sortButton: Locator
+  sessionsNoMatch: Locator
+  projectsNoMatch: Locator
   emptyState: Locator
   addProjectButton: Locator
   sessionsAdd: Locator
@@ -33,6 +37,10 @@ export class SidebarPage {
     this.page = page
     this.root = page.getByTestId('sidebar')
     this.resizer = page.getByTestId('sidebar-resizer')
+    this.filter = page.getByTestId('sidebar-filter')
+    this.sortButton = page.getByTestId('sidebar-sort')
+    this.sessionsNoMatch = page.getByTestId('sidebar-sessions-nomatch')
+    this.projectsNoMatch = page.getByTestId('sidebar-projects-nomatch')
     this.emptyState = page.getByTestId('sidebar-empty')
     this.addProjectButton = page.getByTestId('sidebar-add-project')
     this.sessionsAdd = page.getByTestId('sidebar-sessions-add')
