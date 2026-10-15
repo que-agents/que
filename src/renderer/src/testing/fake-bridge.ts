@@ -305,7 +305,8 @@ class FakeBridge {
             sessionId: null,
             createdAt: now,
             archivedAt: null,
-            prUrl: null
+            prUrl: null,
+            pr: null
           }
           this.workspaces.set(ws.id, ws)
           this.emit('workspace.created', { ...ws })
