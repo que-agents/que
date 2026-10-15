@@ -2,15 +2,19 @@
 // in the launched app's daemon, the workspace terminal shows up as a tab, and
 // a Claude Code session typed into it (the fake, through que's hooks wrapper)
 // reports needs input back to `que status`, and the report lists the workspace
-// as waiting.
+// as waiting. And a workspace made from a brief in the dialog: named after its
+// first line, titled with it in the sidebar (the brief on hover), and claude
+// started on the start prompt in its only terminal.
 import { expect, test } from '@playwright/test'
 import type { StatusJson } from '../../src/cli/workspaces'
+import { DEFAULT_WORKSPACE_START_PROMPT } from '../../src/shared/config'
+import type { TermInfo } from '../../src/shared/protocol'
 import type { Project, Workspace } from '../../src/shared/types'
 import { AppShellPage } from './pages/AppShellPage'
 import { ReportPage } from './pages/ReportPage'
 import { SidebarPage } from './pages/SidebarPage'
 import { TerminalPage } from './pages/TerminalPage'
-import { type LaunchedApp, launchApp } from './utils/app'
+import { type LaunchedApp, launchApp, newQueHome } from './utils/app'
 import { que, queJson } from './utils/que'
 import { makeRepo } from './utils/repo'
 
@@ -99,5 +103,64 @@ test('a claude session in a workspace terminal reports needs input to que status
     await expect(report.workspaceFacts(workspace.id)).toContainText('asked for input 1×')
     await expect(report.workspaceFacts(workspace.id)).toContainText('waiting since')
     await expect(report.totals).toContainText('1 need input')
+  })
+})
+
+test('a workspace described in a brief is named after it, titled with it, and starts claude on it', async () => {
+  const repo = makeRepo()
+  const queHome = newQueHome()
+  const brief = 'Raise the upload timeout\n\nThe upload test times out on slow CI runners.'
+  let project: Project
+  let workspace: Workspace
+  let sidebar: SidebarPage
+  let terminal: TerminalPage
+
+  await test.step('Register the project with the CLI and launch the app', async () => {
+    project = queJson<Project>(queHome, 'project', 'add', repo, '--json')
+    launched = await launchApp({ queHome })
+    sidebar = new SidebarPage(launched.window)
+    terminal = new TerminalPage(launched.window)
+    await sidebar.waitForLoad()
+    await expect(sidebar.project(project.id)).toBeVisible()
+  })
+
+  await test.step('Describe the work; the branch and folder are named from its first line', async () => {
+    await sidebar.projectAddWorkspace(project.id).click()
+    await sidebar.newWorkspaceBrief.fill(brief)
+    await expect(sidebar.newWorkspaceSlug).toHaveText('Branch and folder: raise-the-upload-timeout')
+    await expect(sidebar.newWorkspaceStart).toBeChecked()
+    await sidebar.newWorkspaceSubmit.click()
+    await expect(sidebar.newWorkspaceDialog).toHaveCount(0)
+    const created = queJson<Workspace[]>(queHome, 'ws', 'list', '--json').find(
+      (w) => w.name === 'raise-the-upload-timeout'
+    )
+    expect(created).toMatchObject({ title: 'Raise the upload timeout', brief })
+    workspace = created as Workspace
+  })
+
+  await test.step('The sidebar shows the title, and the brief on hover', async () => {
+    await expect(sidebar.workspaceName(workspace.id)).toHaveText('Raise the upload timeout')
+    await expect(sidebar.workspaceOpen(workspace.id)).toHaveAttribute(
+      'title',
+      `${brief}\n${workspace.path}`
+    )
+  })
+
+  await test.step('claude starts on the start prompt in the only terminal', async () => {
+    await expect
+      .poll(
+        () => launched.claudeCalls().some((argv) => argv.includes(DEFAULT_WORKSPACE_START_PROMPT)),
+        {
+          message: 'claude never started on the start prompt',
+          timeout: 30_000
+        }
+      )
+      .toBe(true)
+    const terms = queJson<TermInfo[]>(queHome, 'term', 'list', '--json').filter(
+      (t) => t.workspaceId === workspace.id
+    )
+    expect(terms).toHaveLength(1)
+    await expect.poll(() => terminal.activeTermId()).toBe(terms[0].id)
+    await launched.window.screenshot({ path: 'test-results/workspace-from-brief.png' })
   })
 })
