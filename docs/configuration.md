@@ -29,6 +29,7 @@ max_budget_usd = 5
 allow_bypass_permissions = false
 protected_branches = ["main", "master", "release"]
 start_prompt = "Read .que/brief.md. Restate the goal, read the relevant code, and propose a plan before editing anything."
+# instructions_file = "~/.config/que/instructions.md"   # unset: no instructions
 
 [quiet_hours]
 enabled = true
@@ -63,10 +64,11 @@ start_prompt = "Read .que/ticket.md, the ticket this workspace is for. Restate t
 | `pr_poll_seconds` | How often the daemon refreshes each workspace's pull request from GitHub (merged and closed ones every fifth time). |
 | `concurrency` | How many overnight tasks run at once while the queue is open. `que run -j` overrides it until the queue closes. |
 | `max_turns`, `max_budget_usd` | Default caps for a task (`que add --max-turns/--max-budget` override them per task). |
-| `default_permission_mode` | Permission mode for headless runs when a repo's `que.toml` sets none. |
+| `default_permission_mode` | Permission mode for headless runs and workspace sessions when a repo's `que.toml` sets none. |
 | `allow_bypass_permissions` | Must be `true`, and the repo must opt in, before a task may run with `bypassPermissions`. |
 | `protected_branches` | Branches the finisher never pushes, besides each project's default branch. |
 | `start_prompt` | The first prompt typed into `claude` when a workspace made from a brief is started (New workspace with "Start claude with this brief" on). The brief is in `.que/brief.md`. |
+| `instructions_file` | A file appended to the system prompt of every session started in a workspace (see [Instructions](#instructions)). Absolute, or starting with `~`; empty means unset. |
 | `quiet_hours.enabled` | Quiet mode on or off. |
 | `quiet_hours.default` | The nightly window, `[start, end]` in local 24-hour time. It may cross midnight. |
 | `quiet_hours.<day>` | A per-day override (`sunday` … `saturday`, keyed by the day the window starts): a window, or `"none"`. |
@@ -83,6 +85,29 @@ start_prompt = "Read .que/ticket.md, the ticket this workspace is for. Restate t
 
 Edits made during quiet hours never shorten the window in progress; pass
 `--apply-tonight` to `que config set` to apply them at once.
+
+## Instructions
+
+`instructions_file` gives a reusable policy for every session (model delegation
+rules, house conventions) a home. Set it with `que config set
+instructions_file=~/.config/que/instructions.md`, or in Settings → Instructions,
+which also edits the file itself.
+
+Every workspace terminal the daemon opens exports two variables, read from the
+current config, so new terminals see a change without a restart:
+
+| Variable | Meaning |
+| -------- | ------- |
+| `QUE_INSTRUCTIONS` | The absolute path of `instructions_file`, set whenever the key is, even before the file exists. |
+| `QUE_PERMISSION_MODE` | The repo's `que.toml` `permission_mode`, else `default_permission_mode`; absent when neither is set. `bypassPermissions` needs the same two opt-ins as a task. |
+
+Inside a workspace, que's `claude` wrapper (`<QUE_HOME>/bin/claude`) then adds
+`--append-system-prompt-file "$QUE_INSTRUCTIONS"` when the file exists, and
+`--permission-mode "$QUE_PERMISSION_MODE"` unless your own arguments (up to a
+`--`) already pass `--permission-mode` or `--dangerously-skip-permissions`.
+
+Claude Code records the system prompt on a conversation's first request, so an
+edit applies to new sessions; a resumed session picks it up after it compacts.
 
 ## The repository config: `que.toml`
 
@@ -113,4 +138,5 @@ allowed_tools = ["Bash(npm test)"]     # passed to claude as --allowedTools
 | `QUE_CONFIG` | The user config path (default `~/.config/que/config.toml`). |
 | `QUE_NODE` | The `node` that the hooks wrapper's `que` runs in development builds. |
 | `QUE_REAL_CLAUDE` | The `claude` executable workspace terminals run. The daemon sets it to the first `claude` on its own `PATH`; set it in the daemon's environment when that is not the one you want. |
+| `QUE_INSTRUCTIONS`, `QUE_PERMISSION_MODE` | Set by the daemon in workspace terminals for the `claude` wrapper; see [Instructions](#instructions). |
 | `QUE_UPDATE_CHECK` | `0` turns off the app's daily check for a newer release. |

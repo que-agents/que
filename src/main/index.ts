@@ -73,6 +73,8 @@ const ALLOWED: ReadonlySet<MethodName> = new Set<MethodName>([
   'quiet.log',
   'config.get',
   'config.set',
+  'instructions.get',
+  'instructions.set',
   'tickets.list',
   'tickets.sync',
   'tickets.start',

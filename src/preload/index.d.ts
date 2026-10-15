@@ -7,6 +7,8 @@ import type {
   ConfigGetResult,
   ConfigSetParams,
   Events,
+  InstructionsGetResult,
+  InstructionsSetParams,
   ProjectAddParams,
   ProjectRemoveParams,
   QueueOpenParams,
@@ -68,6 +70,8 @@ import type {
 export type {
   ConfigGetResult,
   ConfigSetParams,
+  InstructionsGetResult,
+  InstructionsSetParams,
   Events,
   NotificationsConfig,
   Project,
@@ -239,6 +243,13 @@ export interface ConfigApi {
   on(event: 'config.changed', cb: (data: ConfigGetResult) => void): () => void
 }
 
+/** Mirrors the daemon's instructions.* methods: the file named by instructions_file. */
+export interface InstructionsApi {
+  get(): Promise<InstructionsGetResult>
+  /** Rejects with code `not_configured` when instructions_file is unset. */
+  set(params: InstructionsSetParams): Promise<InstructionsGetResult>
+}
+
 /** Mirrors the daemon's tickets.* methods and the tickets.synced event. */
 export interface TicketsApi {
   list(): Promise<TicketsListResult>
@@ -251,6 +262,7 @@ export interface TicketsApi {
 export interface QueApi {
   quiet: QuietApi
   config: ConfigApi
+  instructions: InstructionsApi
   term: TermApi
   project: ProjectApi
   workspace: WorkspaceApi

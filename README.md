@@ -94,6 +94,7 @@ max_budget_usd = 5
 allow_bypass_permissions = false
 protected_branches = ["main", "master", "release"]
 start_prompt = "Read .que/brief.md. Restate the goal, read the relevant code, and propose a plan before editing anything."
+# instructions_file = "~/.config/que/instructions.md"   # unset: no instructions
 
 [quiet_hours]
 enabled = true

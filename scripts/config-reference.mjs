@@ -46,6 +46,7 @@ max_budget_usd = ${d.maxBudgetUsd}
 allow_bypass_permissions = ${d.allowBypassPermissions}
 protected_branches = ${toml(d.protectedBranches)}
 start_prompt = ${JSON.stringify(d.startPrompt)}
+# instructions_file = "~/.config/que/instructions.md"   # unset: no instructions
 
 [quiet_hours]
 enabled = ${d.quietHours.enabled}
