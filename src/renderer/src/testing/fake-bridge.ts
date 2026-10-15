@@ -25,9 +25,11 @@ import type {
   Workspace,
   WorkspaceDiff,
   WorkspaceDigest,
+  WorkspaceFile,
+  WorkspaceFiles,
   WorkspaceStatus
 } from '../../../preload/index.d'
-import { QUIET_REFUSED_METHODS } from '../../../shared/protocol'
+import { ErrorCodes, QUIET_REFUSED_METHODS } from '../../../shared/protocol'
 import { workspaceSlug } from '../../../shared/slug'
 import { makeQuietState, makeUserConfig } from './fixtures'
 
@@ -396,6 +398,28 @@ class FakeBridge {
             }
           )
         },
+        files: async ({ id }) => {
+          this.refuseIfQuiet('workspace.files')
+          const ws = this.workspace(id)
+          this.filesCallLog.push(id)
+          const seeded = this.files.get(id)
+          return structuredClone(
+            seeded ?? {
+              workspaceId: ws.id,
+              files: [],
+              truncated: false,
+              generatedAt: new Date().toISOString()
+            }
+          )
+        },
+        readFile: async ({ id, path }) => {
+          this.refuseIfQuiet('workspace.readFile')
+          this.workspace(id)
+          this.readFileCallLog.push({ id, path })
+          const seeded = this.fileContents.get(`${id}\0${path}`)
+          if (!seeded) throw rpcError(ErrorCodes.NotFound, `no such file: ${path}`)
+          return structuredClone(seeded)
+        },
         prThread: async ({ id, refresh }) => {
           this.refuseIfQuiet('workspace.prThread')
           this.workspace(id)
@@ -637,6 +661,31 @@ class FakeBridge {
   /** Every workspace.diff call, in order. */
   diffCalls(): Array<{ id: string; base: string | null; commit: string | null }> {
     return this.diffCallLog.map((c) => ({ ...c }))
+  }
+
+  private files = new Map<string, WorkspaceFiles>()
+  private fileContents = new Map<string, WorkspaceFile>()
+  private filesCallLog: string[] = []
+  private readFileCallLog: Array<{ id: string; path: string }> = []
+
+  /** What workspace.files answers for a workspace. */
+  seedFiles(files: WorkspaceFiles): void {
+    this.files.set(files.workspaceId, structuredClone(files))
+  }
+
+  /** What workspace.readFile answers for one path of a workspace; unseeded paths are not found. */
+  seedFile(file: WorkspaceFile): void {
+    this.fileContents.set(`${file.workspaceId}\0${file.path}`, structuredClone(file))
+  }
+
+  /** Every workspace.files call, the workspace ids in order. */
+  filesCalls(): string[] {
+    return [...this.filesCallLog]
+  }
+
+  /** Every workspace.readFile call, in order. */
+  readFileCalls(): Array<{ id: string; path: string }> {
+    return this.readFileCallLog.map((c) => ({ ...c }))
   }
 
   private prThreads = new Map<string, PrThread>()
