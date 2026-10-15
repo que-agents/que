@@ -247,7 +247,7 @@ export interface QueTestHook {
   screenText(): string
   /**
    * The panes on screen, in order. `activeTab` is the selected tab (a terminal id or a
-   * view id: `view:changes`, `view:pr`); `activeTermId` is null while a view tab is selected.
+   * diff tab id, `view:diff:<path>`); `activeTermId` is null while a diff tab is selected.
    */
   panes(): Array<{
     index: number
@@ -255,6 +255,8 @@ export interface QueTestHook {
     activeTab: string | null
     focused: boolean
   }>
+  /** The review pane at the right of the main area: open or not, its tab, its width in px. */
+  review(): { open: boolean; tab: 'changes' | 'pr'; width: number }
   /** The screen of any attached terminal by id ('' when it is not on screen). */
   screenTextOf(termId: string): string
   /** The tray's current title, from the main process. */

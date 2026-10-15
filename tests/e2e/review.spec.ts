@@ -1,10 +1,12 @@
-// Review in tabs end to end: a workspace made from the CLI with a file edited
-// in its worktree; the Changes tab opens beside its terminal tab with the
-// file's counts and patch; a split beside takes the Pull request tab; the app
-// quits and relaunches on the same home and both view tabs come back in their
-// panes; a pull request appears (through the fake GitHub CLI) and the tab fills
-// in with its checks and conversation, Refresh picks up a new comment; the top
-// bar closes the Changes tab again.
+// The review journey end to end: a workspace made from the CLI with a file
+// edited in its worktree; the top bar opens the review pane on Changes beside
+// the terminals, which stay as they are; clicking the file opens its diff as a
+// tab beside the terminal tab (once, however often it is clicked); the pane
+// drags wider; Pull request shows no pull request, then one appears (through
+// the fake GitHub CLI) with its checks and conversation, and Refresh picks up a
+// new comment; the app quits and relaunches on the same home and the pane, its
+// tab, its width and the diff tab come back; ⌘W closes the diff tab, and the
+// pane closes and opens again.
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { expect, test } from '@playwright/test'
@@ -17,7 +19,9 @@ import {
   setFakePullRequest
 } from '../../src/testing/fakes'
 import { ChangesPage } from './pages/ChangesPage'
+import { DiffPage } from './pages/DiffPage'
 import { PullRequestPage } from './pages/PullRequestPage'
+import { ReviewPage } from './pages/ReviewPage'
 import { SidebarPage } from './pages/SidebarPage'
 import { TerminalPage } from './pages/TerminalPage'
 import { type LaunchedApp, launchApp, newQueHome } from './utils/app'
@@ -30,7 +34,7 @@ test.afterEach(async () => {
   await launched?.close() // quits the app AND stops the test daemon
 })
 
-test('Changes and Pull request open as tabs beside the terminals and survive a relaunch', async () => {
+test('The review pane lists the changes beside the terminals, opens diffs as tabs, and survives a relaunch', async () => {
   const repo = makeRepo({ origin: true })
   // The tracker polls every second here, so a pull request shows up right after it is seeded.
   const queHome = newQueHome('pr_poll_seconds = 1\n[quiet_hours]\nenabled = false\n')
@@ -39,14 +43,19 @@ test('Changes and Pull request open as tabs beside the terminals and survive a r
   let workspace: Workspace
   let sidebar: SidebarPage
   let terminal: TerminalPage
+  let review: ReviewPage
   let changes: ChangesPage
+  let diff: DiffPage
   let pr: PullRequestPage
   let termId = ''
+  let widened = 0
 
   const pages = (): void => {
     sidebar = new SidebarPage(launched.window)
     terminal = new TerminalPage(launched.window)
+    review = new ReviewPage(launched.window)
     changes = new ChangesPage(launched.window)
+    diff = new DiffPage(launched.window)
     pr = new PullRequestPage(launched.window)
   }
 
@@ -65,52 +74,77 @@ test('Changes and Pull request open as tabs beside the terminals and survive a r
     termId = await terminal.waitForActiveTerminal()
   })
 
-  await test.step('Edit a file; Changes opens as a tab beside the terminal tab', async () => {
+  await test.step('Edit a file; Changes opens the review pane beside the terminal', async () => {
     writeFileSync(join(workspace.path, 'README.md'), '# uploader\n\nRetries with backoff.\n')
     await changes.toggle.click()
+    await expect(review.root).toBeVisible()
+    await expect(review.root).toHaveAttribute('data-tab', 'changes')
+    await expect(changes.toggle).toHaveAttribute('aria-pressed', 'true')
+    expect(await review.state()).toMatchObject({ open: true, tab: 'changes' })
     await expect(terminal.tab(termId)).toBeVisible()
-    await expect(terminal.viewTab('changes')).toHaveAttribute('data-active', 'true')
-    await expect(changes.root).toBeVisible()
+    await expect(terminal.viewport).toBeVisible()
+    await expect.poll(async () => (await terminal.panes())[0]?.activeTab).toBe(termId)
     await expect(changes.summary).toContainText('1 file')
     await expect(changes.file(0)).toContainText('README.md')
     await expect(changes.file(0)).toContainText('+2')
-    await expect(changes.patch).toContainText('+Retries with backoff.')
+    await expect(changes.file(0)).toHaveAttribute('data-path', 'README.md')
+  })
+
+  await test.step('Clicking the file opens its diff as a tab beside the terminal tab', async () => {
+    await changes.file(0).click()
+    await expect(diff.tab('README.md')).toHaveAttribute('data-active', 'true')
+    await expect(terminal.pane(0).diffTabs).toHaveCount(1)
+    await expect(terminal.tab(termId)).toBeVisible()
+    await expect(diff.root).toHaveAttribute('data-path', 'README.md')
+    await expect(diff.header).toContainText('README.md · +2')
+    await expect(diff.patch).toContainText('+Retries with backoff.')
+    await expect(changes.file(0)).toHaveAttribute('data-active', 'true')
+    await expect
+      .poll(async () => (await terminal.panes())[0]?.activeTab)
+      .toBe('view:diff:README.md')
     await launched.window.screenshot({ path: 'test-results/review-changes.png' })
   })
 
-  await test.step('⌘D splits beside with a new terminal in the second pane', async () => {
-    await launched.window.keyboard.press('Meta+d')
-    await expect(terminal.pane(1).root).toBeVisible()
-    await expect.poll(async () => (await terminal.panes())[1]?.activeTermId ?? null).not.toBeNull()
+  await test.step('Back on the terminal, the file again focuses the same diff tab', async () => {
+    await terminal.tabSelect(termId).click()
+    await expect(terminal.viewport).toBeVisible()
+    await expect(changes.file(0)).toHaveAttribute('data-active', 'false')
+    await changes.file(0).click()
+    await expect(diff.tabs).toHaveCount(1)
+    await expect(diff.tab('README.md')).toHaveAttribute('data-active', 'true')
+    await expect(diff.patch).toContainText('+Retries with backoff.')
   })
 
-  await test.step('Pull request opens in the focused second pane: no pull request yet', async () => {
+  await test.step('Dragging the resizer 80px left widens the pane by about 80px', async () => {
+    const before = (await review.state()).width
+    expect(before).toBe(320)
+    const box = await review.resizer.boundingBox()
+    expect(box).not.toBeNull()
+    const { x, y, width, height } = box as { x: number; y: number; width: number; height: number }
+    await launched.window.mouse.move(x + width / 2, y + height / 2)
+    await launched.window.mouse.down()
+    await launched.window.mouse.move(x + width / 2 - 80, y + height / 2, { steps: 6 })
+    await launched.window.mouse.up()
+    await expect.poll(async () => (await review.state()).width).toBeGreaterThanOrEqual(before + 76)
+    widened = (await review.state()).width
+    expect(widened).toBeLessThanOrEqual(before + 84)
+    await expect(review.resizer).toHaveAttribute('aria-valuenow', String(widened))
+    await launched.window.screenshot({ path: 'test-results/review-pane.png' })
+  })
+
+  await test.step('Pull request switches the pane over: no pull request yet', async () => {
     await pr.toggle.click()
-    await expect(terminal.pane(1).viewTab('pr')).toHaveAttribute('data-active', 'true')
+    await expect(review.root).toHaveAttribute('data-tab', 'pr')
+    await expect(review.tabPr).toHaveAttribute('aria-selected', 'true')
+    await expect(pr.toggle).toHaveAttribute('aria-pressed', 'true')
+    await expect(changes.toggle).toHaveAttribute('aria-pressed', 'false')
     await expect(pr.empty).toHaveText('No pull request yet')
     await expect(pr.create).toBeVisible()
-    await expect
-      .poll(async () => (await terminal.panes()).map((p) => p.activeTab))
-      .toEqual(['view:changes', 'view:pr'])
-    await launched.window.screenshot({ path: 'test-results/review-pull-request.png' })
+    expect(await review.state()).toMatchObject({ open: true, tab: 'pr' })
+    await expect(diff.tab('README.md')).toBeVisible()
   })
 
-  await test.step('Quit the app; relaunch on the same home: both view tabs come back', async () => {
-    await launched.app.close() // the app only, NOT launched.close(), which also stops the daemon
-    launched = await launchApp({ queHome: launched.queHome })
-    pages()
-    await sidebar.waitForLoad()
-    await sidebar.workspaceOpen(workspace.id).click()
-    await expect(terminal.pane(0).viewTab('changes')).toHaveAttribute('data-active', 'true')
-    await expect(terminal.pane(1).viewTab('pr')).toHaveAttribute('data-active', 'true')
-    await expect(terminal.tab(termId)).toBeVisible()
-    await expect(pr.empty).toBeVisible()
-    await expect
-      .poll(async () => (await terminal.panes()).map((p) => p.activeTab))
-      .toEqual(['view:changes', 'view:pr'])
-  })
-
-  await test.step('A pull request appears: its checks and conversation fill the tab', async () => {
+  await test.step('A pull request appears: its checks and conversation fill the pane', async () => {
     setFakePullRequest(prsFile, workspace.branch, {
       number: 7,
       url: 'https://github.com/rquellh/que/pull/7',
@@ -196,13 +230,38 @@ test('Changes and Pull request open as tabs beside the terminals and survive a r
     await expect(pr.comment(3)).toHaveAttribute('data-kind', 'comment')
   })
 
-  await test.step('The top bar closes the Changes tab while it is the active tab', async () => {
-    await terminal.viewTabSelect('changes').click()
-    await expect(changes.toggle).toHaveAttribute('aria-pressed', 'true')
-    await changes.toggle.click()
-    await expect(terminal.viewTab('changes')).toHaveCount(0)
-    await expect(changes.root).toHaveCount(0)
+  await test.step('Quit the app; relaunch on the same home: the pane and the diff tab come back', async () => {
+    await launched.app.close() // the app only, NOT launched.close(), which also stops the daemon
+    launched = await launchApp({ queHome: launched.queHome })
+    pages()
+    await sidebar.waitForLoad()
+    await sidebar.workspaceOpen(workspace.id).click()
+    await expect(review.root).toHaveAttribute('data-tab', 'pr')
+    expect(await review.state()).toEqual({ open: true, tab: 'pr', width: widened })
+    await expect(pr.headerLink).toContainText('#7 · open · Add retry logic')
+    await expect(terminal.pane(0).diffTabs).toHaveCount(1)
+    await expect(diff.tab('README.md')).toHaveAttribute('data-active', 'true')
+    await expect(diff.patch).toContainText('+Retries with backoff.')
+    await expect(terminal.tab(termId)).toBeVisible()
+  })
+
+  await test.step('⌘W closes the selected diff tab; the terminal tab is active again', async () => {
+    await diff.tabSelect('README.md').click()
+    await launched.window.keyboard.press('Meta+w')
+    await expect(diff.tabs).toHaveCount(0)
+    await expect(diff.root).toHaveCount(0)
     await expect.poll(async () => (await terminal.panes())[0]?.activeTab).toBe(termId)
-    await expect(terminal.pane(0).viewport).toBeVisible()
+    await expect(terminal.viewport).toBeVisible()
+    await expect(terminal.tab(termId)).toBeVisible()
+  })
+
+  await test.step('The close button closes the pane; Changes opens it again on Changes', async () => {
+    await review.close.click()
+    await expect(review.root).toHaveCount(0)
+    expect((await review.state()).open).toBe(false)
+    await changes.toggle.click()
+    await expect(review.root).toHaveAttribute('data-tab', 'changes')
+    await expect(changes.file(0)).toContainText('README.md')
+    expect(await review.state()).toEqual({ open: true, tab: 'changes', width: widened })
   })
 })

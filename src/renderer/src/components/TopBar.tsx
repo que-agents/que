@@ -1,4 +1,4 @@
-import { SCRATCH, useQue, useStore, viewId } from '../store'
+import { SCRATCH, useQue, useStore } from '../store'
 import { JoinPanesIcon, SplitBelowIcon, SplitBesideIcon } from './icons'
 import { PrChip, StatusBadge } from './StatusBadge'
 import UnlockStatus from './UnlockStatus'
@@ -6,11 +6,10 @@ import UnlockStatus from './UnlockStatus'
 /** The selected workspace (or the loose terminals) and its actions. */
 export default function TopBar({ termKey }: { termKey: string }): React.JSX.Element {
   const store = useStore()
-  const { workspaces, projects, connected } = useQue()
+  const { workspaces, projects, connected, review } = useQue()
   const ws = termKey === SCRATCH ? undefined : workspaces[termKey]
   const project = ws ? projects.find((p) => p.id === ws.projectId) : undefined
   const split = Boolean(store.layout(termKey).split)
-  const focusedTab = store.paneActiveId(termKey, store.focusedPane(termKey))
   const cwd = store.activeTab(termKey)?.cwd ?? ws?.path ?? ''
 
   return (
@@ -103,22 +102,22 @@ export default function TopBar({ termKey }: { termKey: string }): React.JSX.Elem
           <>
             <button
               type="button"
-              aria-pressed={focusedTab === viewId('changes')}
-              title="Changes: the changed files and their diffs, as a tab"
+              aria-pressed={review.open && review.tab === 'changes'}
+              title="Changes: the changed files, in the review pane"
               data-testid="topbar-changes"
               disabled={!connected}
-              onClick={() => store.toggleView(termKey, 'changes')}
+              onClick={() => store.toggleReview('changes')}
             >
               Changes
             </button>
             <button
               type="button"
-              aria-pressed={focusedTab === viewId('pr')}
-              title="Pull request: its checks and conversation, as a tab"
+              aria-pressed={review.open && review.tab === 'pr'}
+              title="Pull request: its checks and conversation, in the review pane"
               data-testid="topbar-pull-request"
               data-pr-state={ws.pr?.state ?? 'none'}
               disabled={!connected}
-              onClick={() => store.toggleView(termKey, 'pr')}
+              onClick={() => store.toggleReview('pr')}
             >
               Pull request
             </button>

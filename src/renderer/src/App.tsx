@@ -14,9 +14,12 @@ import TicketsView from './components/TicketsView'
 import Sidebar from './components/Sidebar'
 import SidebarResizer, { useSidebarWidth } from './components/SidebarResizer'
 import Panes from './components/Panes'
+import ReviewPane from './components/ReviewPane'
+import ReviewResizer from './components/ReviewResizer'
 import TopBar from './components/TopBar'
 import UpdateBanner from './components/UpdateBanner'
 import { isLocked, QueStore, StoreContext, useQue, useStore } from './store'
+import { setReviewSource } from './testHook'
 
 function Dialogs(): React.JSX.Element | null {
   const store = useStore()
@@ -58,7 +61,7 @@ function Locked(): React.JSX.Element {
 
 function Shell(): React.JSX.Element {
   const store = useStore()
-  const { view, error, dialog, connected, quiet } = useQue()
+  const { view, error, dialog, connected, quiet, review } = useQue()
   const [sidebarWidth, setSidebarWidth] = useSidebarWidth()
   const locked = isLocked(quiet)
   const termKey = view.kind === 'terminals' && !locked ? view.key : null
@@ -93,6 +96,12 @@ function Shell(): React.JSX.Element {
     window.addEventListener('keydown', onKey, true)
     return () => window.removeEventListener('keydown', onKey, true)
   }, [store, termKey, dialog])
+
+  // Tell the e2e test hook about the review pane.
+  useEffect(() => {
+    setReviewSource(() => store.getState().review)
+    return () => setReviewSource(null)
+  }, [store])
 
   // Cmd+K opens the sidebar search from anywhere (but not under a dialog); the field focuses itself.
   useEffect(() => {
@@ -142,7 +151,18 @@ function Shell(): React.JSX.Element {
         ) : termKey !== null ? (
           <>
             <TopBar termKey={termKey} />
-            <Panes termKey={termKey} />
+            <div
+              className="main-row"
+              style={{ '--review-width': `${review.width}px` } as React.CSSProperties}
+            >
+              <Panes termKey={termKey} />
+              {review.open && (
+                <>
+                  <ReviewResizer width={review.width} onChange={(w) => store.setReviewWidth(w)} />
+                  <ReviewPane termKey={termKey} />
+                </>
+              )}
+            </div>
           </>
         ) : view.kind === 'settings' ? (
           <SettingsView />
