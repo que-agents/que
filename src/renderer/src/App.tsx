@@ -98,21 +98,18 @@ function Shell(): React.JSX.Element {
     return () => window.removeEventListener('keydown', onKey, true)
   }, [store, termKey, dialog])
 
-  // Cmd+K focuses the sidebar filter from anywhere (but not under a dialog).
+  // Cmd+K opens the sidebar search from anywhere (but not under a dialog); the field focuses itself.
   useEffect(() => {
     if (dialog) return
     const onKey = (e: KeyboardEvent): void => {
       if (!e.metaKey || e.ctrlKey || e.altKey || e.shiftKey || e.key.toLowerCase() !== 'k') return
-      const input = document.querySelector<HTMLInputElement>('[data-testid="sidebar-filter"]')
-      if (!input) return
       e.preventDefault()
       e.stopPropagation()
-      input.focus()
-      input.select()
+      store.openSearch()
     }
     window.addEventListener('keydown', onKey, true)
     return () => window.removeEventListener('keydown', onKey, true)
-  }, [dialog])
+  }, [store, dialog])
 
   return (
     <div
