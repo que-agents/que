@@ -1,6 +1,6 @@
 // The morning report, as pure functions: which tasks to show, grouped by
 // outcome with durations and totals, and its plain-text rendering.
-import type { Report, ReportEntry, ReportGroup } from '../shared/protocol'
+import type { Report, ReportEntry, ReportGroup, WorkspaceDigest } from '../shared/protocol'
 import type { Task, TaskState } from '../shared/types'
 
 /** Reading order: outcomes first, what still needs a look next, stopped last. */
@@ -73,7 +73,8 @@ export function buildReport(
   tasks: readonly Task[],
   workspaces: ReadonlyMap<string, string>,
   since: string,
-  now: number
+  now: number,
+  digests: readonly WorkspaceDigest[] = []
 ): Report {
   const from = Date.parse(since)
   const groups = Object.fromEntries(REPORT_GROUPS.map((g) => [g, [] as ReportEntry[]])) as Record<
@@ -101,8 +102,16 @@ export function buildReport(
     totals.costUsd += e.costUsd
     totals.durationMs += e.durationMs ?? 0
   }
+  totals.workspaces = digests.length
+  totals.needsInput = digests.filter((d) => d.status === 'needs_input').length
   totals.costUsd = Math.round(totals.costUsd * 10_000) / 10_000
-  return { since, generatedAt: new Date(now).toISOString(), groups, workspaces: [], totals }
+  return {
+    since,
+    generatedAt: new Date(now).toISOString(),
+    groups,
+    workspaces: [...digests],
+    totals
+  }
 }
 
 /** `0s`, `45s`, `12m`, `1h 05m`; `-` when unknown. */
@@ -139,6 +148,25 @@ const HEADINGS: Record<ReportGroup, string> = {
   queued: 'Queued'
 }
 
+function clock(iso: string): string {
+  const d = new Date(iso)
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+}
+
+function digestLines(d: WorkspaceDigest): string[] {
+  const status = d.statusReason ? `${d.status} (${d.statusReason})` : d.status
+  const facts = [
+    d.workingMs > 0 ? `worked ${formatDuration(d.workingMs)}` : 'no work in this window',
+    d.needsInputCount > 0 ? `asked for input ${d.needsInputCount}×` : null,
+    d.waitingSince ? `waiting since ${clock(d.waitingSince)}` : null,
+    d.commitsAhead !== null ? `${d.commitsAhead} commits ahead` : null,
+    d.pr
+      ? `PR #${d.pr.number} ${d.pr.state}${d.pr.checks === 'failing' ? ', checks failing' : ''}`
+      : null
+  ].filter((f): f is string => f !== null)
+  return [`  ${d.name} · ${d.project} · ${status}`, `    ${facts.join(' · ')}`]
+}
+
 /** The report as plain text for `que report`, with the unlocks line when given. */
 export function formatReport(r: Report, unlocks?: string): string {
   const lines = [`que report since ${r.since}`]
@@ -159,7 +187,13 @@ export function formatReport(r: Report, unlocks?: string): string {
       if (e.prUrl) lines.push(`    ${e.prUrl}`)
     }
   }
-  if (r.totals.tasks === 0) lines.push('', 'No tasks in this window.')
+  if (r.workspaces.length > 0) {
+    lines.push('', `Workspaces (${r.workspaces.length})`)
+    for (const d of r.workspaces) lines.push(...digestLines(d))
+  }
+  if (r.totals.tasks === 0 && r.workspaces.length === 0) {
+    lines.push('', 'No tasks in this window.')
+  }
   if (unlocks) lines.push('', unlocks)
   lines.push(
     '',
