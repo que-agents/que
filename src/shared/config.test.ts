@@ -18,6 +18,7 @@ describe('parseConfig', () => {
         worktreeRoot: '/Users/dev/.que/worktrees',
         stallTimeoutMinutes: 5,
         statusPollSeconds: 10,
+        prPollSeconds: 60,
         repos: {},
         concurrency: 2,
         maxTurns: 50,
@@ -65,6 +66,7 @@ path = "/Users/dev/code/api"
         worktreeRoot: '/Volumes/work/trees',
         stallTimeoutMinutes: 0.5,
         statusPollSeconds: 30,
+        prPollSeconds: 60,
         repos: {
           uploader: { path: '/Users/dev/code/uploader', defaultBranch: 'develop' },
           api: { path: '/Users/dev/code/api', defaultBranch: undefined }

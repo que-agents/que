@@ -150,7 +150,7 @@ describe('runner and finisher', () => {
 
     expect(await waitFor(d, task.id, 'done')).toMatchObject({ reason: 'no_changes', prUrl: null })
     expect(originBranches(origin)).toEqual(['main'])
-    expect(readFakeLog(d.ghLog)).toEqual([])
+    expect(readFakeLog(d.ghLog).filter((c) => c.argv[1] !== 'list')).toEqual([])
   }, 45_000)
 
   it('fails a task whose workspace setup fails', async () => {
@@ -413,7 +413,7 @@ describe('safety', () => {
       reason: 'finisher:protected_branch'
     })
     expect(originBranches(origin)).toEqual(['main'])
-    expect(readFakeLog(d.ghLog)).toEqual([])
+    expect(readFakeLog(d.ghLog).filter((c) => c.argv[1] !== 'list')).toEqual([])
     expect(taskLog(d, task.id)).toContain('refusing to push protected branch release')
   }, 45_000)
 
@@ -436,7 +436,7 @@ describe('safety', () => {
       reason: 'finisher:protected_branch'
     })
     expect(gitIn(origin, 'rev-parse', 'trunk')).toBe(trunkBefore)
-    expect(readFakeLog(d.ghLog)).toEqual([])
+    expect(readFakeLog(d.ghLog).filter((c) => c.argv[1] !== 'list')).toEqual([])
   }, 45_000)
 
   it('downgrades bypassPermissions to acceptEdits without the config flag', async () => {

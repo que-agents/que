@@ -101,6 +101,19 @@ means stuck. `status.ts` runs those rules per workspace, persists transitions,
 and emits `workspace.status`. Nothing in the rules reads the clock, so they are
 tested exhaustively as plain functions.
 
+## Pull request tracking
+
+`prs.ts` keeps `Workspace.pr` fresh. Every `pr_poll_seconds` (default 60) it
+asks `gh pr list --head <branch> --state all --limit 1` in each unarchived,
+unprotected workspace, one call at a time; a merged or closed pull request is
+re-checked only every fifth time. `pr-state.ts` maps the answer to state
+(draft, open, merged, closed), checks (none, pending, passing, failing) and
+review decision. When the result differs from the stored one (ignoring
+`checkedAt`) it is saved in `pr_json` and `workspace.updated` is emitted. A
+failed `gh` keeps the stored value and logs one line until a call succeeds
+again. A successful `workspace.createPr` and a task reaching `done` trigger an
+immediate check of that workspace.
+
 ## The task machine
 
 An overnight task moves `queued → preparing → running → finishing → done`, and

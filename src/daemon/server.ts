@@ -36,6 +36,7 @@ import type { HostedTerminal, PtyHost, TermExtra } from './pty-host'
 import { QuietService } from './quiet'
 import { TaskQueue } from './queue'
 import { SYSTEM_PROMPT } from './runner'
+import { PrService } from './prs'
 import { StatusService } from './status'
 import { Store } from './store'
 import { WorkspaceManager, workspaceTerminalEnv } from './workspaces'
@@ -114,6 +115,7 @@ export class DaemonServer {
   readonly paths: QuePaths
   readonly store: Store
   readonly status: StatusService
+  readonly prs: PrService
   readonly workspaces: WorkspaceManager
   readonly tasks: TaskQueue
   readonly quiet: QuietService
@@ -147,13 +149,27 @@ export class DaemonServer {
       store: this.store,
       paths: this.paths,
       workspaces: this.workspaces,
-      emit,
+      emit: ((event, data) => {
+        emit(event, data)
+        if (event === 'task.status' && (data as { state: string }).state === 'done') {
+          const wsId = this.store.getTask((data as { id: string }).id)?.workspaceId
+          if (wsId) void this.prs.refresh(wsId)
+        }
+      }) as DaemonServer['broadcast'],
       config: () => this.configOrDefault(),
       killTerminals: (id) => this.killWorkspaceTerminals(id),
       socket: () => this.socketPath,
       log: (m) => this.log(m),
       tickMs: opts.queueTickMs,
       dispatchMs: opts.dispatchMs
+    })
+    this.prs = new PrService({
+      store: this.store,
+      listWorkspaces: () => this.store.listWorkspaces(),
+      projectOf: (ws) => this.workspaces.project(ws.projectId),
+      emit,
+      config: () => this.configOrDefault(),
+      log: (m) => this.log(m)
     })
     this.quiet = new QuietService({
       store: this.store,
@@ -328,6 +344,7 @@ export class DaemonServer {
     }
     this.store.setWorkspacePrUrl(ws.id, result.prUrl)
     this.broadcast('workspace.updated', this.workspaces.get(ws.id))
+    void this.prs.refresh(ws.id)
     return { prUrl: result.prUrl }
   }
 
@@ -363,6 +380,7 @@ export class DaemonServer {
         this.status.start()
         this.tasks.start()
         this.quiet.start()
+        this.prs.start()
         server.on('error', (err) => this.log(`server error: ${err.message}`))
         try {
           fs.chmodSync(socketPath, 0o600)
@@ -385,6 +403,8 @@ export class DaemonServer {
     if (!this.closed) {
       this.closed = true
       this.quiet.stop()
+      this.prs.stop()
+      await this.prs.drain()
       await this.tasks.shutdown()
       this.status.stop()
       this.workspaces.close()
