@@ -34,7 +34,7 @@ describe('que tickets', () => {
     const [header, row] = r.stdout.trim().split('\n')
     expect(header).toMatch(/^KEY\s+SUMMARY\s+STATUS\s+PRIORITY\s+UPDATED\s+WORKSPACE$/)
     expect(row).toMatch(
-      /^APP-1432\s+Add retry logic to the uploader\s+In Progress\s+Medium\s+\d+[smhd]\s+-$/
+      /^APP-1432\s+Add retry logic to the uploader\s+In Progress\s+Medium\s+-\s+-$/
     )
   })
 

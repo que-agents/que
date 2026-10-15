@@ -1,6 +1,7 @@
 // The ticket queue over the real socket: the daemon polls the fake acli
 // (issue file, QUE_FAKE_ACLI_FAIL), and starting a ticket makes a workspace,
 // a brief, and a claude terminal in it.
+import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -38,23 +39,40 @@ async function addProject() {
 }
 
 describe('syncing the queue', () => {
-  it('lists the tickets, newest updated first, and announces the sync', async () => {
+  it('lists the tickets in the search order and announces the sync', async () => {
     const synced: Events['tickets.synced'][] = []
     client.on('tickets.synced', (d) => synced.push(d))
     writeFakeTickets(daemon.acliTickets, [older, newer])
 
-    await expect.poll(keys, opts).toEqual(['APP-1432', 'APP-1100'])
+    await expect.poll(keys, opts).toEqual(['APP-1100', 'APP-1432'])
     const list = await client.request('tickets.list', {})
-    expect(list.tickets[0]).toMatchObject({
+    expect(list.tickets[1]).toMatchObject({
       url: 'https://example.atlassian.net/browse/APP-1432',
       statusCategory: 'indeterminate',
       projectKey: 'APP',
       workspaceId: null
     })
     expect(list.sync).toMatchObject({ error: null, count: 2 })
+    expect(list.tickets[1].updatedAt).toBeNull()
     expect(list.sync.lastSyncAt).not.toBeNull()
     expect(synced.some((s) => s.tickets.length === 2)).toBe(true)
     expect(readFakeLog(daemon.acliLog)[0].argv.slice(0, 3)).toEqual(['jira', 'workitem', 'search'])
+  })
+
+  it('keeps the search order when the keys sort differently, and takes the project from the key', async () => {
+    const issue = (key: string) => makeFakeIssue({ key, fields: { summary: `Ticket ${key}` } })
+    writeFakeTickets(daemon.acliTickets, [issue('APP-9'), issue('APP-1432'), issue('APP-77')])
+    await expect.poll(keys, opts).toEqual(['APP-9', 'APP-1432', 'APP-77'])
+    const list = await client.request('tickets.list', {})
+    expect(list.sync.error).toBeNull()
+    expect(list.tickets.map((t) => [t.projectKey, t.projectName])).toEqual([
+      ['APP', 'APP'],
+      ['APP', 'APP'],
+      ['APP', 'APP']
+    ])
+
+    writeFakeTickets(daemon.acliTickets, [issue('APP-77'), issue('APP-9'), issue('APP-1432')])
+    await expect.poll(keys, opts).toEqual(['APP-77', 'APP-9', 'APP-1432'])
   })
 
   it('drops a vanished ticket on the next poll, but not one with a workspace', async () => {
@@ -88,6 +106,25 @@ describe('syncing the queue', () => {
     writeFakeTickets(daemon.acliTickets, [newer])
     const r = await client.request('tickets.sync', {})
     expect(r.tickets.map((t) => t.key)).toEqual(['APP-1432'])
+  })
+})
+
+describe('the fake acli', () => {
+  it('refuses a search field the real CLI refuses, and keeps only the requested ones', () => {
+    writeFakeTickets(daemon.acliTickets, [newer])
+    const run = (fields: string) =>
+      spawnSync('acli', ['jira', 'workitem', 'search', '--json', '--fields', fields], {
+        encoding: 'utf8',
+        env: process.env
+      })
+    const refused = run('key,project,summary,updated')
+    expect(refused.status).toBe(1)
+    expect(refused.stderr.trim()).toBe("✗ Error: fields 'project, updated' are not allowed")
+
+    const ok = run('key,summary')
+    expect(ok.status).toBe(0)
+    const [issue] = JSON.parse(ok.stdout) as { key: string; fields: Record<string, unknown> }[]
+    expect(Object.keys(issue.fields)).toEqual(['summary'])
   })
 })
 
