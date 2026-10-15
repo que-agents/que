@@ -48,6 +48,11 @@ export default function SidebarResizer({
 }): React.JSX.Element {
   const drag = useRef<{ startX: number; startWidth: number } | null>(null)
 
+  const apply = (e: React.PointerEvent<HTMLHRElement>): void => {
+    if (!drag.current) return
+    onChange(drag.current.startWidth + e.clientX - drag.current.startX)
+  }
+
   const end = (e: React.PointerEvent<HTMLHRElement>): void => {
     if (!drag.current) return
     drag.current = null
@@ -74,11 +79,12 @@ export default function SidebarResizer({
         e.currentTarget.setPointerCapture?.(e.pointerId)
         document.body.classList.add('resizing')
       }}
-      onPointerMove={(e) => {
-        if (!drag.current) return
-        onChange(drag.current.startWidth + e.clientX - drag.current.startX)
+      onPointerMove={apply}
+      onPointerUp={(e) => {
+        // The last move can be coalesced away under load; the release point is final.
+        apply(e)
+        end(e)
       }}
-      onPointerUp={end}
       onPointerCancel={end}
       onDoubleClick={() => onChange(SIDEBAR_DEFAULT)}
       onKeyDown={(e) => {

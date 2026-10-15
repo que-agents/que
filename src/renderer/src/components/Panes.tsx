@@ -22,6 +22,14 @@ export function PaneDivider({
   const dragging = useRef(false)
   const row = direction === 'row'
 
+  const apply = (e: React.PointerEvent<HTMLHRElement>): void => {
+    if (!dragging.current) return
+    const box = e.currentTarget.parentElement?.getBoundingClientRect()
+    const size = row ? box?.width : box?.height
+    if (!box || !size) return
+    onChange((row ? e.clientX - box.left : e.clientY - box.top) / size)
+  }
+
   const end = (e: React.PointerEvent<HTMLHRElement>): void => {
     if (!dragging.current) return
     dragging.current = false
@@ -48,14 +56,12 @@ export function PaneDivider({
         e.currentTarget.setPointerCapture?.(e.pointerId)
         document.body.classList.add('resizing')
       }}
-      onPointerMove={(e) => {
-        if (!dragging.current) return
-        const box = e.currentTarget.parentElement?.getBoundingClientRect()
-        const size = row ? box?.width : box?.height
-        if (!box || !size) return
-        onChange((row ? e.clientX - box.left : e.clientY - box.top) / size)
+      onPointerMove={apply}
+      onPointerUp={(e) => {
+        // The last move can be coalesced away under load; the release point is final.
+        apply(e)
+        end(e)
       }}
-      onPointerUp={end}
       onPointerCancel={end}
       onDoubleClick={() => onChange(RATIO_DEFAULT)}
       onKeyDown={(e) => {
