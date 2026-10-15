@@ -7,7 +7,7 @@ import { summarize, trayTitle } from '../daemon/status-engine'
 import type { DaemonClient } from '../shared/client'
 import { formatConfigErrors, loadConfig } from '../shared/config'
 import { queHome, quePaths } from '../shared/paths'
-import type { WorkspaceStatusEvent } from '../shared/protocol'
+import type { DiffFile, WorkspaceDiff, WorkspaceStatusEvent } from '../shared/protocol'
 import type { Project, PullRequest, QuietState, Workspace } from '../shared/types'
 import { attach } from './attach'
 import {
@@ -20,6 +20,27 @@ import {
   withClient
 } from './common'
 import { describeQuietState } from './quiet'
+
+const DIFF_GLYPH: Record<DiffFile['status'], string> = {
+  added: 'A',
+  modified: 'M',
+  deleted: 'D',
+  renamed: 'R',
+  untracked: '?'
+}
+
+/** The text `que ws diff` prints. */
+export function formatDiff(d: WorkspaceDiff): string {
+  const lines = [`${d.head} vs ${d.base} · ${d.commitsAhead} commits ahead`]
+  if (d.files.length === 0) lines.push('no changes')
+  for (const f of d.files) {
+    const name = f.from ? `${f.from} → ${f.path}` : f.path
+    lines.push(
+      `${DIFF_GLYPH[f.status]} ${name}  +${f.additions} -${f.deletions}${f.dirty ? ' *' : ''}`
+    )
+  }
+  return lines.join('\n')
+}
 
 /** `-` when there is no pull request, else `#12 open` plus what needs attention. */
 export function formatPr(pr: PullRequest | null): string {
@@ -214,6 +235,17 @@ export function registerWorkspaceCommands(program: Command): void {
         const w = await findWorkspace(c, ref)
         await c.request('workspace.remove', { id: w.id, deleteBranch: opts.deleteBranch === true })
         console.log(`removed ${w.id} (${w.name})`)
+      })
+    )
+  ws.command('diff <workspace>')
+    .description('what a workspace changed against its base, committed and uncommitted')
+    .option('--json', 'print JSON')
+    .action((ref: string, opts: { json?: boolean }) =>
+      withClient(async (c) => {
+        await assertNotQuiet(c)
+        const w = await findWorkspace(c, ref)
+        const diff = await c.request('workspace.diff', { id: w.id })
+        console.log(opts.json ? JSON.stringify(diff, null, 2) : formatDiff(diff))
       })
     )
   ws.command('terminal <workspace>')
