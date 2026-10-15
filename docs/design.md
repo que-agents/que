@@ -24,9 +24,10 @@ them; nothing sets a colour, font, or radius inline.
 
 Surfaces step up by one token per layer: the sidebar is darker than the main
 area, raised things (menus, dialogs) sit one step above it. Regions are divided
-by a 1px hairline; the top bar and the sidebar's lower entries use the dashed
+by a 1px hairline; the top bar uses the dashed
 guide (`--dash`, 6px on, 6px off) instead, so the eye reads them as sections of
-one drawing rather than separate panels.
+one drawing rather than separate panels. The sidebar's bottom group (Report, Tickets, Settings) is pinned to
+the window's bottom edge above a solid hairline.
 
 ## Text
 

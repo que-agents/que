@@ -24,7 +24,7 @@ All notable changes to que are recorded here. The format follows
 - Launched from Finder, the app now resolves the login shell's PATH for the daemon, so `claude` and `gh` are found the same way they are in a terminal; `que doctor` reports what is on the daemon's PATH.
 
 ### Changed
-- The Tickets entry sits in the sidebar's bottom group, under Report.
+- The Tickets entry sits in the sidebar's bottom group with Report and Settings, which stays pinned to the bottom of the window above a solid line.
 
 - Add project is a folder-plus line icon, and the other add buttons (session,
   workspace, terminal tab) use a matching plus; icons are inline SVG.
