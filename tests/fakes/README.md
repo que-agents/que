@@ -85,7 +85,8 @@ every call. `jira auth status` prints the signed-in lines (`Site: example.atlass
 requested `--fields` (plus `id`, `key`, `self`). Like the real CLI it refuses any field outside
 `issuetype, key, assignee, priority, status, summary, labels, reporter, description` with
 `✗ Error: fields '<names>' are not allowed` and exit 1; `view` accepts any list. And
-`jira workitem view KEY` prints the matching issue or exits 1 with
+`jira workitem view KEY` prints the whole matching issue, whatever `--fields` says (so a child written with
+`fields.parent` returns it, and an issue without one returns no `parent` key; `search` never leaks `parent`) or exits 1 with
 `No work item found: KEY`. `$QUE_FAKE_ACLI_FAIL=auth` makes every call exit 1 with
 `Not authenticated. Run acli jira auth login.`; `network` makes `search` and `view`
 exit 1 with `dial tcp: connection refused`. Tests write the file with
