@@ -79,15 +79,21 @@ test('a workspace made in the sidebar runs claude, shows needs input, opens in t
     await expect.poll(() => terminal.activeTermId()).toBe(termId)
   })
 
-  await test.step('⌘K from the terminal filters the sidebar; Escape clears it', async () => {
+  await test.step('⌘K from the terminal pops the search out; Escape folds it away', async () => {
+    await expect(sidebar.search).toHaveCount(0)
     await launched.window.keyboard.press('Meta+k')
-    await expect(sidebar.filter).toBeFocused()
+    await expect(sidebar.search).toBeFocused()
     await launched.window.keyboard.type('zzz-nothing')
     await expect(sidebar.project(project.id)).toHaveCount(0)
     await expect(sidebar.projectsNoMatch).toBeVisible()
     await launched.window.keyboard.press('Escape')
-    await expect(sidebar.filter).toHaveValue('')
+    await expect(sidebar.search).toHaveCount(0)
     await expect(sidebar.workspace(workspace.id)).toBeVisible()
+    // The icon sits in the title strip, which is a window-drag region; it must still take clicks.
+    await sidebar.searchToggle.click()
+    await expect(sidebar.search).toBeFocused()
+    await sidebar.searchToggle.click()
+    await expect(sidebar.search).toHaveCount(0)
     await terminal.input.focus()
   })
 
