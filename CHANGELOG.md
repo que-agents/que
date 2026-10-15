@@ -28,6 +28,7 @@ All notable changes to que are recorded here. The format follows
 
 ### Added
 
+- The morning report, `que report` and the morning summary now cover interactive sessions: per workspace, time working, needs-input moments, whether it is still waiting, commits ahead of base, and the pull request.
 - Pull request tracking: every workspace's PR state (draft, open, merged, closed; checks; review decision) is refreshed from GitHub and shown in `que status` (the app side arrives separately).
 - The sidebar is resizable: drag the divider (180 to 520px), double-click it
   to reset, or use the arrow keys when it has focus. The width is remembered.

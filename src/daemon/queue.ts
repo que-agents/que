@@ -7,8 +7,15 @@ import { type ChildProcess, spawn } from 'node:child_process'
 import { performance } from 'node:perf_hooks'
 import type { UserConfig } from '../shared/config'
 import type { QuePaths } from '../shared/paths'
-import type { QueueState, Report, TaskAddParams, TaskListParams } from '../shared/protocol'
-import type { Task, TaskState } from '../shared/types'
+import type {
+  QueueState,
+  Report,
+  TaskAddParams,
+  TaskListParams,
+  WorkspaceDigest
+} from '../shared/protocol'
+import type { Project, Task, TaskState } from '../shared/types'
+import { buildWorkspaceDigest, sortDigests } from './digest'
 import { badRequest, conflict, notFound } from './errors'
 import { buildReport, reportSince } from './report'
 import { reapOrphan, TaskRunner } from './runner'
@@ -21,7 +28,7 @@ import {
   type TaskEvent,
   type TaskHookPayload
 } from './task-machine'
-import type { WorkspaceManager } from './workspaces'
+import { commitsAhead, type WorkspaceManager } from './workspaces'
 import { findOnPath } from './wrapper'
 
 const KV_OPEN = 'queue.open'
@@ -409,7 +416,7 @@ export class TaskQueue {
     if (!this.closed) this.o.emit('queue.state', this.state())
   }
 
-  report(since?: string): Report {
+  async report(since?: string): Promise<Report> {
     if (since !== undefined && Number.isNaN(Date.parse(since))) {
       throw badRequest('since must be an ISO time')
     }
@@ -421,6 +428,22 @@ export class TaskQueue {
       const ws = this.o.store.getWorkspace(t.workspaceId)
       if (ws) names.set(ws.id, ws.name)
     }
-    return buildReport(this.o.store.listTasks(), names, from, now)
+    const digests: WorkspaceDigest[] = []
+    for (const ws of this.o.store.listWorkspaces()) {
+      let project: Project
+      try {
+        project = this.o.workspaces.project(ws.projectId)
+      } catch {
+        continue
+      }
+      const log = this.o.store.listStatusLog(ws.id, from)
+      const digest = buildWorkspaceDigest(ws, project, log, Date.parse(from), now, {
+        commitsAhead: null
+      })
+      if (!digest) continue
+      digest.commitsAhead = await commitsAhead(ws, project)
+      digests.push(digest)
+    }
+    return buildReport(this.o.store.listTasks(), names, from, now, sortDigests(digests))
   }
 }

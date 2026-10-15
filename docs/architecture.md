@@ -101,6 +101,22 @@ means stuck. `status.ts` runs those rules per workspace, persists transitions,
 and emits `workspace.status`. Nothing in the rules reads the clock, so they are
 tested exhaustively as plain functions.
 
+## The overnight digest
+
+Every change of a workspace's status or reason is also appended to the
+`workspace_status_log` table (and its creation, as `preparing`); rows older than
+30 days are pruned as new ones arrive, and a workspace's rows go with it. The
+morning report, `que report` and the morning summary build on that log, so they
+cover interactive sessions as well as queued tasks. `digest.ts` turns one
+workspace's log rows for the window (plus the last row before it, so time already
+spent in a state when the window opened counts) into a `WorkspaceDigest`: time
+spent working, how many times it asked for input, whether it is still waiting and
+since when, how many times it got stuck, its pull request, and its commits ahead
+of base. Commits ahead are counted against `origin/<default branch>` when that
+ref exists, else the base the workspace was created from. Workspaces that did
+nothing in the window and are not working, waiting or stuck are left out; the
+rest are sorted with those needing input first, then stuck, then working.
+
 ## Pull request tracking
 
 `prs.ts` keeps `Workspace.pr` fresh. Every `pr_poll_seconds` (default 60) it
