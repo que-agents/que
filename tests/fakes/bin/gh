@@ -76,7 +76,8 @@ if (cmd === 'auth' && sub === 'status') {
         headRefName: head,
         reviewDecision: '',
         statusCheckRollup: [],
-        mergedAt: null
+        mergedAt: null,
+        updatedAt: new Date().toISOString()
       }
       fs.writeFileSync(prsFile, JSON.stringify(prs, null, 2))
     }

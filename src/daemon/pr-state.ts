@@ -57,6 +57,8 @@ export function parsePullRequest(raw: unknown, checkedAt: string): PullRequest |
     state,
     checks: checksOf(r.statusCheckRollup),
     review: reviewOf(r.reviewDecision),
+    checkRuns: [],
+    updatedAt: typeof r.updatedAt === 'string' ? r.updatedAt : null,
     checkedAt
   }
 }
@@ -70,6 +72,7 @@ export function samePullRequest(a: PullRequest | null, b: PullRequest | null): b
     a.title === b.title &&
     a.state === b.state &&
     a.checks === b.checks &&
-    a.review === b.review
+    a.review === b.review &&
+    a.updatedAt === b.updatedAt
   )
 }

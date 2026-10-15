@@ -8,7 +8,7 @@ import { parsePullRequest, samePullRequest } from './pr-state'
 import type { Emit } from './status'
 import type { Store } from './store'
 
-const FIELDS = 'number,url,title,state,isDraft,reviewDecision,statusCheckRollup,mergedAt'
+const FIELDS = 'number,url,title,state,isDraft,reviewDecision,statusCheckRollup,mergedAt,updatedAt'
 /** A merged or closed pull request is only re-checked on every Nth tick. */
 const SETTLED_EVERY = 5
 

@@ -58,6 +58,14 @@ export interface FakePr {
   reviewDecision: string
   statusCheckRollup: Array<Record<string, unknown>>
   mergedAt: string | null
+  /** When the pull request last changed (ISO); `pr create` stores the current time. */
+  updatedAt?: string
+  /** Issue comments, in the GitHub CLI's `pr view --json comments,reviews` shapes. */
+  comments?: unknown[]
+  /** Reviews, in the GitHub CLI's `pr view --json comments,reviews` shapes. */
+  reviews?: unknown[]
+  /** Line comments, in the REST `pulls/{n}/comments` shape. */
+  lineComments?: unknown[]
 }
 
 /** Reads the fake gh's pull requests, keyed by head branch; {} when there are none. */

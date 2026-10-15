@@ -50,6 +50,7 @@ const ALLOWED: ReadonlySet<MethodName> = new Set<MethodName>([
   'workspace.openTerminal',
   'workspace.createPr',
   'workspace.diff',
+  'workspace.prThread',
   'task.add',
   'task.list',
   'task.get',

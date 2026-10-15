@@ -12,6 +12,8 @@ describe('parsePullRequest', () => {
       state: 'open',
       checks: 'none',
       review: null,
+      checkRuns: [],
+      updatedAt: null,
       checkedAt: AT
     })
   })

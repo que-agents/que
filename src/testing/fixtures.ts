@@ -2,7 +2,15 @@
 // Realistic values, opaque ids, typed against the real shared types.
 import type { HookEvent, HookEventName, StreamResult } from '@shared/protocol'
 import { defaultConfig, defaultQuietHours } from '@shared/config'
-import type { QuietHoursConfig, Task, Ticket, UserConfig, Workspace } from '@shared/types'
+import type {
+  PrCheck,
+  PrThreadEntry,
+  QuietHoursConfig,
+  Task,
+  Ticket,
+  UserConfig,
+  Workspace
+} from '@shared/types'
 
 let sessionCounter = 0
 let wsCounter = 0
@@ -129,6 +137,39 @@ export function makeTicket(overrides: Partial<Ticket> = {}): Ticket {
     updatedAt: '2026-10-14T01:12:00.000Z',
     syncedAt: '2026-10-14T01:15:00.000Z',
     workspaceId: null,
+    ...overrides
+  }
+}
+
+/** One check run on a pull request's head. */
+export function makePrCheck(overrides: Partial<PrCheck> = {}): PrCheck {
+  return {
+    name: 'build',
+    source: 'CI',
+    state: 'passing',
+    url: 'https://github.com/rquellh/que/actions/runs/1',
+    startedAt: '2026-10-14T01:00:00.000Z',
+    completedAt: '2026-10-14T01:04:00.000Z',
+    ...overrides
+  }
+}
+
+let prEntryCounter = 0
+
+/** One entry of a pull request's conversation: an issue comment by default. */
+export function makePrThreadEntry(overrides: Partial<PrThreadEntry> = {}): PrThreadEntry {
+  prEntryCounter += 1
+  return {
+    id: `c${prEntryCounter}`,
+    kind: 'comment',
+    author: 'reviewer',
+    body: 'Looks good, one question about the retry cap.',
+    at: '2026-10-14T02:00:00.000Z',
+    url: `https://github.com/rquellh/que/pull/41#issuecomment-${prEntryCounter}`,
+    state: null,
+    path: null,
+    line: null,
+    hunk: null,
     ...overrides
   }
 }

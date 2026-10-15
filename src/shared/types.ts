@@ -35,6 +35,46 @@ export interface Workspace {
   pr: PullRequest | null
 }
 
+export type CheckState = 'pending' | 'passing' | 'failing' | 'skipped'
+
+/** One check run or commit status on the pull request's head. */
+export interface PrCheck {
+  name: string
+  /** The workflow or app that reported it, when known. */
+  source: string | null
+  state: CheckState
+  url: string | null
+  startedAt: string | null
+  completedAt: string | null
+}
+
+export type ReviewState = 'approved' | 'changes_requested' | 'commented' | 'dismissed' | 'pending'
+
+/** One entry of a pull request's conversation: an issue comment, a review, or a review comment on a line. */
+export interface PrThreadEntry {
+  id: string
+  kind: 'comment' | 'review' | 'line'
+  author: string
+  body: string
+  /** When it was posted (ISO). */
+  at: string
+  url: string | null
+  /** Reviews only. */
+  state: ReviewState | null
+  /** Line comments only. */
+  path: string | null
+  line: number | null
+  hunk: string | null
+}
+
+export interface PrThread {
+  workspaceId: string
+  number: number
+  /** Oldest first. */
+  entries: PrThreadEntry[]
+  fetchedAt: string
+}
+
 /** The state of a workspace's pull request, refreshed by the daemon. */
 export interface PullRequest {
   url: string
@@ -45,6 +85,10 @@ export interface PullRequest {
   checks: 'none' | 'pending' | 'passing' | 'failing'
   /** The review decision, or null when no review is required yet. */
   review: 'approved' | 'changes_requested' | 'review_required' | null
+  /** The individual check runs behind `checks`. */
+  checkRuns: PrCheck[]
+  /** When the pull request last changed on GitHub (ISO), or null when unknown. */
+  updatedAt: string | null
   /** When que last refreshed this from GitHub. */
   checkedAt: string
 }

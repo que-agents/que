@@ -3,6 +3,8 @@
 import type {
   DiffFile,
   Project,
+  PrCheck,
+  PrThreadEntry,
   PullRequest,
   QuietState,
   Task,
@@ -86,6 +88,8 @@ export function makePullRequest(overrides: Partial<PullRequest> = {}): PullReque
     state: 'draft',
     checks: 'none',
     review: null,
+    checkRuns: [],
+    updatedAt: null,
     checkedAt: '2026-10-14T01:00:00.000Z',
     ...overrides
   }
@@ -235,6 +239,39 @@ export function makeWorkspaceDiff(overrides: Partial<WorkspaceDiff> = {}): Works
     commitsAhead: 2,
     files: [makeDiffFile()],
     generatedAt: '2026-10-14T14:00:00.000Z',
+    ...overrides
+  }
+}
+
+/** One check run on a pull request's head. */
+export function makePrCheck(overrides: Partial<PrCheck> = {}): PrCheck {
+  return {
+    name: 'build',
+    source: 'CI',
+    state: 'passing',
+    url: 'https://github.com/rquellh/que/actions/runs/1',
+    startedAt: '2026-10-14T01:00:00.000Z',
+    completedAt: '2026-10-14T01:04:00.000Z',
+    ...overrides
+  }
+}
+
+let prEntryCounter = 0
+
+/** One entry of a pull request's conversation: an issue comment by default. */
+export function makePrThreadEntry(overrides: Partial<PrThreadEntry> = {}): PrThreadEntry {
+  prEntryCounter += 1
+  return {
+    id: `c${prEntryCounter}`,
+    kind: 'comment',
+    author: 'reviewer',
+    body: 'Looks good, one question about the retry cap.',
+    at: '2026-10-14T02:00:00.000Z',
+    url: `https://github.com/rquellh/que/pull/41#issuecomment-${prEntryCounter}`,
+    state: null,
+    path: null,
+    line: null,
+    hunk: null,
     ...overrides
   }
 }
