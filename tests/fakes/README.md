@@ -3,7 +3,7 @@
 `tests/fakes/bin/` holds stand-ins for the external programs que spawns. Tests put
 the directory **first on `PATH`** (`vi.stubEnv('PATH', ...)` in Vitest, `testEnv()`
 in Playwright), so the daemon, the CLI, and the app find these instead of the real
-binaries. `git` is never faked: tests use real repos in temp dirs. All four are
+binaries. `git` is never faked: tests use real repos in temp dirs. All of them are
 dependency-free Node scripts.
 
 ## `claude`
@@ -75,6 +75,18 @@ array with that branch's entry (only the requested fields) or `[]`. With
 Tests edit the file with `setFakePullRequest()` and read it with
 `readFakePullRequests()` from `src/testing/fakes.ts`.
 Read the call logs back with `readFakeLog()` from `src/testing/fakes.ts` (Vitest) or `launched.ghCalls()` (E2E).
+
+## `acli`
+
+Appends `{ "argv": [...], "cwd": "...", "ts": "..." }` to `$QUE_FAKE_ACLI_LOG` for
+every call. `jira auth status` prints the signed-in lines (`Site: example.atlassian.net`).
+`jira workitem search ... --limit N` prints the first N issues of the JSON array in
+`$QUE_FAKE_ACLI_TICKETS` (acli's shape; a missing file means `[]`), and
+`jira workitem view KEY` prints the matching issue or exits 1 with
+`No work item found: KEY`. `$QUE_FAKE_ACLI_FAIL=auth` makes every call exit 1 with
+`Not authenticated. Run acli jira auth login.`; `network` makes `search` and `view`
+exit 1 with `dial tcp: connection refused`. Tests write the file with
+`writeFakeTickets()` and build issues with `makeFakeIssue()` from `src/testing/fakes.ts`.
 
 ## `caffeinate`
 
