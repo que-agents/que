@@ -451,6 +451,7 @@ export class DaemonServer {
   }
 
   broadcast<E extends EventName>(event: E, data: Events[E]): void {
+    if (event === 'workspace.removed') this.prs?.forget((data as Events['workspace.removed']).id)
     for (const c of this.conns) c.sendEvent(event, data)
   }
 
@@ -601,6 +602,10 @@ export class DaemonServer {
       case 'workspace.diff': {
         const ws = this.workspaces.get(str(p, 'id'))
         return workspaceDiff(ws, this.workspaces.project(ws.projectId), Date.now)
+      }
+      case 'workspace.prThread': {
+        const ws = this.workspaces.get(str(p, 'id'))
+        return this.prs.thread(ws.id, optBool(p, 'refresh') === true)
       }
       case 'workspace.createPr':
         return this.createPr(str(p, 'id'), str(p, 'title'))

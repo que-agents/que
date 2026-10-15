@@ -73,7 +73,21 @@ statusCheckRollup: [], mergedAt: null }` under the current branch of its cwd, an
 array with that branch's entry (only the requested fields) or `[]`. With
 `$QUE_FAKE_GH_FAIL` set, `pr list` exits 1 printing `gh: failed (fake)` on stderr.
 Tests edit the file with `setFakePullRequest()` and read it with
-`readFakePullRequests()` from `src/testing/fakes.ts`.
+`readFakePullRequests()` from `src/testing/fakes.ts`. `pr create` also stores `updatedAt` (now).
+**The conversation.** `gh pr view <n> --json <fields>` finds the entry whose `number` is
+`n` and prints an object with the requested fields among `number,url,title,state,isDraft,
+reviewDecision,statusCheckRollup,mergedAt,updatedAt,comments,reviews` (`comments` and
+`reviews` default to `[]`); an unknown number exits 1 with `gh: no pull request #<n> (fake)`.
+`gh api repos/<owner>/<repo>/pulls/<n>/comments` (literal `{owner}`/`{repo}`, `--paginate`,
+`-X GET` and `--method GET` are fine) prints that entry's `lineComments` (default `[]`).
+Both honour `$QUE_FAKE_GH_FAIL` and are logged like every other call. Seed the data with
+the builders in `src/testing/fakes.ts`, which use GitHub's own field names:
+`fakeCheckRun({ name, conclusion?, status?, workflowName?, detailsUrl?, startedAt?, completedAt? })`
+and `fakeStatusContext({ context, state, targetUrl? })` for `statusCheckRollup`;
+`fakeComment({ author, body, createdAt?, url? })` and `fakeReview({ author, state, body?, submittedAt? })`
+for `comments` / `reviews`; `fakeLineComment({ author, body, path, line, hunk?, createdAt? })`
+for `lineComments`. A check run defaults to a completed success; times default to
+2026-10-14 around 03:00 UTC.
 Read the call logs back with `readFakeLog()` from `src/testing/fakes.ts` (Vitest) or `launched.ghCalls()` (E2E).
 
 ## `acli`

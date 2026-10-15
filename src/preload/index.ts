@@ -58,6 +58,7 @@ const api: QueApi = {
     openTerminal: (p) => call('workspace.openTerminal', p),
     createPr: (p) => call('workspace.createPr', p),
     diff: (p) => call('workspace.diff', p),
+    prThread: (p) => call('workspace.prThread', p),
     on: (event, cb) => subscribe(event, cb as (data: unknown) => void)
   },
   task: {
