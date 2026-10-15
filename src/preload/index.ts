@@ -57,6 +57,7 @@ const api: QueApi = {
     remove: (p) => call('workspace.remove', p),
     openTerminal: (p) => call('workspace.openTerminal', p),
     createPr: (p) => call('workspace.createPr', p),
+    diff: (p) => call('workspace.diff', p),
     on: (event, cb) => subscribe(event, cb as (data: unknown) => void)
   },
   task: {
