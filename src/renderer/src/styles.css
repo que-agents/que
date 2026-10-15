@@ -640,6 +640,11 @@ body.resizing {
 .topbar .title {
   font-size: 13px;
   font-weight: 600;
+  /* Shrinks to an ellipsis before the buttons do. */
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .crumb {
