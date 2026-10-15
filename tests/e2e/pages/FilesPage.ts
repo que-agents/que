@@ -15,6 +15,8 @@ export class FilesPage {
   // Every visible row, in tree order.
   rows: Locator
   row: (index: number) => Locator
+  // A directory row's count of changed files beneath it.
+  rowCount: (index: number) => Locator
   rowByPath: (path: string) => Locator
 
   constructor(page: Page) {
@@ -27,6 +29,7 @@ export class FilesPage {
     this.openEditor = page.getByTestId('files-open-editor')
     this.rows = this.root.getByRole('treeitem')
     this.row = (index) => page.getByTestId(`files-row-${index}`)
+    this.rowCount = (index) => page.getByTestId(`files-row-${index}-count`)
     this.rowByPath = (path) => page.locator(`[data-testid^="files-row-"][data-path="${path}"]`)
   }
 }
