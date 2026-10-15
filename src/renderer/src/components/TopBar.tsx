@@ -1,4 +1,5 @@
 import { SCRATCH, useQue, useStore } from '../store'
+import { JoinPanesIcon, SplitBelowIcon, SplitBesideIcon } from './icons'
 import { PrChip, StatusBadge } from './StatusBadge'
 import UnlockStatus from './UnlockStatus'
 
@@ -8,6 +9,7 @@ export default function TopBar({ termKey }: { termKey: string }): React.JSX.Elem
   const { workspaces, projects, connected } = useQue()
   const ws = termKey === SCRATCH ? undefined : workspaces[termKey]
   const project = ws ? projects.find((p) => p.id === ws.projectId) : undefined
+  const split = Boolean(store.layout(termKey).split)
   const cwd = store.activeTab(termKey)?.cwd ?? ws?.path ?? ''
 
   return (
@@ -58,26 +60,66 @@ export default function TopBar({ termKey }: { termKey: string }): React.JSX.Elem
         {cwd}
       </span>
       <UnlockStatus />
-      {ws && (
-        <div className="actions">
+      <div className="actions">
+        {split ? (
           <button
             type="button"
-            data-testid="topbar-open-editor"
+            className="ghost icon"
+            aria-label="Join panes"
+            title="Join panes: the second pane's tabs move to the first"
+            data-testid="topbar-join"
             disabled={!connected}
-            onClick={() => void store.openInEditor(ws.path)}
+            onClick={() => store.joinPanes(termKey)}
           >
-            Open in editor
+            <JoinPanesIcon />
           </button>
-          <button
-            type="button"
-            data-testid="topbar-create-pr"
-            disabled={!connected}
-            onClick={() => store.openDialog({ kind: 'create-pr', workspaceId: ws.id })}
-          >
-            Create draft PR
-          </button>
-        </div>
-      )}
+        ) : (
+          <>
+            <button
+              type="button"
+              className="ghost icon"
+              aria-label="Split beside"
+              title="Split beside (⌘D)"
+              data-testid="topbar-split-beside"
+              disabled={!connected}
+              onClick={() => void store.splitPane(termKey, 'row')}
+            >
+              <SplitBesideIcon />
+            </button>
+            <button
+              type="button"
+              className="ghost icon"
+              aria-label="Split below"
+              title="Split below (⌘⇧D)"
+              data-testid="topbar-split-below"
+              disabled={!connected}
+              onClick={() => void store.splitPane(termKey, 'column')}
+            >
+              <SplitBelowIcon />
+            </button>
+          </>
+        )}
+        {ws && (
+          <>
+            <button
+              type="button"
+              data-testid="topbar-open-editor"
+              disabled={!connected}
+              onClick={() => void store.openInEditor(ws.path)}
+            >
+              Open in editor
+            </button>
+            <button
+              type="button"
+              data-testid="topbar-create-pr"
+              disabled={!connected}
+              onClick={() => store.openDialog({ kind: 'create-pr', workspaceId: ws.id })}
+            >
+              Create draft PR
+            </button>
+          </>
+        )}
+      </div>
     </header>
   )
 }
