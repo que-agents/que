@@ -30,7 +30,7 @@ All notable changes to que are recorded here. The format follows
 ### Changed
 
 - The top bar has one review pane toggle, an icon at its right end, in place of its `Changes`, `Pull request`, `Open in editor` and `Create draft PR` buttons; `⌘B` toggles the pane too.
-- `Open in editor` lives in the review pane's Changes tab, beside Refresh.
+- The review pane's Changes header is a single line, `Commits n vs base`, with refresh and open-in-editor icons at its right end; the full counts are in its tooltip.
 - `Create draft PR` lives only in the review pane's Pull request tab, while the workspace has no pull request.
 - The review pane runs the window's full height at its right edge, like the sidebar, with the top bar beside it.
 - The Changes view no longer replaces the terminals: the list lives in the review pane and a file's diff opens as a tab in the middle.
