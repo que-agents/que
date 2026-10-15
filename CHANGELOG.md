@@ -17,6 +17,7 @@ All notable changes to que are recorded here. The format follows
 
 ### Fixed
 
+- Ticket sync asked the Jira CLI for `project` and `updated`, which its search refuses; que now requests only the allowed fields, takes the project from the key, and keeps the queue in the JQL's order.
 - Launched from Finder, the app now resolves the login shell's PATH for the daemon, so `claude` and `gh` are found the same way they are in a terminal; `que doctor` reports what is on the daemon's PATH.
 
 ### Changed
