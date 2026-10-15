@@ -7,7 +7,12 @@ import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { expect, test } from '@playwright/test'
 import type { Project, Workspace } from '../../src/shared/types'
-import { fakeParentOf, makeFakeEpic, makeFakeIssue, writeFakeTickets } from '../../src/testing/fakes'
+import {
+  fakeParentOf,
+  makeFakeEpic,
+  makeFakeIssue,
+  writeFakeTickets
+} from '../../src/testing/fakes'
 import { SidebarPage } from './pages/SidebarPage'
 import { TicketsPage } from './pages/TicketsPage'
 import { TopBarPage } from './pages/TopBarPage'

@@ -25,6 +25,7 @@ interface Form {
   morningSummary: boolean
   protectedBranches: string
   jql: string
+  site: string
   pollMinutes: string
   startPrompt: string
 }
@@ -59,6 +60,7 @@ function toForm(c: UserConfig): Form {
     morningSummary: c.notifications.morningSummary,
     protectedBranches: c.protectedBranches.join(', '),
     jql: c.jira.jql,
+    site: c.jira.site ?? '',
     pollMinutes: String(c.jira.pollMinutes),
     startPrompt: c.jira.startPrompt
   }
@@ -124,7 +126,12 @@ function patchOf(f: Form): Record<string, unknown> {
       chime_on_needs_input: f.chimeNeedsInput,
       morning_summary: f.morningSummary
     },
-    jira: { jql: f.jql, poll_minutes: Number(f.pollMinutes), start_prompt: f.startPrompt },
+    jira: {
+      jql: f.jql,
+      site: f.site.trim() === '' ? null : f.site.trim(),
+      poll_minutes: Number(f.pollMinutes),
+      start_prompt: f.startPrompt
+    },
     protected_branches: f.protectedBranches
       .split(',')
       .map((b) => b.trim())
@@ -326,6 +333,20 @@ export default function SettingsView(): React.JSX.Element {
               autoComplete="off"
               spellCheck={false}
             />
+          </label>
+          <label>
+            Site
+            <input
+              data-testid="settings-jira-site"
+              value={form.site}
+              onChange={(e) => update({ site: e.target.value })}
+              placeholder="team.example.net"
+              autoComplete="off"
+              spellCheck={false}
+            />
+            <span className="hint">
+              The tracker host for ticket links; found from the CLI when empty
+            </span>
           </label>
           <label>
             Sync every (minutes)
