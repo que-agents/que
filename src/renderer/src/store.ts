@@ -95,6 +95,51 @@ function loadReview(): ReviewState {
   }
 }
 
+/** What a workspace's diff is narrowed to: the ref it compares against, and one commit. Null: the daemon's choice, every commit. */
+export interface DiffScope {
+  base: string | null
+  commit: string | null
+}
+
+const NO_SCOPE: DiffScope = { base: null, commit: null }
+const DIFF_BASES_KEY = 'que.diffBases'
+
+/** The remembered base per workspace id; anything unreadable is dropped. */
+function loadDiffBases(): Record<string, string> {
+  try {
+    const raw = localStorage.getItem(DIFF_BASES_KEY)
+    if (!raw) return {}
+    const v = JSON.parse(raw) as unknown
+    if (!v || typeof v !== 'object' || Array.isArray(v)) return {}
+    return Object.fromEntries(
+      Object.entries(v).filter(
+        (e): e is [string, string] => typeof e[1] === 'string' && e[1] !== ''
+      )
+    )
+  } catch {
+    return {}
+  }
+}
+
+/** Remembers (or, for null, forgets) a workspace's base across launches. */
+function rememberDiffBase(id: string, base: string | null): void {
+  try {
+    const bases = loadDiffBases()
+    if (base === null) delete bases[id]
+    else bases[id] = base
+    if (Object.keys(bases).length > 0) localStorage.setItem(DIFF_BASES_KEY, JSON.stringify(bases))
+    else localStorage.removeItem(DIFF_BASES_KEY)
+  } catch {
+    // Nothing to remember into; the base still applies for this session.
+  }
+}
+
+function initialDiffScopes(): Record<string, DiffScope> {
+  return Object.fromEntries(
+    Object.entries(loadDiffBases()).map(([id, base]) => [id, { base, commit: null }])
+  )
+}
+
 export type View =
   | { kind: 'terminals'; key: string }
   | { kind: 'report' }
@@ -131,6 +176,8 @@ export interface QueState {
   diffs: Record<string, WorkspaceDiff>
   /** Per workspace: why the last diff fetch failed, or null. */
   diffErrors: Record<string, string | null>
+  /** Per workspace: the base and commit its diff is narrowed to (none: the daemon's base, every commit). The base is remembered. */
+  diffScopes: Record<string, DiffScope>
   /** The review pane: open or not, on which tab, how wide. Remembered. */
   review: ReviewState
   dialog: DialogState | null
@@ -212,6 +259,7 @@ export class QueStore {
     prThreadErrors: {},
     diffs: {},
     diffErrors: {},
+    diffScopes: initialDiffScopes(),
     review: loadReview(),
     dialog: null,
     quiet: null,
@@ -231,6 +279,8 @@ export class QueStore {
   private createdMeanwhile = new Set<string>()
   /** Fetches in flight, so a pane and a list asking at once share one request. */
   private diffLoads = new Map<string, Promise<void>>()
+  /** The latest diff fetch per workspace; an older one's answer is dropped. */
+  private diffSeq = new Map<string, number>()
   private prThreadLoads = new Map<string, Promise<void>>()
 
   constructor(
@@ -344,12 +394,14 @@ export class QueStore {
       term.onDisconnect(() => this.set({ connected: false })),
       workspace.on('workspace.created', (ws) => this.upsertWorkspace(ws)),
       workspace.on('workspace.updated', (ws) => this.upsertWorkspace(ws)),
-      workspace.on('workspace.removed', ({ id }) =>
+      workspace.on('workspace.removed', ({ id }) => {
+        if (id in this.state.diffScopes) rememberDiffBase(id, null)
         this.set((s) => ({
           workspaces: without(s.workspaces, id),
+          diffScopes: without(s.diffScopes, id),
           view: s.view.kind === 'terminals' && s.view.key === id ? scratchView() : s.view
         }))
-      ),
+      }),
       workspace.on('workspace.status', (e) => {
         const prev = this.state.workspaces[e.id]?.status
         this.set((s) => {
@@ -601,16 +653,43 @@ export class QueStore {
     return this.prThreadLoads.get(key) ?? this.fetchPrThread(key)
   }
 
-  /** Fetches a workspace's diff against its base; a failure (quiet hours too) is kept for the views. */
+  /** The base and commit a workspace's diff is narrowed to. */
+  diffScope(key: string): DiffScope {
+    return this.state.diffScopes[key] ?? NO_SCOPE
+  }
+
+  /**
+   * Fetches a workspace's diff in its scope; a failure (quiet hours too) is kept for the views.
+   * A base the daemon refuses (a branch since deleted) is forgotten when the daemon's own base works.
+   * Only the latest fetch per workspace lands, so a quick change of scope never shows a stale answer.
+   */
   fetchDiff(key: string): Promise<void> {
+    const seq = (this.diffSeq.get(key) ?? 0) + 1
+    this.diffSeq.set(key, seq)
+    const current = (): boolean => this.diffSeq.get(key) === seq
     const load = (async () => {
+      const scope = this.diffScope(key)
       try {
-        const diff = await this.api.workspace.diff({ id: key })
-        this.set((s) => ({
-          diffs: { ...s.diffs, [key]: diff },
-          diffErrors: { ...s.diffErrors, [key]: null }
-        }))
+        const diff = await this.api.workspace.diff({
+          id: key,
+          base: scope.base ?? undefined,
+          commit: scope.commit ?? undefined
+        })
+        if (current()) this.landDiff(key, diff)
       } catch (err) {
+        if (!current()) return
+        if (scope.base !== null) {
+          try {
+            const diff = await this.api.workspace.diff({ id: key })
+            if (!current()) return
+            rememberDiffBase(key, null)
+            this.set((s) => ({ diffScopes: without(s.diffScopes, key) }))
+            this.landDiff(key, diff)
+            return
+          } catch {
+            if (!current()) return
+          }
+        }
         this.set((s) => ({
           diffs: without(s.diffs, key),
           diffErrors: { ...s.diffErrors, [key]: message(err) }
@@ -618,6 +697,28 @@ export class QueStore {
       }
     })()
     return this.track(this.diffLoads, key, load)
+  }
+
+  private landDiff(key: string, diff: WorkspaceDiff): void {
+    this.set((s) => ({
+      diffs: { ...s.diffs, [key]: diff },
+      diffErrors: { ...s.diffErrors, [key]: null }
+    }))
+  }
+
+  /** Compares a workspace against another ref (null: the daemon's choice), over every commit; remembered per workspace. */
+  setDiffBase(key: string, base: string | null): Promise<void> {
+    rememberDiffBase(key, base)
+    this.set((s) => ({ diffScopes: { ...s.diffScopes, [key]: { base, commit: null } } }))
+    return this.fetchDiff(key)
+  }
+
+  /** Narrows a workspace's diff to one commit's own changes (null: every commit). Not remembered. */
+  setDiffCommit(key: string, commit: string | null): Promise<void> {
+    this.set((s) => ({
+      diffScopes: { ...s.diffScopes, [key]: { ...(s.diffScopes[key] ?? NO_SCOPE), commit } }
+    }))
+    return this.fetchDiff(key)
   }
 
   /** Fetches the diff unless it is loaded or on its way. */

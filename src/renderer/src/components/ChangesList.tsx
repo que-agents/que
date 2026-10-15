@@ -1,21 +1,33 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { GLYPH } from '../diff'
+import { formatAge } from '../format'
 import { diffId, useQue, useStore } from '../store'
 import { EditorIcon, RefreshIcon } from './icons'
+import Menu, { type MenuItem } from './Menu'
 
 /**
  * A workspace's changed files against its base, in the review pane. Clicking a
  * file (or Enter on the cursor's) opens its diff as a tab beside the terminals.
+ * The header's `Commits n` narrows the files to one commit, and `vs base` picks
+ * the ref they are compared against.
  */
 export default function ChangesList({ termKey }: { termKey: string }): React.JSX.Element {
   const store = useStore()
-  const { connected, diffs, diffErrors, workspaces } = useQue()
+  const { connected, diffs, diffErrors, diffScopes, workspaces } = useQue()
   const ws = workspaces[termKey]
   const diff = diffs[termKey] ?? null
   const error = diffErrors[termKey] ?? null
   const files = diff?.files ?? []
   const activeId = store.paneActiveId(termKey, store.focusedPane(termKey))
   const [cursor, setCursor] = useState(0)
+  const [menu, setMenu] = useState<'commits' | 'base' | null>(null)
+  const closeMenu = useCallback(() => setMenu(null), [])
+  const commitsButton = useRef<HTMLButtonElement>(null)
+  const baseButton = useRef<HTMLButtonElement>(null)
+  const chosen = diffScopes[termKey]?.commit ?? null
+  const chosenCommit = chosen ? diff?.commits.find((c) => c.sha === chosen) : undefined
+  const toggleMenu = (which: 'commits' | 'base'): void =>
+    setMenu((m) => (m === which ? null : which))
 
   useEffect(() => {
     void store.ensureDiff(termKey)
@@ -45,6 +57,30 @@ export default function ChangesList({ termKey }: { termKey: string }): React.JSX
   const adds = files.reduce((n, f) => n + f.additions, 0)
   const dels = files.reduce((n, f) => n + f.deletions, 0)
 
+  const now = store.now()
+  const commitItems: MenuItem[] = [
+    {
+      label: 'All commits',
+      testId: 'all',
+      selected: chosen === null,
+      action: () => void store.setDiffCommit(termKey, null)
+    },
+    ...(diff?.commits ?? []).map((c) => ({
+      label: `${c.shortSha} ${c.subject} · ${formatAge(c.at, now)}`,
+      title: `${c.subject} (${c.author})`,
+      testId: c.sha,
+      selected: c.sha === chosen,
+      action: () => void store.setDiffCommit(termKey, c.sha)
+    }))
+  ]
+  const baseItems: MenuItem[] = (diff?.bases ?? []).map((ref, i) => ({
+    label: ref,
+    testId: `option-${i}`,
+    dataRef: ref,
+    selected: ref === diff?.base,
+    action: () => void store.setDiffBase(termKey, ref)
+  }))
+
   return (
     <section className="changes" data-testid="changes-list" aria-label="Changes">
       <header className="changes-bar">
@@ -61,14 +97,56 @@ export default function ChangesList({ termKey }: { termKey: string }): React.JSX
         >
           {diff && (
             <>
-              <span>Commits</span>{' '}
-              <span className="muted" data-testid="changes-commits">
-                {diff.commitsAhead}
-              </span>{' '}
-              <span className="muted">vs</span> <span data-testid="changes-base">{diff.base}</span>
+              <button
+                type="button"
+                className="ghost changes-pick"
+                ref={commitsButton}
+                data-testid="changes-commits-menu"
+                aria-haspopup="menu"
+                aria-expanded={menu === 'commits'}
+                title={chosen ? (chosenCommit?.subject ?? chosen) : undefined}
+                onClick={() => toggleMenu('commits')}
+              >
+                {chosen ? 'Commit' : 'Commits'}{' '}
+                <span className="muted" data-testid="changes-commits">
+                  {chosen ? (chosenCommit?.shortSha ?? chosen.slice(0, 7)) : diff.commitsAhead}
+                </span>
+              </button>{' '}
+              <button
+                type="button"
+                className="ghost changes-pick"
+                ref={baseButton}
+                data-testid="changes-base-menu"
+                aria-haspopup="menu"
+                aria-expanded={menu === 'base'}
+                onClick={() => toggleMenu('base')}
+              >
+                <span className="muted">vs</span>{' '}
+                <span data-testid="changes-base">{diff.base}</span>
+              </button>
             </>
           )}
         </p>
+        {diff && menu === 'commits' && (
+          <Menu
+            label="Commits"
+            testId="changes-commit"
+            className="changes-menu"
+            items={commitItems}
+            anchor={commitsButton}
+            onClose={closeMenu}
+          />
+        )}
+        {diff && menu === 'base' && (
+          <Menu
+            label="Compare against"
+            testId="changes-base"
+            className="changes-menu"
+            items={baseItems}
+            anchor={baseButton}
+            onClose={closeMenu}
+          />
+        )}
         <div className="changes-actions">
           <button
             type="button"
