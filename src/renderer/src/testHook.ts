@@ -1,4 +1,5 @@
 import type { Terminal } from '@xterm/xterm'
+import { type ChimeKind, setChimePlayer } from './sound'
 
 export interface PaneInfo {
   index: number
@@ -32,9 +33,15 @@ function textOf(term: Terminal): string {
   return lines.join('\n')
 }
 
-/** Installs window.__que, only when the app was launched with QUE_E2E=1. */
+/**
+ * Installs window.__que, only when the app was launched with QUE_E2E=1. Call
+ * it before the store subscribes to daemon events: under e2e the chimes are
+ * recorded, never played, so a test run stays silent.
+ */
 export function installTestHook(): void {
   if (window.que.app.e2e !== true) return
+  const chimes: ChimeKind[] = []
+  setChimePlayer({ play: (kind) => chimes.push(kind) })
   const screenTextOf = (termId: string): string => {
     const term = mounted.get(termId)
     return term ? textOf(term) : ''
@@ -52,6 +59,7 @@ export function installTestHook(): void {
     },
     panes: () => paneSource?.() ?? [],
     screenTextOf,
-    trayTitle: () => window.que.app.trayTitle()
+    trayTitle: () => window.que.app.trayTitle(),
+    chimes: () => [...chimes]
   }
 }
