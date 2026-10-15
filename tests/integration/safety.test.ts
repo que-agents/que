@@ -182,6 +182,7 @@ const QUIET_POLICY: Record<MethodName, 'refused' | 'allowed'> = {
   'term.create': 'refused',
   'workspace.openTerminal': 'refused',
   'workspace.createPr': 'refused',
+  'workspace.diff': 'refused',
   'report.get': 'refused',
   'task.add': 'refused',
   'queue.open': 'refused',
