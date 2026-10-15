@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { GLYPH } from '../diff'
 import { diffId, useQue, useStore } from '../store'
+import { EditorIcon, RefreshIcon } from './icons'
 
 /**
  * A workspace's changed files against its base, in the review pane. Clicking a
@@ -47,31 +48,50 @@ export default function ChangesList({ termKey }: { termKey: string }): React.JSX
   return (
     <section className="changes" data-testid="changes-list" aria-label="Changes">
       <header className="changes-bar">
-        <p className="changes-summary" data-testid="changes-summary">
-          {diff &&
-            `${diff.head} vs ${diff.base} · ${diff.commitsAhead} ${
-              diff.commitsAhead === 1 ? 'commit' : 'commits'
-            } ahead · ${files.length} ${files.length === 1 ? 'file' : 'files'} · +${adds} −${dels}`}
+        <p
+          className="changes-summary"
+          data-testid="changes-summary"
+          title={
+            diff
+              ? `${diff.head} vs ${diff.base} · ${diff.commitsAhead} ${
+                  diff.commitsAhead === 1 ? 'commit' : 'commits'
+                } ahead · ${files.length} ${files.length === 1 ? 'file' : 'files'} · +${adds} −${dels}`
+              : undefined
+          }
+        >
+          {diff && (
+            <>
+              <span>Commits</span>{' '}
+              <span className="muted" data-testid="changes-commits">
+                {diff.commitsAhead}
+              </span>{' '}
+              <span className="muted">vs</span> <span data-testid="changes-base">{diff.base}</span>
+            </>
+          )}
         </p>
         <div className="changes-actions">
           <button
             type="button"
-            className="ghost"
+            className="ghost icon"
+            aria-label="Refresh"
+            title="Refresh"
             data-testid="changes-refresh"
             disabled={!connected}
             onClick={() => void store.fetchDiff(termKey)}
           >
-            Refresh
+            <RefreshIcon />
           </button>
           {ws && (
             <button
               type="button"
-              className="ghost"
+              className="ghost icon"
+              aria-label="Open in editor"
+              title="Open in editor"
               data-testid="changes-open-editor"
               disabled={!connected}
               onClick={() => void store.openInEditor(ws.path)}
             >
-              Open in editor
+              <EditorIcon />
             </button>
           )}
         </div>

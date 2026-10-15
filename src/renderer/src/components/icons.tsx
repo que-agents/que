@@ -136,3 +136,22 @@ export function CloseIcon(): React.JSX.Element {
     </svg>
   )
 }
+
+/** An open circle with an arrowhead at its gap: refresh. */
+export function RefreshIcon(): React.JSX.Element {
+  return (
+    <svg {...base} aria-hidden="true">
+      <path d="M13 8a5 5 0 1 1-1.46-3.54" />
+      <path d="M13 2.75v2.5h-2.5" />
+    </svg>
+  )
+}
+
+/** Two angle brackets: open the code in an editor. */
+export function EditorIcon(): React.JSX.Element {
+  return (
+    <svg {...base} aria-hidden="true">
+      <path d="M5.5 4.5 2 8l3.5 3.5M10.5 4.5 14 8l-3.5 3.5" />
+    </svg>
+  )
+}
