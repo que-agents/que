@@ -179,6 +179,7 @@ export function makeUserConfig(overrides: Partial<UserConfig> = {}): UserConfig 
     jira: {
       jql: 'assignee = currentUser() AND statusCategory != Done ORDER BY updated DESC',
       pollMinutes: 5,
+      site: null,
       startPrompt: 'Read .que/ticket.md and propose a plan before changing anything.',
       projects: {}
     },
@@ -195,6 +196,9 @@ export function makeTicket(overrides: Partial<Ticket> = {}): Ticket {
     statusCategory: 'indeterminate',
     priority: 'Medium',
     type: 'Story',
+    level: 'standard',
+    parentKey: null,
+    assigned: true,
     assignee: 'Ryan',
     projectKey: 'APP',
     projectName: 'Uploader',

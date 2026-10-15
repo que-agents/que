@@ -15,7 +15,7 @@ import type {
   WorkspaceCreateParams
 } from '../shared/protocol'
 import { slugify, workspaceSlug } from '../shared/slug'
-import type { Project, Ticket, Workspace } from '../shared/types'
+import type { Project, Ticket, TicketLevel, Workspace } from '../shared/types'
 import { adfToText } from './adf-text'
 import { RpcError } from './errors'
 import type { Emit } from './status'
@@ -33,6 +33,15 @@ const KV_ERROR = 'tickets.error'
 type Obj = Record<string, unknown>
 const obj = (v: unknown): Obj => (typeof v === 'object' && v !== null ? (v as Obj) : {})
 const str = (v: unknown): string | null => (typeof v === 'string' && v !== '' ? v : null)
+
+/** Epic, standard or subtask, from the issue type's hierarchy level (its name as a fallback). */
+export function levelOf(issuetype: unknown): TicketLevel {
+  const t = obj(issuetype)
+  const level = typeof t.hierarchyLevel === 'number' ? t.hierarchyLevel : null
+  if (t.subtask === true || (level !== null && level < 0)) return 'subtask'
+  if ((level !== null && level >= 1) || str(t.name)?.toLowerCase() === 'epic') return 'epic'
+  return 'standard'
+}
 
 /** One issue from `acli jira workitem search/view --json`, or null without a key and summary. */
 export function parseIssue(raw: unknown, syncedAt: string): Ticket | null {
@@ -65,6 +74,9 @@ export function parseIssue(raw: unknown, syncedAt: string): Ticket | null {
         : 'unknown',
     priority: str(obj(fields.priority).name),
     type: str(obj(fields.issuetype).name) ?? 'Task',
+    level: levelOf(fields.issuetype),
+    parentKey: null,
+    assigned: true,
     assignee: str(obj(fields.assignee).displayName),
     projectKey: str(project.key) ?? prefix,
     projectName: str(project.name) ?? str(project.key) ?? prefix,
