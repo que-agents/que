@@ -165,6 +165,8 @@ export interface UserConfig {
   worktreeRoot: string
   stallTimeoutMinutes: number
   statusPollSeconds: number
+  /** How often the daemon refreshes each workspace's pull request from GitHub. */
+  prPollSeconds: number
   /** Named repositories, so `que work -r <name>` can resolve a name. */
   repos: Record<string, RepoEntry>
   /** How many tasks run at once while the queue is open. */

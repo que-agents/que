@@ -8,7 +8,7 @@ import type { DaemonClient } from '../shared/client'
 import { formatConfigErrors, loadConfig } from '../shared/config'
 import { queHome, quePaths } from '../shared/paths'
 import type { WorkspaceStatusEvent } from '../shared/protocol'
-import type { Project, QuietState, Workspace } from '../shared/types'
+import type { Project, PullRequest, QuietState, Workspace } from '../shared/types'
 import { attach } from './attach'
 import {
   assertNotQuiet,
@@ -20,6 +20,16 @@ import {
   withClient
 } from './common'
 import { describeQuietState } from './quiet'
+
+/** `-` when there is no pull request, else `#12 open` plus what needs attention. */
+export function formatPr(pr: PullRequest | null): string {
+  if (!pr) return '-'
+  const notes = [
+    pr.checks === 'failing' ? 'checks failing' : null,
+    pr.review === 'changes_requested' ? 'changes requested' : null
+  ].filter(Boolean)
+  return `#${pr.number} ${pr.state}${notes.map((n) => `·${n}`).join('')}`
+}
 
 /** The JSON shape of `que status --json`. */
 export interface StatusJson {
@@ -37,6 +47,7 @@ export interface StatusJson {
     reason: string | null
     lastActivityAt: string | null
     sessionId: string | null
+    pr: PullRequest | null
   }>
 }
 
@@ -242,7 +253,8 @@ export function registerWorkspaceCommands(program: Command): void {
               status: w.status,
               reason: w.statusReason,
               lastActivityAt: w.lastActivityAt,
-              sessionId: w.sessionId
+              sessionId: w.sessionId,
+              pr: w.pr
             }))
           }
           return console.log(JSON.stringify(out, null, 2))
@@ -253,12 +265,13 @@ export function registerWorkspaceCommands(program: Command): void {
         )
         if (list.length === 0) return console.log('no workspaces')
         printTable(
-          ['WORKSPACE', 'PROJECT', 'STATUS', 'REASON', 'ACTIVE', 'SESSION'],
+          ['WORKSPACE', 'PROJECT', 'STATUS', 'REASON', 'PR', 'ACTIVE', 'SESSION'],
           list.map((w) => [
             w.name,
             projectName(projects, w.projectId),
             w.status,
             w.statusReason ?? '-',
+            formatPr(w.pr),
             formatAge(w.lastActivityAt ?? w.statusAt),
             w.sessionId ? w.sessionId.slice(0, 8) : '-'
           ])

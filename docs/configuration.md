@@ -21,6 +21,7 @@ _Generated:_
 worktree_root = "~/.que/worktrees"
 stall_timeout_minutes = 5
 status_poll_seconds = 10
+pr_poll_seconds = 60
 concurrency = 2
 max_turns = 50
 max_budget_usd = 5
@@ -51,6 +52,7 @@ morning_summary = false
 | `worktree_root` | Where workspaces (git worktrees) are created: `<root>/<project>/<workspace>`. |
 | `stall_timeout_minutes` | A working session or task with no sign of life for this long is marked stuck. |
 | `status_poll_seconds` | How often the daemon cross-checks live sessions with `claude agents --json`. |
+| `pr_poll_seconds` | How often the daemon refreshes each workspace's pull request from GitHub (merged and closed ones every fifth time). |
 | `concurrency` | How many overnight tasks run at once while the queue is open. `que run -j` overrides it until the queue closes. |
 | `max_turns`, `max_budget_usd` | Default caps for a task (`que add --max-turns/--max-budget` override them per task). |
 | `default_permission_mode` | Permission mode for headless runs when a repo's `que.toml` sets none. |

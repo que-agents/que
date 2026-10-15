@@ -38,6 +38,7 @@ const userDefaults = `# ~/.config/que/config.toml (or $QUE_CONFIG). Every key is
 worktree_root = ${toml(d.worktreeRoot.replace(HOME, '~/.que'))}
 stall_timeout_minutes = ${d.stallTimeoutMinutes}
 status_poll_seconds = ${d.statusPollSeconds}
+pr_poll_seconds = ${d.prPollSeconds}
 concurrency = ${d.concurrency}
 max_turns = ${d.maxTurns}
 max_budget_usd = ${d.maxBudgetUsd}
