@@ -440,4 +440,198 @@ describe('Sidebar tickets entry', () => {
     expect(await screen.findByTestId('tickets-view')).toBeInTheDocument()
     expect(entry).toHaveAttribute('aria-current', 'page')
   })
+  describe('filter and sort', () => {
+    const zsh = makeTermInfo({
+      id: '7d0c5b2a-3333-4000-8000-3e4f5a6b7c8d',
+      name: 'zsh',
+      cwd: '/Users/dev/code/uploader'
+    })
+    const node = makeTermInfo({
+      id: '7d0c5b2a-4444-4000-8000-3e4f5a6b7c8d',
+      name: 'node',
+      cwd: '/Users/dev/code/api'
+    })
+
+    it('narrows projects to those with a matching workspace, and shows only those workspaces', async () => {
+      const user = userEvent.setup()
+      seed()
+      render(<App />)
+      await screen.findByTestId(`sidebar-project-${uploader.id}`)
+
+      await user.type(screen.getByRole('searchbox', { name: 'Filter' }), 'RETRY')
+
+      const project = screen.getByTestId(`sidebar-project-${uploader.id}`)
+      expect(within(project).getByText('app-1432-retry-logic')).toBeInTheDocument()
+      expect(within(project).queryByText('app-1440-quiet-board')).not.toBeInTheDocument()
+      expect(screen.queryByTestId(`sidebar-project-${api.id}`)).not.toBeInTheDocument()
+    })
+
+    it('keeps all the workspaces of a project whose name matches', async () => {
+      const user = userEvent.setup()
+      seed()
+      render(<App />)
+      await screen.findByTestId(`sidebar-project-${uploader.id}`)
+
+      await user.type(screen.getByTestId('sidebar-filter'), 'uploa')
+
+      const project = screen.getByTestId(`sidebar-project-${uploader.id}`)
+      expect(within(project).getByText('app-1432-retry-logic')).toBeInTheDocument()
+      expect(within(project).getByText('app-1440-quiet-board')).toBeInTheDocument()
+      expect(screen.queryByTestId(`sidebar-project-${api.id}`)).not.toBeInTheDocument()
+    })
+
+    it('opens a collapsed project that has a match while filtering', async () => {
+      const user = userEvent.setup()
+      seed()
+      render(<App />)
+      await user.click(await screen.findByTestId(`sidebar-project-${uploader.id}-toggle`))
+      expect(screen.queryByText('app-1432-retry-logic')).not.toBeInTheDocument()
+
+      await user.type(screen.getByTestId('sidebar-filter'), 'retry')
+
+      expect(screen.getByText('app-1432-retry-logic')).toBeInTheDocument()
+      expect(screen.getByTestId(`sidebar-project-${uploader.id}-toggle`)).toHaveAttribute(
+        'aria-expanded',
+        'true'
+      )
+    })
+
+    it('narrows sessions by title and says when nothing matches', async () => {
+      const user = userEvent.setup()
+      fakeBridge.seedTerminal(zsh)
+      fakeBridge.seedTerminal(node)
+      seed()
+      render(<App />)
+      const sessions = await screen.findByRole('navigation', { name: 'Sessions' })
+      await within(sessions).findByText('zsh')
+
+      await user.type(screen.getByTestId('sidebar-filter'), 'nod')
+
+      expect(within(sessions).queryByText('zsh')).not.toBeInTheDocument()
+      expect(within(sessions).getByText('node')).toBeInTheDocument()
+
+      await user.type(screen.getByTestId('sidebar-filter'), 'zzz')
+
+      expect(screen.getByTestId('sidebar-sessions-nomatch')).toHaveTextContent('Nothing matches')
+      expect(screen.getByTestId('sidebar-projects-nomatch')).toHaveTextContent('Nothing matches')
+      expect(screen.queryByTestId('sidebar-empty')).not.toBeInTheDocument()
+    })
+
+    it('clears and blurs the filter on Escape', async () => {
+      const user = userEvent.setup()
+      seed()
+      render(<App />)
+      await screen.findByTestId(`sidebar-project-${uploader.id}`)
+      const filter = screen.getByTestId('sidebar-filter')
+
+      await user.type(filter, 'zzz')
+      expect(screen.getByTestId('sidebar-projects-nomatch')).toBeInTheDocument()
+      await user.keyboard('{Escape}')
+
+      expect(filter).toHaveValue('')
+      expect(filter).not.toHaveFocus()
+      expect(screen.getByText('app-1432-retry-logic')).toBeInTheDocument()
+      expect(screen.queryByTestId('sidebar-projects-nomatch')).not.toBeInTheDocument()
+    })
+
+    it('counts only the open tickets that match the filter', async () => {
+      const user = userEvent.setup()
+      fakeBridge.seedTicket(makeTicket())
+      fakeBridge.seedTicket(
+        makeTicket({ key: 'APP-1440', summary: 'Refresh the auth token', url: 'https://x/1440' })
+      )
+      seed()
+      render(<App />)
+      await waitFor(() =>
+        expect(screen.getByTestId('sidebar-tickets-count')).toHaveTextContent('2')
+      )
+
+      await user.type(screen.getByTestId('sidebar-filter'), 'auth')
+
+      expect(screen.getByTestId('sidebar-tickets-count')).toHaveTextContent('1')
+    })
+
+    describe('sort', () => {
+      const names = (): string[] =>
+        screen.getAllByTestId(/^sidebar-project-prj_\w+-toggle$/).map((b) => b.textContent ?? '')
+
+      it('reorders projects by last activity, workspaces too, and flips its label', async () => {
+        const user = userEvent.setup()
+        fakeBridge.seedProject(uploader)
+        fakeBridge.seedProject(api)
+        fakeBridge.seedWorkspace(
+          makeWorkspace({ name: 'u-old', statusAt: '2026-10-01T00:00:00.000Z' })
+        )
+        fakeBridge.seedWorkspace(
+          makeWorkspace({ name: 'a-old', projectId: api.id, statusAt: '2026-10-02T00:00:00.000Z' })
+        )
+        fakeBridge.seedWorkspace(
+          makeWorkspace({
+            name: 'a-zz-new',
+            projectId: api.id,
+            statusAt: '2026-10-03T00:00:00.000Z',
+            lastActivityAt: '2026-10-12T00:00:00.000Z'
+          })
+        )
+        render(<App />)
+        const sort = await screen.findByTestId('sidebar-sort')
+        expect(sort).toHaveAttribute('data-sort', 'name')
+        expect(sort).toHaveAccessibleName('Sorted by name')
+        expect(sort).toHaveAttribute('title', 'Sort by last activity')
+        expect(names()[0]).toContain('api')
+        const apiRows = (): string[] =>
+          within(screen.getByTestId(`sidebar-project-${api.id}`))
+            .getAllByTestId(/^sidebar-workspace-ws_\w+$/)
+            .map((r) => r.textContent ?? '')
+        expect(apiRows()[0]).toContain('a-old')
+
+        await user.click(sort)
+
+        expect(sort).toHaveAttribute('data-sort', 'activity')
+        expect(sort).toHaveAccessibleName('Sorted by last activity')
+        expect(sort).toHaveAttribute('title', 'Sort by name')
+        expect(apiRows()[0]).toContain('a-zz-new')
+      })
+
+      it('puts the project with the newest activity first', async () => {
+        const user = userEvent.setup()
+        fakeBridge.seedProject(uploader)
+        fakeBridge.seedProject(api)
+        fakeBridge.seedWorkspace(
+          makeWorkspace({ name: 'u-new', lastActivityAt: '2026-10-12T00:00:00.000Z' })
+        )
+        fakeBridge.seedWorkspace(
+          makeWorkspace({
+            name: 'a-mid',
+            projectId: api.id,
+            statusAt: '2026-10-09T00:00:00.000Z'
+          })
+        )
+        render(<App />)
+        await screen.findByTestId('sidebar-sort')
+        expect(names()[0]).toContain('api')
+
+        await user.click(screen.getByTestId('sidebar-sort'))
+
+        expect(names()[0]).toContain('uploader')
+        expect(names()[1]).toContain('api')
+      })
+
+      it('remembers the sort across a remount, and falls back to name for a bad value', async () => {
+        const user = userEvent.setup()
+        seed()
+        const first = render(<App />)
+        await user.click(await screen.findByTestId('sidebar-sort'))
+        first.unmount()
+
+        const second = render(<App />)
+        expect(await screen.findByTestId('sidebar-sort')).toHaveAttribute('data-sort', 'activity')
+        second.unmount()
+
+        localStorage.setItem('que.sidebarSort', 'sideways')
+        render(<App />)
+        expect(await screen.findByTestId('sidebar-sort')).toHaveAttribute('data-sort', 'name')
+      })
+    })
+  })
 })
