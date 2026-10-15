@@ -7,7 +7,7 @@ import type { Workspace } from '@shared/types'
 import type { StatusJson } from '../../src/cli/workspaces'
 import { runCli } from '../../src/testing/cli'
 import { startTestDaemon, type TestDaemon, withQuietOff } from '../../src/testing/daemon-harness'
-import { readFakeLog, setFakePullRequest } from '../../src/testing/fakes'
+import { FAKES_BIN, readFakeLog, setFakePullRequest } from '../../src/testing/fakes'
 import { makeHookEvent } from '../../src/testing/fixtures'
 import { addBareOrigin, gitIn, makeTempRepo } from '../../src/testing/temp-repo'
 
@@ -230,6 +230,7 @@ describe('que doctor', () => {
     const lines = r.stdout.trim().split('\n')
     expect(lines.map((l) => l.split(/\s+/).slice(0, 2).join(' '))).toEqual([
       'ok daemon',
+      'ok daemon', // the daemon PATH line
       'ok claude',
       'ok gh',
       'ok git',
@@ -240,6 +241,7 @@ describe('que doctor', () => {
       'ok wrapper'
     ])
     expect(r.stdout).toContain('2.1.0 (Claude Code)')
+    expect(r.stdout).toMatch(new RegExp(`daemon PATH\\s+claude at ${FAKES_BIN}/claude`))
   }, 30_000)
 
   it('fails on an invalid config file and names the key', async () => {

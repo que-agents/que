@@ -7,9 +7,12 @@
 //   - a terminal opens and runs a command (read through window.__que);
 //   - the tray title is readable;
 //   - Contents/Resources/cli/que --version prints the package version;
+//   - launched again the way Finder does (PATH=/usr/bin:/bin:/usr/sbin:/sbin, no
+//     TERM, no QUE_E2E), the daemon's PATH is the login shell's, not launchd's;
 // then quits the app, stops the daemon, and checks no process is left.
 import { execFileSync, spawnSync } from 'node:child_process'
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { createRequire } from 'node:module'
 import os from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -140,6 +143,33 @@ try {
   const version = que('--version')
   log(`Contents/Resources/cli/que --version → ${version}`)
   if (version !== pkg.version) throw new Error(`cli/que --version printed ${version}`)
+
+  // 5. A Finder-like launch: the daemon must still find the login shell's PATH.
+  await app.close()
+  app = null
+  que('daemon', 'stop')
+  await poll('the daemon to exit', () => !pidAlive(daemonPid), 10_000)
+  daemonPid = null
+  const finderPath = '/usr/bin:/bin:/usr/sbin:/sbin'
+  const finderEnv = { ...env, PATH: finderPath }
+  delete finderEnv.QUE_E2E
+  delete finderEnv.TERM
+  app = await electron.launch({ executablePath, args: [], env: finderEnv })
+  await app.firstWindow()
+  const { DaemonClient } = createRequire(import.meta.url)(join(resources, 'client', 'index.js'))
+  process.env.QUE_HOME = queHome
+  const client = await poll('the daemon (Finder-like launch)', () => DaemonClient.tryConnect())
+  try {
+    const ping = await client.request('daemon.ping')
+    daemonPid = ping.pid
+    log(`Finder-like daemon PATH ${ping.path}`)
+    if (!ping.path.split(':').includes('/usr/local/bin'))
+      throw new Error(`daemon PATH lacks /usr/local/bin: ${ping.path}`)
+    if (ping.path.length <= finderPath.length)
+      throw new Error(`daemon PATH is no longer than the launch PATH: ${ping.path}`)
+  } finally {
+    client.close()
+  }
 } catch (err) {
   failed = true
   log(`FAILED: ${err instanceof Error ? err.message : String(err)}`)
