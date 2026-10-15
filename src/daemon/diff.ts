@@ -122,6 +122,21 @@ export function parseLog(out: string): DiffCommit[] {
 }
 
 /**
+ * Parses `git for-each-ref --format=%(refname)` output into short names:
+ * `refs/heads/x` is `x`, `refs/remotes/origin/x` is `origin/x`. The remote's
+ * HEAD pointer and anything else are dropped.
+ */
+export function parseRefs(out: string): string[] {
+  const refs: string[] = []
+  for (const line of out.split('\n')) {
+    if (line.startsWith('refs/heads/')) refs.push(line.slice('refs/heads/'.length))
+    else if (line.startsWith('refs/remotes/origin/') && line !== 'refs/remotes/origin/HEAD')
+      refs.push(line.slice('refs/remotes/'.length))
+  }
+  return refs.filter((r) => r !== '')
+}
+
+/**
  * The refs worth comparing against: `chosen` first, then the default branch
  * here and on origin when they exist, then the rest in order; no duplicates,
  * at most MAX_BASES.
@@ -211,9 +226,10 @@ export async function workspaceDiff(
     const [counted, log, refs] = await Promise.all([
       run('rev-list', '--count', `${base}..HEAD`),
       run('log', '--format=%H%x00%s%x00%an%x00%aI', '-n', String(MAX_COMMITS), `${base}..HEAD`),
-      run('for-each-ref', '--format=%(refname:short)', 'refs/heads', 'refs/remotes/origin')
+      run('for-each-ref', '--format=%(refname)', 'refs/heads', 'refs/remotes/origin')
     ])
-    const refNames = refs.stdout.split('\n').filter((r) => r && r !== 'origin/HEAD')
+    // Never the workspace's own branch: comparing it against itself shows nothing.
+    const refNames = parseRefs(refs.stdout).filter((r) => r !== ws.branch)
     const result = (files: DiffFile[]): WorkspaceDiff => ({
       ...empty(base),
       commitsAhead:
