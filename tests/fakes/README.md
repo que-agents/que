@@ -81,7 +81,10 @@ Read the call logs back with `readFakeLog()` from `src/testing/fakes.ts` (Vitest
 Appends `{ "argv": [...], "cwd": "...", "ts": "..." }` to `$QUE_FAKE_ACLI_LOG` for
 every call. `jira auth status` prints the signed-in lines (`Site: example.atlassian.net`).
 `jira workitem search ... --limit N` prints the first N issues of the JSON array in
-`$QUE_FAKE_ACLI_TICKETS` (acli's shape; a missing file means `[]`), and
+`$QUE_FAKE_ACLI_TICKETS` (acli's shape; a missing file means `[]`), keeping only the
+requested `--fields` (plus `id`, `key`, `self`). Like the real CLI it refuses any field outside
+`issuetype, key, assignee, priority, status, summary, labels, reporter, description` with
+`✗ Error: fields '<names>' are not allowed` and exit 1; `view` accepts any list. And
 `jira workitem view KEY` prints the matching issue or exits 1 with
 `No work item found: KEY`. `$QUE_FAKE_ACLI_FAIL=auth` makes every call exit 1 with
 `Not authenticated. Run acli jira auth login.`; `network` makes `search` and `view`

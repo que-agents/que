@@ -60,6 +60,15 @@ describe('TicketsView', () => {
       expect(screen.getByTestId('tickets-synced')).toHaveTextContent('synced never')
     })
 
+    it('shows no age for a ticket without an updated time', async () => {
+      const user = userEvent.setup()
+      fakeBridge.seedTicket(makeTicket({ updatedAt: null }))
+      const view = await openTickets(user)
+      const row = within(view).getByTestId('ticket-APP-1432')
+      expect(row).not.toHaveTextContent('ago')
+      expect(row).not.toHaveTextContent('NaN')
+    })
+
     it('says so when nothing is assigned', async () => {
       const user = userEvent.setup()
       await openTickets(user)
