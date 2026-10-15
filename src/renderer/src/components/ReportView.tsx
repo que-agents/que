@@ -1,10 +1,23 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { PullRequest, Report } from '../../../preload/index.d'
+import type { PullRequest, Report, WorkspaceDigest } from '../../../preload/index.d'
 import { formatUnlocks } from '../../../daemon/quiet-hours'
 import { formatCost, formatDuration, REPORT_GROUPS } from '../format'
 import { useQue, useStore } from '../store'
-import { PrChip, TaskBadge } from './StatusBadge'
+import { hhmm } from '../../../daemon/quiet-hours'
+import { PrChip, StatusBadge, TaskBadge } from './StatusBadge'
 import UnlockStatus from './UnlockStatus'
+
+/** `worked 1h 12m · asked for input 2× · waiting since 02:14 · 3 commits ahead`. */
+function digestFacts(d: WorkspaceDigest): string {
+  const facts = [
+    d.workingMs > 0 ? `worked ${formatDuration(d.workingMs)}` : 'no work in this window'
+  ]
+  if (d.needsInputCount > 0) facts.push(`asked for input ${d.needsInputCount}×`)
+  if (d.waitingSince) facts.push(`waiting since ${hhmm(Date.parse(d.waitingSince))}`)
+  if (d.commitsAhead !== null)
+    facts.push(`${d.commitsAhead} ${d.commitsAhead === 1 ? 'commit' : 'commits'} ahead`)
+  return facts.join(' · ')
+}
 
 /** What the overnight queue did since it was last opened, grouped by outcome. */
 export default function ReportView(): React.JSX.Element {
@@ -14,9 +27,7 @@ export default function ReportView(): React.JSX.Element {
   const [unlocks, setUnlocks] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
-  // Report entries carry the workspace name, not its id.
-  const prOf = (name: string | null): PullRequest | null =>
-    (name && Object.values(workspaces).find((w) => w.name === name)?.pr) || null
+  const prOf = (id: string | null): PullRequest | null => (id && workspaces[id]?.pr) || null
 
   const load = useCallback(async () => {
     try {
@@ -68,6 +79,8 @@ export default function ReportView(): React.JSX.Element {
           <p className="totals" data-testid="report-totals">
             {report.totals.tasks} tasks · {report.totals.prs} PRs · {report.totals.turns} turns ·{' '}
             {formatCost(report.totals.costUsd)} · {formatDuration(report.totals.durationMs)}
+            {report.totals.workspaces > 0 &&
+              ` · ${report.totals.workspaces} workspaces · ${report.totals.needsInput} need input`}
           </p>
         )}
         {unlocks && (
@@ -75,10 +88,40 @@ export default function ReportView(): React.JSX.Element {
             {unlocks}
           </p>
         )}
-        {report && groups.length === 0 && (
+        {report && groups.length === 0 && report.workspaces.length === 0 && (
           <p className="empty-note" data-testid="report-empty">
             Nothing ran in this window.
           </p>
+        )}
+        {report && report.workspaces.length > 0 && (
+          <section data-testid="report-workspaces" aria-labelledby="rg-workspaces">
+            <h2 id="rg-workspaces">
+              Workspaces <span className="muted">{report.workspaces.length}</span>
+            </h2>
+            <ul>
+              {report.workspaces.map((d) => (
+                <li key={d.id} className="report-row" data-testid={`report-workspace-${d.id}`}>
+                  <button
+                    type="button"
+                    className="link name"
+                    onClick={() => store.showTerminals(d.id)}
+                  >
+                    {d.name}
+                  </button>
+                  <span className="muted">{d.project}</span>
+                  <StatusBadge
+                    status={d.status}
+                    reason={d.statusReason}
+                    testId={`report-workspace-${d.id}-status`}
+                  />
+                  <span className="facts muted" data-testid={`report-workspace-${d.id}-facts`}>
+                    {digestFacts(d)}
+                  </span>
+                  {d.pr && <PrChip pr={d.pr} testId={`report-workspace-${d.id}-pr`} />}
+                </li>
+              ))}
+            </ul>
+          </section>
         )}
         {groups.map(({ group, title }) => (
           <section
@@ -101,10 +144,10 @@ export default function ReportView(): React.JSX.Element {
                   )}
                   <span className="muted">{e.workspace ?? ''}</span>
                   {e.state !== 'stuck' && e.reason && <span className="reason">{e.reason}</span>}
-                  {prOf(e.workspace) && (
+                  {prOf(e.workspaceId) && (
                     <PrChip
-                      pr={prOf(e.workspace) as PullRequest}
-                      label={prOf(e.workspace)?.state}
+                      pr={prOf(e.workspaceId) as PullRequest}
+                      label={prOf(e.workspaceId)?.state}
                       testId={`report-task-${e.id}-pr-state`}
                     />
                   )}

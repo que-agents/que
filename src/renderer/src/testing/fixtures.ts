@@ -7,7 +7,8 @@ import type {
   Task,
   TermInfo,
   UserConfig,
-  Workspace
+  Workspace,
+  WorkspaceDigest
 } from '../../../preload/index.d'
 
 let wsCounter = 0
@@ -46,6 +47,29 @@ export function makeWorkspace(overrides: Partial<Workspace> = {}): Workspace {
     archivedAt: null,
     prUrl: null,
     pr: null,
+    ...overrides
+  }
+}
+
+/** One workspace's line in the report: idle, 42 minutes of work, two commits ahead. */
+export function makeWorkspaceDigest(overrides: Partial<WorkspaceDigest> = {}): WorkspaceDigest {
+  const name = overrides.name ?? 'app-1432-retry-logic'
+  return {
+    id: 'ws_01hzx3k9c2qf',
+    name,
+    project: 'uploader',
+    branch: name,
+    status: 'idle',
+    statusReason: null,
+    firstActivityAt: '2026-10-14T01:00:00.000Z',
+    lastActivityAt: '2026-10-14T01:42:00.000Z',
+    workingMs: 42 * 60_000,
+    needsInputCount: 0,
+    waitingSince: null,
+    stuckCount: 0,
+    commitsAhead: 2,
+    pr: null,
+    sessionId: null,
     ...overrides
   }
 }
