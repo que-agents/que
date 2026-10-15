@@ -185,7 +185,7 @@ test('The review pane lists the changes beside the terminals, opens diffs as tab
     git(workspace.path, 'commit', '--quiet', '-m', 'Add notes')
     sha2 = git(workspace.path, 'rev-parse', 'HEAD')
     sha1 = git(workspace.path, 'rev-parse', 'HEAD~1')
-    await changes.refresh.click()
+    // No Refresh: the daemon watches the worktree, and the commits reach Changes on their own.
     await expect(changes.summary).toHaveText('Commits 2 vs origin/main')
     await expect(changes.summary).toHaveAttribute('title', /· 2 files ·/)
     await expect(changes.file(0)).toHaveAttribute('data-path', 'NOTES.md')
@@ -245,8 +245,7 @@ test('The review pane lists the changes beside the terminals, opens diffs as tab
   await test.step('An untracked file: the Files tab shows the tree, changed files marked', async () => {
     mkdirSync(join(workspace.path, 'src/upload'), { recursive: true })
     writeFileSync(join(workspace.path, 'src/upload/retry.ts'), 'export const retries = 3\n')
-    // The diff is fetched on demand: refresh it here so the tree opens with the change known.
-    await changes.refresh.click()
+    // No Refresh: the write reaches Changes through the watcher, so the tree opens knowing it.
     await expect(changes.file(1)).toHaveAttribute('data-path', 'src/upload/retry.ts')
     await review.tabFiles.click()
     await expect(review.root).toHaveAttribute('data-tab', 'files')
