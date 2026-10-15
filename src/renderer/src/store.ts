@@ -37,6 +37,64 @@ export interface TermTab {
   createdAt: string
 }
 
+/** One workspace's terminals in one or two panes (a tree of depth one). */
+export interface PaneLayout {
+  /** null: one pane. Otherwise the second pane sits beside (row) or below (column) the first. */
+  split: { direction: 'row' | 'column'; ratio: number } | null
+  /** Terminal ids shown in the second pane; every other tab of the key is in the first. */
+  second: string[]
+  /** The selected tab per pane; null means the pane's newest tab. */
+  active: [string | null, string | null]
+  focused: 0 | 1
+}
+
+export const RATIO_MIN = 0.2
+export const RATIO_MAX = 0.8
+export const RATIO_DEFAULT = 0.5
+const LAYOUT_PREFIX = 'que.layout.'
+const NO_SPLIT: PaneLayout = { split: null, second: [], active: [null, null], focused: 0 }
+
+function clampRatio(r: number): number {
+  const n = Number.isFinite(r) ? r : RATIO_DEFAULT
+  return Math.round(Math.min(RATIO_MAX, Math.max(RATIO_MIN, n)) * 1000) / 1000
+}
+
+/** Parses a remembered layout; null when it is not a split. */
+function parseLayout(raw: string | null): PaneLayout | null {
+  if (!raw) return null
+  try {
+    const v = JSON.parse(raw) as Partial<PaneLayout> | null
+    const sp = v?.split
+    if (!sp || (sp.direction !== 'row' && sp.direction !== 'column')) return null
+    const id = (x: unknown): string | null => (typeof x === 'string' ? x : null)
+    return {
+      split: { direction: sp.direction, ratio: clampRatio(Number(sp.ratio)) },
+      second: Array.isArray(v?.second) ? v.second.filter((x) => typeof x === 'string') : [],
+      active: [id(v?.active?.[0]), id(v?.active?.[1])],
+      focused: v?.focused === 1 ? 1 : 0
+    }
+  } catch {
+    return null
+  }
+}
+
+/**
+ * The layout with ids of vanished terminals dropped. A split whose second pane
+ * is empty collapses; one whose first pane is empty hands over the second.
+ */
+function reconcileLayout(l: PaneLayout, ids: ReadonlySet<string>, tabIds: string[]): PaneLayout {
+  if (!l.split) return l
+  const second = l.second.filter((id) => ids.has(id))
+  const active: [string | null, string | null] = [
+    l.active[0] && ids.has(l.active[0]) && !second.includes(l.active[0]) ? l.active[0] : null,
+    l.active[1] && second.includes(l.active[1]) ? l.active[1] : null
+  ]
+  const firstCount = tabIds.filter((id) => !second.includes(id)).length
+  if (second.length === 0) return { ...NO_SPLIT, active: [active[0], null] }
+  if (firstCount === 0) return { ...NO_SPLIT, active: [active[1], null] }
+  return { ...l, second, active }
+}
+
 export type View =
   | { kind: 'terminals'; key: string }
   | { kind: 'report' }
@@ -63,8 +121,8 @@ export interface QueState {
   tickets: Ticket[]
   ticketsSync: TicketsSyncState
   view: View
-  /** The selected tab per terminal key. */
-  activeTerm: Record<string, string>
+  /** The pane layout per terminal key; a key without one has a single pane. */
+  layouts: Record<string, PaneLayout>
   dialog: DialogState | null
   /** The daemon's quiet-hours state; null until loaded. */
   quiet: QuietState | null
@@ -121,7 +179,7 @@ export class QueStore {
     tickets: [],
     ticketsSync: { lastSyncAt: null, error: null, count: 0 },
     view: { kind: 'terminals', key: SCRATCH },
-    activeTerm: {},
+    layouts: {},
     dialog: null,
     quiet: null,
     config: null
@@ -131,6 +189,9 @@ export class QueStore {
   private boot: Promise<void> | null = null
   /** Terminal keys that already had their first-visit terminal opened. */
   private autoOpened = new Set<string>()
+  /** Terminals being created by this store, which place them themselves. */
+  private creating = 0
+  private createdMeanwhile = new Set<string>()
 
   constructor(
     private api: QueApi,
@@ -206,6 +267,7 @@ export class QueStore {
           s.terminals
         )
       }))
+      this.hydrateLayouts()
       await this.visit(this.currentKey())
     } catch (err) {
       this.set({ error: message(err) })
@@ -228,10 +290,12 @@ export class QueStore {
         this.set((s) => ({ projects: mergeProjects(s.projects, [p]) }))
       ),
       project.on('project.removed', ({ id }) => this.set((s) => dropProject(s, id))),
-      term.on('term.created', ({ id }) => void this.addTerminal(id)),
-      term.on('term.killed', ({ id }) =>
-        this.set((s) => ({ terminals: s.terminals.filter((t) => t.id !== id) }))
-      ),
+      term.on('term.created', ({ id }) => {
+        // A terminal this store is creating is placed in its pane by the creator.
+        if (this.creating > 0) this.createdMeanwhile.add(id)
+        else void this.addTerminal(id)
+      }),
+      term.on('term.killed', ({ id }) => this.removeTab(id)),
       term.on('term.exit', ({ id }) =>
         this.set((s) => ({
           terminals: s.terminals.map((t) => (t.id === id ? { ...t, alive: false } : t))
@@ -424,34 +488,165 @@ export class QueStore {
     return config
   }
 
+  /** Selects a tab within the pane that holds it, and focuses that pane. */
   selectTerminal(key: string, id: string): void {
-    this.set((s) => ({ activeTerm: { ...s.activeTerm, [key]: id } }))
+    const l = this.layout(key)
+    const pane = l.second.includes(id) ? 1 : 0
+    const active: PaneLayout['active'] = pane === 0 ? [id, l.active[1]] : [l.active[0], id]
+    this.setLayout(key, { ...l, active, focused: pane })
   }
 
-  /** A new terminal in a workspace, or a loose one in the active tab's folder. */
-  async newTerminal(key: string): Promise<void> {
+  /** Focuses a pane (the second only when the key is split). */
+  focusPane(key: string, pane: 0 | 1): void {
+    const l = this.layout(key)
+    if (l.focused === pane || (pane === 1 && !l.split)) return
+    this.setLayout(key, { ...l, focused: pane })
+  }
+
+  /** The layout of a key. */
+  layout(key: string): PaneLayout {
+    return this.state.layouts[key] ?? NO_SPLIT
+  }
+
+  /** The tabs of one pane, oldest first. */
+  paneTabs(key: string, pane: 0 | 1): TermTab[] {
+    const second = this.layout(key).second
+    return this.tabs(key).filter((t) => second.includes(t.id) === (pane === 1))
+  }
+
+  /** The selected tab of a pane, else its newest. */
+  paneActive(key: string, pane: 0 | 1): TermTab | null {
+    const tabs = this.paneTabs(key, pane)
+    return tabs.find((t) => t.id === this.layout(key).active[pane]) ?? tabs.at(-1) ?? null
+  }
+
+  focusedPane(key: string): 0 | 1 {
+    const l = this.layout(key)
+    return l.split ? l.focused : 0
+  }
+
+  /** Creates a terminal for a key (a workspace's, or a loose one in the active tab's folder). */
+  private async createFor(key: string): Promise<string> {
+    if (key === SCRATCH) {
+      const cwd = this.activeTab(key)?.cwd ?? (await this.api.app.homedir())
+      return (await this.api.term.create({ cwd, cols: DEFAULT_COLS, rows: DEFAULT_ROWS })).id
+    }
+    return (
+      await this.api.workspace.openTerminal({ id: key, cols: DEFAULT_COLS, rows: DEFAULT_ROWS })
+    ).id
+  }
+
+  /**
+   * Creates a terminal and places it in a pane once its id is known, before its
+   * tab appears, so it never mounts in the wrong pane.
+   */
+  private async openIn(key: string, place: (id: string) => void): Promise<void> {
+    this.creating++
     try {
-      let id: string
-      if (key === SCRATCH) {
-        const active = this.activeTab(key)
-        const cwd = active?.cwd ?? (await this.api.app.homedir())
-        ;({ id } = await this.api.term.create({ cwd, cols: DEFAULT_COLS, rows: DEFAULT_ROWS }))
-      } else {
-        ;({ id } = await this.api.workspace.openTerminal({
-          id: key,
-          cols: DEFAULT_COLS,
-          rows: DEFAULT_ROWS
-        }))
-      }
+      const id = await this.createFor(key)
+      place(id)
       await this.addTerminal(id)
-      this.selectTerminal(key, id)
     } catch (err) {
       this.fail(err)
+    } finally {
+      this.creating--
+      if (this.creating === 0) {
+        const others = [...this.createdMeanwhile]
+        this.createdMeanwhile.clear()
+        for (const id of others) void this.addTerminal(id)
+      }
     }
   }
 
+  /** A new terminal in the focused pane. */
+  async newTerminal(key: string): Promise<void> {
+    await this.openIn(key, (id) => {
+      const l = this.layout(key)
+      const pane = l.split ? l.focused : 0
+      this.setLayout(key, {
+        ...l,
+        second: pane === 1 ? [...l.second, id] : l.second,
+        active: pane === 0 ? [id, l.active[1]] : [l.active[0], id],
+        focused: pane
+      })
+    })
+  }
+
+  /** Splits the key in two with a new terminal in the second pane (or adds one to it). */
+  async splitPane(key: string, direction: 'row' | 'column'): Promise<void> {
+    const first = this.paneActive(key, 0)?.id ?? null
+    await this.openIn(key, (id) => {
+      const l = this.layout(key)
+      this.setLayout(key, {
+        split: l.split ?? { direction, ratio: RATIO_DEFAULT },
+        second: [...l.second, id],
+        active: [l.split ? l.active[0] : first, id],
+        focused: 1
+      })
+    })
+  }
+
+  /** Joins the second pane's tabs onto the first; nothing is killed. */
+  joinPanes(key: string): void {
+    const l = this.layout(key)
+    if (!l.split) return
+    this.setLayout(key, { ...NO_SPLIT, active: [l.active[l.focused] ?? l.active[0], null] })
+  }
+
+  setRatio(key: string, ratio: number): void {
+    const l = this.layout(key)
+    if (!l.split) return
+    this.setLayout(key, { ...l, split: { ...l.split, ratio: clampRatio(ratio) } })
+  }
+
+  resetRatio(key: string): void {
+    this.setRatio(key, RATIO_DEFAULT)
+  }
+
+  private setLayout(key: string, layout: PaneLayout): void {
+    this.set((s) => ({ layouts: { ...s.layouts, [key]: layout } }))
+    try {
+      if (layout.split) localStorage.setItem(LAYOUT_PREFIX + key, JSON.stringify(layout))
+      else localStorage.removeItem(LAYOUT_PREFIX + key)
+    } catch {
+      // Nothing to remember into; the layout still applies for this session.
+    }
+  }
+
+  /** Restores the remembered layouts, dropping terminals that no longer exist. */
+  private hydrateLayouts(): void {
+    const layouts: Record<string, PaneLayout> = {}
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const name = localStorage.key(i)
+        if (!name?.startsWith(LAYOUT_PREFIX)) continue
+        const key = name.slice(LAYOUT_PREFIX.length)
+        const parsed = parseLayout(localStorage.getItem(name))
+        if (!parsed) continue
+        const tabIds = this.tabs(key).map((t) => t.id)
+        const l = reconcileLayout(parsed, new Set(tabIds), tabIds)
+        if (l.split) layouts[key] = l
+      }
+    } catch {
+      return
+    }
+    this.set((s) => ({ layouts: { ...layouts, ...s.layouts } }))
+  }
+
+  /** Removes a tab, collapsing its key's split if a pane is left empty. */
+  private removeTab(id: string): void {
+    const key = this.state.terminals.find((t) => t.id === id)?.key
+    const terminals = this.state.terminals.filter((t) => t.id !== id)
+    this.set({ terminals })
+    const l = key === undefined ? undefined : this.state.layouts[key]
+    if (key === undefined || !l?.split) return
+    const tabIds = terminals.filter((t) => t.key === key).map((t) => t.id)
+    const next = reconcileLayout(l, new Set(tabIds), tabIds)
+    if (next !== l) this.setLayout(key, next)
+  }
+
   async closeTerminal(id: string): Promise<void> {
-    this.set((s) => ({ terminals: s.terminals.filter((t) => t.id !== id) }))
+    this.removeTab(id)
     try {
       await this.api.term.kill({ id })
     } catch {
@@ -464,10 +659,9 @@ export class QueStore {
     return this.state.terminals.filter((t) => t.key === key)
   }
 
-  /** The selected tab of a key, else its newest. */
+  /** The selected tab of the focused pane. */
   activeTab(key: string): TermTab | null {
-    const tabs = this.tabs(key)
-    return tabs.find((t) => t.id === this.state.activeTerm[key]) ?? tabs.at(-1) ?? null
+    return this.paneActive(key, this.focusedPane(key)) ?? this.paneActive(key, 0)
   }
 
   async addProject(): Promise<void> {

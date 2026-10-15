@@ -218,8 +218,14 @@ export interface QueApi {
 }
 
 export interface QueTestHook {
+  /** The focused pane's attached terminal, or null. */
   activeTermId(): string | null
+  /** The focused pane's terminal screen. */
   screenText(): string
+  /** The panes on screen, in order. */
+  panes(): Array<{ index: number; activeTermId: string | null; focused: boolean }>
+  /** The screen of any attached terminal by id ('' when it is not on screen). */
+  screenTextOf(termId: string): string
   /** The tray's current title, from the main process. */
   trayTitle(): Promise<string>
 }

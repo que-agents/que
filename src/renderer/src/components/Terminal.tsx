@@ -7,12 +7,22 @@ import { clearActiveTerminal, setActiveTerminal } from '../testHook'
 interface Props {
   /** Daemon terminal id to attach to. */
   id: string
+  /** Keyboard focus belongs here (the focused pane's terminal). Default true. */
+  focused?: boolean
 }
 
 const isMac = navigator.userAgent.includes('Mac')
 
-export default function Terminal({ id }: Props): React.JSX.Element {
+export default function Terminal({ id, focused = true }: Props): React.JSX.Element {
   const hostRef = useRef<HTMLDivElement>(null)
+  const termRef = useRef<XTerm | null>(null)
+  const focusedRef = useRef(focused)
+  focusedRef.current = focused
+
+  // Moving focus between panes with the keyboard has to move the cursor too.
+  useEffect(() => {
+    if (focused) termRef.current?.focus()
+  }, [focused])
 
   useEffect(() => {
     const host = hostRef.current
@@ -61,7 +71,8 @@ export default function Terminal({ id }: Props): React.JSX.Element {
     })
 
     fit.fit()
-    term.focus()
+    termRef.current = term
+    if (focusedRef.current) term.focus()
 
     let disposed = false
     let attached = false
@@ -120,6 +131,7 @@ export default function Terminal({ id }: Props): React.JSX.Element {
       // Detach only; the terminal keeps running in the daemon.
       void window.que.term.detach({ id }).catch(() => {})
       clearActiveTerminal(term)
+      termRef.current = null
       term.dispose()
     }
   }, [id])
