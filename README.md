@@ -157,6 +157,7 @@ Generated from `que --help`; options and arguments are in [docs/cli.md](docs/cli
 | `que work [options] <name>` | create a workspace (git worktree) and print its path |
 | `que ws list [options]` | list workspaces |
 | `que ws remove [options] <workspace>` | remove a workspace: kill its terminals, run teardown, remove the worktree |
+| `que ws diff [options] <workspace>` | what a workspace changed against its base, committed and uncommitted |
 | `que ws terminal [options] <workspace>` | print the id of the workspace's latest live terminal, opening one if needed |
 | `que status [options]` | summary and per-workspace status |
 | `que attach [options] <workspace>` | attach to the workspace's latest terminal, opening one if needed (Ctrl-] detaches) |

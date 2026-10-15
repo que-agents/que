@@ -135,6 +135,10 @@ failed `gh` keeps the stored value and logs one line until a call succeeds
 again. A successful `workspace.createPr` and a task reaching `done` trigger an
 immediate check of that workspace.
 
+## The diff view
+
+`workspace.diff` (`que ws diff`) compares a workspace against its base: `origin/<default>` when that remote ref exists, else the default branch. Everything is measured from the merge base of the base and `HEAD`, so committed and uncommitted changes appear together, and untracked files are listed too. Each file carries its status, line counts, whether it is still uncommitted, and a unified patch (null for binary files and patches over 200,000 characters). It only reads: `git diff`, `git status`, and `git ls-files`. Quiet hours refuse it like any other workspace read.
+
 ## The ticket queue
 
 `tickets.ts` keeps the tickets assigned to the user in the `tickets` table, the
