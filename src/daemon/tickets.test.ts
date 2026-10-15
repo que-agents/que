@@ -45,6 +45,18 @@ describe('parseIssue', () => {
     })
   })
 
+  it('takes the project from the key prefix and has no age without project and updated', () => {
+    const issue = makeFakeIssue({ key: 'WEB-7' })
+    delete (issue.fields as Record<string, unknown>).project
+    delete (issue.fields as Record<string, unknown>).updated
+    expect(parseIssue(issue, AT)).toMatchObject({
+      key: 'WEB-7',
+      projectKey: 'WEB',
+      projectName: 'WEB',
+      updatedAt: null
+    })
+  })
+
   it('returns null without a key or a summary', () => {
     expect(parseIssue({ fields: { summary: 'x' } }, AT)).toBeNull()
     expect(parseIssue(makeFakeIssue({ fields: { summary: '' } }), AT)).toBeNull()

@@ -145,9 +145,12 @@ immediate check of that workspace.
 way the pull request service keeps pull requests. It never writes to the
 tracker. The tracker is read through the user's own `acli` (already signed in):
 every `jira.poll_minutes` (first run a second after the daemon starts) it runs
-`acli jira workitem search --jql <jira.jql> --json`, upserts what came back,
+`acli jira workitem search --jql <jira.jql> --json --fields key,summary,status,priority,issuetype,assignee,labels`
+(the search refuses any other field, so the project comes from the key's prefix and there is
+no updated time), upserts what came back,
 drops tickets that vanished unless a workspace was started for them, and emits
-`tickets.synced`. A failure stores the first line of stderr in the `kv` table as
+`tickets.synced`. The queue keeps the order the search returned (a `position` column), so the
+JQL's `ORDER BY` decides it. A failure stores the first line of stderr in the `kv` table as
 the sync error (the list stays), logs once, and is cleared by the next success.
 `tickets.list` only reads the cache.
 
