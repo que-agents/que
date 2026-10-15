@@ -18,6 +18,7 @@ import type {
   UpdateInfo,
   UserConfig,
   Workspace,
+  WorkspaceDigest,
   WorkspaceStatus
 } from '../../../preload/index.d'
 import { QUIET_REFUSED_METHODS } from '../../../shared/protocol'
@@ -55,6 +56,7 @@ class FakeBridge {
   readonly api: FakeQueApi
   private projects = new Map<string, Project>()
   private workspaces = new Map<string, Workspace>()
+  private digests: WorkspaceDigest[] = []
   private terminals = new Map<string, FakeTerminal>()
   private listeners = new Map<string, Set<Listener>>()
   private disconnectListeners = new Set<() => void>()
@@ -387,6 +389,11 @@ class FakeBridge {
   }
 
   /** Puts a project in the book silently. Call before render(). */
+  /** Adds a workspace line to the report. */
+  seedDigest(d: WorkspaceDigest): void {
+    this.digests.push({ ...d })
+  }
+
   seedProject(project: Project): void {
     this.projects.set(project.id, { ...project })
   }
@@ -511,6 +518,7 @@ class FakeBridge {
   reset(): void {
     this.projects.clear()
     this.workspaces.clear()
+    this.digests = []
     this.terminals.clear()
     this.tasks.clear()
     this.queue = closedQueue()
@@ -553,7 +561,15 @@ class FakeBridge {
       running: [],
       queued: []
     }
-    const totals = { tasks: 0, prs: 0, turns: 0, costUsd: 0, durationMs: 0 }
+    const totals = {
+      tasks: 0,
+      prs: 0,
+      turns: 0,
+      costUsd: 0,
+      durationMs: 0,
+      workspaces: 0,
+      needsInput: 0
+    }
     for (const t of this.tasks.values()) {
       const group =
         t.state === 'preparing' || t.state === 'finishing'
@@ -567,6 +583,7 @@ class FakeBridge {
         state: t.state,
         reason: t.reason,
         workspace: t.workspaceId ? (this.workspaces.get(t.workspaceId)?.name ?? null) : null,
+        workspaceId: t.workspaceId,
         branch: t.branch,
         prUrl: t.prUrl,
         durationMs,
@@ -579,8 +596,15 @@ class FakeBridge {
       totals.costUsd += t.costUsd
       totals.durationMs += durationMs ?? 0
     }
+    const rank = (s: WorkspaceStatus): number =>
+      s === 'needs_input' ? 0 : s === 'stuck' ? 1 : s === 'working' ? 2 : 3
+    const digests = this.digests
+      .map((d) => ({ ...d }))
+      .sort((a, b) => rank(a.status) - rank(b.status))
+    totals.workspaces = digests.length
+    totals.needsInput = digests.filter((d) => d.status === 'needs_input').length
     const now = new Date().toISOString()
-    return { since: since ?? now, generatedAt: now, groups, totals }
+    return { since: since ?? now, generatedAt: now, groups, workspaces: digests, totals }
   }
 
   private removeWorkspace(id: string): void {

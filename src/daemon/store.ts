@@ -88,8 +88,26 @@ const MIGRATIONS: string[] = [
      until TEXT NOT NULL,
      ended_at TEXT
    );`,
-  `ALTER TABLE workspaces ADD COLUMN pr_json TEXT;`
+  `ALTER TABLE workspaces ADD COLUMN pr_json TEXT;`,
+  `CREATE TABLE workspace_status_log (
+     id INTEGER PRIMARY KEY,
+     workspace_id TEXT NOT NULL,
+     status TEXT NOT NULL,
+     reason TEXT,
+     at TEXT NOT NULL
+   );
+   CREATE INDEX workspace_status_log_ws ON workspace_status_log(workspace_id, at);
+   INSERT INTO workspace_status_log (workspace_id, status, reason, at)
+     SELECT id, status, status_reason, status_at FROM workspaces;`
 ]
+
+const STATUS_LOG_RETENTION_MS = 30 * 24 * 3_600_000
+
+export interface StatusLogRow {
+  status: WorkspaceStatus
+  reason: string | null
+  at: string
+}
 
 const ID_ALPHABET = 'abcdefghijklmnopqrstuvwxyz234567'
 
@@ -437,7 +455,39 @@ export class Store {
   /** Hard-deletes an archived row so its name and path can be reused. */
   deleteWorkspace(id: string): void {
     this.db.prepare('DELETE FROM hook_events WHERE workspace_id = ?').run(id)
+    this.db.prepare('DELETE FROM workspace_status_log WHERE workspace_id = ?').run(id)
     this.db.prepare('DELETE FROM workspaces WHERE id = ?').run(id)
+  }
+
+  // ---- status log -----------------------------------------------------------
+
+  /** Records one status change; rows older than 30 days are pruned on the way. */
+  insertStatusLog(
+    workspaceId: string,
+    status: WorkspaceStatus,
+    reason: string | null,
+    at: string
+  ): void {
+    this.db
+      .prepare(
+        'INSERT INTO workspace_status_log (workspace_id, status, reason, at) VALUES (?, ?, ?, ?)'
+      )
+      .run(workspaceId, status, reason, at)
+    const cutoff = new Date(Date.parse(at) - STATUS_LOG_RETENTION_MS).toISOString()
+    this.db.prepare('DELETE FROM workspace_status_log WHERE at < ?').run(cutoff)
+  }
+
+  /** Every change at or after `since`, plus the last one before it, oldest first. */
+  listStatusLog(workspaceId: string, since: string): StatusLogRow[] {
+    return this.db
+      .prepare(
+        `SELECT status, reason, at FROM workspace_status_log
+           WHERE workspace_id = ? AND (at >= ? OR id = (
+             SELECT id FROM workspace_status_log WHERE workspace_id = ? AND at < ?
+               ORDER BY at DESC, id DESC LIMIT 1))
+           ORDER BY at, id`
+      )
+      .all(workspaceId, since, workspaceId, since) as unknown as StatusLogRow[]
   }
 
   // ---- hook events ----------------------------------------------------------

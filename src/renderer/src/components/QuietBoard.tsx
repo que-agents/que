@@ -11,6 +11,7 @@ interface Row {
   name: string
   project: string
   state: string
+  stateText: string
   pr: string
   elapsedMs: number | null
   lastActivity: string | null
@@ -56,32 +57,53 @@ export default function QuietBoard(): React.JSX.Element {
     ws.filter((w) => w.status === status).length
 
   const live = newestFirst(Object.values(tasks).filter((t) => isLiveTask(t.state)))
+  const taskRows: Row[] = live.map((t) => ({
+    id: t.id,
+    name: t.title,
+    project: projectName(t.projectId),
+    state: t.state,
+    stateText: t.state,
+    pr: '-',
+    elapsedMs: t.startedAt ? now - Date.parse(t.startedAt) : null,
+    lastActivity: t.lastActivityAt,
+    turns: t.turns,
+    costUsd: t.costUsd
+  }))
+  const workspaceRow = (w: Workspace): Row => {
+    const terms = terminals.filter((t) => t.key === w.id && t.alive)
+    return {
+      id: w.id,
+      name: w.name,
+      project: projectName(w.projectId),
+      state: w.status,
+      stateText:
+        w.status === 'needs_input'
+          ? `needs input · since ${hhmm(Date.parse(w.statusAt))}`
+          : w.status.replace('_', ' '),
+      pr: w.pr ? `${w.pr.state}${w.pr.checks === 'failing' ? ' ✕' : ''}` : '-',
+      elapsedMs:
+        terms.length > 0 ? now - Math.min(...terms.map((t) => Date.parse(t.createdAt))) : null,
+      lastActivity: w.lastActivityAt,
+      turns: null,
+      costUsd: null
+    }
+  }
+  // Every workspace that is working, waiting or stuck, plus any with a live terminal.
+  const shown = ws.filter(
+    (w) =>
+      ['working', 'needs_input', 'stuck'].includes(w.status) ||
+      terminals.some((t) => t.key === w.id && t.alive)
+  )
+  const byStatus = (status: Workspace['status']): Row[] =>
+    shown.filter((w) => w.status === status).map(workspaceRow)
   const rows: Row[] = [
-    ...live.map((t) => ({
-      id: t.id,
-      name: t.title,
-      project: projectName(t.projectId),
-      state: t.state,
-      pr: '-',
-      elapsedMs: t.startedAt ? now - Date.parse(t.startedAt) : null,
-      lastActivity: t.lastActivityAt,
-      turns: t.turns,
-      costUsd: t.costUsd
-    })),
-    ...ws
-      .map((w) => ({ w, terms: terminals.filter((t) => t.key === w.id && t.alive) }))
-      .filter(({ terms }) => terms.length > 0)
-      .map(({ w, terms }) => ({
-        id: w.id,
-        name: w.name,
-        project: projectName(w.projectId),
-        state: w.status,
-        pr: w.pr ? `${w.pr.state}${w.pr.checks === 'failing' ? ' ✕' : ''}` : '-',
-        elapsedMs: now - Math.min(...terms.map((t) => Date.parse(t.createdAt))),
-        lastActivity: w.lastActivityAt,
-        turns: null,
-        costUsd: null
-      }))
+    ...byStatus('needs_input'),
+    ...byStatus('stuck'),
+    ...taskRows,
+    ...byStatus('working'),
+    ...shown
+      .filter((w) => !['needs_input', 'stuck', 'working'].includes(w.status))
+      .map(workspaceRow)
   ]
 
   const unlockMinutes = quiet?.unlockMinutes ?? 20
@@ -99,7 +121,7 @@ export default function QuietBoard(): React.JSX.Element {
         </p>
         <p>
           {ws.length} {ws.length === 1 ? 'workspace' : 'workspaces'} · {wsCount('working')} working
-          · {wsCount('needs_input')} needs input
+          · {wsCount('needs_input')} need input · {wsCount('stuck')} stuck
         </p>
       </div>
       <div className="quiet-board-table">
@@ -126,7 +148,7 @@ export default function QuietBoard(): React.JSX.Element {
                 <tr key={r.id} data-testid={`quiet-board-row-${r.id}`} data-state={r.state}>
                   <td className="name">{r.name}</td>
                   <td>{r.project}</td>
-                  <td className={`state state-${r.state}`}>{r.state.replace('_', ' ')}</td>
+                  <td className={`state state-${r.state}`}>{r.stateText}</td>
                   <td className="state">{r.pr}</td>
                   <td>{r.elapsedMs === null ? '-' : formatDuration(r.elapsedMs)}</td>
                   <td>{formatAge(r.lastActivity, now)}</td>

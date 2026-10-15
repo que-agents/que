@@ -2,7 +2,13 @@ import { describe, expect, it } from 'vitest'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { fakeBridge } from '@renderer/testing/fake-bridge'
-import { makeProject, makeTask, makeWorkspace } from '@renderer/testing/fixtures'
+import {
+  makeProject,
+  makePullRequest,
+  makeTask,
+  makeWorkspace,
+  makeWorkspaceDigest
+} from '@renderer/testing/fixtures'
 import App from '../App'
 
 const retry = makeWorkspace({ id: 'ws_01hzx3k9c2qf', name: 'app-1432-retry-logic' })
@@ -65,6 +71,95 @@ describe('ReportView', () => {
       await openReport(user)
 
       expect(await screen.findByTestId('report-empty')).toBeInTheDocument()
+    })
+  })
+
+  describe('workspaces', () => {
+    const waiting = makeWorkspaceDigest({
+      id: 'ws_01hzx5t6y2wa',
+      name: 'app-1451-token-refresh',
+      status: 'needs_input',
+      needsInputCount: 2,
+      waitingSince: new Date(2026, 9, 14, 2, 14).toISOString(),
+      pr: makePullRequest({ state: 'open' })
+    })
+    const quietOne = makeWorkspaceDigest({ id: 'ws_01hzx3k9c2qf', status: 'idle' })
+
+    it('lists each workspace in daemon order with its facts and pull request', async () => {
+      const user = userEvent.setup()
+      fakeBridge.seedDigest(quietOne)
+      fakeBridge.seedDigest(waiting)
+
+      await openReport(user)
+
+      const section = await screen.findByTestId('report-workspaces')
+      expect(within(section).getByRole('heading', { name: 'Workspaces 2' })).toBeInTheDocument()
+      expect(
+        within(section)
+          .getAllByTestId(/^report-workspace-ws_[a-z0-9]+$/)
+          .map((r) => r.dataset.testid)
+      ).toEqual([`report-workspace-${waiting.id}`, `report-workspace-${quietOne.id}`])
+      const row = screen.getByTestId(`report-workspace-${waiting.id}`)
+      expect(
+        within(row).getByRole('button', { name: 'app-1451-token-refresh' })
+      ).toBeInTheDocument()
+      expect(within(row).getByText('uploader')).toBeInTheDocument()
+      expect(within(row).getByTestId(`report-workspace-${waiting.id}-status`)).toHaveAttribute(
+        'data-status',
+        'needs_input'
+      )
+      expect(within(row).getByTestId(`report-workspace-${waiting.id}-facts`)).toHaveTextContent(
+        'worked 42m · asked for input 2× · waiting since 02:14 · 2 commits ahead'
+      )
+      expect(within(row).getByRole('link')).toHaveAttribute('href', waiting.pr?.url)
+      expect(
+        within(screen.getByTestId(`report-workspace-${quietOne.id}`)).queryByRole('link')
+      ).not.toBeInTheDocument()
+    })
+
+    it('says no work when the workspace did none', async () => {
+      const user = userEvent.setup()
+      fakeBridge.seedDigest(makeWorkspaceDigest({ workingMs: 0, commitsAhead: null }))
+
+      await openReport(user)
+
+      expect(await screen.findByTestId('report-workspace-ws_01hzx3k9c2qf-facts')).toHaveTextContent(
+        /^no work in this window$/
+      )
+    })
+
+    it('shows the workspace terminals when its name is clicked', async () => {
+      const user = userEvent.setup()
+      fakeBridge.seedProject(makeProject())
+      fakeBridge.seedWorkspace(retry)
+      fakeBridge.seedDigest(quietOne)
+      await openReport(user)
+
+      await user.click(await screen.findByRole('button', { name: 'app-1432-retry-logic' }))
+
+      expect(await screen.findByTestId('topbar-title')).toHaveTextContent('app-1432-retry-logic')
+    })
+
+    it('shows the empty state only when there are no tasks and no workspaces', async () => {
+      const user = userEvent.setup()
+      fakeBridge.seedDigest(quietOne)
+
+      await openReport(user)
+
+      await screen.findByTestId('report-workspaces')
+      expect(screen.queryByTestId('report-empty')).not.toBeInTheDocument()
+    })
+
+    it('adds workspace and need-input counts to the totals', async () => {
+      const user = userEvent.setup()
+      fakeBridge.seedDigest(quietOne)
+      fakeBridge.seedDigest(waiting)
+
+      await openReport(user)
+
+      expect(await screen.findByTestId('report-totals')).toHaveTextContent(
+        '0 tasks · 0 PRs · 0 turns · $0.00 · 0s · 2 workspaces · 1 need input'
+      )
     })
   })
 

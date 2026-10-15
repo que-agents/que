@@ -827,6 +827,24 @@ body.resizing {
   font-weight: 500;
 }
 
+.report-row button.link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.report-row button.link:hover {
+  text-decoration: underline;
+}
+
+.report-row .facts {
+  font: 11px var(--mono);
+}
+
 .report-row .reason {
   color: var(--tone-attention);
 }

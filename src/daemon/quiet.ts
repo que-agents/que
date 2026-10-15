@@ -31,7 +31,7 @@ export interface QuietServiceOptions {
   /** Every client's terminal subscriptions are dropped (they keep running). */
   detachAll: () => void
   /** The report since a time, for the morning summary. */
-  report: (since: string) => Report
+  report: (since: string) => Promise<Report>
   log?: (msg: string) => void
   now?: () => number
   /** Re-evaluation interval. Default 15 s. */
@@ -233,7 +233,7 @@ export class QuietService {
 
     const prev = this.lastWindow
     this.lastWindow = w
-    if (prev && !w && now >= prev.end.getTime() - 1_000) this.morningSummary(prev)
+    if (prev && !w && now >= prev.end.getTime() - 1_000) void this.morningSummary(prev)
 
     const state = this.state()
     const key = JSON.stringify(state)
@@ -244,12 +244,12 @@ export class QuietService {
     this.schedule(now, state)
   }
 
-  private morningSummary(window: ActiveWindow): void {
+  private async morningSummary(window: ActiveWindow): Promise<void> {
     const start = window.start.getTime()
     if (!this.o.config().notifications.morningSummary || this.summarized.has(start)) return
     this.summarized.add(start)
     try {
-      const report = this.o.report(window.start.toISOString())
+      const report = await this.o.report(window.start.toISOString())
       this.o.emit('quiet.morningSummary', { report })
     } catch (err) {
       this.o.log?.(`quiet: morning summary failed: ${(err as Error).message}`)

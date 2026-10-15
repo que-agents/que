@@ -2,7 +2,6 @@ import { spawn } from 'node:child_process'
 import os from 'node:os'
 import { join } from 'node:path'
 import { app, BrowserWindow, dialog, ipcMain, Notification, shell } from 'electron'
-import { formatCost } from '../daemon/report'
 import { DaemonClient } from '../shared/client'
 import { queHome } from '../shared/paths'
 import type { EventName, MethodName, Report } from '../shared/protocol'
@@ -166,13 +165,11 @@ function applyQuiet(q: QuietState): void {
 /** One notification with the night's totals, when quiet hours end. */
 function morningSummary(report: Report): void {
   if (e2e || !Notification.isSupported()) return
-  const g = report.groups
   const body = [
-    `${g.done.length} done`,
-    `${g.stuck.length} stuck`,
-    `${g.failed.length} failed`,
-    `${report.totals.prs} PRs`,
-    formatCost(report.totals.costUsd)
+    `${report.totals.needsInput} need input`,
+    `${report.workspaces.filter((w) => w.status === 'stuck').length} stuck`,
+    `${report.groups.done.length} tasks done`,
+    `${report.totals.prs} PRs`
   ].join(' · ')
   new Notification({ title: 'que · good morning', body }).show()
 }

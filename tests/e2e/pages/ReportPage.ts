@@ -12,6 +12,9 @@ export class ReportPage {
   task: (id: string) => Locator
   taskState: (id: string) => Locator
   taskPrLink: (id: string) => Locator
+  workspacesSection: Locator
+  workspace: (id: string) => Locator
+  workspaceFacts: (id: string) => Locator
 
   constructor(page: Page) {
     this.page = page
@@ -25,6 +28,9 @@ export class ReportPage {
     this.task = (id: string) => page.getByTestId(`report-task-${id}`)
     this.taskState = (id: string) => page.getByTestId(`report-task-${id}-state`)
     this.taskPrLink = (id: string) => page.getByTestId(`report-task-${id}-pr`)
+    this.workspacesSection = page.getByTestId('report-workspaces')
+    this.workspace = (id: string) => page.getByTestId(`report-workspace-${id}`)
+    this.workspaceFacts = (id: string) => page.getByTestId(`report-workspace-${id}-facts`)
   }
 
   async waitForLoad() {
