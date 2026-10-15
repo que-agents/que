@@ -1,8 +1,24 @@
 import { useEffect, useRef } from 'react'
-import { RATIO_DEFAULT, RATIO_MAX, RATIO_MIN, useQue, useStore } from '../store'
+import {
+  RATIO_DEFAULT,
+  RATIO_MAX,
+  RATIO_MIN,
+  type ViewKind,
+  useQue,
+  useStore,
+  viewId,
+  viewKindOf
+} from '../store'
 import { setPaneSource } from '../testHook'
-import { PlusIcon } from './icons'
+import ChangesView from './ChangesView'
+import { DiffIcon, PlusIcon, PullRequestIcon } from './icons'
+import PullRequestView from './PullRequestView'
 import Terminal from './Terminal'
+
+const VIEW_TABS: Record<ViewKind, { label: string; Icon: () => React.JSX.Element }> = {
+  changes: { label: 'Changes', Icon: DiffIcon },
+  pr: { label: 'Pull request', Icon: PullRequestIcon }
+}
 
 const STEP = 0.05
 
@@ -89,7 +105,10 @@ function Pane({ termKey, index }: { termKey: string; index: 0 | 1 }): React.JSX.
   const store = useStore()
   const { connected, error } = useQue()
   const tabs = store.paneTabs(termKey, index)
+  const views = store.paneViews(termKey, index)
+  const activeId = store.paneActiveId(termKey, index)
   const active = store.paneActive(termKey, index)
+  const activeView = viewKindOf(activeId)
   const focused = store.focusedPane(termKey) === index
 
   return (
@@ -98,10 +117,11 @@ function Pane({ termKey, index }: { termKey: string; index: 0 | 1 }): React.JSX.
       data-testid={`pane-${index}`}
       data-focused={focused}
       data-active-term={active?.id ?? ''}
+      data-active-tab={activeId ?? ''}
       onPointerDownCapture={() => store.focusPane(termKey, index)}
     >
       <div className="tabbar">
-        <div className="tabs" role="tablist" aria-label="Terminals">
+        <div className="tabs" role="tablist" aria-label="Tabs">
           {tabs.map((t) => (
             <span
               key={t.id}
@@ -140,6 +160,38 @@ function Pane({ termKey, index }: { termKey: string; index: 0 | 1 }): React.JSX.
               </button>
             </span>
           ))}
+          {views.map((kind) => {
+            const { label, Icon } = VIEW_TABS[kind]
+            const selected = viewId(kind) === activeId
+            return (
+              <span
+                key={kind}
+                className={`tab view-tab${selected ? ' active' : ''}`}
+                data-testid={`view-tab-${kind}`}
+                data-active={selected}
+              >
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={selected}
+                  data-testid={`view-tab-${kind}-select`}
+                  onClick={() => store.selectTerminal(termKey, viewId(kind))}
+                >
+                  <Icon />
+                  {label}
+                </button>
+                <button
+                  type="button"
+                  className="close"
+                  aria-label={`Close ${label}`}
+                  data-testid={`view-tab-${kind}-close`}
+                  onClick={() => store.closeView(termKey, kind)}
+                >
+                  ×
+                </button>
+              </span>
+            )
+          })}
         </div>
         <button
           type="button"
@@ -156,7 +208,12 @@ function Pane({ termKey, index }: { termKey: string; index: 0 | 1 }): React.JSX.
           <PlusIcon />
         </button>
       </div>
-      {active ? (
+      {activeView === 'changes' ? (
+        <ChangesView termKey={termKey} />
+      ) : activeView === 'pr' ? (
+        <PullRequestView termKey={termKey} />
+      ) : active ? (
+        // An inactive tab's terminal is detached; it reattaches (and replays) when selected.
         <Terminal key={active.id} id={active.id} focused={focused} />
       ) : (
         <div className="empty" data-testid="terminal-empty">
@@ -182,6 +239,7 @@ export default function Panes({ termKey }: { termKey: string }): React.JSX.Eleme
       return Array.from({ length: count }, (_, index) => ({
         index,
         activeTermId: store.paneActive(termKey, index as 0 | 1)?.id ?? null,
+        activeTab: store.paneActiveId(termKey, index as 0 | 1),
         focused: focused === index
       }))
     })

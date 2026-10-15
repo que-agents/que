@@ -5,6 +5,8 @@ import { expect, type Locator, type Page } from '@playwright/test'
 export interface PaneState {
   index: number
   activeTermId: string | null
+  // The selected tab: a terminal id, or a view id (`view:changes`, `view:pr`).
+  activeTab: string | null
   focused: boolean
 }
 
@@ -20,6 +22,10 @@ export class TerminalPage {
   tabClose: (id: string) => Locator
   tabExited: (id: string) => Locator
   tabReattached: (id: string) => Locator
+  // A view tab (Changes, Pull request) by kind: `changes` or `pr`.
+  viewTab: (kind: 'changes' | 'pr') => Locator
+  viewTabSelect: (kind: 'changes' | 'pr') => Locator
+  viewTabClose: (kind: 'changes' | 'pr') => Locator
 
   constructor(page: Page) {
     this.page = page
@@ -33,10 +39,19 @@ export class TerminalPage {
     this.tabClose = (id: string) => page.getByTestId(`terminal-tab-${id}-close`)
     this.tabExited = (id: string) => page.getByTestId(`terminal-tab-${id}-exited`)
     this.tabReattached = (id: string) => page.getByTestId(`terminal-tab-${id}-reattached`)
+    this.viewTab = (kind) => page.getByTestId(`view-tab-${kind}`)
+    this.viewTabSelect = (kind) => page.getByTestId(`view-tab-${kind}-select`)
+    this.viewTabClose = (kind) => page.getByTestId(`view-tab-${kind}-close`)
   }
 
-  // One pane: its container, terminal viewport, xterm input and + button.
-  pane(n: number): { root: Locator; viewport: Locator; input: Locator; newButton: Locator } {
+  // One pane: its container, terminal viewport, xterm input, + button, and its view tabs.
+  pane(n: number): {
+    root: Locator
+    viewport: Locator
+    input: Locator
+    newButton: Locator
+    viewTab: (kind: 'changes' | 'pr') => Locator
+  } {
     const root = this.page.getByTestId(`pane-${n}`)
     const viewport = root.getByTestId('terminal-viewport')
     return {
@@ -44,7 +59,8 @@ export class TerminalPage {
       viewport,
       // xterm renders this textarea; it is the one accepted CSS selector.
       input: viewport.locator('.xterm-helper-textarea'),
-      newButton: this.page.getByTestId(`pane-${n}-new`)
+      newButton: this.page.getByTestId(`pane-${n}-new`),
+      viewTab: (kind) => root.getByTestId(`view-tab-${kind}`)
     }
   }
 
