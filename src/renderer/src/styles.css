@@ -471,6 +471,15 @@ h2 {
   background: var(--tone);
 }
 
+.pr-chip {
+  text-decoration: none;
+}
+
+.pr-chip:hover {
+  text-decoration: none;
+  background: color-mix(in srgb, var(--tone) 20%, transparent);
+}
+
 .tone-neutral {
   --tone: var(--tone-neutral);
 }

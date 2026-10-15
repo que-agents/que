@@ -6,6 +6,7 @@ import type {
   ConfigSetParams,
   Events,
   Project,
+  PullRequest,
   QueApi,
   QueueState,
   QuietState,
@@ -396,6 +397,13 @@ class FakeBridge {
     const at = new Date().toISOString()
     this.workspaces.set(id, { ...ws, status, statusReason: reason ?? null, statusAt: at })
     this.emit('workspace.status', { id, status, ...(reason ? { reason } : {}), at })
+  }
+
+  /** Sets (or clears) the workspace's pull request, as a daemon refresh would. */
+  setWorkspacePr(id: string, pr: PullRequest | null): void {
+    const ws = { ...this.workspace(id), pr }
+    this.workspaces.set(id, ws)
+    this.emit('workspace.updated', { ...ws })
   }
 
   getWorkspace(id: string): Workspace | undefined {

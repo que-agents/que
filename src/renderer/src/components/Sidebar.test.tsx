@@ -2,7 +2,13 @@ import { describe, expect, it } from 'vitest'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { fakeBridge } from '@renderer/testing/fake-bridge'
-import { makeProject, makeTask, makeTermInfo, makeWorkspace } from '@renderer/testing/fixtures'
+import {
+  makeProject,
+  makePullRequest,
+  makeTask,
+  makeTermInfo,
+  makeWorkspace
+} from '@renderer/testing/fixtures'
 import App from '../App'
 
 const uploader = makeProject()
@@ -152,6 +158,54 @@ describe('Sidebar', () => {
       const badge = await screen.findByTestId(`sidebar-workspace-${owned.id}-status`)
       expect(badge).toHaveAttribute('data-status', 'exited')
       expect(screen.queryByTestId(`sidebar-workspace-${owned.id}-pr`)).not.toBeInTheDocument()
+    })
+  })
+
+  describe('pull requests', () => {
+    it('shows a chip link with the PR number, state and tone', async () => {
+      seed()
+      fakeBridge.seedWorkspace({ ...retry, pr: makePullRequest({ state: 'draft' }) })
+      render(<App />)
+
+      const chip = await screen.findByRole('link', { name: '#41' })
+      expect(chip).toHaveAttribute('href', 'https://github.com/rquellh/que/pull/41')
+      expect(chip).toHaveAttribute('data-pr-state', 'draft')
+      expect(chip).toHaveClass('tone-neutral')
+      expect(chip).toHaveAttribute('title', 'PR #41: draft')
+    })
+
+    it('updates the chip live when the daemon refreshes the PR', async () => {
+      seed()
+      fakeBridge.seedWorkspace({ ...retry, pr: makePullRequest({ state: 'draft' }) })
+      render(<App />)
+      const chip = await screen.findByRole('link', { name: '#41' })
+
+      fakeBridge.setWorkspacePr(retry.id, makePullRequest({ state: 'open', checks: 'failing' }))
+
+      await waitFor(() => {
+        expect(chip).toHaveClass('tone-bad')
+      })
+      expect(chip).toHaveAttribute('data-pr-state', 'open')
+      expect(chip).toHaveAttribute('data-pr-checks', 'failing')
+    })
+
+    it("still links a finished task's PR while the workspace has no pr", async () => {
+      seed()
+      const owned = makeWorkspace({ id: 'ws_01hzx6v8b3xd', name: 'add-retry-logic' })
+      fakeBridge.seedWorkspace(owned)
+      fakeBridge.seedTask(
+        makeTask({
+          workspaceId: owned.id,
+          state: 'done',
+          prUrl: 'https://github.com/rquellh/que/pull/88'
+        })
+      )
+      render(<App />)
+
+      expect(await screen.findByRole('link', { name: 'PR #88' })).toHaveAttribute(
+        'href',
+        'https://github.com/rquellh/que/pull/88'
+      )
     })
   })
 

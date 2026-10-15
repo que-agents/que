@@ -2,6 +2,7 @@
 // (kept separate: renderer tests never import node-side test code).
 import type {
   Project,
+  PullRequest,
   QuietState,
   Task,
   TermInfo,
@@ -45,6 +46,20 @@ export function makeWorkspace(overrides: Partial<Workspace> = {}): Workspace {
     archivedAt: null,
     prUrl: null,
     pr: null,
+    ...overrides
+  }
+}
+
+/** A draft pull request with no checks yet and no review. */
+export function makePullRequest(overrides: Partial<PullRequest> = {}): PullRequest {
+  return {
+    url: 'https://github.com/rquellh/que/pull/41',
+    number: 41,
+    title: 'Add retry logic to the uploader',
+    state: 'draft',
+    checks: 'none',
+    review: null,
+    checkedAt: '2026-10-14T01:00:00.000Z',
     ...overrides
   }
 }

@@ -1,6 +1,12 @@
 // Pure display rules for the renderer: badge labels and tones, money and
 // durations, and the order things are listed in.
-import type { ReportGroup, Task, TaskState, WorkspaceStatus } from '../../preload/index.d'
+import type {
+  PullRequest,
+  ReportGroup,
+  Task,
+  TaskState,
+  WorkspaceStatus
+} from '../../preload/index.d'
 
 export type Tone = 'neutral' | 'busy' | 'attention' | 'bad' | 'good' | 'muted'
 
@@ -86,4 +92,27 @@ export function formatAge(iso: string | null, now: number): string {
   if (s < 3600) return `${Math.floor(s / 60)}m ago`
   if (s < 86_400) return `${Math.floor(s / 3600)}h ago`
   return `${Math.floor(s / 86_400)}d ago`
+}
+
+const REVIEW_TEXT = {
+  approved: 'approved',
+  changes_requested: 'changes requested',
+  review_required: 'review required'
+} as const
+
+/** The chip for a pull request: `#41`, a tone, and a tooltip sentence. */
+export function prBadge(pr: PullRequest): { label: string; tone: Tone; title: string } {
+  let tone: Tone
+  if (pr.state === 'merged') tone = 'good'
+  else if (pr.state === 'closed') tone = 'muted'
+  else if (pr.checks === 'failing') tone = 'bad'
+  else if (pr.review === 'changes_requested') tone = 'attention'
+  else if (pr.state === 'draft') tone = 'neutral'
+  else if (pr.review === 'approved' && (pr.checks === 'passing' || pr.checks === 'none'))
+    tone = 'good'
+  else tone = 'busy'
+  const parts: string[] = [pr.state]
+  if (pr.checks !== 'none') parts.push(`checks ${pr.checks}`)
+  if (pr.review) parts.push(REVIEW_TEXT[pr.review])
+  return { label: `#${pr.number}`, tone, title: `PR #${pr.number}: ${parts.join(', ')}` }
 }
