@@ -496,6 +496,12 @@ class FakeBridge {
   }
 
   /** Updates a workspace's status and emits workspace.status, as the status engine would. */
+  /** The daemon noticed the worktree change on disk: fires workspace.changed for the workspace. */
+  changeWorkspace(id: string): void {
+    this.workspace(id)
+    this.emit('workspace.changed', { id })
+  }
+
   setStatus(id: string, status: WorkspaceStatus, reason?: string): void {
     const ws = this.workspace(id)
     const at = new Date().toISOString()

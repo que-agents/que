@@ -82,6 +82,7 @@ const FORWARDED_EVENTS: EventName[] = [
   'workspace.updated',
   'workspace.removed',
   'workspace.status',
+  'workspace.changed',
   'task.created',
   'task.status',
   'task.updated',
