@@ -1,6 +1,7 @@
 // Fixture factories for renderer tests. Same shapes as src/testing/fixtures.ts
 // (kept separate: renderer tests never import node-side test code).
 import type {
+  DiffFile,
   Project,
   PullRequest,
   QuietState,
@@ -9,6 +10,7 @@ import type {
   Ticket,
   UserConfig,
   Workspace,
+  WorkspaceDiff,
   WorkspaceDigest
 } from '../../../preload/index.d'
 
@@ -201,6 +203,34 @@ export function makeTicket(overrides: Partial<Ticket> = {}): Ticket {
     updatedAt: '2026-10-14T01:12:00.000Z',
     syncedAt: '2026-10-14T01:15:00.000Z',
     workspaceId: null,
+    ...overrides
+  }
+}
+
+/** One changed file, as workspace.diff reports it. */
+export function makeDiffFile(overrides: Partial<DiffFile> = {}): DiffFile {
+  return {
+    path: 'src/upload/put.ts',
+    from: null,
+    status: 'modified',
+    additions: 12,
+    deletions: 3,
+    dirty: false,
+    patch:
+      'diff --git a/src/upload/put.ts b/src/upload/put.ts\n--- a/src/upload/put.ts\n+++ b/src/upload/put.ts\n@@ -1,3 +1,4 @@\n-const retries = 1\n+const retries = 3\n+const backoffMs = 250\n export {}\n',
+    ...overrides
+  }
+}
+
+/** A workspace's diff against its base. */
+export function makeWorkspaceDiff(overrides: Partial<WorkspaceDiff> = {}): WorkspaceDiff {
+  return {
+    workspaceId: 'ws_01hzx3k9c2qf',
+    base: 'origin/main',
+    head: 'app-1432-retry-logic',
+    commitsAhead: 2,
+    files: [makeDiffFile()],
+    generatedAt: '2026-10-14T14:00:00.000Z',
     ...overrides
   }
 }

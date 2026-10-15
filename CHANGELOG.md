@@ -8,6 +8,8 @@ All notable changes to que are recorded here. The format follows
 
 ### Added
 
+- A Changes view for a workspace: what it changed against its base, file by file with the patch, committed and uncommitted, read-only.
+- `que ws diff <workspace>` and `workspace.diff`: what a workspace changed against its base, committed and uncommitted, file by file with patches.
 - Split a workspace's terminals in two: ⌘D beside, ⌘⇧D below, ⌘⌥ arrows to move between panes, or use the split and join buttons in the top bar; drag the divider; the layout is remembered and both panes reattach after a relaunch.
 - A Tickets view in the app: the tickets assigned to you, Start on each (asking which project the first time), and the workspace it made; the start prompt and the sync filter are in Settings.
 - A ticket queue: `que tickets` lists the tickets assigned to you from the tracker, `que tickets start KEY` makes a workspace for one under its project (learned the first time you choose), writes the ticket as a brief and starts claude on it.
