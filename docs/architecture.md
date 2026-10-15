@@ -90,6 +90,11 @@ serves; app internals go too. `QUE_TERMINAL=1` is set. The user's own
 configuration (an alternate config directory, provider selectors, limits) is
 kept.
 
+The app resolves the login shell's PATH once at start (`src/shared/login-path.ts`)
+and merges it in front of its own, and the daemon and editor launches inherit
+it, so a Finder launch finds the same tools a terminal does. `que doctor`
+reports what is on the daemon's PATH.
+
 ## The status engine
 
 `status-engine.ts` is a set of pure functions: a hook event, a terminal exit,
