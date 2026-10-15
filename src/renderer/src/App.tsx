@@ -13,7 +13,7 @@ import SettingsView from './components/SettingsView'
 import TicketsView from './components/TicketsView'
 import Sidebar from './components/Sidebar'
 import SidebarResizer, { useSidebarWidth } from './components/SidebarResizer'
-import TerminalTabs from './components/TerminalTabs'
+import Panes from './components/Panes'
 import TopBar from './components/TopBar'
 import UpdateBanner from './components/UpdateBanner'
 import { isLocked, QueStore, StoreContext, useQue, useStore } from './store'
@@ -63,20 +63,35 @@ function Shell(): React.JSX.Element {
   const locked = isLocked(quiet)
   const termKey = view.kind === 'terminals' && !locked ? view.key : null
 
-  // Cmd+T / Cmd+W manage the terminal tabs; captured before xterm sees them.
+  // Cmd+T / Cmd+W manage the terminal tabs, Cmd+D / Cmd+Shift+D split the panes and
+  // Cmd+Option+arrows move between them; captured before xterm sees them.
   useEffect(() => {
     if (termKey === null || dialog) return
     const onKey = (e: KeyboardEvent): void => {
-      if (!e.metaKey || e.shiftKey || e.altKey || e.ctrlKey) return
+      if (!e.metaKey || e.ctrlKey) return
       const key = e.key.toLowerCase()
-      if (key !== 't' && key !== 'w') return
+      const arrows = ['arrowleft', 'arrowup', 'arrowright', 'arrowdown']
+      let run: (() => void) | null = null
+      if (e.altKey) {
+        if (e.shiftKey || !arrows.includes(key)) return
+        const pane = key === 'arrowleft' || key === 'arrowup' ? 0 : 1
+        run = () => store.focusPane(termKey, pane)
+      } else if (key === 'd') {
+        run = () => void store.splitPane(termKey, e.shiftKey ? 'column' : 'row')
+      } else if (e.shiftKey) {
+        return
+      } else if (key === 't') {
+        run = () => void store.newTerminal(termKey)
+      } else if (key === 'w') {
+        run = () => {
+          const active = store.activeTab(termKey)
+          if (active) void store.closeTerminal(active.id)
+        }
+      }
+      if (!run) return
       e.preventDefault()
       e.stopPropagation()
-      if (key === 't') void store.newTerminal(termKey)
-      else {
-        const active = store.activeTab(termKey)
-        if (active) void store.closeTerminal(active.id)
-      }
+      run()
     }
     window.addEventListener('keydown', onKey, true)
     return () => window.removeEventListener('keydown', onKey, true)
@@ -117,7 +132,7 @@ function Shell(): React.JSX.Element {
         ) : termKey !== null ? (
           <>
             <TopBar termKey={termKey} />
-            <TerminalTabs termKey={termKey} />
+            <Panes termKey={termKey} />
           </>
         ) : view.kind === 'settings' ? (
           <SettingsView />
