@@ -2,13 +2,28 @@ import { describe, expect, it } from 'vitest'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { fakeBridge } from '@renderer/testing/fake-bridge'
-import { makeProject, makeTermInfo, makeWorkspace } from '@renderer/testing/fixtures'
+import {
+  makeDiffFile,
+  makeProject,
+  makeTermInfo,
+  makeWorkspace,
+  makeWorkspaceDiff
+} from '@renderer/testing/fixtures'
 import App from '../App'
 
 const one = makeTermInfo({ name: 'one', cwd: '/Users/dev/a' })
 const two = makeTermInfo({ name: 'two', cwd: '/Users/dev/b' })
 
 const retry = makeWorkspace({ id: 'ws_01hzx3k9c2qf', name: 'app-1432-retry-logic' })
+const put = makeDiffFile()
+const readme = makeDiffFile({
+  path: 'README.md',
+  status: 'added',
+  additions: 1,
+  deletions: 0,
+  patch:
+    'diff --git a/README.md b/README.md\n--- /dev/null\n+++ b/README.md\n@@ -0,0 +1,1 @@\n+# Uploader\n'
+})
 
 const SPLIT_BESIDE = '{Meta>}d{/Meta}'
 const SPLIT_BELOW = '{Meta>}{Shift>}d{/Shift}{/Meta}'
@@ -35,6 +50,13 @@ async function openWorkspace(user: ReturnType<typeof userEvent.setup>): Promise<
 function seedWorkspace(): void {
   fakeBridge.seedProject(makeProject())
   fakeBridge.seedWorkspace(retry)
+  fakeBridge.seedDiff(makeWorkspaceDiff({ workspaceId: retry.id, files: [put, readme] }))
+}
+
+/** Opens the review pane on Changes. */
+async function openChanges(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+  await user.click(screen.getByTestId('topbar-changes'))
+  await screen.findByTestId('changes-list')
 }
 
 /** Splits beside and waits for the second pane to hold its new terminal. */
@@ -352,32 +374,43 @@ describe('Panes', () => {
     })
   })
 
-  describe('view tabs', () => {
-    it('opens Changes beside the terminal tab; selecting either shows it', async () => {
+  describe('diff tabs', () => {
+    it('opens a file beside the terminal tab; selecting either shows it; again focuses it', async () => {
       const user = userEvent.setup()
       seedWorkspace()
       render(<App />)
       const term = await openWorkspace(user)
+      await openChanges(user)
 
-      await user.click(screen.getByTestId('topbar-changes'))
+      await user.click(await screen.findByTestId('changes-file-0'))
 
       const pane = screen.getByTestId('pane-0')
+      const tab = within(pane).getByTestId('view-tab-diff')
       expect(screen.getByTestId(`terminal-tab-${term}`)).toBeInTheDocument()
-      expect(screen.getByTestId('view-tab-changes')).toHaveAttribute('data-active', 'true')
-      expect(screen.getByTestId('view-tab-changes-select')).toHaveTextContent('Changes')
-      expect(pane).toHaveAttribute('data-active-tab', 'view:changes')
+      expect(tab).toHaveAttribute('data-path', 'src/upload/put.ts')
+      expect(tab).toHaveAttribute('data-active', 'true')
+      const select = within(tab).getByTestId('view-tab-diff-select')
+      expect(select).toHaveTextContent('put.ts')
+      expect(select).toHaveAttribute('title', 'src/upload/put.ts')
+      expect(pane).toHaveAttribute('data-active-tab', 'view:diff:src/upload/put.ts')
       expect(pane).toHaveAttribute('data-active-term', '')
-      expect(within(pane).getByTestId('changes-view')).toBeInTheDocument()
+      expect(within(pane).getByTestId('diff-view')).toBeInTheDocument()
 
       await user.click(screen.getByTestId(`terminal-tab-${term}-select`))
 
       expect(pane).toHaveAttribute('data-active-term', term)
-      expect(screen.getByTestId('view-tab-changes')).toHaveAttribute('data-active', 'false')
-      expect(screen.queryByTestId('changes-view')).not.toBeInTheDocument()
+      expect(tab).toHaveAttribute('data-active', 'false')
+      expect(screen.queryByTestId('diff-view')).not.toBeInTheDocument()
 
-      await user.click(screen.getByTestId('view-tab-changes-select'))
+      await user.click(screen.getByTestId('changes-file-0'))
 
-      expect(pane).toHaveAttribute('data-active-tab', 'view:changes')
+      expect(within(pane).getAllByTestId('view-tab-diff')).toHaveLength(1)
+      expect(pane).toHaveAttribute('data-active-tab', 'view:diff:src/upload/put.ts')
+
+      await user.click(screen.getByTestId(`terminal-tab-${term}-select`))
+      await user.click(select)
+
+      expect(pane).toHaveAttribute('data-active-tab', 'view:diff:src/upload/put.ts')
     })
 
     it('closes with Cmd+W and the close button, selecting the neighbour, killing nothing', async () => {
@@ -385,19 +418,20 @@ describe('Panes', () => {
       seedWorkspace()
       render(<App />)
       const term = await openWorkspace(user)
-      await user.click(screen.getByTestId('topbar-changes'))
-      await user.click(screen.getByTestId('topbar-pull-request'))
+      await openChanges(user)
+      await user.click(await screen.findByTestId('changes-file-0'))
+      await user.click(screen.getByTestId('changes-file-1'))
       const pane = screen.getByTestId('pane-0')
-      expect(pane).toHaveAttribute('data-active-tab', 'view:pr')
+      expect(pane).toHaveAttribute('data-active-tab', 'view:diff:README.md')
 
       await user.keyboard('{Meta>}w{/Meta}')
 
-      expect(screen.queryByTestId('view-tab-pr')).not.toBeInTheDocument()
-      expect(pane).toHaveAttribute('data-active-tab', 'view:changes')
+      expect(within(pane).getAllByTestId('view-tab-diff')).toHaveLength(1)
+      expect(pane).toHaveAttribute('data-active-tab', 'view:diff:src/upload/put.ts')
 
-      await user.click(screen.getByRole('button', { name: 'Close Changes' }))
+      await user.click(screen.getByRole('button', { name: 'Close put.ts' }))
 
-      expect(screen.queryByTestId('view-tab-changes')).not.toBeInTheDocument()
+      expect(screen.queryByTestId('view-tab-diff')).not.toBeInTheDocument()
       expect(pane).toHaveAttribute('data-active-term', term)
       expect(fakeBridge.getTerminal(term)).toBeDefined()
     })
@@ -408,19 +442,20 @@ describe('Panes', () => {
       render(<App />)
       await openWorkspace(user)
       const created = await splitBeside(user)
+      await openChanges(user)
 
-      await user.click(screen.getByTestId('topbar-pull-request'))
+      await user.click(await screen.findByTestId('changes-file-1'))
 
       const second = screen.getByTestId('pane-1')
-      expect(within(second).getByTestId('view-tab-pr')).toHaveAttribute('data-active', 'true')
-      expect(within(second).getByTestId('pr-view')).toBeInTheDocument()
+      expect(within(second).getByTestId('view-tab-diff')).toHaveAttribute('data-active', 'true')
+      expect(within(second).getByTestId('diff-view')).toHaveAttribute('data-path', 'README.md')
 
       await user.click(screen.getByTestId(`terminal-tab-${created}-close`))
 
       await waitFor(() => {
         expect(fakeBridge.getTerminal(created)).toBeUndefined()
       })
-      expect(screen.getByTestId('pane-1')).toHaveAttribute('data-active-tab', 'view:pr')
+      expect(screen.getByTestId('pane-1')).toHaveAttribute('data-active-tab', 'view:diff:README.md')
       expect(within(screen.getByTestId('pane-1')).getAllByRole('tab')).toHaveLength(1)
     })
 
@@ -429,22 +464,17 @@ describe('Panes', () => {
       seedWorkspace()
       const first = render(<App />)
       const term = await openWorkspace(user)
-      await user.click(screen.getByTestId('topbar-changes'))
-      await splitBeside(user)
-      await user.click(screen.getByTestId('topbar-pull-request'))
+      await openChanges(user)
+      await user.click(await screen.findByTestId('changes-file-1'))
       first.unmount()
 
       render(<App />)
       await user.click(await screen.findByTestId(`sidebar-workspace-${retry.id}-open`))
 
-      const left = await screen.findByTestId('pane-0')
-      expect(within(left).getByTestId('view-tab-changes')).toHaveAttribute('data-active', 'true')
-      expect(within(left).getByTestId(`terminal-tab-${term}`)).toBeInTheDocument()
-      expect(within(screen.getByTestId('pane-1')).getByTestId('view-tab-pr')).toHaveAttribute(
-        'data-active',
-        'true'
-      )
-      expect(screen.getByTestId('pane-1')).toHaveAttribute('data-focused', 'true')
+      const pane = await screen.findByTestId('pane-0')
+      expect(within(pane).getByTestId('view-tab-diff')).toHaveAttribute('data-active', 'true')
+      expect(within(pane).getByTestId(`terminal-tab-${term}`)).toBeInTheDocument()
+      expect(await within(pane).findByTestId('diff-patch')).toHaveTextContent('+# Uploader')
     })
   })
 })

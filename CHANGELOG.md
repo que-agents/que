@@ -10,7 +10,7 @@ All notable changes to que are recorded here. The format follows
 
 - `que ws pr <workspace>`: a workspace's pull request with each check (state, workflow, how long it took) and its conversation, comments, reviews and line comments oldest first; `--json` and `--refresh`.
 - The daemon keeps every check run behind a pull request's checks, so a finished check updates the workspace, and answers `workspace.prThread` with the conversation, cached until the pull request changes.
-- Changes and Pull request tabs: a workspace's changed files with their diffs, and its pull request's checks and conversation, open as tabs beside its terminals (from the top bar; ⌘W closes them; a split with a view tab in the second pane is a review pane).
+- A review pane at the right of the window with two tabs: Changes, the files a workspace changed, each opening its diff as a tab beside the terminals; and Pull request, its checks and conversation. Drag to resize; the pane and its tab are remembered.
 - Tickets know their epic: the queue groups tickets under their epics, a started ticket's brief carries the epic's overview, and `que tickets list` prints the tree.
 - Filter the sidebar with `⌘K`: sessions, projects and workspaces narrow as you type, and so does the tickets list; sort projects by name or last activity from the Projects head.
 - A Changes view for a workspace: what it changed against its base, file by file with the patch, committed and uncommitted, read-only.
@@ -29,7 +29,7 @@ All notable changes to que are recorded here. The format follows
 
 ### Changed
 
-- The Changes view no longer replaces the terminals; it is a tab.
+- The Changes view no longer replaces the terminals: the list lives in the review pane and a file's diff opens as a tab in the middle.
 - The sidebar filter is a search icon in the title strip, in line with the window buttons; it pops the field out on click or `⌘K` and folds away when cleared.
 - The Tickets entry sits in the sidebar's bottom group with Report and Settings, which stays pinned to the bottom of the window above a solid line.
 
