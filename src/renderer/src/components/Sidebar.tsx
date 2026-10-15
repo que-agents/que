@@ -4,7 +4,7 @@ import { isLiveTask } from '../format'
 import { SCRATCH, useQue, useStore } from '../store'
 import { countOpenTickets } from '../ticket-tree'
 import { filterSidebar, matches, sortProjects, sortWorkspaces } from '../sidebar-order'
-import { FolderPlusIcon, PlusIcon, SortIcon } from './icons'
+import { FolderPlusIcon, PlusIcon, SearchIcon, SortIcon } from './icons'
 import { PrChip, StatusBadge, TaskBadge } from './StatusBadge'
 
 interface MenuItem {
@@ -131,8 +131,17 @@ export default function Sidebar(): React.JSX.Element {
     tickets,
     ticketsSync,
     filter,
+    searchOpen,
+    searchFocusNonce,
     sort
   } = useQue()
+  const searchRef = useRef<HTMLInputElement>(null)
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the nonce re-runs the focus on every request
+  useEffect(() => {
+    if (!searchOpen) return
+    searchRef.current?.focus()
+    searchRef.current?.select()
+  }, [searchOpen, searchFocusNonce])
   const filtering = filter.trim() !== ''
   const openTickets = countOpenTickets(tickets.filter((t) => matches(filter, t.key, t.summary)))
   const owned = latestTasks(tasks)
@@ -199,23 +208,39 @@ export default function Sidebar(): React.JSX.Element {
 
   return (
     <aside className="sidebar" data-testid="sidebar" aria-label="Sidebar">
-      <div className="sidebar-filter">
-        <input
-          type="search"
-          data-testid="sidebar-filter"
-          aria-label="Filter"
-          placeholder="Filter"
-          value={filter}
-          onChange={(e) => store.setFilter(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key !== 'Escape') return
-            e.preventDefault()
-            store.setFilter('')
-            e.currentTarget.blur()
-          }}
-        />
-        {filter === '' && <span className="kbd">⌘K</span>}
-      </div>
+      <button
+        type="button"
+        className={`ghost icon sidebar-search-toggle${searchOpen ? ' active' : ''}`}
+        data-testid="sidebar-search-toggle"
+        aria-label="Search"
+        title="Search (⌘K)"
+        aria-expanded={searchOpen}
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={() => (searchOpen ? store.closeSearch() : store.openSearch())}
+      >
+        <SearchIcon />
+      </button>
+      {searchOpen && (
+        <div className="sidebar-search">
+          <input
+            ref={searchRef}
+            type="search"
+            data-testid="sidebar-search"
+            aria-label="Search"
+            placeholder="Search"
+            value={filter}
+            onChange={(e) => store.setFilter(e.target.value)}
+            onBlur={(e) => {
+              if (e.currentTarget.value === '') store.closeSearch()
+            }}
+            onKeyDown={(e) => {
+              if (e.key !== 'Escape') return
+              e.preventDefault()
+              store.closeSearch()
+            }}
+          />
+        </div>
+      )}
       <nav aria-label="Sessions" data-testid="sidebar-sessions">
         <div className="section-head">
           <h2>Sessions</h2>

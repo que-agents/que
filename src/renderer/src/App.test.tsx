@@ -100,21 +100,34 @@ describe('App', () => {
     })
   })
 
-  describe('filter shortcut', () => {
-    it('focuses the sidebar filter with Cmd+K and selects its text', async () => {
+  describe('search shortcut', () => {
+    it('opens the sidebar search with Cmd+K, focused', async () => {
       const user = userEvent.setup()
       fakeBridge.seedTerminal(uploader)
       render(<App />)
-      const filter = (await screen.findByTestId('sidebar-filter')) as HTMLInputElement
-      await user.type(filter, 'abc')
-      filter.blur()
-      expect(filter).not.toHaveFocus()
+      await screen.findByTestId('sidebar-search-toggle')
+      expect(screen.queryByTestId('sidebar-search')).not.toBeInTheDocument()
 
       await user.keyboard('{Meta>}k{/Meta}')
 
-      expect(filter).toHaveFocus()
-      expect(filter.selectionStart).toBe(0)
-      expect(filter.selectionEnd).toBe(3)
+      expect(await screen.findByTestId('sidebar-search')).toHaveFocus()
+    })
+
+    it('focuses and selects the text again when Cmd+K is pressed while open', async () => {
+      const user = userEvent.setup()
+      fakeBridge.seedTerminal(uploader)
+      render(<App />)
+      await user.click(await screen.findByTestId('sidebar-search-toggle'))
+      const field = (await screen.findByTestId('sidebar-search')) as HTMLInputElement
+      await user.type(field, 'abc')
+      field.blur()
+      expect(field).not.toHaveFocus()
+
+      await user.keyboard('{Meta>}k{/Meta}')
+
+      expect(field).toHaveFocus()
+      expect(field.selectionStart).toBe(0)
+      expect(field.selectionEnd).toBe(3)
     })
 
     it('leaves Cmd+K alone while a dialog is open', async () => {
@@ -126,7 +139,7 @@ describe('App', () => {
 
       await user.keyboard('{Meta>}k{/Meta}')
 
-      expect(screen.getByTestId('sidebar-filter')).not.toHaveFocus()
+      expect(screen.queryByTestId('sidebar-search')).not.toBeInTheDocument()
     })
   })
 
