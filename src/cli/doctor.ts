@@ -35,10 +35,17 @@ export async function runDoctor(): Promise<number> {
   const paths = quePaths()
   const checks: Check[] = []
 
+  let daemonPath: { ok: boolean; detail: string } | null = null
   const client = await DaemonClient.tryConnect(paths)
   if (client) {
     try {
       const ping = await client.request('daemon.ping')
+      const onPath = (name: string): string => findOnPath(name, ping.path, [paths.binDir]) ?? ''
+      const [c, g] = [onPath('claude'), onPath('gh')]
+      daemonPath = {
+        ok: c !== '',
+        detail: `${c ? `claude at ${c}` : "claude not on the daemon's PATH"}, ${g ? `gh at ${g}` : "gh not on the daemon's PATH"}`
+      }
       checks.push({
         name: 'daemon',
         ok: true,
@@ -56,6 +63,13 @@ export async function runDoctor(): Promise<number> {
       detail: `not reachable at ${paths.socket} (start it with \`que daemon start\`)`
     })
   }
+
+  checks.push({
+    name: 'daemon PATH',
+    ok: daemonPath?.ok ?? false,
+    required: false,
+    detail: daemonPath?.detail ?? 'skipped (the daemon is not running)'
+  })
 
   const claude = findOnPath('claude', process.env.PATH, [paths.binDir])
   const claudeVersion = claude ? await run(claude, ['--version']) : null
