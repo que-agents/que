@@ -1,5 +1,32 @@
-import type { TaskState, WorkspaceStatus } from '../../../preload/index.d'
-import { statusBadge, taskBadge } from '../format'
+import type { PullRequest, TaskState, WorkspaceStatus } from '../../../preload/index.d'
+import { prBadge, statusBadge, taskBadge } from '../format'
+
+/** A pull request as a chip link: `#41` by default, or the given label. */
+export function PrChip({
+  pr,
+  testId,
+  label
+}: {
+  pr: PullRequest
+  testId?: string
+  label?: string
+}): React.JSX.Element {
+  const badge = prBadge(pr)
+  return (
+    <a
+      className={`status pr-chip tone-${badge.tone}`}
+      href={pr.url}
+      target="_blank"
+      rel="noreferrer"
+      title={badge.title}
+      data-testid={testId}
+      data-pr-state={pr.state}
+      data-pr-checks={pr.checks}
+    >
+      {label ?? badge.label}
+    </a>
+  )
+}
 
 /** A workspace status as text and colour; `title` says why when stuck. */
 export function StatusBadge({

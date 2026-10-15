@@ -27,6 +27,8 @@ export interface TestDaemon {
   /** Where the fakes record their calls (read with readFakeLog / readWrapperLog). */
   claudeLog: string
   ghLog: string
+  /** The fake gh's pull requests (QUE_FAKE_GH_PRS), keyed by branch; see setFakePullRequest. */
+  ghPrs: string
   codeLog: string
   caffeinateLog: string
   wrapperLog: string
@@ -72,6 +74,7 @@ export async function startTestDaemon(opts: TestDaemonOptions = {}): Promise<Tes
   const home = opts.home ?? fs.realpathSync(fs.mkdtempSync(join(os.tmpdir(), 'que-it-')))
   const claudeLog = join(home, 'fake-claude.log')
   const ghLog = join(home, 'fake-gh.log')
+  const ghPrs = join(home, 'fake-gh-prs.json')
   const codeLog = join(home, 'fake-code.log')
   const caffeinateLog = join(home, 'fake-caffeinate.log')
   const wrapperLog = join(home, 'fake-wrapper.log')
@@ -84,6 +87,7 @@ export async function startTestDaemon(opts: TestDaemonOptions = {}): Promise<Tes
   vi.stubEnv('PATH', [...(opts.pathPrefix ?? []), FAKES_BIN, process.env.PATH].join(':'))
   vi.stubEnv('QUE_FAKE_CLAUDE_LOG', claudeLog)
   vi.stubEnv('QUE_FAKE_GH_LOG', ghLog)
+  vi.stubEnv('QUE_FAKE_GH_PRS', ghPrs)
   vi.stubEnv('QUE_FAKE_CODE_LOG', codeLog)
   vi.stubEnv('QUE_FAKE_CAFFEINATE_LOG', caffeinateLog)
   vi.stubEnv('QUE_FAKE_WRAPPER_LOG', wrapperLog)
@@ -121,6 +125,7 @@ export async function startTestDaemon(opts: TestDaemonOptions = {}): Promise<Tes
     client,
     claudeLog,
     ghLog,
+    ghPrs,
     codeLog,
     caffeinateLog,
     wrapperLog,

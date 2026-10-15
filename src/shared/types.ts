@@ -31,6 +31,22 @@ export interface Workspace {
   archivedAt: string | null
   /** The draft pull request opened from this workspace (workspace.createPr). */
   prUrl: string | null
+  /** The pull request for this workspace's branch, as last seen on GitHub; null when there is none. */
+  pr: PullRequest | null
+}
+
+/** The state of a workspace's pull request, refreshed by the daemon. */
+export interface PullRequest {
+  url: string
+  number: number
+  title: string
+  state: 'draft' | 'open' | 'merged' | 'closed'
+  /** Combined status checks on the head commit. */
+  checks: 'none' | 'pending' | 'passing' | 'failing'
+  /** The review decision, or null when no review is required yet. */
+  review: 'approved' | 'changes_requested' | 'review_required' | null
+  /** When que last refreshed this from GitHub. */
+  checkedAt: string
 }
 
 /** Workspace counts per status, for the tray and `que status`. */
@@ -149,6 +165,8 @@ export interface UserConfig {
   worktreeRoot: string
   stallTimeoutMinutes: number
   statusPollSeconds: number
+  /** How often the daemon refreshes each workspace's pull request from GitHub. */
+  prPollSeconds: number
   /** Named repositories, so `que work -r <name>` can resolve a name. */
   repos: Record<string, RepoEntry>
   /** How many tasks run at once while the queue is open. */

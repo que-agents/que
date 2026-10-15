@@ -2,7 +2,12 @@ import { describe, expect, it } from 'vitest'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { fakeBridge } from '@renderer/testing/fake-bridge'
-import { makeProject, makeTermInfo, makeWorkspace } from '@renderer/testing/fixtures'
+import {
+  makeProject,
+  makePullRequest,
+  makeTermInfo,
+  makeWorkspace
+} from '@renderer/testing/fixtures'
 import App from './App'
 
 const uploader = makeTermInfo({ name: 'zsh', cwd: '/Users/dev/code/uploader' })
@@ -118,6 +123,23 @@ describe('App', () => {
       expect(await screen.findByRole('alert')).toHaveTextContent(
         'Lost connection to the que daemon.'
       )
+    })
+
+    it('shows the workspace pull request in the top bar', async () => {
+      const user = userEvent.setup()
+      const retry = makeWorkspace({
+        id: 'ws_01hzx3k9c2qf',
+        name: 'app-1432-retry-logic',
+        pr: makePullRequest({ state: 'draft' })
+      })
+      fakeBridge.seedProject(makeProject())
+      fakeBridge.seedWorkspace(retry)
+      render(<App />)
+      await user.click(await screen.findByTestId(`sidebar-workspace-${retry.id}-open`))
+
+      const chip = await screen.findByTestId('topbar-pr')
+      expect(chip).toHaveTextContent('PR #41 · draft')
+      expect(chip).toHaveAttribute('href', 'https://github.com/rquellh/que/pull/41')
     })
 
     it('disables every daemon action while disconnected', async () => {

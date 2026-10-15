@@ -5,6 +5,7 @@ import { randomBytes } from 'node:crypto'
 import { DatabaseSync } from 'node:sqlite'
 import type {
   Project,
+  PullRequest,
   QuietUnlock,
   Task,
   TaskSource,
@@ -86,7 +87,8 @@ const MIGRATIONS: string[] = [
      why TEXT,
      until TEXT NOT NULL,
      ended_at TEXT
-   );`
+   );`,
+  `ALTER TABLE workspaces ADD COLUMN pr_json TEXT;`
 ]
 
 const ID_ALPHABET = 'abcdefghijklmnopqrstuvwxyz234567'
@@ -122,6 +124,7 @@ interface WorkspaceRow {
   created_at: string
   archived_at: string | null
   pr_url: string | null
+  pr_json: string | null
 }
 
 interface TaskRow {
@@ -233,6 +236,16 @@ function toProject(r: ProjectRow): Project {
   }
 }
 
+function parsePr(json: string | null): PullRequest | null {
+  if (!json) return null
+  try {
+    const v = JSON.parse(json) as unknown
+    return v && typeof v === 'object' ? (v as PullRequest) : null
+  } catch {
+    return null
+  }
+}
+
 function toWorkspace(r: WorkspaceRow): Workspace {
   return {
     id: r.id,
@@ -248,7 +261,8 @@ function toWorkspace(r: WorkspaceRow): Workspace {
     sessionId: r.session_id,
     createdAt: r.created_at,
     archivedAt: r.archived_at,
-    prUrl: r.pr_url ?? null
+    prUrl: r.pr_url ?? null,
+    pr: parsePr(r.pr_json)
   }
 }
 
@@ -347,8 +361,8 @@ export class Store {
     this.db
       .prepare(
         `INSERT INTO workspaces (id, project_id, name, branch, path, base_ref, status, status_reason,
-           status_at, last_activity_at, session_id, created_at, archived_at, pr_url)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+           status_at, last_activity_at, session_id, created_at, archived_at, pr_url, pr_json)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         w.id,
@@ -364,7 +378,8 @@ export class Store {
         w.sessionId,
         w.createdAt,
         w.archivedAt,
-        w.prUrl
+        w.prUrl,
+        w.pr ? JSON.stringify(w.pr) : null
       )
   }
 
@@ -407,6 +422,12 @@ export class Store {
 
   setWorkspacePrUrl(id: string, prUrl: string): void {
     this.db.prepare('UPDATE workspaces SET pr_url = ? WHERE id = ?').run(prUrl, id)
+  }
+
+  setWorkspacePr(id: string, pr: PullRequest | null): void {
+    this.db
+      .prepare('UPDATE workspaces SET pr_json = ? WHERE id = ?')
+      .run(pr ? JSON.stringify(pr) : null, id)
   }
 
   archiveWorkspace(id: string, at: string): void {

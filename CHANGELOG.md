@@ -28,6 +28,7 @@ All notable changes to que are recorded here. The format follows
 
 ### Added
 
+- Pull request tracking: every workspace's PR state (draft, open, merged, closed; checks; review decision) is refreshed from GitHub and shown in `que status` (the app side arrives separately).
 - The sidebar is resizable: drag the divider (180 to 520px), double-click it
   to reset, or use the arrow keys when it has focus. The width is remembered.
   The app's own data (such as this) now lives under `QUE_HOME/app`, so a test

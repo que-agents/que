@@ -63,8 +63,18 @@ Each invocation appends one JSON line `{ "argv": [...], "cwd": "...", "ts": "...
 to `$QUE_FAKE_GH_LOG` / `$QUE_FAKE_CODE_LOG` when set. `gh auth status` reports
 a logged-in account; `gh pr create ...` prints
 `https://github.com/rquellh/que/pull/<n>`, where `n` counts the `pr create` calls
-already in the log. Everything else exits 0 silently. Read the logs back with
-`readFakeLog()` from `src/testing/fakes.ts` (Vitest) or `launched.ghCalls()` (E2E).
+already in the log. Everything else exits 0 silently.
+
+**Pull requests.** `$QUE_FAKE_GH_PRS` names a JSON file keyed by head branch name (a
+missing file means no pull requests). When it is set, `gh pr create` records
+`{ number, url, title, state: "OPEN", isDraft, headRefName, reviewDecision: "",
+statusCheckRollup: [], mergedAt: null }` under the current branch of its cwd, and
+`gh pr list --head <branch> --state all --limit 1 --json <fields>` prints a JSON
+array with that branch's entry (only the requested fields) or `[]`. With
+`$QUE_FAKE_GH_FAIL` set, `pr list` exits 1 printing `gh: failed (fake)` on stderr.
+Tests edit the file with `setFakePullRequest()` and read it with
+`readFakePullRequests()` from `src/testing/fakes.ts`.
+Read the call logs back with `readFakeLog()` from `src/testing/fakes.ts` (Vitest) or `launched.ghCalls()` (E2E).
 
 ## `caffeinate`
 

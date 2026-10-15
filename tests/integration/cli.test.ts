@@ -7,9 +7,9 @@ import type { Workspace } from '@shared/types'
 import type { StatusJson } from '../../src/cli/workspaces'
 import { runCli } from '../../src/testing/cli'
 import { startTestDaemon, type TestDaemon, withQuietOff } from '../../src/testing/daemon-harness'
-import { readFakeLog } from '../../src/testing/fakes'
+import { readFakeLog, setFakePullRequest } from '../../src/testing/fakes'
 import { makeHookEvent } from '../../src/testing/fixtures'
-import { gitIn, makeTempRepo } from '../../src/testing/temp-repo'
+import { addBareOrigin, gitIn, makeTempRepo } from '../../src/testing/temp-repo'
 
 let daemon: TestDaemon
 
@@ -187,9 +187,38 @@ describe('que status', () => {
         status: 'needs_input',
         reason: null,
         lastActivityAt: null,
-        sessionId: '7d0c5b2a-0000-4000-8000-3e4f5a6b7c8d'
+        sessionId: '7d0c5b2a-0000-4000-8000-3e4f5a6b7c8d',
+        pr: null
       }
     ])
+  }, 30_000)
+
+  it('shows the workspace pull request in the table and as JSON', async () => {
+    await daemon.close()
+    daemon = await startTestDaemon({ config: 'pr_poll_seconds = 0.2\n' })
+    const repo = makeTempRepo(daemon.home)
+    addBareOrigin(repo)
+    const project = await daemon.client.request('project.add', { path: repo })
+    const ws = await daemon.client.request('workspace.create', {
+      projectId: project.id,
+      name: 'app-1432-retry-logic'
+    })
+    setFakePullRequest(daemon.ghPrs, ws.branch, {
+      number: 12,
+      isDraft: false,
+      statusCheckRollup: [{ status: 'COMPLETED', conclusion: 'FAILURE' }]
+    })
+    await expect
+      .poll(async () => (await daemon.client.request('workspace.get', { id: ws.id })).pr?.checks, {
+        timeout: 10_000
+      })
+      .toBe('failing')
+
+    const json = JSON.parse((await runCli('status', '--json')).stdout) as StatusJson
+    const table = (await runCli('status')).stdout
+
+    expect(json.workspaces[0].pr).toMatchObject({ number: 12, state: 'open', checks: 'failing' })
+    expect(table).toContain('#12 open·checks failing')
   }, 30_000)
 })
 

@@ -45,6 +45,7 @@ export function defaultConfig(env: ConfigEnv): UserConfig {
     worktreeRoot: join(env.queHome, 'worktrees'),
     stallTimeoutMinutes: 5,
     statusPollSeconds: 10,
+    prPollSeconds: 60,
     repos: {},
     concurrency: 2,
     maxTurns: 50,
@@ -227,6 +228,7 @@ export function parseConfig(text: string, env: ConfigEnv): ConfigResult<UserConf
   config.stallTimeoutMinutes =
     positive(t, 'stall_timeout_minutes', errors) ?? config.stallTimeoutMinutes
   config.statusPollSeconds = positive(t, 'status_poll_seconds', errors) ?? config.statusPollSeconds
+  config.prPollSeconds = positive(t, 'pr_poll_seconds', errors) ?? config.prPollSeconds
   const concurrency = positive(t, 'concurrency', errors)
   if (concurrency !== undefined && !Number.isInteger(concurrency)) {
     errors.push({ key: 'concurrency', message: 'must be a whole number' })

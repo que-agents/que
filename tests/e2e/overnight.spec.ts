@@ -1,10 +1,13 @@
 // The overnight journey: a task queued and run from the CLI, its workspace
 // appearing in the sidebar while it runs, the task finishing through the fake
 // claude and the finisher's draft PR (fake gh, real push to a bare origin),
-// the sidebar showing done with the PR, the tray title settling back to all
-// clear, and the report listing it under done.
+// the sidebar showing done with the PR and following the PR from draft to
+// merged, the tray title settling back to all clear, and the report listing it
+// under done.
+import { join } from 'node:path'
 import { expect, test } from '@playwright/test'
 import type { Project, Task } from '../../src/shared/types'
+import { setFakePullRequest } from '../../src/testing/fakes'
 import { AppShellPage } from './pages/AppShellPage'
 import { ReportPage } from './pages/ReportPage'
 import { SidebarPage } from './pages/SidebarPage'
@@ -20,7 +23,8 @@ test.afterEach(async () => {
 
 test('a task queued from the CLI runs overnight-style, shows in the sidebar, and lands in the report as a draft PR', async () => {
   const repo = makeRepo({ origin: true })
-  const queHome = newQueHome()
+  // The PR tracker polls every second here, so the chip follows the fake state fast.
+  const queHome = newQueHome('pr_poll_seconds = 1\n[quiet_hours]\nenabled = false\n')
   let project: Project
   let taskId = ''
   let workspaceId = ''
@@ -69,6 +73,20 @@ test('a task queued from the CLI runs overnight-style, shows in the sidebar, and
     await sidebar.waitForWorkspaceStatus(workspaceId, 'done', 60_000)
     await expect(sidebar.workspacePr(workspaceId)).toHaveAttribute('href', /\/pull\/\d+$/)
     expect(launched.ghCalls()).toContainEqual(expect.arrayContaining(['pr', 'create', '--draft']))
+  })
+
+  await test.step('The sidebar chip follows the pull request from draft to merged', async () => {
+    await expect(sidebar.workspacePr(workspaceId)).toHaveAttribute('data-pr-state', 'draft', {
+      timeout: 15_000
+    })
+    const branch = task()?.branch as string
+    setFakePullRequest(join(queHome, 'fake-gh-prs.json'), branch, {
+      state: 'MERGED',
+      mergedAt: '2026-10-14T03:00:00Z'
+    })
+    await expect(sidebar.workspacePr(workspaceId)).toHaveAttribute('data-pr-state', 'merged', {
+      timeout: 15_000
+    })
   })
 
   await test.step('The tray title counts nothing working, waiting, or stuck', async () => {
