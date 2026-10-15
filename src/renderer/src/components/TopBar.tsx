@@ -1,4 +1,4 @@
-import { SCRATCH, useQue, useStore } from '../store'
+import { SCRATCH, useQue, useStore, viewId } from '../store'
 import { JoinPanesIcon, SplitBelowIcon, SplitBesideIcon } from './icons'
 import { PrChip, StatusBadge } from './StatusBadge'
 import UnlockStatus from './UnlockStatus'
@@ -10,7 +10,7 @@ export default function TopBar({ termKey }: { termKey: string }): React.JSX.Elem
   const ws = termKey === SCRATCH ? undefined : workspaces[termKey]
   const project = ws ? projects.find((p) => p.id === ws.projectId) : undefined
   const split = Boolean(store.layout(termKey).split)
-  const changesOpen = Boolean(useQue().changesOpen[termKey])
+  const focusedTab = store.paneActiveId(termKey, store.focusedPane(termKey))
   const cwd = store.activeTab(termKey)?.cwd ?? ws?.path ?? ''
 
   return (
@@ -40,9 +40,8 @@ export default function TopBar({ termKey }: { termKey: string }): React.JSX.Elem
             <PrChip
               pr={ws.pr}
               testId="topbar-pr"
-              label={`PR #${ws.pr.number} · ${ws.pr.state}${
-                ws.pr.checks === 'failing' ? ' · checks failing' : ''
-              }${ws.pr.review === 'changes_requested' ? ' · changes requested' : ''}`}
+              // Number and state only; checks and review are the tone, and the tooltip spells them out.
+              label={`PR #${ws.pr.number} · ${ws.pr.state}`}
             />
           ) : (
             ws.prUrl && (
@@ -104,12 +103,24 @@ export default function TopBar({ termKey }: { termKey: string }): React.JSX.Elem
           <>
             <button
               type="button"
-              aria-pressed={changesOpen}
+              aria-pressed={focusedTab === viewId('changes')}
+              title="Changes: the changed files and their diffs, as a tab"
               data-testid="topbar-changes"
               disabled={!connected}
-              onClick={() => store.toggleChanges(termKey)}
+              onClick={() => store.toggleView(termKey, 'changes')}
             >
               Changes
+            </button>
+            <button
+              type="button"
+              aria-pressed={focusedTab === viewId('pr')}
+              title="Pull request: its checks and conversation, as a tab"
+              data-testid="topbar-pull-request"
+              data-pr-state={ws.pr?.state ?? 'none'}
+              disabled={!connected}
+              onClick={() => store.toggleView(termKey, 'pr')}
+            >
+              Pull request
             </button>
             <button
               type="button"

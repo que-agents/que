@@ -13,11 +13,10 @@ import SettingsView from './components/SettingsView'
 import TicketsView from './components/TicketsView'
 import Sidebar from './components/Sidebar'
 import SidebarResizer, { useSidebarWidth } from './components/SidebarResizer'
-import ChangesView from './components/ChangesView'
 import Panes from './components/Panes'
 import TopBar from './components/TopBar'
 import UpdateBanner from './components/UpdateBanner'
-import { isLocked, SCRATCH, QueStore, StoreContext, useQue, useStore } from './store'
+import { isLocked, QueStore, StoreContext, useQue, useStore } from './store'
 
 function Dialogs(): React.JSX.Element | null {
   const store = useStore()
@@ -59,12 +58,12 @@ function Locked(): React.JSX.Element {
 
 function Shell(): React.JSX.Element {
   const store = useStore()
-  const { view, error, dialog, connected, quiet, changesOpen } = useQue()
+  const { view, error, dialog, connected, quiet } = useQue()
   const [sidebarWidth, setSidebarWidth] = useSidebarWidth()
   const locked = isLocked(quiet)
   const termKey = view.kind === 'terminals' && !locked ? view.key : null
 
-  // Cmd+T / Cmd+W manage the terminal tabs, Cmd+D / Cmd+Shift+D split the panes and
+  // Cmd+T / Cmd+W manage the tabs (⌘W closes a view tab too), Cmd+D / Cmd+Shift+D split the panes and
   // Cmd+Option+arrows move between them; captured before xterm sees them.
   useEffect(() => {
     if (termKey === null || dialog) return
@@ -84,10 +83,7 @@ function Shell(): React.JSX.Element {
       } else if (key === 't') {
         run = () => void store.newTerminal(termKey)
       } else if (key === 'w') {
-        run = () => {
-          const active = store.activeTab(termKey)
-          if (active) void store.closeTerminal(active.id)
-        }
+        run = () => store.closeActiveTab(termKey)
       }
       if (!run) return
       e.preventDefault()
@@ -146,11 +142,7 @@ function Shell(): React.JSX.Element {
         ) : termKey !== null ? (
           <>
             <TopBar termKey={termKey} />
-            {termKey !== SCRATCH && changesOpen[termKey] ? (
-              <ChangesView termKey={termKey} />
-            ) : (
-              <Panes termKey={termKey} />
-            )}
+            <Panes termKey={termKey} />
           </>
         ) : view.kind === 'settings' ? (
           <SettingsView />

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { fakeBridge } from '@renderer/testing/fake-bridge'
 import {
@@ -140,19 +140,23 @@ describe('ChangesView', () => {
   })
 
   describe('toggling', () => {
-    it('returns to the terminals, and the loose sessions have no toggle', async () => {
+    it('opens as a tab beside the terminal and closes from the top bar again', async () => {
       const user = userEvent.setup()
       seed()
       await openChanges(user)
       const toggle = screen.getByTestId('topbar-changes')
       expect(toggle).toHaveAttribute('aria-pressed', 'true')
-      expect(screen.queryByTestId('pane-0')).not.toBeInTheDocument()
+      const pane = screen.getByTestId('pane-0')
+      expect(within(pane).getByTestId('changes-view')).toBeInTheDocument()
+      expect(screen.getByTestId('view-tab-changes')).toHaveAttribute('data-active', 'true')
+      expect(within(pane).getAllByRole('tab')).toHaveLength(2)
 
       await user.click(toggle)
 
-      expect(await screen.findByTestId('pane-0')).toBeInTheDocument()
       expect(screen.queryByTestId('changes-view')).not.toBeInTheDocument()
-      await waitFor(() => expect(toggle).toHaveAttribute('aria-pressed', 'false'))
+      expect(screen.queryByTestId('view-tab-changes')).not.toBeInTheDocument()
+      expect(pane.dataset.activeTerm).not.toBe('')
+      expect(toggle).toHaveAttribute('aria-pressed', 'false')
     })
 
     it('is not offered for the loose sessions', async () => {
@@ -160,6 +164,7 @@ describe('ChangesView', () => {
 
       expect(await screen.findByTestId('pane-0')).toBeInTheDocument()
       expect(screen.queryByTestId('topbar-changes')).not.toBeInTheDocument()
+      expect(screen.queryByTestId('topbar-pull-request')).not.toBeInTheDocument()
     })
   })
 })
