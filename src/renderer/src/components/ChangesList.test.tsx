@@ -402,6 +402,27 @@ describe('ChangesList', () => {
   describe('following the worktree', () => {
     const cache = makeWorkspace({ id: 'ws_01hzx4m7d8rt', name: 'app-1440-cache-warmup' })
 
+    it('fetches the diff again when switching to a workspace shown before', async () => {
+      const user = userEvent.setup()
+      seed([put])
+      fakeBridge.seedWorkspace(cache)
+      fakeBridge.seedDiff(makeWorkspaceDiff({ workspaceId: cache.id, files: [put] }))
+      await openChanges(user)
+      await screen.findByTestId('changes-file-0')
+
+      // Show the other workspace, then the first again: the daemon only watches the shown
+      // worktree, so the pane fetches the first one's diff again instead of serving the cache.
+      await user.click(screen.getByTestId(`sidebar-workspace-${cache.id}-open`))
+      await waitFor(() => {
+        expect(fakeBridge.diffCalls().filter((c) => c.id === cache.id)).toHaveLength(1)
+      })
+      fakeBridge.seedDiff(makeWorkspaceDiff({ workspaceId: retry.id, files: [put, readme] }))
+      await user.click(screen.getByTestId(`sidebar-workspace-${retry.id}-open`))
+
+      expect(await screen.findByTestId('changes-file-1')).toHaveAttribute('data-path', 'README.md')
+      expect(fakeBridge.diffCalls().filter((c) => c.id === retry.id)).toHaveLength(2)
+    })
+
     it('fetches the diff again when the shown workspace changes on disk', async () => {
       const user = userEvent.setup()
       seed([put])
