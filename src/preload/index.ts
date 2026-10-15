@@ -59,6 +59,8 @@ const api: QueApi = {
     createPr: (p) => call('workspace.createPr', p),
     diff: (p) => call('workspace.diff', p),
     prThread: (p) => call('workspace.prThread', p),
+    files: (p) => call('workspace.files', p),
+    readFile: (p) => call('workspace.readFile', p),
     on: (event, cb) => subscribe(event, cb as (data: unknown) => void)
   },
   task: {

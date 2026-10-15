@@ -38,6 +38,8 @@ import type {
   WorkspaceDiff,
   DiffFile,
   DiffCommit,
+  WorkspaceFiles,
+  WorkspaceFile,
   WorkspaceCreatePrResult,
   WorkspaceListParams,
   WorkspaceOpenTerminalParams,
@@ -97,6 +99,8 @@ export type {
   WorkspaceDiff,
   DiffFile,
   DiffCommit,
+  WorkspaceFiles,
+  WorkspaceFile,
   CheckState,
   PrCheck,
   ReviewState,
@@ -172,6 +176,10 @@ export interface WorkspaceApi {
   diff(params: { id: string; base?: string; commit?: string }): Promise<WorkspaceDiff>
   /** The pull request's conversation: comments, reviews, line comments. Null without a PR. Refused in quiet hours. */
   prThread(params: { id: string; refresh?: boolean }): Promise<PrThread | null>
+  /** Every tracked and untracked file of the worktree, sorted; never the ignored ones. Refused in quiet hours. */
+  files(params: { id: string }): Promise<WorkspaceFiles>
+  /** One file of the worktree for the file view; the path is relative and must stay inside the worktree. Refused in quiet hours. */
+  readFile(params: { id: string; path: string }): Promise<WorkspaceFile>
   on<E extends WorkspaceEventName>(event: E, cb: (data: Events[E]) => void): () => void
 }
 

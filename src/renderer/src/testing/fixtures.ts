@@ -14,7 +14,9 @@ import type {
   Workspace,
   WorkspaceDiff,
   DiffCommit,
-  WorkspaceDigest
+  WorkspaceDigest,
+  WorkspaceFiles,
+  WorkspaceFile
 } from '../../../preload/index.d'
 
 let wsCounter = 0
@@ -263,6 +265,38 @@ export function makeWorkspaceDiff(overrides: Partial<WorkspaceDiff> = {}): Works
     commit: null,
     files: [makeDiffFile()],
     generatedAt: '2026-10-14T14:00:00.000Z',
+    ...overrides
+  }
+}
+
+/** A worktree's listing: a small tree with the diff fixture's file in it. */
+export function makeWorkspaceFiles(overrides: Partial<WorkspaceFiles> = {}): WorkspaceFiles {
+  return {
+    workspaceId: 'ws_01hzx3k9c2qf',
+    files: [
+      'README.md',
+      'package.json',
+      'src/index.ts',
+      'src/upload/retry.ts',
+      'src/upload/retry.test.ts',
+      'tests/e2e/upload.spec.ts'
+    ],
+    truncated: false,
+    generatedAt: '2026-10-14T14:00:00.000Z',
+    ...overrides
+  }
+}
+
+/** One text file of the worktree. */
+export function makeWorkspaceFile(overrides: Partial<WorkspaceFile> = {}): WorkspaceFile {
+  const content = overrides.content === undefined ? 'export const retries = 3\n' : overrides.content
+  return {
+    workspaceId: 'ws_01hzx3k9c2qf',
+    path: 'src/index.ts',
+    content,
+    binary: false,
+    size: content === null ? 0 : new TextEncoder().encode(content).length,
+    truncated: false,
     ...overrides
   }
 }
