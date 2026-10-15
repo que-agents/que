@@ -308,6 +308,97 @@ describe('FilesTree', () => {
     })
   })
 
+  describe('following the worktree', () => {
+    const cache = makeWorkspace({ id: 'ws_01hzx4m7d8rt', name: 'app-1440-cache-warmup' })
+    const spec = makeDiffFile({ path: 'tests/e2e/upload.spec.ts', additions: 3, deletions: 0 })
+    const index = makeDiffFile({ path: 'src/index.ts', additions: 1, deletions: 1 })
+
+    it('lists again, reloads the open file tab, keeps closed directories closed, and opens one newly changed', async () => {
+      const user = userEvent.setup()
+      seed()
+      await openFiles(user)
+      await user.click(row('package.json'))
+      expect(await screen.findByTestId('file-text')).toHaveTextContent('"name": "uploader"')
+      await user.click(row('src'))
+      expect(row('tests/e2e')).toHaveAttribute('aria-expanded', 'false')
+      fakeBridge.seedFiles(
+        makeWorkspaceFiles({
+          workspaceId: retry.id,
+          files: [...makeWorkspaceFiles().files, 'CHANGELOG.md']
+        })
+      )
+      fakeBridge.seedDiff(
+        makeWorkspaceDiff({ workspaceId: retry.id, files: [retryTs, readme, old, index, spec] })
+      )
+      fakeBridge.seedFile(
+        makeWorkspaceFile({ workspaceId: retry.id, path: 'package.json', content: '{}\n' })
+      )
+
+      fakeBridge.changeWorkspace(retry.id)
+
+      await waitFor(() => {
+        expect(row('tests/e2e')).toHaveAttribute('aria-expanded', 'true')
+      })
+      await waitFor(() => {
+        expect(screen.getByTestId('files-row-3')).toHaveAttribute('data-path', 'CHANGELOG.md')
+      })
+      await waitFor(() => {
+        expect(screen.getByTestId('file-text')).toHaveTextContent(/^1\{\}$/)
+      })
+      expect(fakeBridge.filesCalls()).toEqual([retry.id, retry.id])
+      expect(fakeBridge.diffCalls()).toHaveLength(2)
+      expect(fakeBridge.readFileCalls()).toEqual([
+        { id: retry.id, path: 'package.json' },
+        { id: retry.id, path: 'package.json' }
+      ])
+      expect(screen.getByTestId('files-summary')).toHaveTextContent('Files 7 · 5 changed')
+      expect(row('src')).toHaveAttribute('aria-expanded', 'false')
+      expect(outline()).toEqual([
+        '1 src',
+        '1 tests/e2e',
+        '2 tests/e2e/upload.spec.ts',
+        '1 CHANGELOG.md',
+        '1 package.json',
+        '1 README.md'
+      ])
+    })
+
+    it('reloads an open file tab with the pane closed', async () => {
+      const user = userEvent.setup()
+      seed()
+      await openFiles(user)
+      await user.click(row('package.json'))
+      expect(await screen.findByTestId('file-text')).toHaveTextContent('"name": "uploader"')
+      await user.click(screen.getByTestId('topbar-review'))
+      await waitFor(() => {
+        expect(screen.queryByTestId('files-tree')).not.toBeInTheDocument()
+      })
+      fakeBridge.seedFile(
+        makeWorkspaceFile({ workspaceId: retry.id, path: 'package.json', content: '{}\n' })
+      )
+
+      fakeBridge.changeWorkspace(retry.id)
+
+      await waitFor(() => {
+        expect(screen.getByTestId('file-text')).toHaveTextContent(/^1\{\}$/)
+      })
+      expect(fakeBridge.readFileCalls()).toHaveLength(2)
+      expect(fakeBridge.filesCalls()).toEqual([retry.id, retry.id])
+    })
+
+    it('ignores a change to another workspace', async () => {
+      const user = userEvent.setup()
+      seed()
+      fakeBridge.seedWorkspace(cache)
+      await openFiles(user)
+
+      fakeBridge.changeWorkspace(cache.id)
+
+      expect(fakeBridge.filesCalls()).toEqual([retry.id])
+      expect(fakeBridge.diffCalls()).toHaveLength(1)
+    })
+  })
+
   describe('errors', () => {
     it('lists the files itself and shows the refusal during quiet hours', async () => {
       seed()
