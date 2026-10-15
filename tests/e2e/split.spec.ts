@@ -77,14 +77,16 @@ test('a split survives quitting the app and comes back with both terminals', asy
     terminal = new TerminalPage(launched.window)
     topbar = new TopBarPage(launched.window)
     await expect(terminal.pane(1).root).toBeVisible()
-    await expect.poll(async () => (await terminal.panes()).map((p) => p.activeTermId).sort()).toEqual(
-      [firstId, secondId].sort()
-    )
+    await expect
+      .poll(async () => (await terminal.panes()).map((p) => p.activeTermId).sort())
+      .toEqual([firstId, secondId].sort())
     await expect
       .poll(async () => (await terminal.screenTextOf(firstId)).includes(left), { timeout: 15_000 })
       .toBe(true)
     await expect
-      .poll(async () => (await terminal.screenTextOf(secondId)).includes(right), { timeout: 15_000 })
+      .poll(async () => (await terminal.screenTextOf(secondId)).includes(right), {
+        timeout: 15_000
+      })
       .toBe(true)
   })
 
