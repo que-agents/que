@@ -41,6 +41,13 @@ chime_on_complete = true
 chime_on_needs_input = false
 morning_summary = false
 
+[jira]
+jql = "assignee = currentUser() AND statusCategory != Done ORDER BY updated DESC"
+poll_minutes = 5
+start_prompt = "Read .que/ticket.md, the ticket this workspace is for. Restate the goal in a sentence, look at the code it touches, and propose a plan before changing anything."
+# [jira.projects]                # learned the first time you pick a project for a ticket
+# APP = "uploader"               # tracker project key = que project name
+
 # [repos.uploader]               # a name for `que work -r uploader`
 # path = "~/code/uploader"
 # default_branch = "main"
@@ -65,6 +72,10 @@ morning_summary = false
 | `notifications.chime_on_complete` | A soft chime when a task finishes (work hours only). |
 | `notifications.chime_on_needs_input` | A chime when a session asks for input (work hours only). |
 | `notifications.morning_summary` | One notification with the night's totals when quiet hours end. |
+| `jira.jql` | The filter for the ticket queue, run with `acli jira workitem search`. The default is the tickets assigned to you that are not done, newest first. |
+| `jira.poll_minutes` | How often the daemon refreshes the queue from the tracker. |
+| `jira.start_prompt` | The first prompt typed into `claude` when a ticket is started. |
+| `jira.projects.<KEY>` | The que project (by name) a tracker project's tickets get their workspaces in. que writes it the first time you choose; edit it to change your mind. |
 | `repos.<name>.path` | A name for a repository, so `que work -r <name>` and `que add -r <name>` resolve it. |
 
 Edits made during quiet hours never shorten the window in progress; pass

@@ -9,6 +9,7 @@ All notable changes to que are recorded here. The format follows
 ### Added
 
 - A Tickets view in the app: the tickets assigned to you, Start on each (asking which project the first time), and the workspace it made; the start prompt and the sync filter are in Settings.
+- A ticket queue: `que tickets` lists the tickets assigned to you from the tracker, `que tickets start KEY` makes a workspace for one under its project (learned the first time you choose), writes the ticket as a brief and starts claude on it.
 
 ### Fixed
 

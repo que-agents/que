@@ -10,6 +10,7 @@ import { runDoctor } from './doctor'
 import { runHook } from './hook'
 import { registerQuietCommands } from './quiet'
 import { registerTaskCommands } from './tasks'
+import { registerTicketCommands } from './tickets'
 import { registerWorkspaceCommands } from './workspaces'
 
 declare const __QUE_VERSION__: string
@@ -186,6 +187,7 @@ async function main(): Promise<void> {
 
   registerWorkspaceCommands(program)
   registerTaskCommands(program, daemon)
+  registerTicketCommands(program)
   registerQuietCommands(program)
 
   program
