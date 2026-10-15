@@ -86,9 +86,10 @@ remove. The quiet board uses the same tones as plain text.
   top bar above a solid hairline, and holds two tabs, Changes and Pull request, drawn
   like a pane's tabs, and a close button at the right end. One icon button at the right
   end of the top bar (a frame with a divider toward its right edge, filled while open)
-  toggles the pane on its remembered tab, and so does ⌘B. `Open in editor` is a ghost
-  button in the Changes header beside Refresh; `Create draft PR` is in the Pull request
-  footer while the workspace has no pull request. Clicking a file in Changes opens that
+  toggles the pane on its remembered tab, and so does ⌘B. The Changes header is one
+  line, `Commits n vs base` (the count and `vs` muted, the full counts in its tooltip),
+  with refresh and open-in-editor icon buttons at its right end; `Create draft PR` is
+  in the Pull request footer while the workspace has no pull request. Clicking a file in Changes opens that
   file's diff as a tab in the middle, in the focused pane's strip beside the session
   tabs: a line icon and the file's name, never a status dot, closed with ⌘W like a
   terminal tab. Nothing replaces or hides the terminals.
