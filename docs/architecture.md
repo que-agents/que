@@ -157,6 +157,8 @@ workspace is removed or its pull request disappears.
 
 `workspace.files` (`que ws files`) lists every file of a workspace's worktree that git would show: tracked and untracked, never ignored (`git ls-files --cached --others --exclude-standard`), deduplicated and sorted, cut at 20,000 paths with `truncated` set; a missing worktree lists nothing. `workspace.readFile` reads one of them for the file view. The path must be relative and strictly inside the worktree: an absolute path, the root itself, or any empty, `.` or `..` segment is a `bad_request`, and so is a path whose real location, symlinks followed, falls outside the worktree's real root, or a directory. A missing path is `not_found`. A NUL byte in the first 8 KB marks the file binary and its content null; text is decoded as UTF-8 and cut at 500,000 characters with `truncated` set; `size` is always the byte size on disk. Both only read, and quiet hours refuse them like any other workspace read.
 
+In the app, Changes and Files follow `workspace.changed` for the workspace on screen: while the review pane or one of its diff or file tabs is open, the store fetches the diff again in its scope (the base and commit stay), and while Files or a file tab is open, the listing and every open file tab too. A change that arrives during that fetch is followed once more after it lands; a closed pane with no view tabs fetches nothing until it opens, and a failure is kept for the views as any other. The Files tree keeps the directories the user opened and closed, except that a directory that newly holds a changed file opens.
+
 ## The ticket queue
 
 `tickets.ts` keeps the tickets assigned to the user in the `tickets` table, the
