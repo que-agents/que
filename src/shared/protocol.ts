@@ -7,6 +7,7 @@ import type {
   PullRequest,
   QuietState,
   QuietUnlock,
+  PrThread,
   Task,
   TaskSource,
   TaskState,
@@ -352,6 +353,8 @@ export interface Methods {
   'workspace.createPr': { params: WorkspaceCreatePrParams; result: WorkspaceCreatePrResult }
   /** What the workspace changed against its base: committed and uncommitted, file by file. */
   'workspace.diff': { params: { id: string }; result: WorkspaceDiff }
+  /** The pull request's conversation (comments, reviews, line comments); null without a pull request. */
+  'workspace.prThread': { params: { id: string; refresh?: boolean }; result: PrThread | null }
   'hook.event': { params: HookEventParams; result: Ok }
   'task.add': { params: TaskAddParams; result: Task }
   'task.list': { params: TaskListParams | undefined; result: Task[] }
@@ -385,6 +388,7 @@ export const QUIET_REFUSED_METHODS = [
   'workspace.openTerminal',
   'workspace.createPr',
   'workspace.diff',
+  'workspace.prThread',
   'report.get',
   'task.add',
   'queue.open',

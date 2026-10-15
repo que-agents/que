@@ -73,7 +73,8 @@ statusCheckRollup: [], mergedAt: null }` under the current branch of its cwd, an
 array with that branch's entry (only the requested fields) or `[]`. With
 `$QUE_FAKE_GH_FAIL` set, `pr list` exits 1 printing `gh: failed (fake)` on stderr.
 Tests edit the file with `setFakePullRequest()` and read it with
-`readFakePullRequests()` from `src/testing/fakes.ts`.
+`readFakePullRequests()` from `src/testing/fakes.ts`. `pr create` also stores `updatedAt` (now).
+`gh pr view` and `gh api` support (comments, reviews, line comments) is coming with the daemon half of the pull request view.
 Read the call logs back with `readFakeLog()` from `src/testing/fakes.ts` (Vitest) or `launched.ghCalls()` (E2E).
 
 ## `acli`

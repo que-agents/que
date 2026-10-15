@@ -1,4 +1,9 @@
 import type {
+  CheckState,
+  PrCheck,
+  ReviewState,
+  PrThreadEntry,
+  PrThread,
   ConfigGetResult,
   ConfigSetParams,
   Events,
@@ -90,6 +95,11 @@ export type {
   Workspace,
   WorkspaceDiff,
   DiffFile,
+  CheckState,
+  PrCheck,
+  ReviewState,
+  PrThreadEntry,
+  PrThread,
   WorkspaceStatus,
   WorkspaceStatusEvent
 }
@@ -158,6 +168,8 @@ export interface WorkspaceApi {
   createPr(params: WorkspaceCreatePrParams): Promise<WorkspaceCreatePrResult>
   /** What the workspace changed against its base, file by file. Refused in quiet hours. */
   diff(params: { id: string }): Promise<WorkspaceDiff>
+  /** The pull request's conversation: comments, reviews, line comments. Null without a PR. Refused in quiet hours. */
+  prThread(params: { id: string; refresh?: boolean }): Promise<PrThread | null>
   on<E extends WorkspaceEventName>(event: E, cb: (data: Events[E]) => void): () => void
 }
 

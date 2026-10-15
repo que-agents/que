@@ -602,6 +602,10 @@ export class DaemonServer {
         const ws = this.workspaces.get(str(p, 'id'))
         return workspaceDiff(ws, this.workspaces.project(ws.projectId), Date.now)
       }
+      case 'workspace.prThread': {
+        this.workspaces.get(str(p, 'id'))
+        return null // the daemon half fills this in
+      }
       case 'workspace.createPr':
         return this.createPr(str(p, 'id'), str(p, 'title'))
       case 'hook.event': {
