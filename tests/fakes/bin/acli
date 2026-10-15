@@ -29,6 +29,11 @@ function readIssues() {
   }
 }
 
+// The only fields the real `workitem search --fields` accepts.
+const SEARCH_ALLOWED = [
+  'issuetype', 'key', 'assignee', 'priority', 'status', 'summary', 'labels', 'reporter', 'description'
+]
+
 function die(message) {
   process.stderr.write(`${message}\n`)
   process.exit(1)
@@ -49,8 +54,24 @@ if (group === 'auth' && sub === 'status') {
 if (group === 'workitem' && sub === 'search') {
   if (fail === 'network') die('dial tcp: connection refused')
   const limit = Number(flag('--limit'))
+  const rawFields = flag('--fields') ?? flag('-f')
+  let requested = null
+  if (rawFields !== undefined) {
+    requested = rawFields.split(',').map((f) => f.trim()).filter(Boolean)
+    const bad = requested.filter((f) => !SEARCH_ALLOWED.includes(f))
+    if (bad.length > 0) die(`✗ Error: fields '${bad.join(', ')}' are not allowed`)
+  }
   const issues = readIssues()
-  const out = Number.isFinite(limit) && limit > 0 ? issues.slice(0, limit) : issues
+  const limited = Number.isFinite(limit) && limit > 0 ? issues.slice(0, limit) : issues
+  const out = requested
+    ? limited.map((issue) => {
+        const fields = {}
+        for (const name of requested) {
+          if (issue.fields && name in issue.fields) fields[name] = issue.fields[name]
+        }
+        return { id: issue.id, key: issue.key, self: issue.self, fields }
+      })
+    : limited
   process.stdout.write(`${JSON.stringify(out, null, 2)}\n`)
   process.exit(0)
 }

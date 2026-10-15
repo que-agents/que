@@ -23,8 +23,8 @@ import type { Store } from './store'
 import { shQuote } from './wrapper'
 import { git } from './workspaces'
 
-const SEARCH_FIELDS = 'key,summary,status,priority,issuetype,assignee,project,labels,updated'
-const VIEW_FIELDS = 'summary,description,status,priority,issuetype,labels,project'
+const SEARCH_FIELDS = 'key,summary,status,priority,issuetype,assignee,labels'
+const VIEW_FIELDS = 'summary,description,status,priority,issuetype,labels'
 const SEARCH_LIMIT = '200'
 const FIRST_SYNC_MS = 1000
 const KV_LAST_SYNC = 'tickets.last_sync_at'

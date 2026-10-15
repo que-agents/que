@@ -115,7 +115,8 @@ const MIGRATIONS: string[] = [
      updated_at TEXT,
      synced_at TEXT NOT NULL,
      workspace_id TEXT
-   );`
+   );`,
+  `ALTER TABLE tickets ADD COLUMN position INTEGER NOT NULL DEFAULT 0;`
 ]
 
 const STATUS_LOG_RETENTION_MS = 30 * 24 * 3_600_000
@@ -674,22 +675,22 @@ export class Store {
 
   // ---- tickets --------------------------------------------------------------
 
-  /** Inserts or updates tickets by key, keeping the workspace each one was started in. */
+  /** Inserts or updates tickets by key (position is the index in `tickets`), keeping the workspace each one was started in. */
   upsertTickets(tickets: Ticket[]): void {
     const stmt = this.db.prepare(
       `INSERT INTO tickets (key, summary, status, status_category, priority, type, assignee,
-         project_key, project_name, url, labels_json, updated_at, synced_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         project_key, project_name, url, labels_json, updated_at, synced_at, position)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(key) DO UPDATE SET summary = excluded.summary, status = excluded.status,
          status_category = excluded.status_category, priority = excluded.priority,
          type = excluded.type, assignee = excluded.assignee, project_key = excluded.project_key,
          project_name = excluded.project_name, url = excluded.url,
          labels_json = excluded.labels_json, updated_at = excluded.updated_at,
-         synced_at = excluded.synced_at`
+         synced_at = excluded.synced_at, position = excluded.position`
     )
     this.db.exec('BEGIN')
     try {
-      for (const t of tickets) {
+      for (const [position, t] of tickets.entries()) {
         stmt.run(
           t.key,
           t.summary,
@@ -703,7 +704,8 @@ export class Store {
           t.url,
           JSON.stringify(t.labels),
           t.updatedAt,
-          t.syncedAt
+          t.syncedAt,
+          position
         )
       }
       this.db.exec('COMMIT')
@@ -713,10 +715,10 @@ export class Store {
     }
   }
 
-  /** Every cached ticket, newest `updated_at` first. */
+  /** Every cached ticket, in the order the last search returned them. */
   listTickets(): Ticket[] {
     const rows = this.db
-      .prepare('SELECT * FROM tickets ORDER BY updated_at IS NULL, updated_at DESC, key')
+      .prepare('SELECT * FROM tickets ORDER BY position, key')
       .all() as unknown as TicketRow[]
     return rows.map(ticketFromRow)
   }
