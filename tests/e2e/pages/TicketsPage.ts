@@ -10,6 +10,7 @@ export class TicketsPage {
   error: Locator
   emptyState: Locator
   ticket: (key: string) => Locator
+  epic: (key: string) => Locator
   start: (key: string) => Locator
   workspaceButton: (key: string) => Locator
   open: (key: string) => Locator
@@ -26,6 +27,7 @@ export class TicketsPage {
     this.error = page.getByTestId('tickets-error')
     this.emptyState = page.getByTestId('tickets-empty')
     this.ticket = (key: string) => page.getByTestId(`ticket-${key}`)
+    this.epic = (key) => page.getByTestId(`ticket-${key}`)
     this.start = (key: string) => page.getByTestId(`ticket-${key}-start`)
     this.workspaceButton = (key: string) => page.getByTestId(`ticket-${key}-workspace`)
     this.open = (key: string) => page.getByTestId(`ticket-${key}-open`)
