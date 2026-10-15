@@ -40,6 +40,7 @@ import { PrService } from './prs'
 import { StatusService } from './status'
 import { TicketService } from './tickets'
 import { Store } from './store'
+import { workspaceDiff } from './diff'
 import { WorkspaceManager, workspaceTerminalEnv } from './workspaces'
 import { defaultCliScript, installWrapper, resolveCliRunner } from './wrapper'
 
@@ -596,6 +597,10 @@ export class DaemonServer {
           { workspaceId: ws.id, env: workspaceTerminalEnv(ws, this.paths, this.socketPath) }
         )
         return { id: t.id }
+      }
+      case 'workspace.diff': {
+        const ws = this.workspaces.get(str(p, 'id'))
+        return workspaceDiff(ws, this.workspaces.project(ws.projectId), Date.now)
       }
       case 'workspace.createPr':
         return this.createPr(str(p, 'id'), str(p, 'title'))
