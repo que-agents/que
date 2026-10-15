@@ -92,6 +92,7 @@ test('a workspace made in the sidebar runs claude, shows needs input, opens in t
     // The icon sits in the title strip, which is a window-drag region; it must still take clicks.
     await sidebar.searchToggle.click()
     await expect(sidebar.search).toBeFocused()
+    await launched.window.screenshot({ path: 'test-results/sidebar-search.png' })
     await sidebar.searchToggle.click()
     await expect(sidebar.search).toHaveCount(0)
     await terminal.input.focus()
