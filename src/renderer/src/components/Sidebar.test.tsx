@@ -462,13 +462,17 @@ describe('Sidebar tickets entry', () => {
       cwd: '/Users/dev/code/api'
     })
 
+    const openSearch = (user: ReturnType<typeof userEvent.setup>): Promise<void> =>
+      user.click(screen.getByTestId('sidebar-search-toggle'))
+
     it('narrows projects to those with a matching workspace, and shows only those workspaces', async () => {
       const user = userEvent.setup()
       seed()
       render(<App />)
       await screen.findByTestId(`sidebar-project-${uploader.id}`)
+      await openSearch(user)
 
-      await user.type(screen.getByRole('searchbox', { name: 'Filter' }), 'RETRY')
+      await user.type(screen.getByRole('searchbox', { name: 'Search' }), 'RETRY')
 
       const project = screen.getByTestId(`sidebar-project-${uploader.id}`)
       expect(within(project).getByText('app-1432-retry-logic')).toBeInTheDocument()
@@ -481,8 +485,9 @@ describe('Sidebar tickets entry', () => {
       seed()
       render(<App />)
       await screen.findByTestId(`sidebar-project-${uploader.id}`)
+      await openSearch(user)
 
-      await user.type(screen.getByTestId('sidebar-filter'), 'uploa')
+      await user.type(screen.getByTestId('sidebar-search'), 'uploa')
 
       const project = screen.getByTestId(`sidebar-project-${uploader.id}`)
       expect(within(project).getByText('app-1432-retry-logic')).toBeInTheDocument()
@@ -496,8 +501,9 @@ describe('Sidebar tickets entry', () => {
       render(<App />)
       await user.click(await screen.findByTestId(`sidebar-project-${uploader.id}-toggle`))
       expect(screen.queryByText('app-1432-retry-logic')).not.toBeInTheDocument()
+      await openSearch(user)
 
-      await user.type(screen.getByTestId('sidebar-filter'), 'retry')
+      await user.type(screen.getByTestId('sidebar-search'), 'retry')
 
       expect(screen.getByText('app-1432-retry-logic')).toBeInTheDocument()
       expect(screen.getByTestId(`sidebar-project-${uploader.id}-toggle`)).toHaveAttribute(
@@ -514,34 +520,84 @@ describe('Sidebar tickets entry', () => {
       render(<App />)
       const sessions = await screen.findByRole('navigation', { name: 'Sessions' })
       await within(sessions).findByText('zsh')
+      await openSearch(user)
 
-      await user.type(screen.getByTestId('sidebar-filter'), 'nod')
+      await user.type(screen.getByTestId('sidebar-search'), 'nod')
 
       expect(within(sessions).queryByText('zsh')).not.toBeInTheDocument()
       expect(within(sessions).getByText('node')).toBeInTheDocument()
 
-      await user.type(screen.getByTestId('sidebar-filter'), 'zzz')
+      await user.type(screen.getByTestId('sidebar-search'), 'zzz')
 
       expect(screen.getByTestId('sidebar-sessions-nomatch')).toHaveTextContent('Nothing matches')
       expect(screen.getByTestId('sidebar-projects-nomatch')).toHaveTextContent('Nothing matches')
       expect(screen.queryByTestId('sidebar-empty')).not.toBeInTheDocument()
     })
 
-    it('clears and blurs the filter on Escape', async () => {
+    it('closes the search on Escape and clears the narrowing', async () => {
       const user = userEvent.setup()
       seed()
       render(<App />)
       await screen.findByTestId(`sidebar-project-${uploader.id}`)
-      const filter = screen.getByTestId('sidebar-filter')
+      await openSearch(user)
 
-      await user.type(filter, 'zzz')
+      await user.type(screen.getByTestId('sidebar-search'), 'zzz')
       expect(screen.getByTestId('sidebar-projects-nomatch')).toBeInTheDocument()
       await user.keyboard('{Escape}')
 
-      expect(filter).toHaveValue('')
-      expect(filter).not.toHaveFocus()
+      expect(screen.queryByTestId('sidebar-search')).not.toBeInTheDocument()
+      expect(screen.getByTestId('sidebar-search-toggle')).toHaveAttribute('aria-expanded', 'false')
       expect(screen.getByText('app-1432-retry-logic')).toBeInTheDocument()
       expect(screen.queryByTestId('sidebar-projects-nomatch')).not.toBeInTheDocument()
+    })
+
+    it('opens from the toggle, which reports aria-expanded and focuses the field', async () => {
+      const user = userEvent.setup()
+      seed()
+      render(<App />)
+      await screen.findByTestId(`sidebar-project-${uploader.id}`)
+      const toggle = screen.getByTestId('sidebar-search-toggle')
+      expect(toggle).toHaveAttribute('aria-expanded', 'false')
+      expect(screen.queryByTestId('sidebar-search')).not.toBeInTheDocument()
+
+      await user.click(toggle)
+
+      expect(toggle).toHaveAttribute('aria-expanded', 'true')
+      expect(screen.getByTestId('sidebar-search')).toHaveFocus()
+    })
+
+    it('keeps the search open on blur while it has text, and closes it when empty', async () => {
+      const user = userEvent.setup()
+      seed()
+      render(<App />)
+      await screen.findByTestId(`sidebar-project-${uploader.id}`)
+      await openSearch(user)
+      const field = screen.getByTestId('sidebar-search')
+
+      await user.type(field, 'retry')
+      await user.click(document.body)
+      expect(screen.getByTestId('sidebar-search')).toHaveValue('retry')
+      expect(screen.queryByTestId(`sidebar-project-${api.id}`)).not.toBeInTheDocument()
+
+      await user.clear(field)
+      await user.click(document.body)
+      expect(screen.queryByTestId('sidebar-search')).not.toBeInTheDocument()
+      expect(screen.getByTestId(`sidebar-project-${api.id}`)).toBeInTheDocument()
+    })
+
+    it('closes and clears when the toggle is clicked while open', async () => {
+      const user = userEvent.setup()
+      seed()
+      render(<App />)
+      await screen.findByTestId(`sidebar-project-${uploader.id}`)
+      await openSearch(user)
+      await user.type(screen.getByTestId('sidebar-search'), 'zzz')
+      expect(screen.getByTestId('sidebar-projects-nomatch')).toBeInTheDocument()
+
+      await user.click(screen.getByTestId('sidebar-search-toggle'))
+
+      expect(screen.queryByTestId('sidebar-search')).not.toBeInTheDocument()
+      expect(screen.getByText('app-1432-retry-logic')).toBeInTheDocument()
     })
 
     it('counts only the open tickets that match the filter', async () => {
@@ -555,8 +611,9 @@ describe('Sidebar tickets entry', () => {
       await waitFor(() =>
         expect(screen.getByTestId('sidebar-tickets-count')).toHaveTextContent('2')
       )
+      await openSearch(user)
 
-      await user.type(screen.getByTestId('sidebar-filter'), 'auth')
+      await user.type(screen.getByTestId('sidebar-search'), 'auth')
 
       expect(screen.getByTestId('sidebar-tickets-count')).toHaveTextContent('1')
     })

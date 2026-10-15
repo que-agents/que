@@ -24,6 +24,16 @@ export function FolderPlusIcon(): React.JSX.Element {
   )
 }
 
+/** A magnifier: a circle and a short handle: search. */
+export function SearchIcon(): React.JSX.Element {
+  return (
+    <svg {...base} aria-hidden="true">
+      <circle cx="7" cy="7" r="4.25" />
+      <path d="M10.25 10.25L13.5 13.5" />
+    </svg>
+  )
+}
+
 /** Three horizontal lines of decreasing length: sort. */
 export function SortIcon(): React.JSX.Element {
   return (

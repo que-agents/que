@@ -84,9 +84,11 @@ remove. The quiet board uses the same tones as plain text.
   the window.
 - The sidebar's divider drags between 180 and 520px, double-click resets it, and
   the arrow keys move it when it has focus; the width is remembered.
-- The sidebar opens with a filter row: a mono 12px field on `--bg-raised` with a
-  1px `--border` (`--accent` on focus) and a muted `⌘K` hint that hides once
-  there is text. ⌘K focuses it, Escape clears and blurs it. The Projects head
+- Search is an icon in the title strip (`button.ghost.icon`, a magnifier), in line
+  with the window buttons at the strip's right end; it takes `--accent` while the
+  field is open. Click or ⌘K pops out a field in the first row: a mono 12px input on
+  `--bg-raised` with a 1px `--border` (`--accent` on focus). Escape, or leaving it
+  empty, folds it away and clears the narrowing; text keeps it open. The Projects head
   carries a sort toggle (`button.ghost.icon`, three lines of decreasing length)
   between name and last activity; the choice is remembered.
 - The top bar reads `project / workspace`, with the branch after it only when
