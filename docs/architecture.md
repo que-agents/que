@@ -135,6 +135,29 @@ failed `gh` keeps the stored value and logs one line until a call succeeds
 again. A successful `workspace.createPr` and a task reaching `done` trigger an
 immediate check of that workspace.
 
+## The ticket queue
+
+`tickets.ts` keeps the tickets assigned to the user in the `tickets` table, the
+way the pull request service keeps pull requests. It never writes to the
+tracker. The tracker is read through the user's own `acli` (already signed in):
+every `jira.poll_minutes` (first run a second after the daemon starts) it runs
+`acli jira workitem search --jql <jira.jql> --json`, upserts what came back,
+drops tickets that vanished unless a workspace was started for them, and emits
+`tickets.synced`. A failure stores the first line of stderr in the `kv` table as
+the sync error (the list stays), logs once, and is cleared by the next success.
+`tickets.list` only reads the cache.
+
+`tickets.start` fetches the full ticket with `acli jira workitem view`, flattens
+its description (`adf-text.ts`) and renders a brief. The ticket's tracker project
+picks the que project through `[jira.projects]`; with no mapping the daemon
+answers `needs_project` and does nothing, and once the caller passes a project
+the choice is written back to the config. The workspace is named
+`<key>-<summary slug>`; the brief goes to `<worktree>/.que/ticket.md` (with
+`.que/` added to the repository's `info/exclude`), and a terminal in the
+workspace is typed `claude '<jira.start_prompt>'`. A second start reuses the
+workspace. A loose session instead gets the brief at `<QUE_HOME>/tickets/<KEY>.md`
+and a terminal in the home directory. Starting is refused in quiet hours.
+
 ## The task machine
 
 An overnight task moves `queued → preparing → running → finishing → done`, and

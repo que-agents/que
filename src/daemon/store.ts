@@ -10,6 +10,7 @@ import type {
   Task,
   TaskSource,
   TaskState,
+  Ticket,
   Workspace,
   WorkspaceStatus
 } from '../shared/types'
@@ -98,7 +99,23 @@ const MIGRATIONS: string[] = [
    );
    CREATE INDEX workspace_status_log_ws ON workspace_status_log(workspace_id, at);
    INSERT INTO workspace_status_log (workspace_id, status, reason, at)
-     SELECT id, status, status_reason, status_at FROM workspaces;`
+     SELECT id, status, status_reason, status_at FROM workspaces;`,
+  `CREATE TABLE tickets (
+     key TEXT PRIMARY KEY,
+     summary TEXT NOT NULL,
+     status TEXT NOT NULL,
+     status_category TEXT NOT NULL,
+     priority TEXT,
+     type TEXT NOT NULL,
+     assignee TEXT,
+     project_key TEXT NOT NULL,
+     project_name TEXT NOT NULL,
+     url TEXT NOT NULL,
+     labels_json TEXT NOT NULL,
+     updated_at TEXT,
+     synced_at TEXT NOT NULL,
+     workspace_id TEXT
+   );`
 ]
 
 const STATUS_LOG_RETENTION_MS = 30 * 24 * 3_600_000
@@ -117,6 +134,49 @@ export function newId(prefix: 'prj_' | 'ws_' | 'tsk_'): string {
   let out = prefix
   for (const b of bytes) out += ID_ALPHABET[b & 31]
   return out
+}
+
+interface TicketRow {
+  key: string
+  summary: string
+  status: string
+  status_category: string
+  priority: string | null
+  type: string
+  assignee: string | null
+  project_key: string
+  project_name: string
+  url: string
+  labels_json: string
+  updated_at: string | null
+  synced_at: string
+  workspace_id: string | null
+}
+
+function ticketFromRow(r: TicketRow): Ticket {
+  let labels: string[] = []
+  try {
+    const parsed = JSON.parse(r.labels_json) as unknown
+    if (Array.isArray(parsed)) labels = parsed.filter((l): l is string => typeof l === 'string')
+  } catch {
+    // Unreadable labels are no labels.
+  }
+  return {
+    key: r.key,
+    summary: r.summary,
+    status: r.status,
+    statusCategory: r.status_category as Ticket['statusCategory'],
+    priority: r.priority,
+    type: r.type,
+    assignee: r.assignee,
+    projectKey: r.project_key,
+    projectName: r.project_name,
+    url: r.url,
+    labels,
+    updatedAt: r.updated_at,
+    syncedAt: r.synced_at,
+    workspaceId: r.workspace_id
+  }
 }
 
 interface ProjectRow {
@@ -610,6 +670,76 @@ export class Store {
       ended_at: string | null
     }>
     return rows.map((r) => ({ at: r.at, minutes: r.minutes, why: r.why, endedAt: r.ended_at }))
+  }
+
+  // ---- tickets --------------------------------------------------------------
+
+  /** Inserts or updates tickets by key, keeping the workspace each one was started in. */
+  upsertTickets(tickets: Ticket[]): void {
+    const stmt = this.db.prepare(
+      `INSERT INTO tickets (key, summary, status, status_category, priority, type, assignee,
+         project_key, project_name, url, labels_json, updated_at, synced_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(key) DO UPDATE SET summary = excluded.summary, status = excluded.status,
+         status_category = excluded.status_category, priority = excluded.priority,
+         type = excluded.type, assignee = excluded.assignee, project_key = excluded.project_key,
+         project_name = excluded.project_name, url = excluded.url,
+         labels_json = excluded.labels_json, updated_at = excluded.updated_at,
+         synced_at = excluded.synced_at`
+    )
+    this.db.exec('BEGIN')
+    try {
+      for (const t of tickets) {
+        stmt.run(
+          t.key,
+          t.summary,
+          t.status,
+          t.statusCategory,
+          t.priority,
+          t.type,
+          t.assignee,
+          t.projectKey,
+          t.projectName,
+          t.url,
+          JSON.stringify(t.labels),
+          t.updatedAt,
+          t.syncedAt
+        )
+      }
+      this.db.exec('COMMIT')
+    } catch (err) {
+      this.db.exec('ROLLBACK')
+      throw err
+    }
+  }
+
+  /** Every cached ticket, newest `updated_at` first. */
+  listTickets(): Ticket[] {
+    const rows = this.db
+      .prepare('SELECT * FROM tickets ORDER BY updated_at IS NULL, updated_at DESC, key')
+      .all() as unknown as TicketRow[]
+    return rows.map(ticketFromRow)
+  }
+
+  getTicket(key: string): Ticket | undefined {
+    const r = this.db.prepare('SELECT * FROM tickets WHERE key = ?').get(key) as unknown as
+      | TicketRow
+      | undefined
+    return r ? ticketFromRow(r) : undefined
+  }
+
+  /** Drops tickets that are not in `keys`, except those with a workspace. */
+  deleteTicketsNotIn(keys: string[]): void {
+    const keep = new Set(keys)
+    const del = this.db.prepare('DELETE FROM tickets WHERE key = ?')
+    const rows = this.db
+      .prepare('SELECT key FROM tickets WHERE workspace_id IS NULL')
+      .all() as unknown as Array<{ key: string }>
+    for (const r of rows) if (!keep.has(r.key)) del.run(r.key)
+  }
+
+  setTicketWorkspace(key: string, workspaceId: string | null): void {
+    this.db.prepare('UPDATE tickets SET workspace_id = ? WHERE key = ?').run(workspaceId, key)
   }
 
   // ---- kv -------------------------------------------------------------------

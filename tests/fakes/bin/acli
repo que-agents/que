@@ -1,0 +1,67 @@
+#!/usr/bin/env node
+// Fake tracker CLI for que's tests: records every call and answers the few
+// `acli jira` subcommands que uses. See tests/fakes/README.md.
+'use strict'
+
+const fs = require('node:fs')
+
+const argv = process.argv.slice(2)
+const log = process.env.QUE_FAKE_ACLI_LOG
+const ticketsFile = process.env.QUE_FAKE_ACLI_TICKETS
+const fail = process.env.QUE_FAKE_ACLI_FAIL
+
+if (log) {
+  fs.appendFileSync(log, `${JSON.stringify({ argv, cwd: process.cwd(), ts: new Date().toISOString() })}\n`)
+}
+
+function flag(name) {
+  const i = argv.indexOf(name)
+  return i >= 0 ? argv[i + 1] : undefined
+}
+
+function readIssues() {
+  if (!ticketsFile || !fs.existsSync(ticketsFile)) return []
+  try {
+    const parsed = JSON.parse(fs.readFileSync(ticketsFile, 'utf8'))
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
+  }
+}
+
+function die(message) {
+  process.stderr.write(`${message}\n`)
+  process.exit(1)
+}
+
+const [product, group, sub] = argv
+if (product !== 'jira') die(`unknown command: ${argv.join(' ')}`)
+
+if (fail === 'auth') die('Not authenticated. Run acli jira auth login.')
+
+if (group === 'auth' && sub === 'status') {
+  process.stdout.write(
+    ['✓ Authenticated', '  Site: example.atlassian.net', '  Authentication Type: oauth', ''].join('\n')
+  )
+  process.exit(0)
+}
+
+if (group === 'workitem' && sub === 'search') {
+  if (fail === 'network') die('dial tcp: connection refused')
+  const limit = Number(flag('--limit'))
+  const issues = readIssues()
+  const out = Number.isFinite(limit) && limit > 0 ? issues.slice(0, limit) : issues
+  process.stdout.write(`${JSON.stringify(out, null, 2)}\n`)
+  process.exit(0)
+}
+
+if (group === 'workitem' && sub === 'view') {
+  if (fail === 'network') die('dial tcp: connection refused')
+  const key = argv[3]
+  const issue = readIssues().find((i) => i && i.key === key)
+  if (!issue) die(`No work item found: ${key}`)
+  process.stdout.write(`${JSON.stringify(issue, null, 2)}\n`)
+  process.exit(0)
+}
+
+process.exit(0)

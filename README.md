@@ -106,6 +106,13 @@ chime_on_complete = true
 chime_on_needs_input = false
 morning_summary = false
 
+[jira]
+jql = "assignee = currentUser() AND statusCategory != Done ORDER BY updated DESC"
+poll_minutes = 5
+start_prompt = "Read .que/ticket.md, the ticket this workspace is for. Restate the goal in a sentence, look at the code it touches, and propose a plan before changing anything."
+# [jira.projects]                # learned the first time you pick a project for a ticket
+# APP = "uploader"               # tracker project key = que project name
+
 # [repos.uploader]               # a name for `que work -r uploader`
 # path = "~/code/uploader"
 # default_branch = "main"
@@ -163,6 +170,10 @@ Generated from `que --help`; options and arguments are in [docs/cli.md](docs/cli
 | `que queue close [options]` | stop starting queued tasks (running ones finish) |
 | `que queue status [options]` | show the queue |
 | `que report [options]` | the morning report: what the queue did |
+| `que tickets list [options]` | list the cached tickets (the default) |
+| `que tickets sync [options]` | fetch the queue from the tracker now |
+| `que tickets start [options] <key>` | make a workspace for a ticket, write it as a brief, and start claude on it |
+| `que tickets open [options] <key>` | open a ticket's page in the browser |
 | `que unlock [options] [minutes]` | unlock detail during quiet hours for a while (default: quiet_hours.unlock_minutes) |
 | `que lock [options]` | end an unlock early |
 | `que quiet status [options]` | whether quiet hours are on, until when, and any unlock |
