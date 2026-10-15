@@ -4,7 +4,8 @@ import type { DiffFile } from '../../preload/index.d'
 
 export const GLYPH: Record<DiffFile['status'], { glyph: string; tone: string; label: string }> = {
   added: { glyph: 'A', tone: 'good', label: 'added' },
-  modified: { glyph: 'M', tone: 'busy', label: 'modified' },
+  // Grey: a modification is the ordinary case, and blue is kept for the working dot.
+  modified: { glyph: 'M', tone: 'neutral', label: 'modified' },
   deleted: { glyph: 'D', tone: 'bad', label: 'deleted' },
   renamed: { glyph: 'R', tone: 'neutral', label: 'renamed' },
   untracked: { glyph: '?', tone: 'attention', label: 'untracked' }
