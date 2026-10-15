@@ -40,9 +40,8 @@ export default function TopBar({ termKey }: { termKey: string }): React.JSX.Elem
             <PrChip
               pr={ws.pr}
               testId="topbar-pr"
-              label={`PR #${ws.pr.number} · ${ws.pr.state}${
-                ws.pr.checks === 'failing' ? ' · checks failing' : ''
-              }${ws.pr.review === 'changes_requested' ? ' · changes requested' : ''}`}
+              // Number and state only; checks and review are the tone, and the tooltip spells them out.
+              label={`PR #${ws.pr.number} · ${ws.pr.state}`}
             />
           ) : (
             ws.prUrl && (

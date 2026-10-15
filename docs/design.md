@@ -98,7 +98,9 @@ remove. The quiet board uses the same tones as plain text.
   carries a sort toggle (`button.ghost.icon`, three lines of decreasing length)
   between name and last activity; the choice is remembered.
 - The top bar reads `project / workspace`, with the branch after it only when
-  the branch is not the workspace's own name.
+  the branch is not the workspace's own name; the title truncates with an ellipsis
+  before the buttons give way. The pull request chip is `PR #n · state`; failing
+  checks and a requested change are its tone, and its tooltip spells them out.
 
 ## Adding something
 
