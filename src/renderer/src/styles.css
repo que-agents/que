@@ -280,10 +280,21 @@ h2 {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 40px 8px 10px;
+  padding: 40px 8px 0;
   background: var(--bg-side);
   border-right: 1px solid var(--border);
   overflow-y: auto;
+}
+
+/* Report, Tickets and Settings stay at the window's bottom edge, above a solid hairline. */
+.sidebar-bottom {
+  position: sticky;
+  bottom: 0;
+  flex: none;
+  margin-top: auto;
+  padding: 6px 0 10px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-side);
 }
 
 .sidebar-filter {
@@ -554,27 +565,7 @@ h2 {
 }
 
 .report-entry {
-  position: relative;
   border-radius: var(--radius);
-  padding-top: 4px;
-}
-
-.report-entry::before {
-  content: "";
-  position: absolute;
-  left: 4px;
-  right: 4px;
-  top: -5px;
-  height: 1px;
-  background: var(--dash);
-}
-
-.report-entry + .report-entry::before {
-  content: none;
-}
-
-.sidebar nav + .report-entry {
-  margin-top: 6px;
 }
 
 /* ---- the divider ------------------------------------------------------- */
