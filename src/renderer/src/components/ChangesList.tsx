@@ -53,26 +53,28 @@ export default function ChangesList({ termKey }: { termKey: string }): React.JSX
               diff.commitsAhead === 1 ? 'commit' : 'commits'
             } ahead · ${files.length} ${files.length === 1 ? 'file' : 'files'} · +${adds} −${dels}`}
         </p>
-        <button
-          type="button"
-          className="ghost"
-          data-testid="changes-refresh"
-          disabled={!connected}
-          onClick={() => void store.fetchDiff(termKey)}
-        >
-          Refresh
-        </button>
-        {ws && (
+        <div className="changes-actions">
           <button
             type="button"
             className="ghost"
-            data-testid="changes-open-editor"
+            data-testid="changes-refresh"
             disabled={!connected}
-            onClick={() => void store.openInEditor(ws.path)}
+            onClick={() => void store.fetchDiff(termKey)}
           >
-            Open in editor
+            Refresh
           </button>
-        )}
+          {ws && (
+            <button
+              type="button"
+              className="ghost"
+              data-testid="changes-open-editor"
+              disabled={!connected}
+              onClick={() => void store.openInEditor(ws.path)}
+            >
+              Open in editor
+            </button>
+          )}
+        </div>
       </header>
       {error && (
         <p className="form-error changes-error" role="alert" data-testid="changes-error">
