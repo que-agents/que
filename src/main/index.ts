@@ -53,6 +53,8 @@ const ALLOWED: ReadonlySet<MethodName> = new Set<MethodName>([
   'workspace.prThread',
   'workspace.files',
   'workspace.readFile',
+  'workspace.watch',
+  'workspace.unwatch',
   'task.add',
   'task.list',
   'task.get',

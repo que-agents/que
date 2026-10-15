@@ -181,6 +181,10 @@ export interface WorkspaceApi {
   files(params: { id: string }): Promise<WorkspaceFiles>
   /** One file of the worktree for the file view; the path is relative and must stay inside the worktree. Refused in quiet hours. */
   readFile(params: { id: string; path: string }): Promise<WorkspaceFile>
+  /** Ask the daemon to watch this workspace's worktree, so `workspace.changed` names it while this window shows it. */
+  watch(params: { id: string }): Promise<{ ok: true }>
+  /** Stop asking for watch(); the daemon may still watch it for another window or an attached terminal. */
+  unwatch(params: { id: string }): Promise<{ ok: true }>
   on<E extends WorkspaceEventName>(event: E, cb: (data: Events[E]) => void): () => void
 }
 
