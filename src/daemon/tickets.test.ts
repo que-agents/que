@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Ticket } from '../shared/types'
 import { makeFakeIssue } from '../testing/fakes'
-import { parseIssue, renderBrief, workspaceNameFor } from './tickets'
+import { levelOf, parseIssue, renderBrief, workspaceNameFor } from './tickets'
 
 const AT = '2026-10-14T08:00:00.000Z'
 
@@ -30,7 +30,9 @@ function ticket(overrides: Partial<Ticket> = {}): Ticket {
 
 describe('parseIssue', () => {
   it('reads an issue in acli shape', () => {
-    expect(parseIssue(makeFakeIssue({ fields: { labels: ['api'] } }), AT)).toEqual({
+    expect(
+      parseIssue(makeFakeIssue({ fields: { labels: ['api'] } }), AT, 'example.atlassian.net')
+    ).toEqual({
       key: 'APP-1432',
       summary: 'Add retry logic to the uploader',
       status: 'In Progress',
@@ -74,10 +76,10 @@ describe('parseIssue', () => {
     const t = parseIssue(
       {
         key: 'OPS-7',
-        self: 'https://acme.atlassian.net/rest/api/3/issue/7',
         fields: { summary: 'Rotate keys', status: { name: 'Weird', statusCategory: { key: 'x' } } }
       },
-      AT
+      AT,
+      'acme.atlassian.net'
     )
     expect(t).toMatchObject({
       statusCategory: 'unknown',
@@ -137,5 +139,36 @@ describe('renderBrief', () => {
     expect(brief).not.toContain('Labels:')
     expect(brief).toContain('Priority: none')
     expect(brief.endsWith('## Description\n\n(none)\n')).toBe(true)
+  })
+})
+
+describe('levelOf', () => {
+  it('reads the hierarchy level, the subtask flag, and the type name', () => {
+    expect(levelOf({ name: 'Initiative', hierarchyLevel: 1 })).toBe('epic')
+    expect(levelOf({ name: 'Story', hierarchyLevel: 0 })).toBe('standard')
+    expect(levelOf({ name: 'Sub-task', hierarchyLevel: -1 })).toBe('subtask')
+    expect(levelOf({ name: 'Sub-task', subtask: true })).toBe('subtask')
+    expect(levelOf({ name: 'Epic' })).toBe('epic')
+    expect(levelOf(undefined)).toBe('standard')
+  })
+})
+
+describe('renderBrief with a parent', () => {
+  const epic = { key: 'APP-1400', summary: 'Uploader reliability', isEpic: true }
+
+  it('appends the epic after the description', () => {
+    const brief = renderBrief(ticket(), 'Do it.', { ...epic, description: 'The big picture.' })
+    expect(
+      brief.endsWith('Do it.\n\n## Epic APP-1400: Uploader reliability\n\nThe big picture.\n')
+    ).toBe(true)
+  })
+
+  it('calls a parent that is not an epic a parent, and says (none) for no description', () => {
+    const brief = renderBrief(ticket(), 'x', { ...epic, isEpic: false, description: ' ' })
+    expect(brief).toContain('## Parent APP-1400: Uploader reliability\n\n(none)\n')
+  })
+
+  it('has no parent section without a parent', () => {
+    expect(renderBrief(ticket(), 'x')).not.toContain('## Epic')
   })
 })

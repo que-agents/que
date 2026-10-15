@@ -9,7 +9,13 @@ import type { DaemonClient } from '@shared/client'
 import { DEFAULT_START_PROMPT } from '@shared/config'
 import type { Events } from '@shared/protocol'
 import { startTestDaemon, type TestDaemon } from '../../src/testing/daemon-harness'
-import { makeFakeIssue, readFakeLog, writeFakeTickets } from '../../src/testing/fakes'
+import {
+  fakeParentOf,
+  makeFakeEpic,
+  makeFakeIssue,
+  readFakeLog,
+  writeFakeTickets
+} from '../../src/testing/fakes'
 import { gitIn, makeTempRepo } from '../../src/testing/temp-repo'
 
 let daemon: TestDaemon
@@ -198,5 +204,115 @@ describe('starting a ticket', () => {
     const file = join(daemon.home, 'tickets', 'APP-1432.md')
     expect(fs.readFileSync(file, 'utf8')).toContain('# APP-1432')
     expect(await client.request('workspace.list', {})).toEqual([])
+  })
+})
+
+describe('epics and parents', () => {
+  const epic = makeFakeEpic()
+  const child = (key: string, summary: string) =>
+    makeFakeIssue({ key, fields: { summary, parent: fakeParentOf(epic) } })
+  const views = () =>
+    readFakeLog(daemon.acliLog).filter((c) => c.argv[1] === 'workitem' && c.argv[2] === 'view')
+  const list = async () => (await client.request('tickets.list', {})).tickets
+  const find = async (key: string) => (await list()).find((t) => t.key === key)
+
+  it("learns each ticket's parent once and leaves epics and loose tickets alone", async () => {
+    writeFakeTickets(daemon.acliTickets, [
+      epic,
+      child('APP-1401', 'First'),
+      child('APP-1402', 'Second'),
+      makeFakeIssue({ key: 'APP-1500', fields: { summary: 'Loose' } })
+    ])
+    await expect.poll(async () => (await find('APP-1402'))?.parentKey, opts).toBe('APP-1400')
+    await expect.poll(async () => views().length, opts).toBe(3)
+    const tickets = await list()
+    expect(tickets.map((t) => [t.key, t.level, t.parentKey, t.assigned])).toEqual([
+      ['APP-1400', 'epic', null, true],
+      ['APP-1401', 'standard', 'APP-1400', true],
+      ['APP-1402', 'standard', 'APP-1400', true],
+      ['APP-1500', 'standard', null, true]
+    ])
+    expect(
+      views()
+        .map((c) => c.argv[3])
+        .sort()
+    ).toEqual(['APP-1401', 'APP-1402', 'APP-1500'])
+
+    const syncs = () => readFakeLog(daemon.acliLog).filter((c) => c.argv[2] === 'search').length
+    const before = syncs()
+    await expect.poll(syncs, opts).toBeGreaterThan(before + 1)
+    expect(views()).toHaveLength(3)
+  })
+
+  it('synthesizes a parent the search did not return and drops it with its last child', async () => {
+    writeFakeTickets(daemon.acliTickets, [
+      makeFakeIssue({ key: 'APP-1100', fields: { summary: 'Before' } }),
+      child('APP-1401', 'Only child')
+    ])
+    await expect.poll(keys, opts).toEqual(['APP-1100', 'APP-1400', 'APP-1401'])
+    expect(await find('APP-1400')).toMatchObject({
+      assigned: false,
+      level: 'epic',
+      summary: 'Uploader reliability',
+      url: 'https://example.atlassian.net/browse/APP-1400',
+      projectKey: 'APP',
+      updatedAt: null,
+      parentKey: null
+    })
+    // The synthesized parent keeps its place across later syncs.
+    const syncs = () => readFakeLog(daemon.acliLog).filter((c) => c.argv[2] === 'search').length
+    const n = syncs()
+    await expect.poll(syncs, opts).toBeGreaterThan(n + 1)
+    expect(await keys()).toEqual(['APP-1100', 'APP-1400', 'APP-1401'])
+
+    writeFakeTickets(daemon.acliTickets, [
+      makeFakeIssue({ key: 'APP-1100', fields: { summary: 'Before' } })
+    ])
+    await expect.poll(keys, opts).toEqual(['APP-1100'])
+  })
+
+  it('keeps a synthesized parent while a child with a workspace remains', async () => {
+    writeFakeTickets(daemon.acliTickets, [child('APP-1401', 'Only child')])
+    await expect.poll(keys, opts).toEqual(['APP-1400', 'APP-1401'])
+    const project = await addProject()
+    const r = await client.request('tickets.start', { key: 'APP-1401', projectId: project.id })
+    expect(r.kind).toBe('workspace')
+    writeFakeTickets(daemon.acliTickets, [])
+    await expect.poll(syncError, opts).toBeNull()
+    const n = readFakeLog(daemon.acliLog).filter((c) => c.argv[2] === 'search').length
+    await expect
+      .poll(() => readFakeLog(daemon.acliLog).filter((c) => c.argv[2] === 'search').length, opts)
+      .toBeGreaterThan(n + 1)
+    expect(await keys()).toEqual(['APP-1400', 'APP-1401'])
+  })
+
+  it("builds links from the CLI's auth status, or from [jira] site", async () => {
+    writeFakeTickets(daemon.acliTickets, [newer])
+    await expect.poll(keys, opts).toEqual(['APP-1432'])
+    expect((await find('APP-1432'))?.url).toBe('https://example.atlassian.net/browse/APP-1432')
+
+    await daemon.close()
+    daemon = await startTestDaemon({
+      config: '[jira]\npoll_minutes = 0.002\nsite = "https://tracker.example.com/"\n'
+    })
+    client = daemon.client
+    writeFakeTickets(daemon.acliTickets, [newer])
+    await expect.poll(keys, opts).toEqual(['APP-1432'])
+    expect((await find('APP-1432'))?.url).toBe('https://tracker.example.com/browse/APP-1432')
+  })
+
+  it("puts the epic's overview in a started ticket's brief and refuses to start the epic", async () => {
+    writeFakeTickets(daemon.acliTickets, [epic, child('APP-1401', 'First')])
+    await expect.poll(async () => (await find('APP-1401'))?.parentKey, opts).toBe('APP-1400')
+    const project = await addProject()
+    const r = await client.request('tickets.start', { key: 'APP-1401', projectId: project.id })
+    if (r.kind !== 'workspace') throw new Error(`unexpected ${r.kind}`)
+    const brief = fs.readFileSync(join(r.workspace.path, '.que', 'ticket.md'), 'utf8')
+    expect(brief).toContain('## Epic APP-1400: Uploader reliability')
+    expect(brief).toContain('Make uploads survive flaky networks end to end.')
+
+    await expect(client.request('tickets.start', { key: 'APP-1400' })).rejects.toThrow(
+      'APP-1400 is an epic, an overview; start one of its tickets'
+    )
   })
 })

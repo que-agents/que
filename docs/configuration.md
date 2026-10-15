@@ -74,6 +74,7 @@ start_prompt = "Read .que/ticket.md, the ticket this workspace is for. Restate t
 | `notifications.morning_summary` | One notification with the night's totals when quiet hours end. |
 | `jira.jql` | The filter for the ticket queue, run with `acli jira workitem search`. The default is the tickets assigned to you that are not done, newest first. |
 | `jira.poll_minutes` | How often the daemon refreshes the queue from the tracker. |
+| `jira.site` | The tracker's host (`team.example.net`, or a URL) that ticket links are built on. By default que reads it from `acli jira auth status`; set it if that is wrong or unavailable. |
 | `jira.start_prompt` | The first prompt typed into `claude` when a ticket is started. |
 | `jira.projects.<KEY>` | The que project (by name) a tracker project's tickets get their workspaces in. que writes it the first time you choose; edit it to change your mind. |
 | `repos.<name>.path` | A name for a repository, so `que work -r <name>` and `que add -r <name>` resolve it. |

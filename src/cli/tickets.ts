@@ -3,7 +3,8 @@ import { execFileSync } from 'node:child_process'
 import type { Command } from 'commander'
 import type { DaemonClient } from '../shared/client'
 import type { TicketsListResult } from '../shared/protocol'
-import { CliError, findProject, formatAge, printTable, withClient } from './common'
+import type { Ticket } from '../shared/types'
+import { CliError, findProject, formatAge, withClient } from './common'
 
 const SUMMARY_WIDTH = 60
 
@@ -21,17 +22,46 @@ async function printList(c: DaemonClient, r: TicketsListResult): Promise<void> {
   if (r.tickets.some((t) => t.workspaceId)) {
     for (const w of await c.request('workspace.list')) names.set(w.id, w.name)
   }
-  printTable(
-    ['KEY', 'SUMMARY', 'STATUS', 'PRIORITY', 'UPDATED', 'WORKSPACE'],
-    r.tickets.map((t) => [
-      t.key,
-      truncate(t.summary, SUMMARY_WIDTH),
-      t.status,
-      t.priority ?? '-',
-      formatAge(t.updatedAt),
-      t.workspaceId ? (names.get(t.workspaceId) ?? t.workspaceId) : '-'
-    ])
-  )
+  const cells = (t: Ticket, depth: number): string[] => [
+    `${'  '.repeat(depth)}${t.key}`,
+    truncate(t.summary, SUMMARY_WIDTH),
+    t.status,
+    t.priority ?? '-',
+    formatAge(t.updatedAt),
+    t.workspaceId ? (names.get(t.workspaceId) ?? t.workspaceId) : '-'
+  ]
+  const keys = new Set(r.tickets.map((t) => t.key))
+  const children = new Map<string, Ticket[]>()
+  for (const t of r.tickets) {
+    if (t.parentKey && keys.has(t.parentKey)) {
+      children.set(t.parentKey, [...(children.get(t.parentKey) ?? []), t])
+    }
+  }
+  const roots = r.tickets.filter((t) => !t.parentKey || !keys.has(t.parentKey))
+  const isEpic = (t: Ticket): boolean => t.level === 'epic'
+  type Entry = { epic: string } | { row: string[] }
+  const entries: Entry[] = []
+  const add = (t: Ticket, depth: number): void => {
+    const nested = isEpic(t) ? 1 : depth + 1
+    if (isEpic(t)) {
+      const mark = t.assigned ? '' : ' (not yours)'
+      entries.push({ epic: `${t.key}  ${truncate(t.summary, SUMMARY_WIDTH)}  ${t.status}${mark}` })
+    } else entries.push({ row: cells(t, depth) })
+    for (const c of children.get(t.key) ?? []) add(c, nested)
+  }
+  for (const t of roots.filter(isEpic)) add(t, 0)
+  for (const t of roots.filter((x) => !isEpic(x))) add(t, 0)
+
+  const header = ['KEY', 'SUMMARY', 'STATUS', 'PRIORITY', 'UPDATED', 'WORKSPACE']
+  const rows = entries.flatMap((e) => ('row' in e ? [e.row] : []))
+  const widths = header.map((h, i) => Math.max(h.length, ...rows.map((row) => row[i].length)))
+  const fmt = (row: string[]): string =>
+    row
+      .map((c, i) => c.padEnd(widths[i]))
+      .join('  ')
+      .trimEnd()
+  console.log(fmt(header))
+  for (const e of entries) console.log('epic' in e ? e.epic : fmt(e.row))
 }
 
 export function registerTicketCommands(program: Command): void {
