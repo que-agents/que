@@ -1418,3 +1418,44 @@ body.resizing .pane-divider::after {
   font-size: 12px;
   color: var(--fg-faint);
 }
+
+/* ---- ticket hierarchy --------------------------------------------------- */
+
+.tickets .report-row.ticket {
+  padding-left: calc(var(--depth, 0) * 16px);
+}
+
+.tickets .report-row.epic {
+  margin-top: 8px;
+  padding-top: 10px;
+  padding-left: 0;
+  border-top: 1px solid var(--border);
+}
+
+.tickets ul > .report-row.epic:first-child {
+  margin-top: 0;
+  border-top: 0;
+}
+
+.tickets .report-row.epic .key {
+  color: var(--fg-muted);
+}
+
+.tickets .report-row.epic .summary {
+  color: var(--fg);
+}
+
+.tickets .unassigned {
+  font: 10px var(--mono);
+  color: var(--fg-faint);
+}
+
+.tickets .loose-label {
+  margin-top: 12px;
+  padding: 10px 0 4px;
+  border-top: 1px solid var(--border);
+  font: 10px var(--mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--fg-faint);
+}

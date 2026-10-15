@@ -423,6 +423,16 @@ describe('Sidebar', () => {
 })
 
 describe('Sidebar tickets entry', () => {
+  it('does not count epics or unassigned parents', async () => {
+    fakeBridge.seedTicket(makeTicket({ key: 'EP-1', level: 'epic' }))
+    fakeBridge.seedTicket(makeTicket({ key: 'EP-2', level: 'epic', assigned: false }))
+    fakeBridge.seedTicket(makeTicket({ key: 'APP-1', parentKey: 'EP-1' }))
+    fakeBridge.seedTicket(makeTicket({ key: 'APP-2', assigned: false }))
+    render(<App />)
+
+    await waitFor(() => expect(screen.getByTestId('sidebar-tickets-count')).toHaveTextContent('1'))
+  })
+
   it('counts the open tickets and opens the view', async () => {
     const user = userEvent.setup()
     fakeBridge.seedTicket(makeTicket({ key: 'APP-1' }))
