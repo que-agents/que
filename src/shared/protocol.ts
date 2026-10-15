@@ -26,6 +26,8 @@ export interface PingResult {
   pid: number
   startedAt: string
   nodeVersion: string
+  /** The daemon's own PATH, as its child processes see it. */
+  path: string
 }
 
 export interface TermCreateParams {
