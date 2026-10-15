@@ -8,6 +8,8 @@ All notable changes to que are recorded here. The format follows
 
 ### Added
 
+- `que ws pr <workspace>`: a workspace's pull request with each check (state, workflow, how long it took) and its conversation, comments, reviews and line comments oldest first; `--json` and `--refresh`.
+- The daemon keeps every check run behind a pull request's checks, so a finished check updates the workspace, and answers `workspace.prThread` with the conversation, cached until the pull request changes.
 - Tickets know their epic: the queue groups tickets under their epics, a started ticket's brief carries the epic's overview, and `que tickets list` prints the tree.
 - Filter the sidebar with `⌘K`: sessions, projects and workspaces narrow as you type, and so does the tickets list; sort projects by name or last activity from the Projects head.
 - A Changes view for a workspace: what it changed against its base, file by file with the patch, committed and uncommitted, read-only.
