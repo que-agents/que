@@ -1,11 +1,13 @@
 // The workspace journey end to end: the CLI creates a project and a workspace
 // in the launched app's daemon, the workspace terminal shows up as a tab, and
 // a Claude Code session typed into it (the fake, through que's hooks wrapper)
-// reports needs input back to `que status`.
+// reports needs input back to `que status`, and the report lists the workspace
+// as waiting.
 import { expect, test } from '@playwright/test'
 import type { StatusJson } from '../../src/cli/workspaces'
 import type { Project, Workspace } from '../../src/shared/types'
 import { AppShellPage } from './pages/AppShellPage'
+import { ReportPage } from './pages/ReportPage'
 import { SidebarPage } from './pages/SidebarPage'
 import { TerminalPage } from './pages/TerminalPage'
 import { type LaunchedApp, launchApp } from './utils/app'
@@ -87,5 +89,15 @@ test('a claude session in a workspace terminal reports needs input to que status
     await sidebar.waitForWorkspaceStatus(workspace.id, 'needs_input')
     await terminal.expectScreenToContain('Claude needs your permission to use Bash. Allow? (y/n)')
     await launched.window.screenshot({ path: 'test-results/workspace-needs-input.png' })
+  })
+
+  await test.step('The report lists the workspace as waiting for input', async () => {
+    const report = new ReportPage(launched.window)
+    await sidebar.reportButton.click()
+    await report.waitForLoad()
+    await expect(report.workspace(workspace.id)).toBeVisible()
+    await expect(report.workspaceFacts(workspace.id)).toContainText('asked for input 1×')
+    await expect(report.workspaceFacts(workspace.id)).toContainText('waiting since')
+    await expect(report.totals).toContainText('1 need input')
   })
 })
