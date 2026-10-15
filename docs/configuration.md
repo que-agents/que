@@ -69,7 +69,7 @@ start_prompt = "Read .que/ticket.md, the ticket this workspace is for. Restate t
 | `quiet_hours.default` | The nightly window, `[start, end]` in local 24-hour time. It may cross midnight. |
 | `quiet_hours.<day>` | A per-day override (`sunday` … `saturday`, keyed by the day the window starts): a window, or `"none"`. |
 | `quiet_hours.unlock_minutes` | How long `que unlock` (or the board's Unlock button) shows detail. |
-| `notifications.chime_on_complete` | A soft chime when a task finishes (work hours only). |
+| `notifications.chime_on_complete` | A soft chime when a session finishes a turn or a task finishes (work hours only). |
 | `notifications.chime_on_needs_input` | A chime when a session asks for input (work hours only). |
 | `notifications.morning_summary` | One notification with the night's totals when quiet hours end. |
 | `jira.jql` | The filter for the ticket queue, run with `acli jira workitem search`. The default is the tickets assigned to you that are not done, newest first. |

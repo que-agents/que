@@ -301,7 +301,7 @@ export default function SettingsView(): React.JSX.Element {
               checked={form.chimeComplete}
               onChange={(e) => update({ chimeComplete: e.target.checked })}
             />
-            Chime when a task finishes (work hours)
+            Chime when a session finishes a turn or a task finishes (work hours)
           </label>
           <label className="check">
             <input
@@ -310,7 +310,7 @@ export default function SettingsView(): React.JSX.Element {
               checked={form.chimeNeedsInput}
               onChange={(e) => update({ chimeNeedsInput: e.target.checked })}
             />
-            Chime when a task needs input (work hours)
+            Chime when a session needs input (work hours)
           </label>
           <label className="check">
             <input
