@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import {
   diffId,
   diffPathOf,
+  fileId,
+  filePathOf,
   isViewId,
   NO_SPLIT,
   type PaneLayout,
@@ -11,6 +13,7 @@ import {
 
 const PUT = diffId('src/upload/put.ts')
 const README = diffId('README.md')
+const INDEX = fileId('src/index.ts')
 
 const split = (over: Partial<PaneLayout> = {}): PaneLayout => ({
   split: { direction: 'row', ratio: 0.5 },
@@ -39,6 +42,23 @@ describe('diff ids', () => {
   })
 })
 
+describe('file ids', () => {
+  it('names a worktree file tab and reads the path back verbatim', () => {
+    expect(INDEX).toBe('view:file:src/index.ts')
+    expect(filePathOf(INDEX)).toBe('src/index.ts')
+    expect(filePathOf(fileId('docs/a file: with spaces.md'))).toBe('docs/a file: with spaces.md')
+    expect(isViewId(INDEX)).toBe(true)
+  })
+
+  it('keeps the two kinds apart, and is null for a terminal id, an empty path, and null', () => {
+    expect(filePathOf(PUT)).toBeNull()
+    expect(diffPathOf(INDEX)).toBeNull()
+    expect(filePathOf('t_01hzx3k9c2qf')).toBeNull()
+    expect(filePathOf('view:file:')).toBeNull()
+    expect(filePathOf(null)).toBeNull()
+  })
+})
+
 describe('parseLayout', () => {
   describe('round trip', () => {
     it('reads back a split holding diff tabs in either pane', () => {
@@ -56,6 +76,22 @@ describe('parseLayout', () => {
       const l: PaneLayout = { ...NO_SPLIT, active: [PUT, null], views: [PUT] }
 
       expect(parseLayout(JSON.stringify(l))).toEqual(l)
+    })
+  })
+
+  describe('file tabs', () => {
+    it('keeps a file tab beside a diff tab, in either pane', () => {
+      const l = split({
+        second: ['t_2', INDEX],
+        active: [PUT, INDEX],
+        focused: 1,
+        views: [PUT, INDEX]
+      })
+
+      expect(parseLayout(JSON.stringify(l))).toEqual(l)
+      expect(
+        parseLayout(JSON.stringify({ ...NO_SPLIT, views: [INDEX, 'view:file:', INDEX] }))?.views
+      ).toEqual([INDEX])
     })
   })
 

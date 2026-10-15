@@ -1,9 +1,18 @@
 import { useEffect, useRef } from 'react'
 import { basename } from '../diff'
-import { diffPathOf, RATIO_DEFAULT, RATIO_MAX, RATIO_MIN, useQue, useStore } from '../store'
+import {
+  diffPathOf,
+  filePathOf,
+  RATIO_DEFAULT,
+  RATIO_MAX,
+  RATIO_MIN,
+  useQue,
+  useStore
+} from '../store'
 import { setPaneSource } from '../testHook'
 import DiffView from './DiffView'
-import { DiffIcon, PlusIcon } from './icons'
+import FileView from './FileView'
+import { DiffIcon, FileIcon, PlusIcon } from './icons'
 import Terminal from './Terminal'
 
 const STEP = 0.05
@@ -95,6 +104,7 @@ function Pane({ termKey, index }: { termKey: string; index: 0 | 1 }): React.JSX.
   const activeId = store.paneActiveId(termKey, index)
   const active = store.paneActive(termKey, index)
   const activeDiff = diffPathOf(activeId)
+  const activeFile = filePathOf(activeId)
   const focused = store.focusedPane(termKey) === index
 
   return (
@@ -147,14 +157,16 @@ function Pane({ termKey, index }: { termKey: string; index: 0 | 1 }): React.JSX.
             </span>
           ))}
           {views.map((id) => {
-            const path = diffPathOf(id) ?? id
+            const filePath = filePathOf(id)
+            const kind = filePath === null ? 'diff' : 'file'
+            const path = filePath ?? diffPathOf(id) ?? id
             const label = basename(path)
             const selected = id === activeId
             return (
               <span
                 key={id}
                 className={`tab view-tab${selected ? ' active' : ''}`}
-                data-testid="view-tab-diff"
+                data-testid={`view-tab-${kind}`}
                 data-path={path}
                 data-active={selected}
               >
@@ -163,18 +175,18 @@ function Pane({ termKey, index }: { termKey: string; index: 0 | 1 }): React.JSX.
                   role="tab"
                   aria-selected={selected}
                   title={path}
-                  data-testid="view-tab-diff-select"
+                  data-testid={`view-tab-${kind}-select`}
                   data-path={path}
                   onClick={() => store.selectTerminal(termKey, id)}
                 >
-                  <DiffIcon />
+                  {kind === 'file' ? <FileIcon /> : <DiffIcon />}
                   {label}
                 </button>
                 <button
                   type="button"
                   className="close"
                   aria-label={`Close ${label}`}
-                  data-testid="view-tab-diff-close"
+                  data-testid={`view-tab-${kind}-close`}
                   data-path={path}
                   onClick={() => store.closeView(termKey, id)}
                 >
@@ -201,6 +213,8 @@ function Pane({ termKey, index }: { termKey: string; index: 0 | 1 }): React.JSX.
       </div>
       {activeDiff !== null ? (
         <DiffView termKey={termKey} path={activeDiff} />
+      ) : activeFile !== null ? (
+        <FileView key={activeFile} termKey={termKey} path={activeFile} />
       ) : active ? (
         // An inactive tab's terminal is detached; it reattaches (and replays) when selected.
         <Terminal key={active.id} id={active.id} focused={focused} />
