@@ -601,7 +601,10 @@ export class DaemonServer {
       }
       case 'workspace.diff': {
         const ws = this.workspaces.get(str(p, 'id'))
-        return workspaceDiff(ws, this.workspaces.project(ws.projectId), Date.now)
+        return workspaceDiff(ws, this.workspaces.project(ws.projectId), Date.now, {
+          base: optString(p, 'base'),
+          commit: optString(p, 'commit')
+        })
       }
       case 'workspace.prThread': {
         const ws = this.workspaces.get(str(p, 'id'))

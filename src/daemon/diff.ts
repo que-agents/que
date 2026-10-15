@@ -2,13 +2,20 @@
 // by file with patches. Read-only: only `git diff`, `git status`, and friends.
 import fs from 'node:fs'
 import { join } from 'node:path'
-import type { DiffFile, WorkspaceDiff } from '../shared/protocol'
+import type { DiffCommit, DiffFile, WorkspaceDiff } from '../shared/protocol'
 import type { Project, Workspace } from '../shared/types'
+import { badRequest } from './errors'
 import { git } from './workspaces'
 
 /** A patch longer than this many characters is reported as null. */
 export const MAX_PATCH_CHARS = 200_000
 const GIT_TIMEOUT_MS = 15_000
+/** At most this many commits are listed. */
+export const MAX_COMMITS = 200
+/** At most this many refs are offered as bases. */
+export const MAX_BASES = 50
+/** git's empty tree, the parent of a root commit. */
+const EMPTY_TREE = '4b825dc642cb6eb9a060e54bf8d69288fbee4904'
 
 export interface NumstatEntry {
   path: string
@@ -103,6 +110,45 @@ export function mergeListings(
   })
 }
 
+/** Parses `git log --format=%H%x00%s%x00%an%x00%aI` output, newest first as git prints it. */
+export function parseLog(out: string): DiffCommit[] {
+  const commits: DiffCommit[] = []
+  for (const line of out.split('\n')) {
+    const [sha = '', subject = '', author = '', at = ''] = line.split('\0')
+    if (!/^[0-9a-f]{7,}$/.test(sha)) continue
+    commits.push({ sha, shortSha: sha.slice(0, 7), subject, author, at })
+  }
+  return commits
+}
+
+/**
+ * Parses `git for-each-ref --format=%(refname)` output into short names:
+ * `refs/heads/x` is `x`, `refs/remotes/origin/x` is `origin/x`. The remote's
+ * HEAD pointer and anything else are dropped.
+ */
+export function parseRefs(out: string): string[] {
+  const refs: string[] = []
+  for (const line of out.split('\n')) {
+    if (line.startsWith('refs/heads/')) refs.push(line.slice('refs/heads/'.length))
+    else if (line.startsWith('refs/remotes/origin/') && line !== 'refs/remotes/origin/HEAD')
+      refs.push(line.slice('refs/remotes/'.length))
+  }
+  return refs.filter((r) => r !== '')
+}
+
+/**
+ * The refs worth comparing against: `chosen` first, then the default branch
+ * here and on origin when they exist, then the rest in order; no duplicates,
+ * at most MAX_BASES.
+ */
+export function orderBases(chosen: string, def: string, refs: string[]): string[] {
+  const known = new Set(refs)
+  const ordered = [chosen]
+  for (const r of [def, `origin/${def}`]) if (known.has(r)) ordered.push(r)
+  ordered.push(...refs)
+  return [...new Set(ordered)].slice(0, MAX_BASES)
+}
+
 /** The patch, or null when it is too long. */
 export function capPatch(patch: string): string | null {
   return patch.length > MAX_PATCH_CHARS ? null : patch
@@ -123,51 +169,90 @@ async function chooseBase(ws: Workspace, project: Project): Promise<string> {
   return ws.baseRef
 }
 
+export interface DiffOptions {
+  /** Compare against this ref instead of the default base. */
+  base?: string
+  /** Narrow the files to this commit's own changes. */
+  commit?: string
+}
+
+type Run = (...args: string[]) => ReturnType<typeof git>
+
 export async function workspaceDiff(
   ws: Workspace,
   project: Project,
-  now: () => number
+  now: () => number,
+  opts: DiffOptions = {}
 ): Promise<WorkspaceDiff> {
-  const run = (...args: string[]): ReturnType<typeof git> =>
-    git(ws.path, ['-c', 'core.quotepath=off', ...args], GIT_TIMEOUT_MS)
-  const result = (base: string, commits: number, files: DiffFile[]): WorkspaceDiff => ({
+  const run: Run = (...args) => git(ws.path, ['-c', 'core.quotepath=off', ...args], GIT_TIMEOUT_MS)
+  const empty = (base: string): WorkspaceDiff => ({
     workspaceId: ws.id,
     base,
     head: ws.branch,
-    commitsAhead: commits,
-    files: files.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0)),
+    commitsAhead: 0,
+    commits: [],
+    bases: [base],
+    commit: null,
+    files: [],
     generatedAt: new Date(now()).toISOString()
   })
+  if (!fs.existsSync(ws.path)) return empty(ws.baseRef)
+
+  // An asked-for base or commit is checked first, so a bad one is an error
+  // rather than an empty diff.
+  const resolveCommit = async (ref: string): Promise<string | null> => {
+    if (ref.startsWith('-')) return null
+    const r = await run('rev-parse', '--verify', '--quiet', `${ref}^{commit}`)
+    return r.ok && r.stdout ? r.stdout : null
+  }
+  if (opts.base !== undefined && !(await resolveCommit(opts.base))) {
+    throw badRequest(`base ${opts.base} is not a commit`)
+  }
+  const base = opts.base ?? (await chooseBase(ws, project))
+  let commit: string | null = null
+  if (opts.commit !== undefined) {
+    const sha = await resolveCommit(opts.commit)
+    const onBranch =
+      sha !== null &&
+      (await run('merge-base', '--is-ancestor', sha, 'HEAD')).ok &&
+      !(await run('merge-base', '--is-ancestor', sha, base)).ok
+    if (!sha || !onBranch) {
+      throw badRequest(`commit ${opts.commit} is not on this branch past ${base}`)
+    }
+    commit = sha
+  }
+
   try {
-    if (!fs.existsSync(ws.path)) return result(ws.baseRef, 0, [])
-    const base = await chooseBase(ws, project)
-    const counted = await run('rev-list', '--count', `${base}..HEAD`)
-    const commits =
-      counted.ok && Number.isInteger(Number(counted.stdout)) ? Number(counted.stdout) : 0
+    const [counted, log, refs] = await Promise.all([
+      run('rev-list', '--count', `${base}..HEAD`),
+      run('log', '--format=%H%x00%s%x00%an%x00%aI', '-n', String(MAX_COMMITS), `${base}..HEAD`),
+      run('for-each-ref', '--format=%(refname)', 'refs/heads', 'refs/remotes/origin')
+    ])
+    // Never the workspace's own branch: comparing it against itself shows nothing.
+    const refNames = parseRefs(refs.stdout).filter((r) => r !== ws.branch)
+    const result = (files: DiffFile[]): WorkspaceDiff => ({
+      ...empty(base),
+      commitsAhead:
+        counted.ok && Number.isInteger(Number(counted.stdout)) ? Number(counted.stdout) : 0,
+      commits: log.ok ? parseLog(log.stdout) : [],
+      bases: orderBases(base, project.defaultBranch, refNames),
+      commit,
+      files: files.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))
+    })
+
+    if (commit) {
+      // That commit's own changes; a root commit is compared with the empty tree.
+      const hasParent = (await run('rev-parse', '--verify', '--quiet', `${commit}^`)).ok
+      return result(await listFiles(run, [hasParent ? `${commit}^` : EMPTY_TREE, commit]))
+    }
+
     const mb = await run('merge-base', base, 'HEAD')
     const mergeBase = mb.ok && mb.stdout ? mb.stdout : base
-
-    const [numstat, names, status, others] = await Promise.all([
-      run('diff', '--numstat', '-M', mergeBase),
-      run('diff', '--name-status', '-M', mergeBase),
+    const [status, others] = await Promise.all([
       run('status', '--porcelain'),
       run('ls-files', '--others', '--exclude-standard')
     ])
-    const dirty = parsePorcelainPaths(status.stdout)
-    const entries = parseNumstat(numstat.stdout)
-    const binary = new Set(entries.filter((e) => e.binary).map((e) => e.path))
-    const listed = mergeListings(entries, parseNameStatus(names.stdout), dirty)
-
-    const files: DiffFile[] = await Promise.all(
-      listed.map(async (f) => {
-        if (binary.has(f.path)) return { ...f, patch: null }
-        const args = f.from
-          ? ['diff', '-M', mergeBase, '--', f.from, f.path]
-          : ['diff', mergeBase, '--', f.path]
-        const p = await run(...args)
-        return { ...f, patch: p.ok ? capPatch(p.stdout) : null }
-      })
-    )
+    const files = await listFiles(run, [mergeBase], parsePorcelainPaths(status.stdout))
 
     const seen = new Set(files.map((f) => f.path))
     const untracked = others.stdout.split('\n').filter((p) => p && !seen.has(p))
@@ -180,7 +265,7 @@ export async function workspaceDiff(
         } catch {
           text = null
         }
-        const base: DiffFile = {
+        const file: DiffFile = {
           path,
           from: null,
           status: 'untracked',
@@ -189,13 +274,41 @@ export async function workspaceDiff(
           dirty: true,
           patch: null
         }
-        if (text === null) return base
+        if (text === null) return file
         const p = await run('diff', '--no-index', '--', '/dev/null', path)
-        return { ...base, patch: capPatch(p.stdout) }
+        return { ...file, patch: capPatch(p.stdout) }
       })
     )
-    return result(base, commits, [...files, ...extra])
+    return result([...files, ...extra])
   } catch {
-    return result(ws.baseRef, 0, [])
+    return empty(ws.baseRef)
   }
+}
+
+/**
+ * The tracked files changed across `range` (one rev: it against the working
+ * tree; two: the first against the second), each with its patch.
+ */
+async function listFiles(
+  run: Run,
+  range: string[],
+  dirty = new Set<string>()
+): Promise<DiffFile[]> {
+  const [numstat, names] = await Promise.all([
+    run('diff', '--numstat', '-M', ...range),
+    run('diff', '--name-status', '-M', ...range)
+  ])
+  const entries = parseNumstat(numstat.stdout)
+  const binary = new Set(entries.filter((e) => e.binary).map((e) => e.path))
+  const listed = mergeListings(entries, parseNameStatus(names.stdout), dirty)
+  return Promise.all(
+    listed.map(async (f): Promise<DiffFile> => {
+      if (binary.has(f.path)) return { ...f, patch: null }
+      const args = f.from
+        ? ['diff', '-M', ...range, '--', f.from, f.path]
+        : ['diff', ...range, '--', f.path]
+      const p = await run(...args)
+      return { ...f, patch: p.ok ? capPatch(p.stdout) : null }
+    })
+  )
 }

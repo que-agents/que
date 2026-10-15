@@ -13,6 +13,7 @@ import type {
   UserConfig,
   Workspace,
   WorkspaceDiff,
+  DiffCommit,
   WorkspaceDigest
 } from '../../../preload/index.d'
 
@@ -230,13 +231,36 @@ export function makeDiffFile(overrides: Partial<DiffFile> = {}): DiffFile {
   }
 }
 
-/** A workspace's diff against its base. */
+/** One commit ahead of the base. */
+export function makeDiffCommit(overrides: Partial<DiffCommit> = {}): DiffCommit {
+  return {
+    sha: 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678',
+    shortSha: 'a1b2c3d',
+    subject: 'Retry uploads with backoff',
+    author: 'Dev',
+    at: '2026-10-14T13:40:00.000Z',
+    ...overrides
+  }
+}
+
+/** A workspace's diff against its base: two commits ahead, one file. */
 export function makeWorkspaceDiff(overrides: Partial<WorkspaceDiff> = {}): WorkspaceDiff {
   return {
     workspaceId: 'ws_01hzx3k9c2qf',
     base: 'origin/main',
     head: 'app-1432-retry-logic',
     commitsAhead: 2,
+    commits: [
+      makeDiffCommit(),
+      makeDiffCommit({
+        sha: 'b2c3d4e5f60718293a4b5c6d7e8f901234567890',
+        shortSha: 'b2c3d4e',
+        subject: 'Add the uploader',
+        at: '2026-10-14T13:10:00.000Z'
+      })
+    ],
+    bases: ['origin/main', 'main'],
+    commit: null,
     files: [makeDiffFile()],
     generatedAt: '2026-10-14T14:00:00.000Z',
     ...overrides
