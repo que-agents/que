@@ -62,7 +62,11 @@ const ALLOWED: ReadonlySet<MethodName> = new Set<MethodName>([
   'quiet.lock',
   'quiet.log',
   'config.get',
-  'config.set'
+  'config.set',
+  'tickets.list',
+  'tickets.sync',
+  'tickets.start',
+  'tickets.projectFor'
 ])
 const FORWARDED_EVENTS: EventName[] = [
   'term.data',
@@ -80,7 +84,8 @@ const FORWARDED_EVENTS: EventName[] = [
   'project.added',
   'project.removed',
   'quiet.changed',
-  'config.changed'
+  'config.changed',
+  'tickets.synced'
 ]
 /** Events after which the tray title is recomputed. */
 const TRAY_EVENTS: EventName[] = [

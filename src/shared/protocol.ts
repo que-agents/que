@@ -10,6 +10,8 @@ import type {
   Task,
   TaskSource,
   TaskState,
+  Ticket,
+  TicketsSyncState,
   UserConfig,
   Workspace,
   WorkspaceStatus
@@ -179,6 +181,25 @@ export interface QueueState {
   openedAt: string | null
 }
 
+export interface TicketsStartParams {
+  key: string
+  /** The que project to make the workspace in; omitted means use the learned mapping. */
+  projectId?: string
+  /** A loose terminal with the brief instead of a workspace. */
+  session?: boolean
+}
+
+export type TicketsStartResult =
+  | { kind: 'workspace'; workspace: Workspace }
+  | { kind: 'session'; terminalId: string }
+  /** que could not tell which project; the app offers these. */
+  | { kind: 'needs_project'; projects: Project[] }
+
+export interface TicketsListResult {
+  tickets: Ticket[]
+  sync: TicketsSyncState
+}
+
 export interface ReportParams {
   /** ISO time; defaults to the last queue.open, else 24 hours ago. */
   since?: string
@@ -319,6 +340,10 @@ export interface Methods {
   'quiet.log': { params: QuietLogParams | undefined; result: QuietUnlock[] }
   'config.get': { params: Record<string, never> | undefined; result: ConfigGetResult }
   'config.set': { params: ConfigSetParams; result: ConfigGetResult }
+  'tickets.list': { params: Record<string, never> | undefined; result: TicketsListResult }
+  'tickets.sync': { params: Record<string, never> | undefined; result: TicketsListResult }
+  'tickets.start': { params: TicketsStartParams; result: TicketsStartResult }
+  'tickets.projectFor': { params: { key: string }; result: { projectId: string | null } }
 }
 
 /**
@@ -333,7 +358,8 @@ export const QUIET_REFUSED_METHODS = [
   'workspace.createPr',
   'report.get',
   'task.add',
-  'queue.open'
+  'queue.open',
+  'tickets.start'
 ] as const satisfies readonly MethodName[]
 
 export type MethodName = keyof Methods
@@ -363,6 +389,8 @@ export interface Events {
   /** Once, when a quiet window ends and notifications.morning_summary is on. */
   'quiet.morningSummary': { report: Report }
   'config.changed': ConfigGetResult
+  /** After every ticket sync, and when a ticket's workspace changes. */
+  'tickets.synced': TicketsListResult
 }
 
 export type EventName = keyof Events

@@ -9,6 +9,12 @@ import type {
   QuietLogParams,
   QuietUnlockParams,
   Report,
+  TicketsListResult,
+  TicketsStartResult,
+  TicketsStartParams,
+  JiraConfig,
+  TicketsSyncState,
+  Ticket,
   ReportParams,
   WorkspaceDigest,
   TaskAddParams,
@@ -59,6 +65,12 @@ export type {
   Weekday,
   QueueState,
   Report,
+  TicketsListResult,
+  TicketsStartResult,
+  TicketsStartParams,
+  JiraConfig,
+  TicketsSyncState,
+  Ticket,
   WorkspaceDigest,
   ReportEntry,
   ReportGroup,
@@ -183,6 +195,15 @@ export interface ConfigApi {
   on(event: 'config.changed', cb: (data: ConfigGetResult) => void): () => void
 }
 
+/** Mirrors the daemon's tickets.* methods and the tickets.synced event. */
+export interface TicketsApi {
+  list(): Promise<TicketsListResult>
+  sync(): Promise<TicketsListResult>
+  start(params: TicketsStartParams): Promise<TicketsStartResult>
+  projectFor(params: { key: string }): Promise<{ projectId: string | null }>
+  on(event: 'tickets.synced', cb: (data: TicketsListResult) => void): () => void
+}
+
 export interface QueApi {
   quiet: QuietApi
   config: ConfigApi
@@ -192,6 +213,7 @@ export interface QueApi {
   task: TaskApi
   queue: QueueApi
   report: ReportApi
+  tickets: TicketsApi
   app: AppApi
 }
 
