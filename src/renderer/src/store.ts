@@ -134,6 +134,10 @@ export interface QueState {
   config: ConfigGetResult | null
   /** The sidebar filter text; empty shows everything. Not remembered. */
   filter: string
+  /** Whether the sidebar search field is shown. */
+  searchOpen: boolean
+  /** Bumped each time the search is asked for, so the field focuses and selects again. */
+  searchFocusNonce: number
   /** How projects and workspaces are ordered; remembered. */
   sort: SidebarSort
 }
@@ -203,6 +207,8 @@ export class QueStore {
     quiet: null,
     config: null,
     filter: '',
+    searchOpen: false,
+    searchFocusNonce: 0,
     sort: loadSort()
   }
   private listeners = new Set<() => void>()
@@ -418,6 +424,14 @@ export class QueStore {
 
   setFilter(text: string): void {
     this.set({ filter: text })
+  }
+
+  openSearch(): void {
+    this.set({ searchOpen: true, searchFocusNonce: this.state.searchFocusNonce + 1 })
+  }
+
+  closeSearch(): void {
+    this.set({ searchOpen: false, filter: '' })
   }
 
   setSort(sort: SidebarSort): void {
