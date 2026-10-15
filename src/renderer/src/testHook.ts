@@ -3,16 +3,16 @@ import { type ChimeKind, setChimePlayer } from './sound'
 
 export interface PaneInfo {
   index: number
-  /** The pane's terminal, or null while a diff tab is selected. */
+  /** The pane's terminal, or null while a view tab is selected. */
   activeTermId: string | null
-  /** The selected tab: a terminal id or a diff tab id (`view:diff:<path>`). */
+  /** The selected tab: a terminal id or a view tab id (`view:diff:<path>`, `view:file:<path>`). */
   activeTab: string | null
   focused: boolean
 }
 
 export interface ReviewInfo {
   open: boolean
-  tab: 'changes' | 'pr'
+  tab: 'changes' | 'files' | 'pr'
   width: number
 }
 

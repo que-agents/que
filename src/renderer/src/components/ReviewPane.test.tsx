@@ -6,7 +6,8 @@ import {
   makeProject,
   makePullRequest,
   makeWorkspace,
-  makeWorkspaceDiff
+  makeWorkspaceDiff,
+  makeWorkspaceFiles
 } from '@renderer/testing/fixtures'
 import App from '../App'
 
@@ -20,6 +21,7 @@ function seed(): void {
   fakeBridge.seedProject(makeProject())
   fakeBridge.seedWorkspace(retry)
   fakeBridge.seedDiff(makeWorkspaceDiff({ workspaceId: retry.id }))
+  fakeBridge.seedFiles(makeWorkspaceFiles({ workspaceId: retry.id }))
 }
 
 /** Opens the workspace and waits for its first terminal; returns that terminal's id. */
@@ -69,6 +71,27 @@ describe('ReviewPane', () => {
       expect(pane).toHaveAttribute('data-tab', 'pr')
       expect(await within(pane).findByTestId('pr-header-link')).toBeInTheDocument()
       expect(fakeBridge.prThreadCalls()).toEqual([{ id: retry.id, refresh: false }])
+    })
+
+    it('holds Changes, Files and Pull request in that order; Files lists the worktree', async () => {
+      const user = userEvent.setup()
+      seed()
+      render(<App />)
+      await openWorkspace(user)
+      await user.click(screen.getByTestId('topbar-review'))
+
+      const tabs = within(screen.getByRole('tablist', { name: 'Review' })).getAllByRole('tab')
+      expect(tabs.map((t) => t.textContent)).toEqual(['Changes', 'Files', 'Pull request'])
+      expect(tabs[1]).toHaveAttribute('data-testid', 'review-tab-files')
+
+      await user.click(tabs[1])
+
+      const pane = screen.getByTestId('review-pane')
+      expect(pane).toHaveAttribute('data-tab', 'files')
+      expect(tabs[1]).toHaveAttribute('aria-selected', 'true')
+      expect(await within(pane).findByTestId('files-tree')).toBeInTheDocument()
+      expect(screen.queryByTestId('changes-list')).not.toBeInTheDocument()
+      expect(fakeBridge.filesCalls()).toEqual([retry.id])
     })
 
     it('runs the full height of the window beside the top bar, not under it', async () => {
@@ -156,6 +179,23 @@ describe('ReviewPane', () => {
       expect(await screen.findByTestId('pr-view')).toBeInTheDocument()
     })
 
+    it('comes back on Files after the app reloads', async () => {
+      const user = userEvent.setup()
+      seed()
+      const first = render(<App />)
+      await openWorkspace(user)
+      await user.click(screen.getByTestId('topbar-review'))
+      await user.click(screen.getByTestId('review-tab-files'))
+      first.unmount()
+
+      render(<App />)
+      await openWorkspace(user)
+
+      expect(screen.getByTestId('review-pane')).toHaveAttribute('data-tab', 'files')
+      expect(screen.getByTestId('review-tab-files')).toHaveAttribute('aria-selected', 'true')
+      expect(await screen.findByTestId('files-tree')).toBeInTheDocument()
+    })
+
     it('falls back to the defaults for an unreadable or out-of-range memory', async () => {
       const user = userEvent.setup()
       seed()
@@ -165,7 +205,7 @@ describe('ReviewPane', () => {
       expect(screen.queryByTestId('review-pane')).not.toBeInTheDocument()
       first.unmount()
 
-      localStorage.setItem('que.review', JSON.stringify({ open: true, tab: 'files', width: 9999 }))
+      localStorage.setItem('que.review', JSON.stringify({ open: true, tab: 'notes', width: 9999 }))
       render(<App />)
       await openWorkspace(user)
 
@@ -182,6 +222,20 @@ describe('ReviewPane', () => {
 
       expect(await screen.findByTestId('review-empty')).toHaveTextContent('No workspace')
       expect(screen.queryByTestId('changes-list')).not.toBeInTheDocument()
+    })
+
+    it('says so on Files too, and lists nothing', async () => {
+      const user = userEvent.setup()
+      localStorage.setItem('que.review', JSON.stringify({ open: true, tab: 'files', width: 320 }))
+      render(<App />)
+      expect(await screen.findByTestId('review-empty')).toHaveTextContent('No workspace')
+
+      await user.click(screen.getByTestId('review-tab-changes'))
+      await user.click(screen.getByTestId('review-tab-files'))
+
+      expect(screen.getByTestId('review-empty')).toHaveTextContent('No workspace')
+      expect(screen.queryByTestId('files-tree')).not.toBeInTheDocument()
+      expect(fakeBridge.filesCalls()).toEqual([])
     })
   })
 })
