@@ -174,6 +174,12 @@ export function makeUserConfig(overrides: Partial<UserConfig> = {}): UserConfig 
       unlockMinutes: 20
     },
     notifications: { chimeOnComplete: true, chimeOnNeedsInput: false, morningSummary: false },
+    jira: {
+      jql: 'assignee = currentUser() AND statusCategory != Done ORDER BY updated DESC',
+      pollMinutes: 5,
+      startPrompt: 'Read .que/ticket.md and propose a plan before changing anything.',
+      projects: {}
+    },
     ...overrides
   }
 }
