@@ -190,9 +190,9 @@ export interface JiraConfig {
 }
 
 export interface NotificationsConfig {
-  /** Chime when a task finishes (work hours only). */
+  /** Chime when a session finishes a turn or a task finishes (work hours only). */
   chimeOnComplete: boolean
-  /** Chime when a task needs input (work hours only). */
+  /** Chime when a session or a task needs input (work hours only). */
   chimeOnNeedsInput: boolean
   /** One notification with the night's totals when quiet hours end. */
   morningSummary: boolean

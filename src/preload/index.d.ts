@@ -225,6 +225,9 @@ export interface QueApi {
   app: AppApi
 }
 
+/** The two chimes: a session's turn or a task finished, or a session needs input. */
+export type ChimeKind = 'complete' | 'needs_input'
+
 export interface QueTestHook {
   /** The focused pane's attached terminal, or null. */
   activeTermId(): string | null
@@ -236,6 +239,8 @@ export interface QueTestHook {
   screenTextOf(termId: string): string
   /** The tray's current title, from the main process. */
   trayTitle(): Promise<string>
+  /** The chimes the app would have played, in order (recorded, never played, under e2e). */
+  chimes(): ChimeKind[]
 }
 
 declare global {

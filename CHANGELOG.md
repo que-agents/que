@@ -19,6 +19,7 @@ All notable changes to que are recorded here. The format follows
 
 ### Fixed
 
+- The completion chime only played for queued tasks; it now also plays when a session in a workspace finishes a turn (work hours only), and a task's workspace chimes once, when the task finishes.
 - Ticket links pointed at the tracker's API host; they now use the site from the CLI's auth status or `[jira] site`.
 - Ticket sync asked the Jira CLI for `project` and `updated`, which its search refuses; que now requests only the allowed fields, takes the project from the key, and keeps the queue in the JQL's order.
 - Launched from Finder, the app now resolves the login shell's PATH for the daemon, so `claude` and `gh` are found the same way they are in a terminal; `que doctor` reports what is on the daemon's PATH.
