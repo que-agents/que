@@ -266,7 +266,7 @@ export interface QueTestHook {
     focused: boolean
   }>
   /** The review pane at the right of the main area: open or not, its tab, its width in px. */
-  review(): { open: boolean; tab: 'changes' | 'pr'; width: number }
+  review(): { open: boolean; tab: 'changes' | 'files' | 'pr'; width: number }
   /** The screen of any attached terminal by id ('' when it is not on screen). */
   screenTextOf(termId: string): string
   /** The tray's current title, from the main process. */

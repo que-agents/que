@@ -17,7 +17,9 @@ import type {
   TicketsSyncState,
   UpdateInfo,
   Workspace,
-  WorkspaceDiff
+  WorkspaceDiff,
+  WorkspaceFile,
+  WorkspaceFiles
 } from '../../preload/index.d'
 import type { SidebarSort } from './sidebar-order'
 import {
@@ -29,6 +31,8 @@ import {
   RATIO_DEFAULT,
   reconcileLayout,
   diffId,
+  fileId,
+  filePathOf,
   isViewId
 } from './layout'
 import { isLiveTask, latestTasks } from './format'
@@ -52,13 +56,24 @@ export interface TermTab {
   createdAt: string
 }
 
-export { diffId, diffPathOf, isViewId, RATIO_DEFAULT, RATIO_MAX, RATIO_MIN } from './layout'
+export {
+  diffId,
+  diffPathOf,
+  fileId,
+  filePathOf,
+  isViewId,
+  RATIO_DEFAULT,
+  RATIO_MAX,
+  RATIO_MIN
+} from './layout'
 export type { PaneLayout } from './layout'
 
 const LAYOUT_PREFIX = 'que.layout.'
 
 /** The review pane's tabs. */
-export type ReviewTab = 'changes' | 'pr'
+export type ReviewTab = 'changes' | 'files' | 'pr'
+
+const REVIEW_TABS: readonly ReviewTab[] = ['changes', 'files', 'pr']
 
 /** The review pane at the right of the main area; one for the app, remembered. */
 export interface ReviewState {
@@ -87,7 +102,7 @@ function loadReview(): ReviewState {
     if (!v || typeof v !== 'object') return fallback
     return {
       open: v.open === true,
-      tab: v.tab === 'pr' ? 'pr' : 'changes',
+      tab: REVIEW_TABS.find((t) => t === v.tab) ?? 'changes',
       width: typeof v.width === 'number' ? clampReviewWidth(v.width) : REVIEW_DEFAULT
     }
   } catch {
@@ -178,6 +193,16 @@ export interface QueState {
   diffErrors: Record<string, string | null>
   /** Per workspace: the base and commit its diff is narrowed to (none: the daemon's base, every commit). The base is remembered. */
   diffScopes: Record<string, DiffScope>
+  /** Per workspace: its worktree's files as last listed. */
+  fileLists: Record<string, WorkspaceFiles>
+  /** Per workspace: why the last listing failed, or null. */
+  fileListErrors: Record<string, string | null>
+  /** Per workspace, per path: a file as last read for its file tab; null when the path is gone. */
+  fileContents: Record<string, Record<string, WorkspaceFile | null>>
+  /** Per workspace, per path: why the last read failed, or null. */
+  fileErrors: Record<string, Record<string, string | null>>
+  /** Per workspace: the Files tree's open directories, for the session; none until its files first load. */
+  filesExpanded: Record<string, ReadonlySet<string>>
   /** The review pane: open or not, on which tab, how wide. Remembered. */
   review: ReviewState
   dialog: DialogState | null
@@ -260,6 +285,11 @@ export class QueStore {
     diffs: {},
     diffErrors: {},
     diffScopes: initialDiffScopes(),
+    fileLists: {},
+    fileListErrors: {},
+    fileContents: {},
+    fileErrors: {},
+    filesExpanded: {},
     review: loadReview(),
     dialog: null,
     quiet: null,
@@ -282,6 +312,9 @@ export class QueStore {
   /** The latest diff fetch per workspace; an older one's answer is dropped. */
   private diffSeq = new Map<string, number>()
   private prThreadLoads = new Map<string, Promise<void>>()
+  private fileListLoads = new Map<string, Promise<void>>()
+  /** File reads in flight, keyed by workspace and path. */
+  private fileLoads = new Map<string, Promise<void>>()
 
   constructor(
     private api: QueApi,
@@ -557,7 +590,10 @@ export class QueStore {
     const key = this.currentKey()
     if (key === null || key === SCRATCH) return
     if (tab === 'changes') void this.ensureDiff(key)
-    else void this.fetchPrThread(key)
+    else if (tab === 'files') {
+      void this.ensureFiles(key)
+      void this.ensureDiff(key)
+    } else void this.fetchPrThread(key)
   }
 
   /**
@@ -586,8 +622,16 @@ export class QueStore {
 
   /** Opens a file's diff tab and selects it: where it already is, or else in the focused pane. */
   openDiff(key: string, path: string): void {
+    this.openView(key, diffId(path))
+  }
+
+  /** Opens a worktree file's read-only tab and selects it: where it already is, or else in the focused pane. */
+  openFile(key: string, path: string): void {
+    this.openView(key, fileId(path))
+  }
+
+  private openView(key: string, id: string): void {
     const l = this.layout(key)
-    const id = diffId(path)
     if (l.views.includes(id)) {
       this.selectTerminal(key, id)
       return
@@ -622,7 +666,7 @@ export class QueStore {
     this.setLayout(key, reconcileLayout(next, new Set(tabIds), tabIds))
   }
 
-  /** Closes the focused pane's active tab: a diff tab, or a terminal (which is killed). */
+  /** Closes the focused pane's active tab: a view tab (a diff or a file), or a terminal (which is killed). */
   closeActiveTab(key: string): void {
     const id = this.paneActiveId(key, this.focusedPane(key))
     if (id && isViewId(id)) this.closeView(key, id)
@@ -725,6 +769,81 @@ export class QueStore {
   ensureDiff(key: string): Promise<void> {
     if (key in this.state.diffs) return Promise.resolve()
     return this.diffLoads.get(key) ?? this.fetchDiff(key)
+  }
+
+  // ---- the Files tab and file tabs -------------------------------------------
+
+  /** Lists a workspace's files; a failure (quiet hours too) is kept for the tree. */
+  fetchFiles(key: string): Promise<void> {
+    const load = (async () => {
+      try {
+        const files = await this.api.workspace.files({ id: key })
+        this.set((s) => ({
+          fileLists: { ...s.fileLists, [key]: files },
+          fileListErrors: { ...s.fileListErrors, [key]: null }
+        }))
+      } catch (err) {
+        this.set((s) => ({
+          fileLists: without(s.fileLists, key),
+          fileListErrors: { ...s.fileListErrors, [key]: message(err) }
+        }))
+      }
+    })()
+    return this.track(this.fileListLoads, key, load)
+  }
+
+  /** Lists the files unless they are listed or on their way. */
+  ensureFiles(key: string): Promise<void> {
+    if (key in this.state.fileLists) return Promise.resolve()
+    return this.fileListLoads.get(key) ?? this.fetchFiles(key)
+  }
+
+  /** Reads one file for its tab; a path that is gone is kept as null, any other failure as an error. */
+  fetchFile(key: string, path: string): Promise<void> {
+    const load = (async () => {
+      let file: WorkspaceFile | null
+      let error: string | null = null
+      try {
+        file = await this.api.workspace.readFile({ id: key, path })
+      } catch (err) {
+        file = null
+        // The daemon's not-found code: the path left the worktree.
+        if ((err as { code?: unknown }).code !== 'not_found') error = message(err)
+      }
+      this.set((s) => {
+        const contents = { ...(s.fileContents[key] ?? {}) }
+        if (error === null) contents[path] = file
+        else delete contents[path]
+        return {
+          fileContents: { ...s.fileContents, [key]: contents },
+          fileErrors: { ...s.fileErrors, [key]: { ...(s.fileErrors[key] ?? {}), [path]: error } }
+        }
+      })
+    })()
+    return this.track(this.fileLoads, `${key}\0${path}`, load)
+  }
+
+  /** Reads the file unless it is read or on its way. */
+  ensureFile(key: string, path: string): Promise<void> {
+    if (path in (this.state.fileContents[key] ?? {})) return Promise.resolve()
+    return this.fileLoads.get(`${key}\0${path}`) ?? this.fetchFile(key, path)
+  }
+
+  /** The Files header's Refresh: the listing, the diff, and every open file tab of the workspace. */
+  refreshFiles(key: string): Promise<void> {
+    const paths = this.layout(key)
+      .views.map(filePathOf)
+      .filter((p): p is string => p !== null)
+    return Promise.all([
+      this.fetchFiles(key),
+      this.fetchDiff(key),
+      ...paths.map((p) => this.fetchFile(key, p))
+    ]).then(() => undefined)
+  }
+
+  /** Sets the Files tree's open directories for a workspace. */
+  setFilesExpanded(key: string, expanded: ReadonlySet<string>): void {
+    this.set((s) => ({ filesExpanded: { ...s.filesExpanded, [key]: expanded } }))
   }
 
   private track(

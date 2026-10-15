@@ -8,6 +8,7 @@ All notable changes to que are recorded here. The format follows
 
 ### Added
 
+- A Files tab in the review pane: the workspace's files as a tree, changed files marked as in Changes and their directories open with a count; a changed file opens its diff, any other file opens read-only as a tab beside the terminals.
 - `workspace.diff` takes a `base` to compare against and a `commit` to narrow the files to that commit's own changes, and returns the branch's commits and the refs worth comparing against.
 - `que ws diff --base <ref>` and `--commit <sha>`; the text output lists the branch's commits with their age.
 - Two menus in the Changes header: `Commits n` lists the branch's commits and narrows the files to one commit's changes, and `vs base` compares against another branch, remembered per workspace.

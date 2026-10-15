@@ -155,3 +155,22 @@ export function EditorIcon(): React.JSX.Element {
     </svg>
   )
 }
+
+/** A small angle pointing right, turned down while open: a directory in a tree. */
+export function ChevronIcon({ open = false }: { open?: boolean }): React.JSX.Element {
+  return (
+    <svg {...base} aria-hidden="true" className={open ? 'chevron open' : 'chevron'}>
+      <path d="M6.5 4.5 10 8l-3.5 3.5" />
+    </svg>
+  )
+}
+
+/** A page with a folded corner: a file of the worktree. */
+export function FileIcon(): React.JSX.Element {
+  return (
+    <svg {...base} aria-hidden="true">
+      <path d="M9 2.25H4.75a1 1 0 0 0-1 1v9.5a1 1 0 0 0 1 1h6.5a1 1 0 0 0 1-1V5.5z" />
+      <path d="M9 2.25V5.5h3.25" />
+    </svg>
+  )
+}

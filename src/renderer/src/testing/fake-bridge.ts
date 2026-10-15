@@ -709,6 +709,10 @@ class FakeBridge {
     this.diffs.clear()
     this.diffFailures.clear()
     this.diffCallLog = []
+    this.files.clear()
+    this.fileContents.clear()
+    this.filesCallLog = []
+    this.readFileCallLog = []
     this.prThreads.clear()
     this.prThreadCallLog = []
     this.tickets.clear()

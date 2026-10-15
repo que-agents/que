@@ -83,8 +83,8 @@ remove. The quiet board uses the same tones as plain text.
   hairline, and the top bar spans only the middle column. It is 320px wide, dragged
   between 240 and 520px on a 7px track like the sidebar's (double-click resets, arrow
   keys move it), and remembered with its tab. Its strip is 40px tall, lined up with the
-  top bar above a solid hairline, and holds two tabs, Changes and Pull request, drawn
-  like a pane's tabs, and a close button at the right end. One icon button at the right
+  top bar above a solid hairline, and holds three tabs, Changes, Files and Pull request,
+  drawn like a pane's tabs, and a close button at the right end. One icon button at the right
   end of the top bar (a frame with a divider toward its right edge, filled while open)
   toggles the pane on its remembered tab, and so does ⌘B. The Changes header is one
   line, `Commits n vs base` (the count and `vs` muted, the full counts in its tooltip),
@@ -96,7 +96,19 @@ remove. The quiet board uses the same tones as plain text.
   in the Pull request footer while the workspace has no pull request. Clicking a file in Changes opens that
   file's diff as a tab in the middle, in the focused pane's strip beside the session
   tabs: a line icon and the file's name, never a status dot, closed with ⌘W like a
-  terminal tab. Nothing replaces or hides the terminals.
+  terminal tab. The Files header is one line too, `Files n · m changed` (both counts
+  muted, the full detail in its tooltip), with the same two icon buttons. Below it the
+  worktree is a tree: directories first, then files, each sorted without regard to case,
+  12px of indent per level, a chevron on each directory that turns while it is open, and
+  a directory holding only another directory folded into one row (`src/renderer/src`).
+  A file Changes lists carries its glyph and reads `--fg`, an unchanged one `--fg-muted`,
+  a deleted one `--fg-faint`; a directory reads `--fg-secondary` and counts the changed
+  files beneath it at its right end in mono `--fg-faint`. Directories with changes start
+  open, the rest closed; after that the user's clicks stand for the session. A changed
+  file opens its diff tab; an unchanged one opens a read-only file tab the same way (a
+  page icon and the name): the path in mono `--fg-faint` above the text in mono 12px
+  with faint line numbers, unwrapped, scrolling both ways. Nothing replaces or hides
+  the terminals.
 - Row actions (the ⋯ button) show on hover, focus, or while their menu is open.
 - The window has no native title bar. The traffic lights sit in the 40px strip
   above the sidebar's content; that strip, the top bar's empty space and the review
