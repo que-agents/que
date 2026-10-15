@@ -9,7 +9,8 @@ import {
   parseNameStatus,
   parseNumstat,
   parsePorcelainPaths,
-  parseRenamePath
+  parseRenamePath,
+  parseRefs
 } from './diff'
 
 describe('parseRenamePath', () => {
@@ -119,6 +120,30 @@ describe('parseLog', () => {
   it('gives no commits for blank output', () => {
     expect(parseLog('')).toEqual([])
     expect(parseLog('\n')).toEqual([])
+  })
+})
+
+describe('parseRefs', () => {
+  it('shortens local and origin refs and drops the remote HEAD pointer', () => {
+    const out = [
+      'refs/heads/main',
+      'refs/heads/app-1432-retry-logic',
+      'refs/remotes/origin/HEAD',
+      'refs/remotes/origin/main',
+      'refs/remotes/origin/release',
+      ''
+    ].join('\n')
+    expect(parseRefs(out)).toEqual([
+      'main',
+      'app-1432-retry-logic',
+      'origin/main',
+      'origin/release'
+    ])
+  })
+
+  it('gives no refs for blank output', () => {
+    expect(parseRefs('')).toEqual([])
+    expect(parseRefs('\n')).toEqual([])
   })
 })
 

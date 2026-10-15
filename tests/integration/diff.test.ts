@@ -167,8 +167,11 @@ describe('workspace.diff commits, bases and narrowing', () => {
       }
     ])
     expect(d.bases.slice(0, 2)).toEqual(['origin/main', 'main'])
-    expect(d.bases).toEqual(expect.arrayContaining([ws.branch, 'release']))
+    expect(d.bases).toContain('release')
+    // Never the workspace's own branch, nor the remote's HEAD pointer in any spelling.
+    expect(d.bases).not.toContain(ws.branch)
     expect(d.bases).not.toContain('origin/HEAD')
+    expect(d.bases).not.toContain('origin')
   })
 
   it('compares against another base when asked', async () => {
