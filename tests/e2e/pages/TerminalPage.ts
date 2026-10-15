@@ -2,10 +2,18 @@
 // QUE_E2E test hook (window.__que), never from the DOM.
 import { expect, type Locator, type Page } from '@playwright/test'
 
+export interface PaneState {
+  index: number
+  activeTermId: string | null
+  focused: boolean
+}
+
 export class TerminalPage {
   page: Page
+  // Within the first pane; use pane(n) for another.
   viewport: Locator
   input: Locator
+  divider: Locator
   emptyState: Locator
   tab: (id: string) => Locator
   tabSelect: (id: string) => Locator
@@ -15,15 +23,49 @@ export class TerminalPage {
 
   constructor(page: Page) {
     this.page = page
-    this.viewport = page.getByTestId('terminal-viewport')
-    // xterm renders this textarea; it is the one accepted CSS selector.
-    this.input = page.getByTestId('terminal-viewport').locator('.xterm-helper-textarea')
+    const first = this.pane(0)
+    this.viewport = first.viewport
+    this.input = first.input
+    this.divider = page.getByTestId('pane-divider')
     this.emptyState = page.getByTestId('terminal-empty')
     this.tab = (id: string) => page.getByTestId(`terminal-tab-${id}`)
     this.tabSelect = (id: string) => page.getByTestId(`terminal-tab-${id}-select`)
     this.tabClose = (id: string) => page.getByTestId(`terminal-tab-${id}-close`)
     this.tabExited = (id: string) => page.getByTestId(`terminal-tab-${id}-exited`)
     this.tabReattached = (id: string) => page.getByTestId(`terminal-tab-${id}-reattached`)
+  }
+
+  // One pane: its container, terminal viewport, xterm input and + button.
+  pane(n: number): { root: Locator; viewport: Locator; input: Locator; newButton: Locator } {
+    const root = this.page.getByTestId(`pane-${n}`)
+    const viewport = root.getByTestId('terminal-viewport')
+    return {
+      root,
+      viewport,
+      // xterm renders this textarea; it is the one accepted CSS selector.
+      input: viewport.locator('.xterm-helper-textarea'),
+      newButton: this.page.getByTestId(`pane-${n}-new`)
+    }
+  }
+
+  // The panes on screen, as the renderer's test hook reports them.
+  async panes(): Promise<PaneState[]> {
+    return this.page.evaluate(() => window.__que?.panes() ?? [])
+  }
+
+  // Polls one pane's active terminal until a whole line matches.
+  async expectPaneScreenToContain(n: number, text: string, timeout = 15_000) {
+    await expect
+      .poll(
+        async () => {
+          const id = (await this.panes()).find((p) => p.index === n)?.activeTermId
+          if (!id) return false
+          const screen = await this.page.evaluate((t) => window.__que?.screenTextOf(t) ?? '', id)
+          return screen.split('\n').some((line) => line.trim() === text)
+        },
+        { message: `no screen line "${text}" in pane ${n}`, timeout }
+      )
+      .toBe(true)
   }
 
   async activeTermId(): Promise<string | null> {

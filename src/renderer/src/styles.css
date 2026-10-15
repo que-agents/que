@@ -1186,3 +1186,71 @@ body.resizing {
   font: 11px var(--mono);
   color: var(--fg-muted);
 }
+
+/* ---- panes -------------------------------------------------------------- */
+
+.panes {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.pane {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* With two panes, the focused one's tab strip carries a 1px accent line. */
+.panes:not([data-split="none"]) .pane[data-focused="true"] .tabbar {
+  box-shadow: inset 0 1px 0 var(--accent);
+}
+
+/* The divider between two panes: a 7px track with the accent line while it is used. */
+.pane-divider {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  z-index: 5;
+  background: var(--bg);
+  position: relative;
+}
+
+.pane-divider.row {
+  cursor: col-resize;
+}
+
+.pane-divider.column {
+  cursor: row-resize;
+}
+
+.pane-divider::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transition: opacity 0.12s 0.1s;
+}
+
+.pane-divider.row::after {
+  background: linear-gradient(to right, transparent 3px, var(--accent) 3px 4px, transparent 4px);
+}
+
+.pane-divider.column::after {
+  background: linear-gradient(to bottom, transparent 3px, var(--accent) 3px 4px, transparent 4px);
+}
+
+.pane-divider:hover::after,
+.pane-divider:focus-visible::after,
+body.resizing .pane-divider::after {
+  opacity: 1;
+}
+
+.pane-divider:focus-visible {
+  outline: none;
+}
