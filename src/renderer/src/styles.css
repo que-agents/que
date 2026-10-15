@@ -1136,3 +1136,53 @@ body.resizing {
   align-items: center;
   gap: 10px;
 }
+
+/* ---- tickets ------------------------------------------------------------ */
+
+.tickets-entry {
+  gap: 6px;
+}
+
+.tickets-entry .count {
+  margin-left: auto;
+  font: 10px var(--mono);
+  color: var(--fg-faint);
+}
+
+.tickets-entry .tickets-mark {
+  margin-left: auto;
+  font: 10px var(--mono);
+  color: var(--tone-attention);
+}
+
+.tickets-entry .tickets-mark + .count {
+  margin-left: 0;
+}
+
+.key {
+  font: 11px var(--mono);
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.key:hover {
+  text-decoration: underline;
+}
+
+.report-row.ticket .summary {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.report-row.ticket.done {
+  opacity: 0.55;
+}
+
+.settings .projects-learned {
+  margin: 0;
+  font: 11px var(--mono);
+  color: var(--fg-muted);
+}

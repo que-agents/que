@@ -119,7 +119,8 @@ function WorkspaceBadge({ w, task }: { w: Workspace; task?: Task }): React.JSX.E
 
 export default function Sidebar(): React.JSX.Element {
   const store = useStore()
-  const { projects, workspaces, view, connected, loaded, tasks } = useQue()
+  const { projects, workspaces, view, connected, loaded, tasks, tickets, ticketsSync } = useQue()
+  const openTickets = tickets.filter((t) => t.statusCategory !== 'done').length
   const owned = latestTasks(tasks)
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set())
   const [menu, setMenu] = useState<OpenMenu | null>(null)
@@ -233,6 +234,27 @@ export default function Sidebar(): React.JSX.Element {
           </ul>
         )}
       </nav>
+      <button
+        type="button"
+        className="row-button tickets-entry"
+        data-testid="sidebar-tickets"
+        aria-current={view.kind === 'tickets' ? 'page' : undefined}
+        onClick={() => store.showTickets()}
+      >
+        <span className="name">Tickets</span>
+        {ticketsSync.error && (
+          <span
+            className="tickets-mark"
+            data-testid="sidebar-tickets-error"
+            title={ticketsSync.error}
+          >
+            ✕
+          </span>
+        )}
+        <span className="count" data-testid="sidebar-tickets-count">
+          {openTickets}
+        </span>
+      </button>
       <nav aria-label="Projects">
         <div className="section-head">
           <h2>Projects</h2>
