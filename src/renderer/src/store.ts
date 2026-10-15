@@ -35,6 +35,7 @@ import {
   filePathOf,
   isViewId
 } from './layout'
+import { buildTree, newlyChanged } from './files'
 import { isLiveTask, latestTasks } from './format'
 import { chime, shouldChime } from './sound'
 
@@ -313,6 +314,11 @@ export class QueStore {
   private diffSeq = new Map<string, number>()
   private prThreadLoads = new Map<string, Promise<void>>()
   private fileListLoads = new Map<string, Promise<void>>()
+  /** The latest listing per workspace; an older one's answer is dropped. */
+  private fileListSeq = new Map<string, number>()
+  /** Workspaces whose worktree change is being followed, and those with another change waiting. */
+  private following = new Set<string>()
+  private followAgain = new Set<string>()
   /** File reads in flight, keyed by workspace and path. */
   private fileLoads = new Map<string, Promise<void>>()
 
@@ -427,6 +433,7 @@ export class QueStore {
       term.onDisconnect(() => this.set({ connected: false })),
       workspace.on('workspace.created', (ws) => this.upsertWorkspace(ws)),
       workspace.on('workspace.updated', (ws) => this.upsertWorkspace(ws)),
+      workspace.on('workspace.changed', ({ id }) => this.followChange(id)),
       workspace.on('workspace.removed', ({ id }) => {
         if (id in this.state.diffScopes) rememberDiffBase(id, null)
         this.set((s) => ({
@@ -610,6 +617,35 @@ export class QueStore {
     this.setReview({ open: false })
   }
 
+  /**
+   * The daemon saw the worktree change on disk. For the shown workspace, fetch again what is on
+   * screen: the diff (in its scope) while the pane or a view tab is open, and the listing and the
+   * open file tabs too while Files or a file tab is. One change at a time: a change arriving
+   * while one is followed is followed once more after it lands.
+   */
+  private followChange(id: string): void {
+    if (id !== this.currentKey()) return
+    if (this.following.has(id)) {
+      this.followAgain.add(id)
+      return
+    }
+    this.following.add(id)
+    void this.refetchShown(id).finally(() => {
+      this.following.delete(id)
+      if (this.followAgain.delete(id)) this.followChange(id)
+    })
+  }
+
+  private refetchShown(key: string): Promise<void> {
+    const { open, tab } = this.state.review
+    const views = this.layout(key).views
+    const fileTabs = views.some((v) => filePathOf(v) !== null)
+    if (!open && views.length === 0) return Promise.resolve()
+    const loads = [this.fetchDiff(key)]
+    if ((open && tab === 'files') || fileTabs) loads.push(this.reloadFiles(key))
+    return Promise.all(loads).then(() => undefined)
+  }
+
   setReviewTab(tab: ReviewTab): void {
     this.setReview({ tab })
   }
@@ -743,11 +779,28 @@ export class QueStore {
     return this.track(this.diffLoads, key, load)
   }
 
+  /**
+   * Keeps a diff; once the Files tree has its open directories, any directory that now holds a
+   * changed file and held none before is opened, and the rest of the set stands.
+   */
   private landDiff(key: string, diff: WorkspaceDiff): void {
-    this.set((s) => ({
-      diffs: { ...s.diffs, [key]: diff },
-      diffErrors: { ...s.diffErrors, [key]: null }
-    }))
+    this.set((s) => {
+      const expanded = s.filesExpanded[key]
+      const patch: Partial<QueState> = {
+        diffs: { ...s.diffs, [key]: diff },
+        diffErrors: { ...s.diffErrors, [key]: null }
+      }
+      if (expanded === undefined) return patch
+      const listed = s.fileLists[key]?.files ?? []
+      const tree = (d: WorkspaceDiff | undefined) =>
+        buildTree(listed, new Map((d?.files ?? []).map((f) => [f.path, f])))
+      const opened = newlyChanged(tree(s.diffs[key]), tree(diff))
+      if (opened.length === 0) return patch
+      return {
+        ...patch,
+        filesExpanded: { ...s.filesExpanded, [key]: new Set([...expanded, ...opened]) }
+      }
+    })
   }
 
   /** Compares a workspace against another ref (null: the daemon's choice), over every commit; remembered per workspace. */
@@ -773,16 +826,24 @@ export class QueStore {
 
   // ---- the Files tab and file tabs -------------------------------------------
 
-  /** Lists a workspace's files; a failure (quiet hours too) is kept for the tree. */
+  /**
+   * Lists a workspace's files; a failure (quiet hours too) is kept for the tree.
+   * Only the latest listing per workspace lands.
+   */
   fetchFiles(key: string): Promise<void> {
+    const seq = (this.fileListSeq.get(key) ?? 0) + 1
+    this.fileListSeq.set(key, seq)
+    const current = (): boolean => this.fileListSeq.get(key) === seq
     const load = (async () => {
       try {
         const files = await this.api.workspace.files({ id: key })
+        if (!current()) return
         this.set((s) => ({
           fileLists: { ...s.fileLists, [key]: files },
           fileListErrors: { ...s.fileListErrors, [key]: null }
         }))
       } catch (err) {
+        if (!current()) return
         this.set((s) => ({
           fileLists: without(s.fileLists, key),
           fileListErrors: { ...s.fileListErrors, [key]: message(err) }
@@ -831,14 +892,17 @@ export class QueStore {
 
   /** The Files header's Refresh: the listing, the diff, and every open file tab of the workspace. */
   refreshFiles(key: string): Promise<void> {
+    return Promise.all([this.reloadFiles(key), this.fetchDiff(key)]).then(() => undefined)
+  }
+
+  /** The listing and every open file tab of a workspace, without the diff. */
+  private reloadFiles(key: string): Promise<void> {
     const paths = this.layout(key)
       .views.map(filePathOf)
       .filter((p): p is string => p !== null)
-    return Promise.all([
-      this.fetchFiles(key),
-      this.fetchDiff(key),
-      ...paths.map((p) => this.fetchFile(key, p))
-    ]).then(() => undefined)
+    return Promise.all([this.fetchFiles(key), ...paths.map((p) => this.fetchFile(key, p))]).then(
+      () => undefined
+    )
   }
 
   /** Sets the Files tree's open directories for a workspace. */

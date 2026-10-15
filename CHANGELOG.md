@@ -25,6 +25,10 @@ All notable changes to que are recorded here. The format follows
 - The tickets view groups tickets under their epics, with subtasks beneath theirs; epics are overviews and have no Start.
 - A ticket queue: `que tickets` lists the tickets assigned to you from the tracker, `que tickets start KEY` makes a workspace for one under its project (learned the first time you choose), writes the ticket as a brief and starts claude on it.
 
+### Changed
+
+- Changes and Files follow the worktree without a click.
+
 ### Fixed
 
 - The completion chime only played for queued tasks; it now also plays when a session in a workspace finishes a turn (work hours only), and a task's workspace chimes once, when the task finishes.
