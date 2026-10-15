@@ -1,14 +1,16 @@
 import { type ReviewTab, SCRATCH, useQue, useStore } from '../store'
 import ChangesList from './ChangesList'
+import FilesTree from './FilesTree'
 import { CloseIcon } from './icons'
 import PullRequestView from './PullRequestView'
 
 const TABS: ReadonlyArray<{ tab: ReviewTab; label: string }> = [
   { tab: 'changes', label: 'Changes' },
+  { tab: 'files', label: 'Files' },
   { tab: 'pr', label: 'Pull request' }
 ]
 
-/** The review pane at the right of the main area: the workspace's changes or its pull request. */
+/** The review pane at the right of the main area: the workspace's changes, its files, or its pull request. */
 export default function ReviewPane({ termKey }: { termKey: string }): React.JSX.Element {
   const store = useStore()
   const { review } = useQue()
@@ -49,6 +51,8 @@ export default function ReviewPane({ termKey }: { termKey: string }): React.JSX.
         </p>
       ) : review.tab === 'changes' ? (
         <ChangesList termKey={termKey} />
+      ) : review.tab === 'files' ? (
+        <FilesTree termKey={termKey} />
       ) : (
         <PullRequestView termKey={termKey} />
       )}
