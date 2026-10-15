@@ -7,11 +7,16 @@ import { hhmm } from '../../../daemon/quiet-hours'
 import { PrChip, StatusBadge, TaskBadge } from './StatusBadge'
 import UnlockStatus from './UnlockStatus'
 
+/** Whole minutes: `1h 12m`, `42m`; seconds only under a minute. */
+function workedFor(ms: number): string {
+  const minutes = Math.floor(ms / 60_000)
+  if (minutes === 0) return `${Math.round(ms / 1000)}s`
+  return minutes >= 60 ? `${Math.floor(minutes / 60)}h ${minutes % 60}m` : `${minutes}m`
+}
+
 /** `worked 1h 12m · asked for input 2× · waiting since 02:14 · 3 commits ahead`. */
 function digestFacts(d: WorkspaceDigest): string {
-  const facts = [
-    d.workingMs > 0 ? `worked ${formatDuration(d.workingMs)}` : 'no work in this window'
-  ]
+  const facts = [d.workingMs > 0 ? `worked ${workedFor(d.workingMs)}` : 'no work in this window']
   if (d.needsInputCount > 0) facts.push(`asked for input ${d.needsInputCount}×`)
   if (d.waitingSince) facts.push(`waiting since ${hhmm(Date.parse(d.waitingSince))}`)
   if (d.commitsAhead !== null)
