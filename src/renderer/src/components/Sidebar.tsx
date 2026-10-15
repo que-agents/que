@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { Project, Task, Workspace } from '../../../preload/index.d'
 import { isLiveTask } from '../format'
 import { SCRATCH, useQue, useStore } from '../store'
+import { countOpenTickets } from '../ticket-tree'
 import { filterSidebar, matches, sortProjects, sortWorkspaces } from '../sidebar-order'
 import { FolderPlusIcon, PlusIcon, SortIcon } from './icons'
 import { PrChip, StatusBadge, TaskBadge } from './StatusBadge'
@@ -133,9 +134,7 @@ export default function Sidebar(): React.JSX.Element {
     sort
   } = useQue()
   const filtering = filter.trim() !== ''
-  const openTickets = tickets.filter(
-    (t) => t.statusCategory !== 'done' && matches(filter, t.key, t.summary)
-  ).length
+  const openTickets = countOpenTickets(tickets.filter((t) => matches(filter, t.key, t.summary)))
   const owned = latestTasks(tasks)
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set())
   const [menu, setMenu] = useState<OpenMenu | null>(null)
