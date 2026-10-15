@@ -4,6 +4,7 @@
 
 import type {
   Project,
+  PullRequest,
   QuietState,
   QuietUnlock,
   Task,
@@ -191,6 +192,7 @@ export interface ReportEntry {
   state: TaskState
   reason: string | null
   workspace: string | null
+  workspaceId: string | null
   branch: string | null
   prUrl: string | null
   durationMs: number | null
@@ -198,11 +200,45 @@ export interface ReportEntry {
   costUsd: number
 }
 
+/** What one workspace (an interactive session in its worktree) did in the window. */
+export interface WorkspaceDigest {
+  id: string
+  name: string
+  project: string
+  branch: string
+  status: WorkspaceStatus
+  statusReason: string | null
+  /** The first and last status change in the window; null when nothing happened. */
+  firstActivityAt: string | null
+  lastActivityAt: string | null
+  /** Time spent in `working` within the window. */
+  workingMs: number
+  /** How many times it asked for input in the window. */
+  needsInputCount: number
+  /** Since when it has been waiting, if it is waiting now. */
+  waitingSince: string | null
+  stuckCount: number
+  /** Commits on its branch past the base; null when git could not say. */
+  commitsAhead: number | null
+  pr: PullRequest | null
+  sessionId: string | null
+}
+
 export interface Report {
   since: string
   generatedAt: string
   groups: Record<ReportGroup, ReportEntry[]>
-  totals: { tasks: number; prs: number; turns: number; costUsd: number; durationMs: number }
+  /** Workspaces with activity in the window, those needing attention first. */
+  workspaces: WorkspaceDigest[]
+  totals: {
+    tasks: number
+    prs: number
+    turns: number
+    costUsd: number
+    durationMs: number
+    workspaces: number
+    needsInput: number
+  }
 }
 
 export interface TaskStatusEvent {

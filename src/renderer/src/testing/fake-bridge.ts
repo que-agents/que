@@ -553,7 +553,15 @@ class FakeBridge {
       running: [],
       queued: []
     }
-    const totals = { tasks: 0, prs: 0, turns: 0, costUsd: 0, durationMs: 0 }
+    const totals = {
+      tasks: 0,
+      prs: 0,
+      turns: 0,
+      costUsd: 0,
+      durationMs: 0,
+      workspaces: 0,
+      needsInput: 0
+    }
     for (const t of this.tasks.values()) {
       const group =
         t.state === 'preparing' || t.state === 'finishing'
@@ -567,6 +575,7 @@ class FakeBridge {
         state: t.state,
         reason: t.reason,
         workspace: t.workspaceId ? (this.workspaces.get(t.workspaceId)?.name ?? null) : null,
+        workspaceId: t.workspaceId,
         branch: t.branch,
         prUrl: t.prUrl,
         durationMs,
@@ -580,7 +589,7 @@ class FakeBridge {
       totals.durationMs += durationMs ?? 0
     }
     const now = new Date().toISOString()
-    return { since: since ?? now, generatedAt: now, groups, totals }
+    return { since: since ?? now, generatedAt: now, groups, workspaces: [], totals }
   }
 
   private removeWorkspace(id: string): void {

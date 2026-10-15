@@ -56,6 +56,7 @@ function entry(task: Task, workspaces: ReadonlyMap<string, string>, now: number)
     state: task.state,
     reason: task.reason,
     workspace: task.workspaceId ? (workspaces.get(task.workspaceId) ?? task.workspaceId) : null,
+    workspaceId: task.workspaceId,
     branch: task.branch,
     prUrl: task.prUrl,
     durationMs: start === null ? null : Math.max(0, end - start),
@@ -79,7 +80,15 @@ export function buildReport(
     ReportGroup,
     ReportEntry[]
   >
-  const totals = { tasks: 0, prs: 0, turns: 0, costUsd: 0, durationMs: 0 }
+  const totals = {
+    tasks: 0,
+    prs: 0,
+    turns: 0,
+    costUsd: 0,
+    durationMs: 0,
+    workspaces: 0,
+    needsInput: 0
+  }
   const shown = tasks
     .filter((t) => LIVE.has(t.state) || Date.parse(t.updatedAt) >= from)
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
@@ -93,7 +102,7 @@ export function buildReport(
     totals.durationMs += e.durationMs ?? 0
   }
   totals.costUsd = Math.round(totals.costUsd * 10_000) / 10_000
-  return { since, generatedAt: new Date(now).toISOString(), groups, totals }
+  return { since, generatedAt: new Date(now).toISOString(), groups, workspaces: [], totals }
 }
 
 /** `0s`, `45s`, `12m`, `1h 05m`; `-` when unknown. */
