@@ -401,6 +401,9 @@ export interface Methods {
   'workspace.prThread': { params: { id: string; refresh?: boolean }; result: PrThread | null }
   'workspace.files': { params: { id: string }; result: WorkspaceFiles }
   'workspace.readFile': { params: { id: string; path: string }; result: WorkspaceFile }
+  /** Watch this workspace's worktree for this connection (`workspace.changed`). */
+  'workspace.watch': { params: { id: string }; result: Ok }
+  'workspace.unwatch': { params: { id: string }; result: Ok }
   'hook.event': { params: HookEventParams; result: Ok }
   'task.add': { params: TaskAddParams; result: Task }
   'task.list': { params: TaskListParams | undefined; result: Task[] }
@@ -459,6 +462,8 @@ export interface Events {
   'workspace.updated': Workspace
   'workspace.removed': { id: string }
   'workspace.status': WorkspaceStatusEvent
+  /** Its worktree changed on disk (a write, a commit): the daemon computes nothing until asked. */
+  'workspace.changed': { id: string }
   'task.created': Task
   'task.status': TaskStatusEvent
   /** Cost, turns, session, branch, or PR changed. */

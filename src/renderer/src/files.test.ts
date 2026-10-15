@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { DiffFile } from '../../preload/index.d'
-import { buildTree, type DirNode, defaultExpanded, flatten } from './files'
+import { buildTree, type DirNode, defaultExpanded, flatten, newlyChanged } from './files'
 import { makeDiffFile } from './testing/fixtures'
 
 function changes(...files: DiffFile[]): Map<string, DiffFile> {
@@ -127,5 +127,62 @@ describe('flatten', () => {
       '1 dir tests/e2e',
       '1 file README.md'
     ])
+  })
+})
+
+describe('newlyChanged', () => {
+  const listing = [
+    'README.md',
+    'docs/guide.md',
+    'docs/faq.md',
+    'src/index.ts',
+    'src/upload/retry.ts',
+    'tests/e2e/upload.spec.ts'
+  ]
+  const tree = (...files: DiffFile[]): DirNode => buildTree(listing, changes(...files))
+  const index = makeDiffFile({ path: 'src/index.ts' })
+  const retry = makeDiffFile({ path: 'src/upload/retry.ts' })
+  const guide = makeDiffFile({ path: 'docs/guide.md' })
+  const faq = makeDiffFile({ path: 'docs/faq.md' })
+  const spec = makeDiffFile({ path: 'tests/e2e/upload.spec.ts' })
+
+  it('names a directory that gains its first changed file', () => {
+    expect(newlyChanged(tree(index), tree(index, guide))).toEqual(['docs'])
+  })
+
+  it('leaves out a directory that already held a change', () => {
+    expect(newlyChanged(tree(guide), tree(guide, faq))).toEqual([])
+  })
+
+  it('names a directory deep inside one that already held a change', () => {
+    expect(newlyChanged(tree(index), tree(index, retry))).toEqual(['src/upload'])
+  })
+
+  it('names a folded chain by its deepest path', () => {
+    expect(newlyChanged(tree(index), tree(index, spec))).toEqual(['tests/e2e'])
+  })
+
+  it('counts every directory of a previous fold as holding its changes', () => {
+    const folded = buildTree(['tests/e2e/upload.spec.ts'], changes(spec))
+    const unfolded = buildTree(
+      ['tests/e2e/upload.spec.ts', 'tests/unit/retry.test.ts'],
+      changes(spec)
+    )
+
+    expect(newlyChanged(folded, unfolded)).toEqual([])
+  })
+
+  it('never names the root for a changed file at the top', () => {
+    const readme = makeDiffFile({ path: 'README.md', status: 'added' })
+
+    expect(newlyChanged(tree(), tree(readme))).toEqual([])
+  })
+
+  it('names every changed directory when there was no tree before', () => {
+    expect(newlyChanged(null, tree(retry, guide))).toEqual(['docs', 'src', 'src/upload'])
+  })
+
+  it('names nothing when a directory loses its changes', () => {
+    expect(newlyChanged(tree(index, guide), tree(index))).toEqual([])
   })
 })

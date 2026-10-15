@@ -203,6 +203,8 @@ const QUIET_POLICY: Record<MethodName, 'refused' | 'allowed'> = {
   'workspace.list': 'allowed',
   'workspace.get': 'allowed',
   'workspace.remove': 'allowed',
+  'workspace.watch': 'allowed',
+  'workspace.unwatch': 'allowed',
   'hook.event': 'allowed',
   'task.list': 'allowed',
   'task.get': 'allowed',

@@ -398,4 +398,213 @@ describe('ChangesList', () => {
       expect(screen.queryByTestId('changes-files')).not.toBeInTheDocument()
     })
   })
+
+  describe('following the worktree', () => {
+    const cache = makeWorkspace({ id: 'ws_01hzx4m7d8rt', name: 'app-1440-cache-warmup' })
+
+    it('asks the daemon to watch the shown workspace, with a diff tab active too', async () => {
+      const user = userEvent.setup()
+      seed()
+      await openChanges(user)
+      await waitFor(() => {
+        expect(fakeBridge.watched()).toEqual([retry.id])
+      })
+
+      await user.click(await screen.findByTestId('changes-file-1'))
+
+      expect(screen.getByTestId('pane-0')).toHaveAttribute('data-active-tab', 'view:diff:README.md')
+      expect(fakeBridge.watched()).toEqual([retry.id])
+      expect(fakeBridge.watchCalls()).toEqual([{ id: retry.id, on: true }])
+    })
+
+    it('unwatches the workspace it leaves and watches the one it shows', async () => {
+      const user = userEvent.setup()
+      seed([put])
+      fakeBridge.seedWorkspace(cache)
+      await openChanges(user)
+
+      await user.click(screen.getByTestId(`sidebar-workspace-${cache.id}-open`))
+
+      await waitFor(() => {
+        expect(fakeBridge.watched()).toEqual([cache.id])
+      })
+      expect(fakeBridge.watchCalls()).toEqual([
+        { id: retry.id, on: true },
+        { id: retry.id, on: false },
+        { id: cache.id, on: true }
+      ])
+    })
+
+    it('fetches the diff again when switching to a workspace shown before', async () => {
+      const user = userEvent.setup()
+      seed([put])
+      fakeBridge.seedWorkspace(cache)
+      fakeBridge.seedDiff(makeWorkspaceDiff({ workspaceId: cache.id, files: [put] }))
+      await openChanges(user)
+      await screen.findByTestId('changes-file-0')
+
+      // Show the other workspace, then the first again: the daemon only watches the shown
+      // worktree, so the pane fetches the first one's diff again instead of serving the cache.
+      await user.click(screen.getByTestId(`sidebar-workspace-${cache.id}-open`))
+      await waitFor(() => {
+        expect(fakeBridge.diffCalls().filter((c) => c.id === cache.id)).toHaveLength(1)
+      })
+      fakeBridge.seedDiff(makeWorkspaceDiff({ workspaceId: retry.id, files: [put, readme] }))
+      await user.click(screen.getByTestId(`sidebar-workspace-${retry.id}-open`))
+
+      expect(await screen.findByTestId('changes-file-1')).toHaveAttribute('data-path', 'README.md')
+      expect(fakeBridge.diffCalls().filter((c) => c.id === retry.id)).toHaveLength(2)
+    })
+
+    it('fetches the diff again when the shown workspace changes on disk', async () => {
+      const user = userEvent.setup()
+      seed([put])
+      await openChanges(user)
+      await screen.findByTestId('changes-file-0')
+      const before = fakeBridge.diffCalls().length
+
+      fakeBridge.seedDiff(makeWorkspaceDiff({ workspaceId: retry.id, files: [put, readme] }))
+      fakeBridge.changeWorkspace(retry.id)
+
+      expect(await screen.findByTestId('changes-file-1')).toHaveAttribute('data-path', 'README.md')
+      expect(fakeBridge.diffCalls()).toHaveLength(before + 1)
+      expect(fakeBridge.diffCalls().at(-1)).toEqual({ id: retry.id, base: null, commit: null })
+    })
+
+    it('keeps the commit the diff is narrowed to', async () => {
+      const user = userEvent.setup()
+      seed()
+      fakeBridge.seedDiff(
+        makeWorkspaceDiff({ workspaceId: retry.id, commit: newest.sha, files: [readme] }),
+        { commit: newest.sha }
+      )
+      await openChanges(user)
+      await screen.findByTestId('changes-file-1')
+      await user.click(screen.getByTestId('changes-commits-menu'))
+      await user.click(screen.getByRole('menuitemradio', { name: /^a1b2c3d Retry uploads/ }))
+      await waitFor(() => {
+        expect(screen.queryByTestId('changes-file-1')).not.toBeInTheDocument()
+      })
+      const before = fakeBridge.diffCalls().length
+
+      fakeBridge.seedDiff(
+        makeWorkspaceDiff({ workspaceId: retry.id, commit: newest.sha, files: [readme, put] }),
+        { commit: newest.sha }
+      )
+      fakeBridge.changeWorkspace(retry.id)
+
+      expect(await screen.findByTestId('changes-file-1')).toHaveAttribute(
+        'data-path',
+        'src/upload/put.ts'
+      )
+      expect(fakeBridge.diffCalls()).toHaveLength(before + 1)
+      expect(fakeBridge.diffCalls().at(-1)).toEqual({
+        id: retry.id,
+        base: null,
+        commit: newest.sha
+      })
+      expect(screen.getByTestId('changes-commits-menu')).toHaveTextContent('Commit a1b2c3d')
+    })
+
+    it('shows the new patch in an open diff tab with the pane closed', async () => {
+      const user = userEvent.setup()
+      seed()
+      await openChanges(user)
+      await user.click(await screen.findByTestId('changes-file-1'))
+      const view = within(screen.getByTestId('pane-0')).getByTestId('diff-view')
+      await user.click(screen.getByRole('button', { name: 'Review pane' }))
+      await waitFor(() => {
+        expect(screen.queryByTestId('changes-file-0')).not.toBeInTheDocument()
+      })
+
+      fakeBridge.seedDiff(
+        makeWorkspaceDiff({
+          workspaceId: retry.id,
+          files: [
+            put,
+            {
+              ...readme,
+              additions: 2,
+              patch:
+                'diff --git a/README.md b/README.md\n--- /dev/null\n+++ b/README.md\n@@ -0,0 +1,2 @@\n+# Uploader\n+Retries with backoff.\n'
+            }
+          ]
+        })
+      )
+      fakeBridge.changeWorkspace(retry.id)
+
+      expect(await within(view).findByText('+Retries with backoff.')).toHaveAttribute(
+        'data-kind',
+        'added'
+      )
+      expect(within(view).getByTestId('diff-header')).toHaveTextContent('README.md · +2 −0')
+    })
+
+    it('fetches nothing for a change while quiet hours are locked', async () => {
+      const user = userEvent.setup()
+      seed([put])
+      await openChanges(user)
+      await screen.findByTestId('changes-file-0')
+      const before = fakeBridge.diffCalls().length
+
+      fakeBridge.setQuietState({ inQuietHours: true, unlockedUntil: null })
+      fakeBridge.changeWorkspace(retry.id)
+
+      expect(fakeBridge.diffCalls()).toHaveLength(before)
+    })
+
+    it('ignores a change to another workspace', async () => {
+      const user = userEvent.setup()
+      seed([put])
+      fakeBridge.seedWorkspace(cache)
+      await openChanges(user)
+      await screen.findByTestId('changes-file-0')
+      const before = fakeBridge.diffCalls().length
+
+      fakeBridge.changeWorkspace(cache.id)
+
+      expect(fakeBridge.diffCalls()).toHaveLength(before)
+    })
+
+    it('fetches nothing with the pane closed and no diff tab, and fetches when the pane opens', async () => {
+      const user = userEvent.setup()
+      seed([put])
+      render(<App now={now} />)
+      await user.click(await screen.findByTestId(`sidebar-workspace-${retry.id}-open`))
+      const pane = await screen.findByTestId('pane-0')
+      await waitFor(() => {
+        expect(pane.dataset.activeTerm).not.toBe('')
+      })
+
+      fakeBridge.changeWorkspace(retry.id)
+
+      expect(fakeBridge.diffCalls()).toHaveLength(0)
+      await user.click(screen.getByRole('button', { name: 'Review pane' }))
+      expect(await screen.findByTestId('changes-file-0')).toHaveAttribute(
+        'data-path',
+        'src/upload/put.ts'
+      )
+      expect(fakeBridge.diffCalls()).toHaveLength(1)
+    })
+
+    it('follows changes that arrive during a fetch with one more fetch after it', async () => {
+      const user = userEvent.setup()
+      seed([put])
+      await openChanges(user)
+      await screen.findByTestId('changes-file-0')
+      const before = fakeBridge.diffCalls().length
+
+      fakeBridge.seedDiff(makeWorkspaceDiff({ workspaceId: retry.id, files: [put, readme] }))
+      fakeBridge.changeWorkspace(retry.id)
+      fakeBridge.changeWorkspace(retry.id)
+      fakeBridge.changeWorkspace(retry.id)
+
+      expect(fakeBridge.diffCalls()).toHaveLength(before + 1)
+      await waitFor(() => {
+        expect(fakeBridge.diffCalls()).toHaveLength(before + 2)
+      })
+      expect(await screen.findByTestId('changes-file-1')).toHaveAttribute('data-path', 'README.md')
+      expect(fakeBridge.diffCalls()).toHaveLength(before + 2)
+    })
+  })
 })
