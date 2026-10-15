@@ -76,6 +76,11 @@ export class TerminalPage {
     return this.page.evaluate(() => window.__que?.screenText() ?? '')
   }
 
+  /** The xterm buffer of one mounted terminal, by id; '' until it is attached. */
+  async screenTextOf(termId: string): Promise<string> {
+    return this.page.evaluate((id) => window.__que?.screenTextOf(id) ?? '', termId)
+  }
+
   // Waits until a terminal is attached and on screen, and returns its id.
   async waitForActiveTerminal(timeout = 20_000): Promise<string> {
     await this.viewport.waitFor({ state: 'visible', timeout })
