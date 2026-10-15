@@ -141,6 +141,12 @@ export class StatusService {
       sessionId: next.sessionId
     })
     if (statusChanged) {
+      this.opts.store.insertStatusLog(
+        id,
+        next.status,
+        next.reason,
+        new Date(next.statusAt).toISOString()
+      )
       this.opts.log?.(
         `workspace ${id} ${prev.status} -> ${next.status}${next.reason ? ` (${next.reason})` : ''}`
       )

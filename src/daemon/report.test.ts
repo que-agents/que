@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import type { WorkspaceDigest } from '../shared/protocol'
 import { makeTask } from '../testing/fixtures'
 import { buildReport, formatDuration, formatReport, parseSince, reportSince } from './report'
 
@@ -151,6 +152,84 @@ describe('buildReport', () => {
       'Stopped (1)'
     ])
     expect(text.trim().split('\n').at(-3)).toBe('Unlocked once last night, 20 min total')
+  })
+
+  describe('with workspaces', () => {
+    const waiting = new Date(2026, 9, 14, 2, 5).toISOString()
+    const digest = (over: Partial<WorkspaceDigest>): WorkspaceDigest => ({
+      id: 'ws_a',
+      name: 'app-1432-retry-logic',
+      project: 'uploader',
+      branch: 'app-1432-retry-logic',
+      status: 'needs_input',
+      statusReason: null,
+      firstActivityAt: null,
+      lastActivityAt: null,
+      workingMs: 72 * 60_000,
+      needsInputCount: 2,
+      waitingSince: waiting,
+      stuckCount: 0,
+      commitsAhead: 4,
+      pr: null,
+      sessionId: null,
+      ...over
+    })
+    const pr = {
+      url: 'https://github.com/rquellh/que/pull/12',
+      number: 12,
+      title: 'Retry',
+      state: 'draft' as const,
+      checks: 'failing' as const,
+      review: null,
+      checkedAt: '2026-10-14T02:00:00.000Z'
+    }
+    const digests = [
+      digest({}),
+      digest({
+        id: 'ws_b',
+        name: 'quiet-one',
+        status: 'stuck',
+        statusReason: 'no_heartbeat',
+        workingMs: 0,
+        needsInputCount: 0,
+        waitingSince: null,
+        commitsAhead: null,
+        pr
+      })
+    ]
+
+    it('totals them and counts the ones waiting for input', () => {
+      const r = buildReport([done], WORKSPACES, SINCE, NOW, digests)
+
+      expect(r.workspaces).toEqual(digests)
+      expect(r.totals).toMatchObject({ workspaces: 2, needsInput: 1, tasks: 1 })
+    })
+
+    it('prints a block before the unlocks line and the total', () => {
+      const text = formatReport(
+        buildReport([done], WORKSPACES, SINCE, NOW, digests),
+        'Unlocked once'
+      )
+      const lines = text.split('\n')
+
+      const at = lines.indexOf('Workspaces (2)')
+      expect(lines.slice(at, at + 5)).toEqual([
+        'Workspaces (2)',
+        '  app-1432-retry-logic · uploader · needs_input',
+        '    worked 1h 12m · asked for input 2× · waiting since 02:05 · 4 commits ahead',
+        '  quiet-one · uploader · stuck (no_heartbeat)',
+        '    no work in this window · PR #12 draft, checks failing'
+      ])
+      expect(lines.at(-3)).toBe('Unlocked once')
+      expect(lines.at(-1)).toMatch(/^Total: /)
+    })
+
+    it('does not claim there were no tasks when only workspaces had activity', () => {
+      const text = formatReport(buildReport([], WORKSPACES, SINCE, NOW, digests))
+
+      expect(text).toContain('Workspaces (2)')
+      expect(text).not.toContain('No tasks in this window.')
+    })
   })
 
   it('says so when the window is empty', () => {

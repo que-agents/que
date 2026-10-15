@@ -50,6 +50,24 @@ export function git(cwd: string, args: string[], timeoutMs = 60_000): Promise<Gi
   })
 }
 
+/**
+ * Commits on the workspace's branch past its base: `origin/<default>` when
+ * that ref exists, else the base it was created from. Null when git cannot say.
+ */
+export async function commitsAhead(ws: Workspace, project: Project): Promise<number | null> {
+  const def = project.defaultBranch
+  const remote = await git(
+    ws.path,
+    ['show-ref', '--verify', '--quiet', `refs/remotes/origin/${def}`],
+    10_000
+  )
+  const base = remote.ok ? `origin/${def}` : ws.baseRef
+  const counted = await git(ws.path, ['rev-list', '--count', `${base}..HEAD`], 10_000)
+  if (!counted.ok) return null
+  const n = Number(counted.stdout)
+  return Number.isInteger(n) ? n : null
+}
+
 async function refExists(cwd: string, ref: string): Promise<boolean> {
   return (await git(cwd, ['show-ref', '--verify', '--quiet', ref])).ok
 }
@@ -238,6 +256,7 @@ export class WorkspaceManager {
       pr: null
     }
     this.opts.store.insertWorkspace(ws)
+    this.opts.store.insertStatusLog(ws.id, ws.status, null, now)
     this.log(`workspace ${ws.id} created at ${path} on ${branch} from ${base}`)
     this.opts.emit('workspace.created', ws)
     this.opts.emit('workspace.status', { id: ws.id, status: 'preparing', at: now })
