@@ -466,7 +466,8 @@ export class DaemonServer {
           version: this.opts.version,
           pid: process.pid,
           startedAt: this.startedAt,
-          nodeVersion: process.version
+          nodeVersion: process.version,
+          path: process.env.PATH ?? ''
         }
         return r
       }
