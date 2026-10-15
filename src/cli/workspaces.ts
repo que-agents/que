@@ -36,9 +36,16 @@ const DIFF_GLYPH: Record<DiffFile['status'], string> = {
   untracked: '?'
 }
 
-/** The text `que ws diff` prints. */
-export function formatDiff(d: WorkspaceDiff): string {
+/** The text `que ws diff` prints: the header, the commit it is narrowed to, the commits, the files. */
+export function formatDiff(d: WorkspaceDiff, now = Date.now()): string {
   const lines = [`${d.head} vs ${d.base} · ${d.commitsAhead} commits ahead`]
+  if (d.commit) {
+    const narrowed = d.commits.find((c) => c.sha === d.commit)
+    lines.push(`commit ${d.commit.slice(0, 7)}${narrowed ? ` ${narrowed.subject}` : ''}`)
+  }
+  for (const c of d.commits.slice(0, 200)) {
+    lines.push(`  ${c.shortSha} ${c.subject} · ${formatAge(c.at, now)}`)
+  }
   if (d.files.length === 0) lines.push('no changes')
   for (const f of d.files) {
     const name = f.from ? `${f.from} → ${f.path}` : f.path
@@ -282,13 +289,21 @@ export function registerWorkspaceCommands(program: Command): void {
       })
     )
   ws.command('diff <workspace>')
-    .description('what a workspace changed against its base, committed and uncommitted')
+    .description(
+      'what a workspace changed against its base, committed and uncommitted, with its commits'
+    )
     .option('--json', 'print JSON')
-    .action((ref: string, opts: { json?: boolean }) =>
+    .option('--base <ref>', 'compare against this ref instead of the default branch')
+    .option('--commit <sha>', "only that commit's own changes")
+    .action((ref: string, opts: { json?: boolean; base?: string; commit?: string }) =>
       withClient(async (c) => {
         await assertNotQuiet(c)
         const w = await findWorkspace(c, ref)
-        const diff = await c.request('workspace.diff', { id: w.id })
+        const diff = await c.request('workspace.diff', {
+          id: w.id,
+          ...(opts.base !== undefined ? { base: opts.base } : {}),
+          ...(opts.commit !== undefined ? { commit: opts.commit } : {})
+        })
         console.log(opts.json ? JSON.stringify(diff, null, 2) : formatDiff(diff))
       })
     )
