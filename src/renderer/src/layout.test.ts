@@ -1,12 +1,16 @@
 import { describe, expect, it } from 'vitest'
 import {
+  diffId,
+  diffPathOf,
+  isViewId,
   NO_SPLIT,
   type PaneLayout,
   parseLayout,
-  reconcileLayout,
-  viewId,
-  viewKindOf
+  reconcileLayout
 } from './layout'
+
+const PUT = diffId('src/upload/put.ts')
+const README = diffId('README.md')
 
 const split = (over: Partial<PaneLayout> = {}): PaneLayout => ({
   split: { direction: 'row', ratio: 0.5 },
@@ -17,43 +21,54 @@ const split = (over: Partial<PaneLayout> = {}): PaneLayout => ({
   ...over
 })
 
-describe('view ids', () => {
-  it('names a view tab and reads it back; a terminal id is not a view', () => {
-    expect(viewId('changes')).toBe('view:changes')
-    expect(viewKindOf('view:pr')).toBe('pr')
-    expect(viewKindOf('view:nope')).toBeNull()
-    expect(viewKindOf('t_01hzx3k9c2qf')).toBeNull()
-    expect(viewKindOf(null)).toBeNull()
+describe('diff ids', () => {
+  it('names a file diff tab and reads the path back verbatim', () => {
+    expect(PUT).toBe('view:diff:src/upload/put.ts')
+    expect(diffPathOf(PUT)).toBe('src/upload/put.ts')
+    expect(diffPathOf(diffId('docs/a file: with spaces.md'))).toBe('docs/a file: with spaces.md')
+    expect(isViewId(PUT)).toBe(true)
+  })
+
+  it('is null for a terminal id, an empty path, the old view ids, and null', () => {
+    expect(diffPathOf('t_01hzx3k9c2qf')).toBeNull()
+    expect(diffPathOf('view:diff:')).toBeNull()
+    expect(diffPathOf('view:changes')).toBeNull()
+    expect(diffPathOf(null)).toBeNull()
+    expect(isViewId('t_01hzx3k9c2qf')).toBe(false)
+    expect(isViewId('view:pr')).toBe(false)
   })
 })
 
 describe('parseLayout', () => {
   describe('round trip', () => {
-    it('reads back a split holding view tabs in either pane', () => {
+    it('reads back a split holding diff tabs in either pane', () => {
       const l = split({
-        second: ['t_2', 'view:pr'],
-        active: ['view:changes', 'view:pr'],
+        second: ['t_2', README],
+        active: [PUT, README],
         focused: 1,
-        views: ['changes', 'pr']
+        views: [PUT, README]
       })
 
       expect(parseLayout(JSON.stringify(l))).toEqual(l)
     })
 
-    it('reads back one pane with a view tab, which is worth remembering on its own', () => {
-      const l: PaneLayout = { ...NO_SPLIT, active: ['view:changes', null], views: ['changes'] }
+    it('reads back one pane with a diff tab, which is worth remembering on its own', () => {
+      const l: PaneLayout = { ...NO_SPLIT, active: [PUT, null], views: [PUT] }
 
       expect(parseLayout(JSON.stringify(l))).toEqual(l)
     })
   })
 
   describe('validation', () => {
-    it('drops unknown and repeated views, and forgets one pane with none', () => {
+    it('keeps only diff ids, once each, and forgets one pane with none', () => {
       const parsed = parseLayout(
-        JSON.stringify({ ...split(), views: ['pr', 'files', 3, 'pr', 'changes'] })
+        JSON.stringify({
+          ...split(),
+          views: [README, 'view:changes', 3, README, 'view:diff:', PUT]
+        })
       )
-      expect(parsed?.views).toEqual(['pr', 'changes'])
-      expect(parseLayout(JSON.stringify({ ...NO_SPLIT, views: ['files'] }))).toBeNull()
+      expect(parsed?.views).toEqual([README, PUT])
+      expect(parseLayout(JSON.stringify({ ...NO_SPLIT, views: ['changes', 'pr'] }))).toBeNull()
       expect(parseLayout(JSON.stringify({ split: null }))).toBeNull()
       expect(parseLayout('{not json')).toBeNull()
     })
@@ -72,61 +87,61 @@ describe('parseLayout', () => {
 })
 
 describe('reconcileLayout', () => {
-  describe('view tabs', () => {
-    it('keeps an open view when every terminal of its pane is gone', () => {
+  describe('diff tabs', () => {
+    it('keeps an open diff tab when every terminal of its pane is gone', () => {
       const l = split({
-        second: ['t_2', 'view:pr'],
+        second: ['t_2', README],
         active: ['t_1', 't_2'],
         focused: 1,
-        views: ['pr']
+        views: [README]
       })
 
       const next = reconcileLayout(l, new Set(['t_1']), ['t_1'])
 
       expect(next.split).toEqual(l.split)
-      expect(next.second).toEqual(['view:pr'])
+      expect(next.second).toEqual([README])
       expect(next.active).toEqual(['t_1', null])
-      expect(next.views).toEqual(['pr'])
+      expect(next.views).toEqual([README])
     })
 
-    it('does not collapse a first pane that holds only a view tab', () => {
-      const l = split({ second: ['t_1'], active: ['view:changes', 't_1'], views: ['changes'] })
+    it('does not collapse a first pane that holds only a diff tab', () => {
+      const l = split({ second: ['t_1'], active: [PUT, 't_1'], views: [PUT] })
 
       const next = reconcileLayout(l, new Set(['t_1']), ['t_1'])
 
       expect(next).toEqual(l)
     })
 
-    it('drops a view id that is no longer open, collapsing an emptied second pane', () => {
+    it('drops a diff id that is no longer open, collapsing an emptied second pane', () => {
       const l = split({
-        second: ['view:pr'],
-        active: ['t_1', 'view:pr'],
+        second: [README],
+        active: ['t_1', README],
         focused: 1,
-        views: ['changes']
+        views: [PUT]
       })
 
       const next = reconcileLayout(l, new Set(['t_1']), ['t_1'])
 
-      expect(next).toEqual({ ...NO_SPLIT, active: ['t_1', null], views: ['changes'] })
+      expect(next).toEqual({ ...NO_SPLIT, active: ['t_1', null], views: [PUT] })
     })
 
-    it('hands the second pane over, view tabs and all, when the first is empty', () => {
+    it('hands the second pane over, diff tabs and all, when the first is empty', () => {
       const l = split({
-        second: ['t_2', 'view:pr'],
-        active: ['t_1', 'view:pr'],
+        second: ['t_2', README],
+        active: ['t_1', README],
         focused: 1,
-        views: ['pr']
+        views: [README]
       })
 
       const next = reconcileLayout(l, new Set(['t_2']), ['t_2'])
 
-      expect(next).toEqual({ ...NO_SPLIT, active: ['view:pr', null], views: ['pr'] })
+      expect(next).toEqual({ ...NO_SPLIT, active: [README, null], views: [README] })
     })
   })
 
   describe('purity', () => {
     it('leaves its input untouched', () => {
-      const l = split({ second: ['t_2', 'view:pr'], active: ['t_1', 't_2'], views: ['pr'] })
+      const l = split({ second: ['t_2', README], active: ['t_1', 't_2'], views: [README] })
       const before = structuredClone(l)
 
       reconcileLayout(l, new Set(['t_1']), ['t_1'])

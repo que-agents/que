@@ -3,17 +3,29 @@ import { type ChimeKind, setChimePlayer } from './sound'
 
 export interface PaneInfo {
   index: number
-  /** The pane's terminal, or null while a view tab is selected. */
+  /** The pane's terminal, or null while a diff tab is selected. */
   activeTermId: string | null
-  /** The selected tab: a terminal id or a view id (`view:changes`, `view:pr`). */
+  /** The selected tab: a terminal id or a diff tab id (`view:diff:<path>`). */
   activeTab: string | null
   focused: boolean
+}
+
+export interface ReviewInfo {
+  open: boolean
+  tab: 'changes' | 'pr'
+  width: number
 }
 
 // Registry of the xterms currently on screen, by terminal id, read by the e2e test hook.
 const mounted = new Map<string, Terminal>()
 // Where the panes are, supplied by <Panes> while it is on screen.
 let paneSource: (() => PaneInfo[]) | null = null
+// The review pane's state, supplied by the app shell.
+let reviewSource: (() => ReviewInfo) | null = null
+
+export function setReviewSource(source: (() => ReviewInfo) | null): void {
+  reviewSource = source
+}
 
 export function setActiveTerminal(id: string, term: Terminal): void {
   mounted.set(id, term)
@@ -61,6 +73,10 @@ export function installTestHook(): void {
       return id ? screenTextOf(id) : ''
     },
     panes: () => paneSource?.() ?? [],
+    review: () => {
+      const r = reviewSource?.() ?? { open: false, tab: 'changes', width: 0 }
+      return { open: r.open, tab: r.tab, width: r.width }
+    },
     screenTextOf,
     trayTitle: () => window.que.app.trayTitle(),
     chimes: () => [...chimes]

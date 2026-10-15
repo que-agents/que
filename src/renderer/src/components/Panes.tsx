@@ -1,24 +1,10 @@
 import { useEffect, useRef } from 'react'
-import {
-  RATIO_DEFAULT,
-  RATIO_MAX,
-  RATIO_MIN,
-  type ViewKind,
-  useQue,
-  useStore,
-  viewId,
-  viewKindOf
-} from '../store'
+import { basename } from '../diff'
+import { diffPathOf, RATIO_DEFAULT, RATIO_MAX, RATIO_MIN, useQue, useStore } from '../store'
 import { setPaneSource } from '../testHook'
-import ChangesView from './ChangesView'
-import { DiffIcon, PlusIcon, PullRequestIcon } from './icons'
-import PullRequestView from './PullRequestView'
+import DiffView from './DiffView'
+import { DiffIcon, PlusIcon } from './icons'
 import Terminal from './Terminal'
-
-const VIEW_TABS: Record<ViewKind, { label: string; Icon: () => React.JSX.Element }> = {
-  changes: { label: 'Changes', Icon: DiffIcon },
-  pr: { label: 'Pull request', Icon: PullRequestIcon }
-}
 
 const STEP = 0.05
 
@@ -108,7 +94,7 @@ function Pane({ termKey, index }: { termKey: string; index: 0 | 1 }): React.JSX.
   const views = store.paneViews(termKey, index)
   const activeId = store.paneActiveId(termKey, index)
   const active = store.paneActive(termKey, index)
-  const activeView = viewKindOf(activeId)
+  const activeDiff = diffPathOf(activeId)
   const focused = store.focusedPane(termKey) === index
 
   return (
@@ -160,32 +146,37 @@ function Pane({ termKey, index }: { termKey: string; index: 0 | 1 }): React.JSX.
               </button>
             </span>
           ))}
-          {views.map((kind) => {
-            const { label, Icon } = VIEW_TABS[kind]
-            const selected = viewId(kind) === activeId
+          {views.map((id) => {
+            const path = diffPathOf(id) ?? id
+            const label = basename(path)
+            const selected = id === activeId
             return (
               <span
-                key={kind}
+                key={id}
                 className={`tab view-tab${selected ? ' active' : ''}`}
-                data-testid={`view-tab-${kind}`}
+                data-testid="view-tab-diff"
+                data-path={path}
                 data-active={selected}
               >
                 <button
                   type="button"
                   role="tab"
                   aria-selected={selected}
-                  data-testid={`view-tab-${kind}-select`}
-                  onClick={() => store.selectTerminal(termKey, viewId(kind))}
+                  title={path}
+                  data-testid="view-tab-diff-select"
+                  data-path={path}
+                  onClick={() => store.selectTerminal(termKey, id)}
                 >
-                  <Icon />
+                  <DiffIcon />
                   {label}
                 </button>
                 <button
                   type="button"
                   className="close"
                   aria-label={`Close ${label}`}
-                  data-testid={`view-tab-${kind}-close`}
-                  onClick={() => store.closeView(termKey, kind)}
+                  data-testid="view-tab-diff-close"
+                  data-path={path}
+                  onClick={() => store.closeView(termKey, id)}
                 >
                   ×
                 </button>
@@ -208,10 +199,8 @@ function Pane({ termKey, index }: { termKey: string; index: 0 | 1 }): React.JSX.
           <PlusIcon />
         </button>
       </div>
-      {activeView === 'changes' ? (
-        <ChangesView termKey={termKey} />
-      ) : activeView === 'pr' ? (
-        <PullRequestView termKey={termKey} />
+      {activeDiff !== null ? (
+        <DiffView termKey={termKey} path={activeDiff} />
       ) : active ? (
         // An inactive tab's terminal is detached; it reattaches (and replays) when selected.
         <Terminal key={active.id} id={active.id} focused={focused} />

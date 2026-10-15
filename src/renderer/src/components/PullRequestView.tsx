@@ -119,9 +119,10 @@ export default function PullRequestView({ termKey }: { termKey: string }): React
   const number = pr?.number ?? (ws?.prUrl ? ws.prUrl.split('/').pop() : null)
   const now = store.now()
 
-  // On mount; the store fetches again when the pull request changes upstream.
+  // On mount, unless opening the pane already fetched it; the store fetches again when
+  // the pull request changes upstream.
   useEffect(() => {
-    void store.fetchPrThread(termKey)
+    void store.ensurePrThread(termKey)
   }, [store, termKey])
 
   const checks = pr?.checkRuns ?? []
