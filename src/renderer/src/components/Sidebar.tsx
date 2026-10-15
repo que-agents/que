@@ -272,27 +272,6 @@ export default function Sidebar(): React.JSX.Element {
           </ul>
         )}
       </nav>
-      <button
-        type="button"
-        className="row-button tickets-entry"
-        data-testid="sidebar-tickets"
-        aria-current={view.kind === 'tickets' ? 'page' : undefined}
-        onClick={() => store.showTickets()}
-      >
-        <span className="name">Tickets</span>
-        {ticketsSync.error && (
-          <span
-            className="tickets-mark"
-            data-testid="sidebar-tickets-error"
-            title={ticketsSync.error}
-          >
-            ✕
-          </span>
-        )}
-        <span className="count" data-testid="sidebar-tickets-count">
-          {openTickets}
-        </span>
-      </button>
       <nav aria-label="Projects">
         <div className="section-head">
           <h2>Projects</h2>
@@ -448,24 +427,47 @@ export default function Sidebar(): React.JSX.Element {
           )
         })}
       </nav>
-      <button
-        type="button"
-        className="row-button report-entry"
-        data-testid="sidebar-report"
-        aria-current={view.kind === 'report' ? 'page' : undefined}
-        onClick={() => store.showReport()}
-      >
-        <span className="name">Report</span>
-      </button>
-      <button
-        type="button"
-        className="row-button report-entry"
-        data-testid="sidebar-settings"
-        aria-current={view.kind === 'settings' ? 'page' : undefined}
-        onClick={() => store.showSettings()}
-      >
-        <span className="name">Settings</span>
-      </button>
+      <div className="sidebar-bottom" data-testid="sidebar-bottom">
+        <button
+          type="button"
+          className="row-button report-entry"
+          data-testid="sidebar-report"
+          aria-current={view.kind === 'report' ? 'page' : undefined}
+          onClick={() => store.showReport()}
+        >
+          <span className="name">Report</span>
+        </button>
+        <button
+          type="button"
+          className="row-button report-entry tickets-entry"
+          data-testid="sidebar-tickets"
+          aria-current={view.kind === 'tickets' ? 'page' : undefined}
+          onClick={() => store.showTickets()}
+        >
+          <span className="name">Tickets</span>
+          {ticketsSync.error && (
+            <span
+              className="tickets-mark"
+              data-testid="sidebar-tickets-error"
+              title={ticketsSync.error}
+            >
+              ✕
+            </span>
+          )}
+          <span className="count" data-testid="sidebar-tickets-count">
+            {openTickets}
+          </span>
+        </button>
+        <button
+          type="button"
+          className="row-button report-entry"
+          data-testid="sidebar-settings"
+          aria-current={view.kind === 'settings' ? 'page' : undefined}
+          onClick={() => store.showSettings()}
+        >
+          <span className="name">Settings</span>
+        </button>
+      </div>
     </aside>
   )
 }
