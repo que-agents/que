@@ -420,6 +420,17 @@ class FakeBridge {
           if (!seeded) throw rpcError(ErrorCodes.NotFound, `no such file: ${path}`)
           return structuredClone(seeded)
         },
+        watch: async ({ id }) => {
+          this.workspace(id)
+          this.watchCallLog.push({ id, on: true })
+          this.watchedIds.add(id)
+          return { ok: true }
+        },
+        unwatch: async ({ id }) => {
+          this.watchCallLog.push({ id, on: false })
+          this.watchedIds.delete(id)
+          return { ok: true }
+        },
         prThread: async ({ id, refresh }) => {
           this.refuseIfQuiet('workspace.prThread')
           this.workspace(id)
@@ -496,6 +507,12 @@ class FakeBridge {
   }
 
   /** Updates a workspace's status and emits workspace.status, as the status engine would. */
+  /** The daemon noticed the worktree change on disk: fires workspace.changed for the workspace. */
+  changeWorkspace(id: string): void {
+    this.workspace(id)
+    this.emit('workspace.changed', { id })
+  }
+
   setStatus(id: string, status: WorkspaceStatus, reason?: string): void {
     const ws = this.workspace(id)
     const at = new Date().toISOString()
@@ -688,6 +705,19 @@ class FakeBridge {
     return this.readFileCallLog.map((c) => ({ ...c }))
   }
 
+  private watchCallLog: Array<{ id: string; on: boolean }> = []
+  private watchedIds = new Set<string>()
+
+  /** Every workspace.watch (on) and workspace.unwatch (off) call, in order. */
+  watchCalls(): Array<{ id: string; on: boolean }> {
+    return this.watchCallLog.map((c) => ({ ...c }))
+  }
+
+  /** The workspaces currently watched, in the order they were first watched. */
+  watched(): string[] {
+    return [...this.watchedIds]
+  }
+
   private prThreads = new Map<string, PrThread>()
   private prThreadCallLog: Array<{ id: string; refresh: boolean }> = []
 
@@ -713,6 +743,8 @@ class FakeBridge {
     this.fileContents.clear()
     this.filesCallLog = []
     this.readFileCallLog = []
+    this.watchCallLog = []
+    this.watchedIds.clear()
     this.prThreads.clear()
     this.prThreadCallLog = []
     this.tickets.clear()

@@ -8,6 +8,7 @@ All notable changes to que are recorded here. The format follows
 
 ### Added
 
+- The daemon watches the worktree of every workspace a window shows (`workspace.watch`, `workspace.unwatch`) or has an attached terminal in, and sends `workspace.changed` when its files, index or commits change, at most once per 300 ms.
 - `workspace.files` lists a worktree's tracked and untracked files, `workspace.readFile` reads one of them (text capped, binary detected, never outside the worktree), and `que ws files <workspace>` prints the listing; `--json`.
 - A Files tab in the review pane: the workspace's files as a tree, changed files marked as in Changes and their directories open with a count; a changed file opens its diff, any other file opens read-only as a tab beside the terminals.
 - `workspace.diff` takes a `base` to compare against and a `commit` to narrow the files to that commit's own changes, and returns the branch's commits and the refs worth comparing against.
@@ -24,6 +25,10 @@ All notable changes to que are recorded here. The format follows
 - A Tickets view in the app: the tickets assigned to you, Start on each (asking which project the first time), and the workspace it made; the start prompt and the sync filter are in Settings.
 - The tickets view groups tickets under their epics, with subtasks beneath theirs; epics are overviews and have no Start.
 - A ticket queue: `que tickets` lists the tickets assigned to you from the tracker, `que tickets start KEY` makes a workspace for one under its project (learned the first time you choose), writes the ticket as a brief and starts claude on it.
+
+### Changed
+
+- Changes and Files follow the worktree without a click.
 
 ### Fixed
 
