@@ -1,5 +1,5 @@
 import { SCRATCH, useQue, useStore } from '../store'
-import { StatusBadge } from './StatusBadge'
+import { PrChip, StatusBadge } from './StatusBadge'
 import UnlockStatus from './UnlockStatus'
 
 /** The selected workspace (or the loose terminals) and its actions. */
@@ -33,10 +33,20 @@ export default function TopBar({ termKey }: { termKey: string }): React.JSX.Elem
             </span>
           )}
           <StatusBadge status={ws.status} reason={ws.statusReason} testId="topbar-status" />
-          {ws.prUrl && (
-            <a href={ws.prUrl} target="_blank" rel="noreferrer" data-testid="topbar-pr">
-              PR #{ws.prUrl.split('/').pop()}
-            </a>
+          {ws.pr ? (
+            <PrChip
+              pr={ws.pr}
+              testId="topbar-pr"
+              label={`PR #${ws.pr.number} · ${ws.pr.state}${
+                ws.pr.checks === 'failing' ? ' · checks failing' : ''
+              }${ws.pr.review === 'changes_requested' ? ' · changes requested' : ''}`}
+            />
+          ) : (
+            ws.prUrl && (
+              <a href={ws.prUrl} target="_blank" rel="noreferrer" data-testid="topbar-pr">
+                PR #{ws.prUrl.split('/').pop()}
+              </a>
+            )
           )}
         </>
       ) : (

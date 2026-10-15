@@ -1,18 +1,22 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { Report } from '../../../preload/index.d'
+import type { PullRequest, Report } from '../../../preload/index.d'
 import { formatUnlocks } from '../../../daemon/quiet-hours'
 import { formatCost, formatDuration, REPORT_GROUPS } from '../format'
 import { useQue, useStore } from '../store'
-import { TaskBadge } from './StatusBadge'
+import { PrChip, TaskBadge } from './StatusBadge'
 import UnlockStatus from './UnlockStatus'
 
 /** What the overnight queue did since it was last opened, grouped by outcome. */
 export default function ReportView(): React.JSX.Element {
   const store = useStore()
-  const { connected, tasks } = useQue()
+  const { connected, tasks, workspaces } = useQue()
   const [report, setReport] = useState<Report | null>(null)
   const [unlocks, setUnlocks] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+
+  // Report entries carry the workspace name, not its id.
+  const prOf = (name: string | null): PullRequest | null =>
+    (name && Object.values(workspaces).find((w) => w.name === name)?.pr) || null
 
   const load = useCallback(async () => {
     try {
@@ -97,6 +101,13 @@ export default function ReportView(): React.JSX.Element {
                   )}
                   <span className="muted">{e.workspace ?? ''}</span>
                   {e.state !== 'stuck' && e.reason && <span className="reason">{e.reason}</span>}
+                  {prOf(e.workspace) && (
+                    <PrChip
+                      pr={prOf(e.workspace) as PullRequest}
+                      label={prOf(e.workspace)?.state}
+                      testId={`report-task-${e.id}-pr-state`}
+                    />
+                  )}
                   {e.prUrl && (
                     <a
                       href={e.prUrl}

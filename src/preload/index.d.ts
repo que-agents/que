@@ -31,6 +31,7 @@ import type {
 import type {
   NotificationsConfig,
   Project,
+  PullRequest,
   QuietHoursConfig,
   QuietState,
   QuietUnlock,
@@ -49,6 +50,7 @@ export type {
   Events,
   NotificationsConfig,
   Project,
+  PullRequest,
   QuietHoursConfig,
   QuietState,
   QuietUnlock,
