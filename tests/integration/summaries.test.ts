@@ -204,6 +204,53 @@ describe('sidebar title summaries', () => {
     }, 45_000)
   })
 
+  describe('unchanged input', () => {
+    it('skips a Stop whose transcript has not moved on, and runs once it has', async () => {
+      let ahead = 0
+      const { d, projectId } = await start({
+        config: 'summaries = false\n',
+        now: () => Date.now() + ahead
+      })
+      const ws = await d.client.request('workspace.create', { projectId, brief: RETRY_BRIEF })
+      await d.client.request('config.set', { patch: { summaries: true } })
+      const transcript = writeTranscript(d, 'Backoff is in; the uploader retries each chunk.')
+      const retryCalls = () => summaryCalls(d).filter((c) => promptOf(c).includes(RETRY_BRIEF))
+      await sendStop(d, ws, transcript)
+      await expect.poll(() => titleOf(d, ws.id), opts).toBe(FAKE_SUMMARY)
+
+      // Past the interval, the same transcript: no call.
+      ahead = 6 * 60_000
+      await sendStop(d, ws, transcript)
+      await fence(d, projectId)
+      expect(retryCalls()).toHaveLength(1)
+
+      // A new assistant entry: the next Stop calls with it.
+      fs.appendFileSync(
+        transcript,
+        `${JSON.stringify({
+          type: 'assistant',
+          message: { role: 'assistant', content: [{ type: 'text', text: 'The retry tests pass.' }] }
+        })}\n`
+      )
+      vi.stubEnv('QUE_FAKE_CLAUDE_SUMMARY', 'Retry tests passing for uploads')
+      await sendStop(d, ws, transcript)
+
+      await expect.poll(() => titleOf(d, ws.id), opts).toBe('Retry tests passing for uploads')
+      const calls = retryCalls()
+      expect(calls).toHaveLength(2)
+      expect(calls[1].argv).toEqual([
+        '-p',
+        expect.stringContaining('Latest progress:\nThe retry tests pass.'),
+        '--model',
+        'haiku',
+        '--output-format',
+        'text'
+      ])
+      expect(calls[1].cwd).toBe(d.home)
+      expect(calls[1].env).not.toContain('QUE_WORKSPACE_ID')
+    }, 45_000)
+  })
+
   describe('off', () => {
     it('makes no calls while summaries is false', async () => {
       const { d, projectId } = await start({ config: 'summaries = false\n' })

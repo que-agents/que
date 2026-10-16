@@ -5,6 +5,7 @@
 // `summary_interval_minutes` after each completed turn. A title the user set
 // (an explicit title or a rename) is never touched.
 import { type ChildProcess, spawn } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import fs from 'node:fs'
 import { titleOf } from '../shared/brief'
 import type { UserConfig } from '../shared/config'
@@ -115,11 +116,17 @@ interface ThrottleEntry {
   lastDoneAt: number | null
   busy: boolean
   pending: boolean
+  /** A hash of the prompt the last answered call was sent. */
+  lastInput: string | null
 }
+
+const inputHash = (prompt: string): string => createHash('sha256').update(prompt).digest('hex')
 
 /**
  * The per-workspace throttle: at most one call per interval after the last
  * completed one; a request inside the interval leaves one refresh pending.
+ * It also remembers the input of the last answered call, so a call whose
+ * prompt has not changed is skipped (and does not count as a call).
  * Time comes from the injected clock; the caller owns the timers.
  */
 export class SummaryThrottle {
@@ -133,7 +140,7 @@ export class SummaryThrottle {
   private entry(id: string): ThrottleEntry {
     let e = this.entries.get(id)
     if (!e) {
-      e = { lastDoneAt: null, busy: false, pending: false }
+      e = { lastDoneAt: null, busy: false, pending: false, lastInput: null }
       this.entries.set(id, e)
     }
     return e
@@ -158,12 +165,32 @@ export class SummaryThrottle {
     this.entry(id).busy = true
   }
 
-  /** A call ended; when a refresh is pending, the time it is due (ms), else null. */
-  done(id: string): number | null {
+  /** True when `prompt` is what the last answered call was sent: the call would repeat it. */
+  unchanged(id: string, prompt: string): boolean {
+    return this.entry(id).lastInput === inputHash(prompt)
+  }
+
+  /**
+   * A call ended; `answered` is the prompt of a call that got a reply (remembered for
+   * unchanged()). When a refresh is pending, the time it is due (ms), else null.
+   */
+  done(id: string, answered?: string): number | null {
     const e = this.entry(id)
     e.busy = false
     e.lastDoneAt = this.now()
+    if (answered !== undefined) e.lastInput = inputHash(answered)
     return e.pending ? e.lastDoneAt + this.intervalMs() : null
+  }
+
+  /**
+   * A run made no call (unchanged input, or nothing to summarise): the last call's time
+   * stands. When a refresh is pending, the time it is due (ms), else null.
+   */
+  skipped(id: string): number | null {
+    const e = this.entry(id)
+    e.busy = false
+    if (!e.pending) return null
+    return (e.lastDoneAt ?? this.now()) + this.intervalMs()
   }
 
   /** The pending refresh's time has come: it is queued now. */
@@ -187,6 +214,12 @@ export interface SummarizerOptions {
   transcriptPath: (id: string) => string | undefined
   log?: (msg: string) => void
   now?: () => number
+}
+
+/** What one queued run did: whether claude was called, and the prompt it answered. */
+interface SummaryOutcome {
+  called: boolean
+  answered?: string
 }
 
 export class Summarizer {
@@ -259,21 +292,25 @@ export class Summarizer {
       if (id === undefined) break
       this.throttle.begin(id)
       this.running = { id, child: null }
+      let outcome: SummaryOutcome = { called: false }
       try {
-        await this.summarise(id)
+        outcome = await this.summarise(id)
       } catch (err) {
+        outcome = { called: true }
         this.log(`summary for ${id} failed: ${(err as Error).message}`)
       }
       this.running = null
-      const due = this.throttle.done(id)
+      const due = outcome.called
+        ? this.throttle.done(id, outcome.answered)
+        : this.throttle.skipped(id)
       if (due !== null) this.schedule(id, due)
     }
     for (const w of this.idleWaiters.splice(0)) w()
   }
 
-  private async summarise(id: string): Promise<void> {
+  private async summarise(id: string): Promise<SummaryOutcome> {
     const ws = this.eligible(id)
-    if (!ws?.brief) return
+    if (!ws?.brief) return { called: false }
     const transcript = this.opts.transcriptPath(id)
     let tail: string | null = null
     if (transcript) {
@@ -283,20 +320,27 @@ export class Summarizer {
         // No transcript (yet): the brief alone.
       }
     }
-    const reply = await this.ask(id, buildSummaryPrompt(ws.brief, tail))
-    if (reply === null) return
+    const prompt = buildSummaryPrompt(ws.brief, tail)
+    if (this.throttle.unchanged(id, prompt)) {
+      this.log(`summary for ${id}: input unchanged; skipped`)
+      return { called: false }
+    }
+    const reply = await this.ask(id, prompt)
+    if (reply === null) return { called: true }
+    const done: SummaryOutcome = { called: true, answered: prompt }
     const title = sanitizeSummary(reply)
     if (title === null) {
       this.log(`summary for ${id}: empty reply; title kept`)
-      return
+      return done
     }
     // Re-read: a rename or removal while the call ran wins.
     const now = this.eligible(id)
-    if (!now || now.title === title) return
+    if (!now || now.title === title) return done
     this.opts.store.setWorkspaceTitle(id, title, 'summary')
     const next = this.opts.store.getWorkspace(id)
     this.log(`workspace ${id} summarised as ${JSON.stringify(title)}`)
     if (next) this.opts.emit('workspace.updated', next)
+    return done
   }
 
   /** Runs claude headless from QUE_HOME; its stdout, or null on any failure. */

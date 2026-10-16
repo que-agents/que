@@ -68,7 +68,7 @@ export interface ServerOptions {
   dispatchMs?: number
   /** Quiet-hours re-evaluation interval. Default 15 s. */
   quietTickMs?: number
-  /** The clock quiet hours read. Default Date.now. */
+  /** The clock quiet hours and the summary throttle read. Default Date.now. */
   now?: () => number
   /** Draws the name of a workspace created without one. Default randomWorkspaceName. */
   randomWorkspaceName?: () => string
@@ -171,7 +171,8 @@ export class DaemonServer {
       emit,
       config: () => this.configOrDefault(),
       transcriptPath: (id) => this.status.transcriptPath(id),
-      log: (m) => this.log(m)
+      log: (m) => this.log(m),
+      now: opts.now
     })
     this.tasks = new TaskQueue({
       store: this.store,
