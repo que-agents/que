@@ -5,3 +5,6 @@ release
 tools/oxlint/anti-slop
 node_modules
 *.tsbuildinfo
+docs/cli.md
+docs/configuration.md
+README.md

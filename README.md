@@ -196,14 +196,14 @@ npm run package   # an unsigned que.app in release/mac-arm64
 npm run dist      # the DMG and zip
 ```
 
-| Path | What lives there |
-| ---- | ---------------- |
-| `src/daemon/` | the daemon: terminals, workspaces, status engine, task queue, quiet hours, SQLite |
-| `src/shared/` | the socket protocol, the client, paths, config |
-| `src/cli/` | the `que` CLI |
-| `src/main/`, `src/preload/`, `src/renderer/` | the Electron app |
-| `tests/` | daemon integration tests, Playwright specs, subprocess fakes |
-| `scripts/` | build, smoke, packaged smoke, soak, flake hunt, docs, release |
+| Path                                         | What lives there                                                                  |
+| -------------------------------------------- | --------------------------------------------------------------------------------- |
+| `src/daemon/`                                | the daemon: terminals, workspaces, status engine, task queue, quiet hours, SQLite |
+| `src/shared/`                                | the socket protocol, the client, paths, config                                    |
+| `src/cli/`                                   | the `que` CLI                                                                     |
+| `src/main/`, `src/preload/`, `src/renderer/` | the Electron app                                                                  |
+| `tests/`                                     | daemon integration tests, Playwright specs, subprocess fakes                      |
+| `scripts/`                                   | build, smoke, packaged smoke, soak, flake hunt, docs, release                     |
 
 How the pieces fit: [docs/architecture.md](docs/architecture.md). How it looks and why:
 [docs/design.md](docs/design.md). Tests follow the
