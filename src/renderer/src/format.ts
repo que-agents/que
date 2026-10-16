@@ -72,23 +72,20 @@ export function formatCost(usd: number): string {
 }
 
 /**
- * `42s`, `3m 05s`, `2h 07m`: a length of time in ms, or the span between two ISO
- * timestamps (a check's start and finish), which is empty when either is unknown.
+ * The span between two ISO timestamps (a check's start and finish) as `formatDuration`
+ * writes it; empty when either is unknown.
  */
-export function formatDuration(ms: number): string
-export function formatDuration(startedAt: string | null, completedAt: string | null): string
-export function formatDuration(a: number | string | null, b?: string | null): string {
-  let ms: number
+export function formatSpan(startedAt: string | null, completedAt: string | null): string {
+  const start = startedAt ? Date.parse(startedAt) : Number.NaN
+  const end = completedAt ? Date.parse(completedAt) : Number.NaN
 
-  if (typeof a === 'number') ms = a
-  else {
-    const start = a ? Date.parse(a) : Number.NaN
-    const end = b ? Date.parse(b) : Number.NaN
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return ''
 
-    if (!Number.isFinite(start) || !Number.isFinite(end)) return ''
-    ms = end - start
-  }
+  return formatDuration(end - start)
+}
 
+/** `42s`, `3m 05s`, `2h 07m`: a length of time in ms. */
+export function formatDuration(ms: number): string {
   const s = Math.max(0, Math.round(ms / 1000))
 
   if (s < 60) return `${s}s`
@@ -138,7 +135,7 @@ const REVIEW_TEXT = {
 } as const
 
 /** The chip for a pull request: `#41`, a tone, and a tooltip sentence. */
-export function prBadge(pr: PullRequest): { label: string; tone: Tone; title: string } {
+export function prBadge(pr: PullRequest) {
   let tone: Tone
 
   if (pr.state === 'merged') tone = 'good'

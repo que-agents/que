@@ -5,9 +5,10 @@ import { app, BrowserWindow, dialog, ipcMain, Notification, shell } from 'electr
 import { DaemonClient } from '../shared/client'
 import { loginShellPath, mergePath } from '../shared/login-path'
 import { queHome } from '../shared/paths'
-import type { EventName, MethodName, Report } from '../shared/protocol'
+import type { EventName, MethodName, ParamsOf, Report } from '../shared/protocol'
 import type { QuietState, UpdateInfo } from '../shared/types'
 import { createBoardWindow } from './board'
+import { decodeAbsolutePath } from './ipc.decode'
 import { installMenu } from './menu'
 import { createTray, type QueTray } from './tray'
 import { checkForUpdate } from './update-check'
@@ -316,8 +317,10 @@ function registerIpc(): void {
   })
 
   // Fire-and-forget: the editor is found on PATH and outlives nothing here.
-  ipcMain.handle('app:openInEditor', (_e, path: unknown) => {
-    if (typeof path !== 'string' || !path.startsWith('/')) throw new Error('path must be absolute')
+  ipcMain.handle('app:openInEditor', (_e, arg) => {
+    const path = decodeAbsolutePath(arg)
+
+    if (path === null) throw new Error('path must be absolute')
     const child = spawn('code', ['-n', path], { detached: true, stdio: 'ignore' })
     child.on('error', (err) => console.error(`code -n ${path} failed: ${err.message}`))
     child.unref()
@@ -340,19 +343,27 @@ function registerIpc(): void {
     return tray?.title() ?? ''
   })
 
-  ipcMain.handle('que:request', async (_e, method: MethodName, params: unknown) => {
-    if (!ALLOWED.has(method)) throw new Error(`method not allowed: ${method}`)
-    const c = await getClient()
+  // The params pass through untouched; the daemon validates them.
+  ipcMain.handle(
+    'que:request',
+    async <M extends MethodName>(
+      _e: Electron.IpcMainInvokeEvent,
+      method: M,
+      params: ParamsOf<M>
+    ) => {
+      if (!ALLOWED.has(method)) throw new Error(`method not allowed: ${method}`)
+      const c = await getClient()
 
-    try {
-      return { ok: true, result: await c.request(method, params as never) }
-    } catch (err) {
-      // Errors thrown across ipc lose their fields; return them as data.
-      const e = err as { code?: string; message?: string }
+      try {
+        return { ok: true, result: await c.request(method, params) }
+      } catch (err) {
+        // Errors thrown across ipc lose their fields; return them as data.
+        const e = err as { code?: string; message?: string }
 
-      return { ok: false, error: { code: e.code ?? 'error', message: e.message ?? String(err) } }
+        return { ok: false, error: { code: e.code ?? 'error', message: e.message ?? String(err) } }
+      }
     }
-  })
+  )
 
   // Fire-and-forget path for keystrokes, avoiding a round trip per key.
   ipcMain.on('que:write', (_e, id: string, data: string) => {

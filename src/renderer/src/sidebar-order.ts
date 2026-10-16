@@ -12,18 +12,14 @@ export function matches(needle: string, ...haystack: (string | null | undefined)
   return haystack.some((h) => h?.toLowerCase().includes(n))
 }
 
-export function filterSidebar(
-  needle: string,
-  projects: Project[],
-  workspaces: Workspace[]
-): { projects: Project[]; workspacesOf: (projectId: string) => Workspace[] } {
+export function filterSidebar(needle: string, projects: Project[], workspaces: Workspace[]) {
   const of = (id: string): Workspace[] => workspaces.filter((w) => w.projectId === id)
   const hits = (id: string): Workspace[] => of(id).filter((w) => matches(needle, w.name, w.branch))
   const kept = projects.filter((p) => matches(needle, p.name) || hits(p.id).length > 0)
 
   return {
     projects: kept,
-    workspacesOf: (id) => {
+    workspacesOf: (id: string): Workspace[] => {
       const p = projects.find((x) => x.id === id)
 
       return p && matches(needle, p.name) ? of(id) : hits(id)

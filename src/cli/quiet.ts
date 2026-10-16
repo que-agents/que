@@ -2,8 +2,8 @@
 // `que config get|set`.
 import type { Command } from 'commander'
 import { formatCountdown, hhmm } from '../daemon/quiet-hours'
-import { describeQuietHours, parseConfigAssignment } from '../shared/config'
-import type { QuietState } from '../shared/types'
+import { combineConfigPatches, describeQuietHours, parseConfigAssignment } from '../shared/config'
+import type { ConfigPatch, QuietState } from '../shared/types'
 import { CliError, withClient } from './common'
 
 /** One line about quiet hours, for `que quiet status` and `que status`. */
@@ -23,22 +23,6 @@ export function describeQuietState(q: QuietState, now = Date.now()): string {
   }
 
   return `quiet hours until ${until}`
-}
-
-/** Combines two patches, keeping `null` (a removal) as a value. */
-function combine(a: Record<string, unknown>, b: Record<string, unknown>): Record<string, unknown> {
-  const out = { ...a }
-
-  for (const [k, v] of Object.entries(b)) {
-    const prev = out[k]
-
-    const table = (x: unknown): x is Record<string, unknown> =>
-      typeof x === 'object' && x !== null && !Array.isArray(x)
-
-    out[k] = table(prev) && table(v) ? combine(prev, v) : v
-  }
-
-  return out
 }
 
 function positiveMinutes(value: string): number {
@@ -126,11 +110,11 @@ export function registerQuietCommands(program: Command): void {
     .option('--json', 'print the result as JSON')
     .action((assignments: string[], opts: { applyTonight?: boolean; json?: boolean }) =>
       withClient(async (c) => {
-        let patch: Record<string, unknown> = {}
+        let patch: ConfigPatch = {}
 
         for (const a of assignments) {
           try {
-            patch = combine(patch, parseConfigAssignment(a))
+            patch = combineConfigPatches(patch, parseConfigAssignment(a))
           } catch (err) {
             throw new CliError((err as Error).message)
           }

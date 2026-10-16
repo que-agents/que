@@ -41,6 +41,7 @@ export function quePaths(): QuePaths {
   let socketFallback = false
 
   if (socket.length > MAX_SOCKET_PATH) {
+    // oxlint-disable-next-line anti-slop/no-runtime-typeof -- platform capability: process.getuid is absent on Windows
     const uid = typeof process.getuid === 'function' ? process.getuid() : 0
     socket = join('/tmp', `que-${uid}`, 'daemon.sock')
     socketFallback = true
