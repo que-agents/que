@@ -5,6 +5,7 @@ import fs from 'node:fs'
 import { isAbsolute, join, sep } from 'node:path'
 import type { WorkspaceFile, WorkspaceFiles } from '../shared/protocol'
 import type { Workspace } from '../shared/types'
+import { errnoCode } from './errno.decode'
 import { badRequest, notFound } from './errors'
 import { git } from './workspaces'
 
@@ -19,7 +20,7 @@ const BINARY_SNIFF_BYTES = 8192
 const GIT_TIMEOUT_MS = 15_000
 
 /** Parses `git ls-files -z` output: deduplicated, sorted, cut at MAX_FILES. */
-export function parseLsFiles(stdout: string): { files: string[]; truncated: boolean } {
+export function parseLsFiles(stdout: string) {
   const unique = [...new Set(stdout.split('\0').filter((p) => p !== ''))]
   unique.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
   const truncated = unique.length > MAX_FILES
@@ -67,11 +68,7 @@ export async function workspaceFiles(ws: Workspace, now: () => number): Promise<
   return { workspaceId: ws.id, ...parseLsFiles(r.stdout), generatedAt }
 }
 
-const isMissing = (err: unknown): boolean => {
-  const code = (err as NodeJS.ErrnoException).code
-
-  return code === 'ENOENT' || code === 'ENOTDIR'
-}
+const isMissing = (code: string | null): boolean => code === 'ENOENT' || code === 'ENOTDIR'
 
 /** One file of the worktree: its text (capped), or null content when binary. */
 export async function readWorkspaceFile(ws: Workspace, path: string): Promise<WorkspaceFile> {
@@ -88,7 +85,7 @@ export async function readWorkspaceFile(ws: Workspace, path: string): Promise<Wo
     if (!real.startsWith(root + sep)) throw badRequest(`outside the worktree: ${rel}`)
     stat = await fs.promises.stat(real)
   } catch (err) {
-    if (isMissing(err)) throw notFound(`no such file: ${rel}`)
+    if (isMissing(errnoCode(err))) throw notFound(`no such file: ${rel}`)
     throw err
   }
 

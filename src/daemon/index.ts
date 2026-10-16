@@ -7,6 +7,8 @@ import { PtyHost } from './pty-host'
 import { DaemonServer } from './server'
 
 declare const __QUE_VERSION__: string
+
+// oxlint-disable-next-line anti-slop/no-runtime-typeof -- build-time define, absent when run unbundled
 const VERSION = typeof __QUE_VERSION__ === 'string' ? __QUE_VERSION__ : '0.0.0-dev'
 
 const paths = ensureDirs(quePaths())

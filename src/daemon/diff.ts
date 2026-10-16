@@ -29,7 +29,7 @@ export interface NumstatEntry {
 }
 
 /** Resolves git's rename display (`a => b` or `pre/{a => b}/post`) to old and new paths. */
-export function parseRenamePath(spec: string): { from: string; path: string } {
+export function parseRenamePath(spec: string) {
   const braced = /^(.*)\{(.*) => (.*)\}(.*)$/.exec(spec)
 
   if (braced) {

@@ -430,13 +430,26 @@ function copyIncludes(from: string, to: string, entries: string[], log: (m: stri
   }
 }
 
+/** The variables que adds to a workspace terminal's environment. */
+export type WorkspaceTerminalEnv = {
+  QUE_WORKSPACE_ID: string
+  QUE_SOCKET: string
+  QUE_HOME: string
+  PATH: string
+  /** The claude the hooks wrapper runs. */
+  QUE_REAL_CLAUDE?: string
+  /** Set for zsh: que's startup files, which source the user's own. */
+  ZDOTDIR?: string
+  QUE_USER_ZDOTDIR?: string
+}
+
 /** Extra environment for a workspace terminal: hooks wrapper first on PATH. */
 export function workspaceTerminalEnv(
   ws: Workspace,
   paths: QuePaths,
   socket: string
-): Record<string, string> {
-  const env: Record<string, string> = {
+): WorkspaceTerminalEnv {
+  const env: WorkspaceTerminalEnv = {
     QUE_WORKSPACE_ID: ws.id,
     QUE_SOCKET: socket,
     QUE_HOME: paths.home,
