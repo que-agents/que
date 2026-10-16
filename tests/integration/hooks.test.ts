@@ -52,7 +52,7 @@ async function idleWorkspace(
 }
 
 const statusesOf = (all: Events['workspace.status'][], id: string) =>
-  all.filter((s) => s.id === id).map((s) => s.status)
+  all.flatMap((s) => (s.id === id ? [s.status] : []))
 
 describe('hook delivery', () => {
   it('reports claude in a workspace terminal through the wrapper: idle → working → needs input', async () => {

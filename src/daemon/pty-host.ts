@@ -61,9 +61,7 @@ export class HostedTerminal {
     this.serializer = new SerializeAddon()
     // The serialize addon is typed against the browser Terminal; the headless
     // terminal implements the same public surface it uses.
-    this.mirror.loadAddon(
-      this.serializer as unknown as Parameters<HeadlessTerminal['loadAddon']>[0]
-    )
+    this.mirror.loadAddon(this.serializer)
 
     this.proc = pty.spawn(file, args, {
       name: 'xterm-256color',
@@ -161,7 +159,7 @@ export class HostedTerminal {
       pid: this.proc.pid,
       alive: this.alive,
       createdAt: this.createdAt,
-      ...(this.workspaceId ? { workspaceId: this.workspaceId } : {})
+      workspaceId: this.workspaceId || undefined
     }
   }
 }

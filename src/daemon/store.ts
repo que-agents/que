@@ -2,7 +2,7 @@
 // small typed layer over prepared statements; migrations are numbered and
 // recorded in the `migrations` table.
 import { randomBytes } from 'node:crypto'
-import { DatabaseSync } from 'node:sqlite'
+import { DatabaseSync, type SQLInputValue } from 'node:sqlite'
 import type {
   Project,
   PullRequest,
@@ -410,22 +410,31 @@ export class Store {
       .run(p.id, p.name, p.path, p.defaultBranch, p.createdAt)
   }
 
+  /**
+   * Rows from a SELECT, typed by the caller. node:sqlite returns untyped records;
+   * the SELECT fixes the columns, so the row type is asserted once, here.
+   */
+  private rows<Row>(sql: string, ...params: SQLInputValue[]): Row[] {
+    return this.db.prepare(sql).all(...params) as Row[]
+  }
+
+  /** The first row of a SELECT, typed by the caller (see rows). */
+  private row<Row>(sql: string, ...params: SQLInputValue[]): Row | undefined {
+    return this.db.prepare(sql).get(...params) as Row | undefined
+  }
+
   getProject(id: string): Project | undefined {
-    const r = this.db.prepare('SELECT * FROM projects WHERE id = ?').get(id)
-    return r ? toProject(r as unknown as ProjectRow) : undefined
+    const r = this.row<ProjectRow>('SELECT * FROM projects WHERE id = ?', id)
+    return r ? toProject(r) : undefined
   }
 
   getProjectByPath(path: string): Project | undefined {
-    const r = this.db.prepare('SELECT * FROM projects WHERE path = ?').get(path)
-    return r ? toProject(r as unknown as ProjectRow) : undefined
+    const r = this.row<ProjectRow>('SELECT * FROM projects WHERE path = ?', path)
+    return r ? toProject(r) : undefined
   }
 
   listProjects(): Project[] {
-    return (
-      this.db
-        .prepare('SELECT * FROM projects ORDER BY created_at, id')
-        .all() as unknown as ProjectRow[]
-    ).map(toProject)
+    return this.rows<ProjectRow>('SELECT * FROM projects ORDER BY created_at, id').map(toProject)
   }
 
   deleteProject(id: string): void {
@@ -474,31 +483,31 @@ export class Store {
   }
 
   getWorkspace(id: string): Workspace | undefined {
-    const r = this.db.prepare('SELECT * FROM workspaces WHERE id = ?').get(id)
-    return r ? toWorkspace(r as unknown as WorkspaceRow) : undefined
+    const r = this.row<WorkspaceRow>('SELECT * FROM workspaces WHERE id = ?', id)
+    return r ? toWorkspace(r) : undefined
   }
 
   /** Any workspace (archived included) holding this name or path in the project. */
   findWorkspaceConflicts(projectId: string, name: string, path: string): Workspace[] {
-    return (
-      this.db
-        .prepare('SELECT * FROM workspaces WHERE (project_id = ? AND name = ?) OR path = ?')
-        .all(projectId, name, path) as unknown as WorkspaceRow[]
+    return this.rows<WorkspaceRow>(
+      'SELECT * FROM workspaces WHERE (project_id = ? AND name = ?) OR path = ?',
+      projectId,
+      name,
+      path
     ).map(toWorkspace)
   }
 
   /** Unarchived workspaces, oldest first. */
   listWorkspaces(projectId?: string): Workspace[] {
     const rows = projectId
-      ? this.db
-          .prepare(
-            'SELECT * FROM workspaces WHERE archived_at IS NULL AND project_id = ? ORDER BY created_at, id'
-          )
-          .all(projectId)
-      : this.db
-          .prepare('SELECT * FROM workspaces WHERE archived_at IS NULL ORDER BY created_at, id')
-          .all()
-    return (rows as unknown as WorkspaceRow[]).map(toWorkspace)
+      ? this.rows<WorkspaceRow>(
+          'SELECT * FROM workspaces WHERE archived_at IS NULL AND project_id = ? ORDER BY created_at, id',
+          projectId
+        )
+      : this.rows<WorkspaceRow>(
+          'SELECT * FROM workspaces WHERE archived_at IS NULL ORDER BY created_at, id'
+        )
+    return rows.map(toWorkspace)
   }
 
   updateStatus(id: string, u: StatusUpdate): void {
@@ -551,15 +560,17 @@ export class Store {
 
   /** Every change at or after `since`, plus the last one before it, oldest first. */
   listStatusLog(workspaceId: string, since: string): StatusLogRow[] {
-    return this.db
-      .prepare(
-        `SELECT status, reason, at FROM workspace_status_log
-           WHERE workspace_id = ? AND (at >= ? OR id = (
-             SELECT id FROM workspace_status_log WHERE workspace_id = ? AND at < ?
-               ORDER BY at DESC, id DESC LIMIT 1))
-           ORDER BY at, id`
-      )
-      .all(workspaceId, since, workspaceId, since) as unknown as StatusLogRow[]
+    return this.rows<StatusLogRow>(
+      `SELECT status, reason, at FROM workspace_status_log
+         WHERE workspace_id = ? AND (at >= ? OR id = (
+           SELECT id FROM workspace_status_log WHERE workspace_id = ? AND at < ?
+             ORDER BY at DESC, id DESC LIMIT 1))
+         ORDER BY at, id`,
+      workspaceId,
+      since,
+      workspaceId,
+      since
+    )
   }
 
   // ---- hook events ----------------------------------------------------------
@@ -586,18 +597,14 @@ export class Store {
   }
 
   listHookEvents(workspaceId: string): HookEventRow[] {
-    return (
-      this.db
-        .prepare('SELECT * FROM hook_events WHERE workspace_id = ? ORDER BY id')
-        .all(workspaceId) as unknown as Array<{
-        id: number
-        workspace_id: string
-        session_id: string | null
-        event: string
-        payload: string
-        received_at: string
-      }>
-    ).map((r) => ({
+    return this.rows<{
+      id: number
+      workspace_id: string
+      session_id: string | null
+      event: string
+      payload: string
+      received_at: string
+    }>('SELECT * FROM hook_events WHERE workspace_id = ? ORDER BY id', workspaceId).map((r) => ({
       id: r.id,
       workspaceId: r.workspace_id,
       sessionId: r.session_id,
@@ -625,21 +632,20 @@ export class Store {
   }
 
   getTask(id: string): Task | undefined {
-    const r = this.db.prepare('SELECT * FROM tasks WHERE id = ?').get(id)
-    return r ? toTask(r as unknown as TaskRow) : undefined
+    const r = this.row<TaskRow>('SELECT * FROM tasks WHERE id = ?', id)
+    return r ? toTask(r) : undefined
   }
 
   /** Oldest first (insertion order breaks ties within a millisecond). */
   listTasks(states?: readonly TaskState[]): Task[] {
     const rows =
       states && states.length > 0
-        ? this.db
-            .prepare(
-              `SELECT * FROM tasks WHERE state IN (${states.map(() => '?').join(', ')}) ORDER BY created_at, rowid`
-            )
-            .all(...states)
-        : this.db.prepare('SELECT * FROM tasks ORDER BY created_at, rowid').all()
-    return (rows as unknown as TaskRow[]).map(toTask)
+        ? this.rows<TaskRow>(
+            `SELECT * FROM tasks WHERE state IN (${states.map(() => '?').join(', ')}) ORDER BY created_at, rowid`,
+            ...states
+          )
+        : this.rows<TaskRow>('SELECT * FROM tasks ORDER BY created_at, rowid')
+    return rows.map(toTask)
   }
 
   deleteTask(id: string): void {
@@ -673,14 +679,10 @@ export class Store {
 
   /** Unlocks started at or after `since`, oldest first. */
   listUnlocks(since?: string): QuietUnlock[] {
-    const rows = (since
-      ? this.db.prepare('SELECT * FROM quiet_unlocks WHERE at >= ? ORDER BY id').all(since)
-      : this.db.prepare('SELECT * FROM quiet_unlocks ORDER BY id').all()) as unknown as Array<{
-      at: string
-      minutes: number
-      why: string | null
-      ended_at: string | null
-    }>
+    type UnlockRow = { at: string; minutes: number; why: string | null; ended_at: string | null }
+    const rows = since
+      ? this.rows<UnlockRow>('SELECT * FROM quiet_unlocks WHERE at >= ? ORDER BY id', since)
+      : this.rows<UnlockRow>('SELECT * FROM quiet_unlocks ORDER BY id')
     return rows.map((r) => ({ at: r.at, minutes: r.minutes, why: r.why, endedAt: r.ended_at }))
   }
 
@@ -733,16 +735,13 @@ export class Store {
 
   /** Every cached ticket, in the order of the last sync (a parent sits with its children). */
   listTickets(): Ticket[] {
-    const rows = this.db
-      .prepare('SELECT * FROM tickets ORDER BY position, assigned DESC, key')
-      .all() as unknown as TicketRow[]
-    return rows.map(ticketFromRow)
+    return this.rows<TicketRow>('SELECT * FROM tickets ORDER BY position, assigned DESC, key').map(
+      ticketFromRow
+    )
   }
 
   getTicket(key: string): Ticket | undefined {
-    const r = this.db.prepare('SELECT * FROM tickets WHERE key = ?').get(key) as unknown as
-      | TicketRow
-      | undefined
+    const r = this.row<TicketRow>('SELECT * FROM tickets WHERE key = ?', key)
     return r ? ticketFromRow(r) : undefined
   }
 
@@ -769,9 +768,9 @@ export class Store {
   deleteTicketsNotIn(keys: string[]): void {
     const keep = new Set(keys)
     const del = this.db.prepare('DELETE FROM tickets WHERE key = ?')
-    const rows = this.db
-      .prepare('SELECT key FROM tickets WHERE workspace_id IS NULL AND assigned != 0')
-      .all() as unknown as Array<{ key: string }>
+    const rows = this.rows<{ key: string }>(
+      'SELECT key FROM tickets WHERE workspace_id IS NULL AND assigned != 0'
+    )
     for (const r of rows) if (!keep.has(r.key)) del.run(r.key)
     this.db
       .prepare(

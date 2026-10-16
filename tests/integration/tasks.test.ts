@@ -78,7 +78,7 @@ const originBranches = (origin: string) =>
     .filter(Boolean)
 
 const statesOf = (all: Events['task.status'][], id: string) =>
-  all.filter((s) => s.id === id).map((s) => s.state)
+  all.flatMap((s) => (s.id === id ? [s.state] : []))
 
 describe('runner and finisher', () => {
   it('success: runs claude in a new workspace, commits what it left, pushes, and opens a draft PR', async () => {
@@ -321,9 +321,9 @@ describe('queue', () => {
     await d.client.request('queue.open')
     await waitFor(d, task.id, 'running')
     await expect.poll(() => readFakeLog(d.caffeinateLog).length, { timeout: 10_000 }).toBe(1)
-    const caffeinate = readFakeLog(d.caffeinateLog)[0] as unknown as { argv: string[]; pid: number }
+    const caffeinate = readFakeLog(d.caffeinateLog)[0]
     expect(caffeinate.argv).toEqual(['-i', '-w', String(process.pid)])
-    expect(pidAlive(caffeinate.pid)).toBe(true)
+    expect(pidAlive(caffeinate.pid ?? -1)).toBe(true)
     await expect
       .poll(async () => (await d.client.request('task.get', { id: task.id })).pid, {
         timeout: 10_000
@@ -336,7 +336,7 @@ describe('queue', () => {
     })
 
     await expect.poll(() => pidAlive(pid as number), { timeout: 10_000 }).toBe(false)
-    await expect.poll(() => pidAlive(caffeinate.pid), { timeout: 10_000 }).toBe(false)
+    await expect.poll(() => pidAlive(caffeinate.pid ?? -1), { timeout: 10_000 }).toBe(false)
   }, 45_000)
 
   it('does not start tasks while closed', async () => {

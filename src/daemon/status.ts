@@ -153,7 +153,7 @@ export class StatusService {
       this.opts.emit('workspace.status', {
         id,
         status: next.status,
-        ...(next.reason ? { reason: next.reason } : {}),
+        reason: next.reason || undefined,
         at: new Date(next.statusAt).toISOString()
       })
     }

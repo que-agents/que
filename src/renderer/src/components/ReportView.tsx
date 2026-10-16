@@ -48,6 +48,7 @@ export default function ReportView(): React.JSX.Element {
   // Refreshes whenever a task's state, cost, turns or PR changes (the store's tasks).
   useEffect(() => {
     void tasks
+    // oxlint-disable-next-line react/set-state-in-effect -- load awaits the daemon before it sets state, so nothing renders twice synchronously
     void load()
   }, [load, tasks])
 

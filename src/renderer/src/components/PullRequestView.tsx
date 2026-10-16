@@ -30,10 +30,10 @@ const REVIEW: Record<ReviewState, { label: string; tone: Tone }> = {
 
 /** `3 passing · 1 failing`: the count per state, in a fixed order, zeros left out. */
 function checksSummary(checks: readonly PrCheck[]): string {
-  return SUMMARY_ORDER.map((state) => [state, checks.filter((c) => c.state === state).length])
-    .filter(([, n]) => n !== 0)
-    .map(([state, n]) => `${n} ${state}`)
-    .join(' · ')
+  return SUMMARY_ORDER.flatMap((state) => {
+    const n = checks.filter((c) => c.state === state).length
+    return n === 0 ? [] : [`${n} ${state}`]
+  }).join(' · ')
 }
 
 /** A comment body: text with its line breaks, fenced blocks in mono. */
@@ -42,12 +42,12 @@ function Body({ body }: { body: string }): React.JSX.Element {
     <div className="pr-comment-body">
       {splitFences(body).map((part, i) =>
         part.kind === 'code' ? (
-          // biome-ignore lint/suspicious/noArrayIndexKey: the parts of one body are static
+          // the parts of one body are static
           <pre key={i} className="pr-code" data-lang={part.lang || undefined}>
             {part.text}
           </pre>
         ) : (
-          // biome-ignore lint/suspicious/noArrayIndexKey: the parts of one body are static
+          // the parts of one body are static
           <p key={i} className="pr-text">
             {part.text}
           </p>
@@ -173,7 +173,7 @@ export default function PullRequestView({ termKey }: { termKey: string }): React
               <ul className="pr-checks">
                 {checks.map((c, i) => (
                   <li
-                    // biome-ignore lint/suspicious/noArrayIndexKey: check names can repeat across sources
+                    // check names can repeat across sources
                     key={`${c.name}:${i}`}
                     className={`pr-check tone-${CHECK_TONE[c.state]}`}
                     data-testid={`pr-check-${i}`}

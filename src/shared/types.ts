@@ -311,3 +311,12 @@ export interface QuietUnlock {
   /** When it expired or was locked early; null while it lasts. */
   endedAt: string | null
 }
+
+/** Anything `JSON.parse` can return. */
+export type JsonValue =
+  | null
+  | boolean
+  | number
+  | string
+  | JsonValue[]
+  | { [key: string]: JsonValue }

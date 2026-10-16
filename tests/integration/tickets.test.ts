@@ -146,8 +146,7 @@ describe('starting a ticket', () => {
       projectId: null
     })
     const r = await client.request('tickets.start', { key: 'APP-1432' })
-    expect(r.kind).toBe('needs_project')
-    if (r.kind === 'needs_project') expect(r.projects.map((p) => p.id)).toEqual([project.id])
+    expect(r).toMatchObject({ kind: 'needs_project', projects: [{ id: project.id }] })
     expect(await client.request('workspace.list', {})).toEqual([])
   })
 

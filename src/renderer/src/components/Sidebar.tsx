@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Project, Task, Workspace } from '../../../preload/index.d'
 import { isLiveTask, latestTasks } from '../format'
 import { SCRATCH, useQue, useStore } from '../store'
@@ -40,7 +40,7 @@ export default function Sidebar(): React.JSX.Element {
     sort
   } = useQue()
   const searchRef = useRef<HTMLInputElement>(null)
-  // biome-ignore lint/correctness/useExhaustiveDependencies: the nonce re-runs the focus on every request
+  // the nonce re-runs the focus on every request
   useEffect(() => {
     if (!searchOpen) return
     searchRef.current?.focus()
@@ -51,7 +51,7 @@ export default function Sidebar(): React.JSX.Element {
   const owned = latestTasks(tasks)
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set())
   const [menu, setMenu] = useState<OpenMenu | null>(null)
-  const closeMenu = useRef(() => setMenu(null)).current
+  const closeMenu = useCallback(() => setMenu(null), [])
   const selected = view.kind === 'terminals' ? view.key : null
   const allSessions = store.tabs(SCRATCH)
   const sessions = allSessions.filter((t) => matches(filter, t.name, t.cwd))

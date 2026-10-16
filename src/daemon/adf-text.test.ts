@@ -4,7 +4,7 @@ import { adfToText } from './adf-text'
 const text = (t: string, marks?: unknown[]) => ({
   type: 'text',
   text: t,
-  ...(marks ? { marks } : {})
+  marks: marks || undefined
 })
 const p = (...content: unknown[]) => ({ type: 'paragraph', content })
 const doc = (...content: unknown[]) => ({ type: 'doc', version: 1, content })

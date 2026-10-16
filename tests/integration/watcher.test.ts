@@ -79,7 +79,7 @@ async function sentinel(ws: Workspace, file: string): Promise<void> {
 async function watchBoth(
   ws: Workspace,
   other: Workspace,
-  start: (w: Workspace) => Promise<unknown> = attach
+  start: (w: Workspace) => Promise<string> | Promise<void> = attach
 ): Promise<number> {
   await start(ws)
   await start(other)

@@ -15,7 +15,10 @@ export default function Dialog({ title, testId, onClose, children }: Props): Rea
   const titleId = useId()
   const ref = useRef<HTMLDivElement>(null)
   const onCloseRef = useRef(onClose)
-  onCloseRef.current = onClose
+
+  useEffect(() => {
+    onCloseRef.current = onClose
+  })
 
   useEffect(() => {
     const opener = document.activeElement as HTMLElement | null

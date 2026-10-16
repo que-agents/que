@@ -103,8 +103,8 @@ export function registerTicketCommands(program: Command): void {
         const projectId = opts.project ? (await findProject(c, opts.project)).id : undefined
         const r = await c.request('tickets.start', {
           key,
-          ...(projectId ? { projectId } : {}),
-          ...(opts.session ? { session: true } : {})
+          projectId,
+          session: opts.session || undefined
         })
         if (r.kind === 'needs_project') {
           console.error('que cannot tell which project; pass -p <project>:')

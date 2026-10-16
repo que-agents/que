@@ -173,7 +173,7 @@ export class TaskQueue {
       this.o.emit('task.status', {
         id: next.id,
         state: next.state,
-        ...(next.reason ? { reason: next.reason } : {}),
+        reason: next.reason || undefined,
         at: next.updatedAt
       })
       this.runner.onTransition(prev, next)

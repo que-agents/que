@@ -162,8 +162,8 @@ const count = (s) => final.filter((t) => t.state === s).length
 const end = samples[samples.length - 1].t
 const mean = (xs) => xs.reduce((a, b) => a + b, 0) / Math.max(1, xs.length)
 // The t=0 sample is a cold daemon; the first minute is the warm samples within it.
-const firstMinute = mean(samples.filter((s) => s.t > 0 && s.t <= 60).map((s) => s.mb))
-const lastMinute = mean(samples.filter((s) => s.t >= end - 60).map((s) => s.mb))
+const firstMinute = mean(samples.flatMap((s) => (s.t > 0 && s.t <= 60 ? [s.mb] : [])))
+const lastMinute = mean(samples.flatMap((s) => (s.t >= end - 60 ? [s.mb] : [])))
 const peak = Math.max(...samples.map((s) => s.mb))
 
 // Leak check while the daemon is still up: once the queue has drained, nothing

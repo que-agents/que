@@ -407,7 +407,7 @@ export function parseConfigAssignment(arg: string): Record<string, unknown> {
   const text = arg.slice(eq + 1).trim()
   const parts = key.split('.')
   if (parts.some((p) => p === '')) throw new Error(`invalid key ${JSON.stringify(key)}`)
-  const scalar = (s: string): unknown => {
+  const scalar = (s: string): boolean | number | string => {
     if (s === 'true') return true
     if (s === 'false') return false
     if (s !== '' && Number.isFinite(Number(s))) return Number(s)

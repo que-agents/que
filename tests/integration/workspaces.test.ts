@@ -235,7 +235,7 @@ describe('workspace.createPr', () => {
     const ws = await client.request('workspace.create', {
       projectId,
       name: 'APP-1432 retry logic',
-      ...(branch ? { branch } : {})
+      branch: branch || undefined
     })
     return { origin, ws }
   }

@@ -27,6 +27,10 @@ Playwright specs in that order and stops at the first failure. CI runs the
 same thing plus `npm run smoke:packaged`. If you changed a CLI command or a
 config default, run `npm run docs` and commit the regenerated `docs/` files.
 
+## Lint and format
+
+`npm run lint` runs oxlint (with the vendored rules in `tools/oxlint/`, see its README) and an oxfmt format check; `npm run format` writes the formatting. `npm ci` installs a pre-commit hook (husky and lint-staged) that lints and formats the staged files.
+
 ## Tests
 
 The repository carries three testing guides in `.claude/skills/` that apply to

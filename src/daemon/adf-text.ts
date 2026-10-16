@@ -112,8 +112,10 @@ function block(n: Node): string {
 
 function blocks(nodes: Node[]): string {
   return nodes
-    .map(block)
-    .filter((s) => s !== '')
+    .flatMap((n) => {
+      const s = block(n)
+      return s === '' ? [] : [s]
+    })
     .join('\n\n')
 }
 

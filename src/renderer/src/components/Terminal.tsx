@@ -17,7 +17,10 @@ export default function Terminal({ id, focused = true }: Props): React.JSX.Eleme
   const hostRef = useRef<HTMLDivElement>(null)
   const termRef = useRef<XTerm | null>(null)
   const focusedRef = useRef(focused)
-  focusedRef.current = focused
+
+  useEffect(() => {
+    focusedRef.current = focused
+  })
 
   // Moving focus between panes with the keyboard has to move the cursor too.
   useEffect(() => {

@@ -184,6 +184,6 @@ describe('jsonPages', () => {
   })
 
   it.each([['[1, 2'], ['nope'], ['[] x']])('rejects %j', (text) => {
-    expect(() => jsonPages(text)).toThrow()
+    expect(() => jsonPages(text)).toThrow('not JSON')
   })
 })

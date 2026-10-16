@@ -58,7 +58,7 @@ export function NewWorkspaceDialog({
       await store.createWorkspace({
         projectId: project.id,
         name: slug,
-        ...(baseRef.trim() ? { baseRef: baseRef.trim() } : {})
+        baseRef: baseRef.trim() || undefined
       })
       onClose()
     })

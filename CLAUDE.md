@@ -19,6 +19,7 @@ tests/integration/  daemon integration tests (in-process daemon, real pty/socket
 tests/contract/     opt-in tests against the real Claude Code CLI
 tests/e2e/          Playwright Electron specs, pages/ (page objects), utils/ (app, que, repo)
 tests/fakes/bin/    fake claude, gh, code, caffeinate (see tests/fakes/README.md)
+tools/oxlint/       the vendored anti-slop oxlint rules (see its README); config in .oxlintrc.json
 scripts/            build-node.mjs (daemon, CLI, client bundles), smoke.mjs, verify.mjs,
                     smoke-packaged.mjs, soak.mjs, flake-hunt.mjs, docs generators, release.mjs
 build/              the app icon (scripts/make-icon.mjs); electron-builder.yml packages the app
@@ -33,7 +34,7 @@ Path aliases: `@shared/*`, `@daemon/*`, `@renderer/*`.
 | `npm run dev`           | Build the node bundles and start the app with hot reload                |
 | `npm run build`         | Build main, preload, renderer, daemon, and CLI into `out/`              |
 | `npm run typecheck`     | `tsc` over the node and web projects                                    |
-| `npm run lint`          | Biome lint + format check (`npm run format` writes formatting)          |
+| `npm run lint`          | oxlint + oxfmt check (`npm run format` writes formatting)               |
 | `npm test`              | Vitest, both projects (`node`, `renderer`); contract tests skip         |
 | `npm run test:contract` | Contract tests against the real `claude` (costs a few cents)            |
 | `npm run smoke`         | Start a daemon in a temp `QUE_HOME`, run one PTY, shut down             |

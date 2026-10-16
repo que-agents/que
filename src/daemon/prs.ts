@@ -4,7 +4,7 @@
 // cached until the tracker sees the pull request's updatedAt move.
 import { execFile } from 'node:child_process'
 import type { UserConfig } from '../shared/config'
-import type { Project, PrThread, PullRequest, Workspace } from '../shared/types'
+import type { JsonValue, Project, PrThread, PullRequest, Workspace } from '../shared/types'
 import { ghFailed, notFound } from './errors'
 import { isProtectedBranch } from './finisher'
 import { parsePullRequest, samePullRequest } from './pr-state'
@@ -29,7 +29,7 @@ export interface PrServiceOptions {
 }
 
 /** Runs `gh <args>` in cwd and parses what it prints as JSON. */
-function ghJson(args: string[], cwd: string, signal: AbortSignal): Promise<unknown> {
+function ghJson(args: string[], cwd: string, signal: AbortSignal): Promise<JsonValue> {
   return new Promise((resolve, reject) => {
     execFile(
       'gh',
@@ -41,7 +41,7 @@ function ghJson(args: string[], cwd: string, signal: AbortSignal): Promise<unkno
           return reject(new Error(detail))
         }
         try {
-          resolve(JSON.parse(stdout) as unknown)
+          resolve(JSON.parse(stdout) as JsonValue)
         } catch {
           reject(new Error('gh printed output that is not JSON'))
         }
@@ -64,7 +64,7 @@ async function ghPrList(branch: string, cwd: string, signal: AbortSignal): Promi
  * `gh api --paginate` prints one JSON array per page, back to back; this joins
  * them. A single page parses as is.
  */
-function ghLineComments(number: number, cwd: string, signal: AbortSignal): Promise<unknown> {
+function ghLineComments(number: number, cwd: string, signal: AbortSignal): Promise<JsonValue> {
   return new Promise((resolve, reject) => {
     execFile(
       'gh',
@@ -76,7 +76,9 @@ function ghLineComments(number: number, cwd: string, signal: AbortSignal): Promi
           return reject(new Error(detail))
         }
         try {
-          resolve(jsonPages(stdout).flatMap((page) => (Array.isArray(page) ? page : [page])))
+          resolve(
+            jsonPages(stdout).flatMap((page) => (Array.isArray(page) ? page : [page])) as JsonValue
+          )
         } catch {
           reject(new Error('gh printed output that is not JSON'))
         }

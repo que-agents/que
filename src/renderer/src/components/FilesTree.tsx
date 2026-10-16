@@ -230,7 +230,7 @@ function Row({
   const title = change?.from ? `${change.from} → ${node.path}` : node.path
 
   return (
-    // biome-ignore lint/a11y/useKeyWithClickEvents: the tree handles the keys for its rows, at its cursor
+    // the tree handles the keys for its rows, at its cursor
     <div
       role="treeitem"
       tabIndex={-1}

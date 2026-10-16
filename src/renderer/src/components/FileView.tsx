@@ -58,7 +58,7 @@ export default function FileView({
             style={{ '--ln-width': `${digits}ch` } as React.CSSProperties}
           >
             {lines.map((line, i) => (
-              // biome-ignore lint/suspicious/noArrayIndexKey: a file's lines are static and have no identity
+              // a file's lines are static and have no identity
               <span key={i} className="line">
                 <span className="ln" aria-hidden="true">
                   {i + 1}

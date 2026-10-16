@@ -48,7 +48,7 @@ export function sortProjects(
   const out = [...projects]
   if (sort === 'name') return out.sort(byName)
   const newest = (p: Project): number | null => {
-    const own = workspaces.filter((w) => w.projectId === p.id).map(activityOf)
+    const own = workspaces.flatMap((w) => (w.projectId === p.id ? [activityOf(w)] : []))
     return own.length === 0 ? null : Math.max(...own)
   }
   const at = new Map(out.map((p) => [p.id, newest(p)]))

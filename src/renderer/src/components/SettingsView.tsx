@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import type { QuietHoursConfig, UserConfig, Weekday } from '../../../preload/index.d'
 import { currentWindow } from '../../../daemon/quiet-hours'
 import { WEEKDAYS } from '../../../shared/types'
@@ -148,9 +148,8 @@ export default function SettingsView(): React.JSX.Element {
   const [confirming, setConfirming] = useState(false)
   const [saved, setSaved] = useState(false)
 
-  useEffect(() => {
-    if (config && form === null) setForm(toForm(config.config))
-  }, [config, form])
+  // The form is seeded from the config once it first arrives.
+  if (config && form === null) setForm(toForm(config.config))
 
   if (!form || !config) {
     return (

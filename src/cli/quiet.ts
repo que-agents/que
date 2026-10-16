@@ -50,8 +50,8 @@ export function registerQuietCommands(program: Command): void {
     .action((minutes: string | undefined, opts: { why?: string; json?: boolean }) =>
       withClient(async (c) => {
         const q = await c.request('quiet.unlock', {
-          ...(minutes === undefined ? {} : { minutes: positiveMinutes(minutes) }),
-          ...(opts.why ? { why: opts.why } : {})
+          minutes: minutes === undefined ? undefined : positiveMinutes(minutes),
+          why: opts.why || undefined
         })
         if (opts.json) console.log(JSON.stringify(q, null, 2))
         else if (!q.inQuietHours) console.log('not in quiet hours; nothing to unlock')

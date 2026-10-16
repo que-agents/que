@@ -7,6 +7,7 @@ import {
   encode,
   type EventName,
   type Events,
+  type Methods,
   type PingResult,
   type Request,
   type ResponseError
@@ -532,7 +533,7 @@ export class DaemonServer {
     method: string,
     p: Record<string, unknown>,
     afterSend: AfterSend
-  ): Promise<unknown> {
+  ): Promise<Methods[keyof Methods]['result']> {
     const { host } = this.opts
     // Quiet hours: detail is refused here, so every client gets the same answer.
     this.quiet.check(method)

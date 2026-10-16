@@ -37,7 +37,7 @@ async function workspace(branch?: string, projectId?: string) {
   return client.request('workspace.create', {
     projectId: projectId ?? (await project()),
     name: branch ?? 'APP-1432 retry logic',
-    ...(branch ? { branch } : {})
+    branch: branch || undefined
   })
 }
 

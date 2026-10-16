@@ -135,9 +135,9 @@ class FakeBridge {
           return this.createTerminal(p)
         },
         list: async (p) =>
-          [...this.terminals.values()]
-            .filter((t) => !p?.workspaceId || t.workspaceId === p.workspaceId)
-            .map(toInfo),
+          [...this.terminals.values()].flatMap((t) =>
+            !p?.workspaceId || t.workspaceId === p.workspaceId ? [toInfo(t)] : []
+          ),
         attach: async ({ id, cols, rows }) => {
           this.refuseIfQuiet('term.attach')
           const t = this.terminal(id)
@@ -258,9 +258,9 @@ class FakeBridge {
           return { ...task }
         },
         list: async (p) =>
-          [...this.tasks.values()]
-            .filter((t) => !p?.state || t.state === p.state)
-            .map((t) => ({ ...t })),
+          [...this.tasks.values()].flatMap((t) =>
+            !p?.state || t.state === p.state ? [{ ...t }] : []
+          ),
         get: async ({ id }) => ({ ...this.task(id) }),
         stop: async ({ id }) => {
           const t = this.task(id)
@@ -362,9 +362,9 @@ class FakeBridge {
           return { ...ws }
         },
         list: async (p) =>
-          [...this.workspaces.values()]
-            .filter((w) => !p?.projectId || w.projectId === p.projectId)
-            .map((w) => ({ ...w })),
+          [...this.workspaces.values()].flatMap((w) =>
+            !p?.projectId || w.projectId === p.projectId ? [{ ...w }] : []
+          ),
         get: async ({ id }) => ({ ...this.workspace(id) }),
         remove: async ({ id }) => {
           this.workspace(id)
@@ -517,7 +517,7 @@ class FakeBridge {
     const ws = this.workspace(id)
     const at = new Date().toISOString()
     this.workspaces.set(id, { ...ws, status, statusReason: reason ?? null, statusAt: at })
-    this.emit('workspace.status', { id, status, ...(reason ? { reason } : {}), at })
+    this.emit('workspace.status', { id, status, reason: reason || undefined, at })
   }
 
   /** Sets (or clears) the workspace's pull request, as a daemon refresh would. */
@@ -550,7 +550,7 @@ class FakeBridge {
       updatedAt: at,
       finishedAt: terminal ? at : null
     })
-    this.emit('task.status', { id, state, ...(reason ? { reason } : {}), at })
+    this.emit('task.status', { id, state, reason: reason || undefined, at })
   }
 
   getTask(id: string): Task | undefined {
@@ -867,7 +867,7 @@ class FakeBridge {
       pid: 40_000 + this.terminals.size,
       alive: true,
       createdAt: new Date().toISOString(),
-      ...(workspaceId ? { workspaceId } : {}),
+      workspaceId: workspaceId || undefined,
       input: '',
       screen: ''
     })

@@ -313,8 +313,8 @@ export function registerWorkspaceCommands(program: Command): void {
         const w = await findWorkspace(c, ref)
         const diff = await c.request('workspace.diff', {
           id: w.id,
-          ...(opts.base !== undefined ? { base: opts.base } : {}),
-          ...(opts.commit !== undefined ? { commit: opts.commit } : {})
+          base: opts.base,
+          commit: opts.commit
         })
         console.log(opts.json ? JSON.stringify(diff, null, 2) : formatDiff(diff))
       })

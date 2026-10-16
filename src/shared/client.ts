@@ -205,7 +205,10 @@ export class DaemonClient {
  * binary of the `electron` dev dependency (CLI and scripts under plain Node).
  */
 export function resolveRuntime(): string {
-  return runtimeFrom(__dirname, process) ?? (require('electron') as unknown as string)
+  const bundled = runtimeFrom(__dirname, process)
+  if (bundled !== undefined && bundled !== null) return bundled
+  const electronBinary: string = require('electron')
+  return electronBinary
 }
 
 /** que.app/Contents/Resources/daemon/index.js when packaged, else out/daemon/index.js. */
