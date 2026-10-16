@@ -1,0 +1,29 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    # Wait out the window in which a bad release usually gets yanked.
+    cooldown:
+      default-days: 7
+    # Majors arrive as individual PRs (Electron, Vitest, React); minor and patch bumps land as one grouped PR.
+    groups:
+      npm-minor-and-patch:
+        update-types:
+          - minor
+          - patch
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 7
+    groups:
+      actions:
+        patterns:
+          - '*'
