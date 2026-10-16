@@ -1,38 +1,32 @@
-// Flattens a tracker document (its rich text, JSON nodes) to readable plain
-// text for a ticket brief.
+// Flattens a tracker document (its rich text, decoded by adf-text.decode.ts) to
+// readable plain text for a ticket brief.
+import type { AdfDocument, AdfNode } from './adf-text.decode'
 
-interface Mark {
-  type?: string
-  attrs?: Record<string, unknown>
+function children(n: AdfNode): AdfNode[] {
+  return 'content' in n ? (n.content ?? []) : []
 }
 
-interface Node {
-  type?: string
-  text?: string
-  attrs?: Record<string, unknown>
-  marks?: Mark[]
-  content?: Node[]
+/** Whether the node carried a `content` list (unknown nodes are rendered by it if so). */
+function hasContent(n: AdfNode): boolean {
+  return 'content' in n && n.content !== null
 }
 
-const isNode = (v: unknown): v is Node => typeof v === 'object' && v !== null && !Array.isArray(v)
-
-function children(n: Node): Node[] {
-  return Array.isArray(n.content) ? n.content.filter(isNode) : []
+function textOf(n: AdfNode): string {
+  return n.kind === 'text' || n.kind === 'unknown-node' ? (n.text ?? '') : ''
 }
 
-function inline(n: Node): string {
+function inline(n: AdfNode): string {
   return children(n).map(inlineNode).join('')
 }
 
-function inlineNode(n: Node): string {
-  switch (n.type) {
+function inlineNode(n: AdfNode): string {
+  switch (n.kind) {
     case 'text': {
-      let t = n.text ?? ''
+      let t = n.text
 
-      for (const m of n.marks ?? []) {
-        if (m.type === 'code') t = `\`${t}\``
-        else if (m.type === 'link' && typeof m.attrs?.href === 'string')
-          t = `${t} (${m.attrs.href})`
+      for (const m of n.marks) {
+        if (m.kind === 'code') t = `\`${t}\``
+        else if (m.kind === 'link') t = `${t} (${m.href})`
       }
 
       return t
@@ -41,11 +35,11 @@ function inlineNode(n: Node): string {
     case 'hardBreak':
       return '\n'
     case 'mention':
-      return `@${String(n.attrs?.text ?? '').replace(/^@/, '')}`
+      return `@${n.text.replace(/^@/, '')}`
     case 'inlineCard':
-      return String(n.attrs?.url ?? '')
+      return n.url
     default:
-      return n.content ? inline(n) : (n.text ?? '')
+      return hasContent(n) ? inline(n) : textOf(n)
   }
 }
 
@@ -56,7 +50,7 @@ function indent(text: string, pad: string): string {
     .join('\n')
 }
 
-function list(n: Node, ordered: boolean): string {
+function list(n: AdfNode, ordered: boolean): string {
   return children(n)
     .map((item, i) => {
       const marker = ordered ? `${i + 1}. ` : '- '
@@ -75,12 +69,12 @@ function list(n: Node, ordered: boolean): string {
     .join('\n')
 }
 
-function block(n: Node): string {
-  switch (n.type) {
+function block(n: AdfNode): string {
+  switch (n.kind) {
     case 'paragraph':
       return inline(n)
     case 'heading': {
-      const level = Math.min(6, Math.max(1, Number(n.attrs?.level) || 1))
+      const level = Math.min(6, Math.max(1, n.level))
 
       return `${'#'.repeat(level)} ${inline(n)}`
     }
@@ -92,13 +86,9 @@ function block(n: Node): string {
     case 'listItem':
       return blocks(children(n))
     case 'codeBlock': {
-      const lang = typeof n.attrs?.language === 'string' ? n.attrs.language : ''
+      const code = n.content.map(textOf).join('')
 
-      const code = children(n)
-        .map((c) => c.text ?? '')
-        .join('')
-
-      return `\`\`\`${lang}\n${code}\n\`\`\``
+      return `\`\`\`${n.language}\n${code}\n\`\`\``
     }
 
     case 'rule':
@@ -117,11 +107,11 @@ function block(n: Node): string {
     case 'panel':
       return blocks(children(n))
     default:
-      return n.content ? blocks(children(n)) : inlineNode(n)
+      return hasContent(n) ? blocks(children(n)) : inlineNode(n)
   }
 }
 
-function blocks(nodes: Node[]): string {
+function blocks(nodes: AdfNode[]): string {
   return nodes
     .flatMap((n) => {
       const s = block(n)
@@ -131,11 +121,11 @@ function blocks(nodes: Node[]): string {
     .join('\n\n')
 }
 
-/** Plain text for a document; a string is returned as is, anything else is ''. */
-export function adfToText(doc: unknown): string {
-  if (typeof doc === 'string') return doc
+/** Plain text for a document; a string is returned as is, nothing is ''. */
+export function adfToText(doc: AdfDocument): string {
+  if (doc === null) return ''
 
-  if (!isNode(doc)) return ''
+  if (doc.kind === 'plain') return doc.text
 
-  return (doc.type === 'doc' || doc.content ? blocks(children(doc)) : block(doc)).trim()
+  return (doc.kind === 'doc' || hasContent(doc) ? blocks(children(doc)) : block(doc)).trim()
 }
