@@ -40,6 +40,7 @@ import { TaskQueue } from './queue'
 import { SYSTEM_PROMPT } from './runner'
 import { PrService } from './prs'
 import { StatusService } from './status'
+import { Summarizer } from './summarizer'
 import { TicketService } from './tickets'
 import { Store } from './store'
 import { workspaceDiff } from './diff'
@@ -130,6 +131,7 @@ export class DaemonServer {
   readonly workspaces: WorkspaceManager
   readonly tasks: TaskQueue
   readonly quiet: QuietService
+  readonly summaries: Summarizer
   /** The last good user config and the file stamp it was read at. */
   private config: UserConfig
   private configStamp = ''
@@ -159,7 +161,17 @@ export class DaemonServer {
       emit,
       killTerminals: (id) => this.killWorkspaceTerminals(id),
       log: (m) => this.log(m),
-      randomName: opts.randomWorkspaceName
+      randomName: opts.randomWorkspaceName,
+      onCreated: (ws) => this.summaries.created(ws),
+      onRemoved: (id) => this.summaries.forget(id)
+    })
+    this.summaries = new Summarizer({
+      store: this.store,
+      paths: this.paths,
+      emit,
+      config: () => this.configOrDefault(),
+      transcriptPath: (id) => this.status.transcriptPath(id),
+      log: (m) => this.log(m)
     })
     this.tasks = new TaskQueue({
       store: this.store,
@@ -520,6 +532,7 @@ export class DaemonServer {
       this.tickets.stop()
       await this.tickets.drain()
       await this.tasks.shutdown()
+      await this.summaries.close()
       this.status.stop()
       this.watcher.close()
       this.workspaces.close()
@@ -759,6 +772,8 @@ export class DaemonServer {
           throw new RpcError(ErrorCodes.BadRequest, 'payload must be an object')
         }
         this.status.hook(ws.id, payload as HookEvent)
+        const hook = payload as HookEvent
+        if (hook.hook_event_name === 'Stop' && !hook.agent_id) this.summaries.stopped(ws.id)
         const taskId = optString(p, 'taskId')
         if (taskId) this.tasks.hook(taskId, payload as HookEvent)
         return { ok: true }
