@@ -69,6 +69,8 @@ export interface ServerOptions {
   quietTickMs?: number
   /** The clock quiet hours read. Default Date.now. */
   now?: () => number
+  /** Draws the name of a workspace created without one. Default randomWorkspaceName. */
+  randomWorkspaceName?: () => string
 }
 
 interface Subscription {
@@ -156,7 +158,8 @@ export class DaemonServer {
       status: this.status,
       emit,
       killTerminals: (id) => this.killWorkspaceTerminals(id),
-      log: (m) => this.log(m)
+      log: (m) => this.log(m),
+      randomName: opts.randomWorkspaceName
     })
     this.tasks = new TaskQueue({
       store: this.store,
@@ -700,7 +703,7 @@ export class DaemonServer {
         return this.workspaces.rename({
           id: str(p, 'id'),
           title: str(p, 'title'),
-          renameBranch: optBool(p, 'renameBranch')
+          branch: optString(p, 'branch')
         })
       case 'workspace.canRenameBranch':
         return { allowed: await this.workspaces.canRenameBranch(str(p, 'id')) }

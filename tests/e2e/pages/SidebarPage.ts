@@ -21,6 +21,8 @@ export class SidebarPage {
   newWorkspaceDialog: Locator
   newWorkspaceBrief: Locator
   newWorkspaceStart: Locator
+  newWorkspaceName: Locator
+  newWorkspaceNewName: Locator
   newWorkspaceSlug: Locator
   newWorkspaceSubmit: Locator
   removeProjectDialog: Locator
@@ -54,6 +56,8 @@ export class SidebarPage {
     this.newWorkspaceDialog = page.getByTestId('dialog-new-workspace')
     this.newWorkspaceBrief = page.getByTestId('dialog-new-workspace-brief')
     this.newWorkspaceStart = page.getByTestId('dialog-new-workspace-start')
+    this.newWorkspaceName = page.getByTestId('dialog-new-workspace-name')
+    this.newWorkspaceNewName = page.getByTestId('dialog-new-workspace-new-name')
     this.newWorkspaceSlug = page.getByTestId('dialog-new-workspace-slug')
     this.newWorkspaceSubmit = page.getByTestId('dialog-new-workspace-submit')
     this.removeProjectDialog = page.getByTestId('dialog-remove-project')

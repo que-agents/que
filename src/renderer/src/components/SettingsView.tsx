@@ -445,7 +445,7 @@ export default function SettingsView(): React.JSX.Element {
               onChange={(e) => update({ workspacePrompt: e.target.value })}
             />
             <span className="hint">
-              Typed into claude when a workspace starts from its brief (.que/brief.md)
+              The first prompt Claude gets when a workspace starts from its brief (.que/brief.md)
             </span>
           </label>
         </fieldset>

@@ -4,7 +4,7 @@
 import { type ChildProcess, execFile, spawn } from 'node:child_process'
 import fs from 'node:fs'
 import { basename, dirname, isAbsolute, join, normalize, resolve } from 'node:path'
-import { briefFile, nameFromTitle, titleOf } from '../shared/brief'
+import { briefFile, titleOf } from '../shared/brief'
 import {
   formatConfigErrors,
   loadConfig,
@@ -20,6 +20,7 @@ import type {
   WorkspaceRemoveParams,
   WorkspaceRenameParams
 } from '../shared/protocol'
+import { randomWorkspaceName } from '../shared/names'
 import { workspaceSlug } from '../shared/slug'
 import type { Project, Workspace } from '../shared/types'
 import { badRequest, conflict, notFound } from './errors'
@@ -118,6 +119,8 @@ export interface WorkspaceManagerOptions {
   /** Kills (and announces) every terminal of a workspace. */
   killTerminals: (workspaceId: string) => void
   log?: (msg: string) => void
+  /** Draws a name for a workspace created without one (default: randomWorkspaceName). */
+  randomName?: () => string
 }
 
 export class WorkspaceManager {
@@ -209,8 +212,9 @@ export class WorkspaceManager {
   }
 
   /**
-   * Makes a workspace from a name (a clash is refused) or from a title or brief (the name is
-   * the title's slug, suffixed `-2` … `-50` on a clash). A brief goes to `.que/brief.md`.
+   * Makes a workspace from a name (a clash is refused) or, without one, under a random
+   * three-word name (drawn again on a clash, up to 50 times). The title defaults to the
+   * brief's first line; a brief goes to `.que/brief.md`.
    */
   async create(p: WorkspaceCreateParams): Promise<Workspace> {
     const project = this.project(p.projectId)
@@ -218,11 +222,8 @@ export class WorkspaceManager {
     const title = p.title?.trim() || (brief ? titleOf(brief) : undefined) || undefined
     const id = newId('ws_')
     const explicit = p.name !== undefined
-    const wanted = explicit
-      ? workspaceSlug(p.name ?? '')
-      : title
-        ? (nameFromTitle(title) ?? `ws-${id.slice('ws_'.length, 'ws_'.length + 8)}`)
-        : null
+    const draw = this.opts.randomName ?? (() => randomWorkspaceName())
+    const wanted = explicit ? workspaceSlug(p.name ?? '') : draw()
     if (!wanted) {
       throw badRequest(
         `invalid workspace name ${JSON.stringify(p.name ?? '')}: use letters, digits, '.', '_' or '-' (max 64)`
@@ -237,13 +238,13 @@ export class WorkspaceManager {
     const config = this.config()
     const repo = this.repoConfig(project.path)
 
-    // The first free name: only the first is tried for an explicit name.
+    // The first free name: only the given one for an explicit name, else up to 50 draws.
     let slug = ''
     let branch = ''
     let path = ''
     let clash = ''
     for (let i = 1; i <= (explicit ? 1 : 50); i++) {
-      slug = i === 1 ? wanted : `${wanted.slice(0, 60)}-${i}`
+      slug = i === 1 ? wanted : draw()
       branch = p.branch ?? slug
       path = join(config.worktreeRoot, project.name, slug)
       clash = await this.clash(project, slug, branch, path)
@@ -346,29 +347,27 @@ export class WorkspaceManager {
   }
 
   /**
-   * Sets the title; with renameBranch, also renames a never-pushed branch to the title's
-   * slug (the folder keeps its name). Announces the change with workspace.updated.
+   * Sets the title and, given a different branch, renames a never-pushed branch to it (the
+   * folder keeps its name). Announces the change with workspace.updated.
    */
   async rename(p: WorkspaceRenameParams): Promise<Workspace> {
     const ws = this.get(p.id)
     const title = p.title.trim()
     if (!title) throw badRequest('title is required')
-    if (p.renameBranch) {
+    const branch = p.branch?.trim()
+    if (branch !== undefined && branch !== ws.branch) {
+      if (!(await validBranch(ws.path, branch))) {
+        throw badRequest(`invalid branch name ${JSON.stringify(branch)}`)
+      }
       if (!(await this.canRenameBranch(ws.id))) {
         throw conflict(`branch ${ws.branch} is on origin; it keeps its name`)
       }
-      const branch = nameFromTitle(title)
-      if (!branch || !(await validBranch(ws.path, branch))) {
-        throw badRequest(`no branch name can be made from ${JSON.stringify(title)}`)
+      if (await refExists(ws.path, `refs/heads/${branch}`)) {
+        throw conflict(`branch ${branch} already exists`)
       }
-      if (branch !== ws.branch) {
-        if (await refExists(ws.path, `refs/heads/${branch}`)) {
-          throw conflict(`branch ${branch} already exists`)
-        }
-        const moved = await git(ws.path, ['branch', '-m', ws.branch, branch])
-        if (!moved.ok) throw badRequest(`git branch -m failed: ${moved.stderr}`)
-        this.opts.store.setWorkspaceBranch(ws.id, branch)
-      }
+      const moved = await git(ws.path, ['branch', '-m', ws.branch, branch])
+      if (!moved.ok) throw badRequest(`git branch -m failed: ${moved.stderr}`)
+      this.opts.store.setWorkspaceBranch(ws.id, branch)
     }
     this.opts.store.setWorkspaceTitle(ws.id, title)
     const next = this.get(ws.id)

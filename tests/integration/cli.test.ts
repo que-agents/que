@@ -94,7 +94,14 @@ describe('que work and que ws', () => {
   it('creates a workspace from a repo path, waits for setup, and prints its path', async () => {
     const repo = makeTempRepo(daemon.home, { queToml: 'setup = "printf ok > .setup-done"\n' })
 
-    const r = await runCli('work', 'APP-1432 retry logic', '-r', repo)
+    const r = await runCli(
+      'work',
+      'APP-1432 retry logic',
+      '--name',
+      'APP-1432 retry logic',
+      '-r',
+      repo
+    )
 
     expect(r.code).toBe(0)
     const path = join(daemon.home, 'worktrees', 'uploader', 'app-1432-retry-logic')
@@ -116,7 +123,7 @@ describe('que work and que ws', () => {
     const neither = await runCli('work', '-r', repo)
 
     expect(JSON.parse(fromBrief.stdout)).toMatchObject({
-      name: 'raise-the-upload-timeout',
+      name: expect.stringMatching(/^[a-z]+-[a-z]+-[a-z]+$/),
       title: 'Raise the upload timeout',
       brief
     })
@@ -134,7 +141,7 @@ describe('que work and que ws', () => {
     const repo = makeTempRepo(daemon.home, { queToml: 'setup = "exit 4"\n' })
     fs.writeFileSync(daemon.configPath, withQuietOff(`[repos.uploader-api]\npath = "${repo}"\n`))
 
-    const r = await runCli('work', 'app-1433-broken-setup', '-r', 'uploader-api')
+    const r = await runCli('work', '--name', 'app-1433-broken-setup', '-r', 'uploader-api')
 
     expect(r.code).toBe(1)
     expect(r.stderr).toContain('setup failed for app-1433-broken-setup')
@@ -144,7 +151,7 @@ describe('que work and que ws', () => {
 
   it('removes a workspace by name and deletes its branch', async () => {
     const repo = makeTempRepo(daemon.home)
-    await runCli('work', 'app-1470-cleanup', '-r', repo)
+    await runCli('work', '--name', 'app-1470-cleanup', '-r', repo)
 
     const r = await runCli('ws', 'remove', 'app-1470-cleanup', '--delete-branch')
 
@@ -156,7 +163,7 @@ describe('que work and que ws', () => {
 
   it('opens a workspace with code -n', async () => {
     const repo = makeTempRepo(daemon.home)
-    const path = (await runCli('work', 'app-1480-editor', '-r', repo)).stdout.trim()
+    const path = (await runCli('work', '--name', 'app-1480-editor', '-r', repo)).stdout.trim()
 
     const r = await runCli('open', 'app-1480-editor')
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { briefFile, nameFromTitle, titleOf } from './brief'
+import { briefFile, titleOf } from './brief'
 
 describe('titleOf', () => {
   it("is the brief's first non-empty line, trimmed", () => {
@@ -35,30 +35,5 @@ describe('briefFile', () => {
 
   it('still heads a brief whose first line is a lower heading', () => {
     expect(briefFile('Notes', '## Notes\nsome')).toBe('# Notes\n\n## Notes\nsome\n')
-  })
-})
-
-describe('nameFromTitle', () => {
-  it('slugs the title', () => {
-    expect(nameFromTitle('Add retry logic to the uploader')).toBe('add-retry-logic-to-the-uploader')
-  })
-
-  it('cuts the slug to 48 characters without a trailing hyphen or dot', () => {
-    expect(
-      nameFromTitle('Refactor the upload queue so that retries back off exponentially per host')
-    ).toBe('refactor-the-upload-queue-so-that-retries-back-o')
-    expect(nameFromTitle('Fix the flaky test in uploader.spec.ts...')).toBe(
-      'fix-the-flaky-test-in-uploader.spec.ts'
-    )
-    expect(nameFromTitle(`${'a'.repeat(47)} b`)).toBe('a'.repeat(47))
-  })
-
-  it('drops leading punctuation', () => {
-    expect(nameFromTitle('— Speed up the diff view')).toBe('speed-up-the-diff-view')
-  })
-
-  it('is null when the title has no usable characters', () => {
-    expect(nameFromTitle('✨🚀')).toBeNull()
-    expect(nameFromTitle('')).toBeNull()
   })
 })

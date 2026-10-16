@@ -141,8 +141,8 @@ export interface WorkspaceStartResult {
 export interface WorkspaceRenameParams {
   id: string
   title: string
-  /** Also rename the branch to the title's slug; only for a branch never pushed to origin. */
-  renameBranch?: boolean
+  /** A new branch name; only for a branch never pushed to origin. The folder keeps its name. */
+  branch?: string
 }
 
 export interface WorkspaceListParams {

@@ -238,10 +238,13 @@ export function registerWorkspaceCommands(program: Command): void {
   program
     .command('work [brief]')
     .description(
-      'create a workspace (git worktree) from a brief and print its path; its first line is the title, and names the branch and folder'
+      'create a workspace (git worktree) from a brief and print its path; the first line of the brief is its title, and its branch and folder get a random three-word name unless --name is given'
     )
     .requiredOption('-r, --repo <repo>', 'repository path or configured repo name')
-    .option('--name <name>', 'name the workspace, branch and folder yourself')
+    .option(
+      '--name <name>',
+      'name the workspace, branch and folder yourself (default: random words)'
+    )
     .option('--base <ref>', 'base ref (default: origin/<default branch>)')
     .option('--open', 'open the workspace with `code -n`')
     .option('--json', 'print the workspace as JSON')

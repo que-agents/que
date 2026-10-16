@@ -1263,6 +1263,8 @@ export class QueStore {
   async createWorkspace(p: {
     projectId: string
     brief: string
+    /** The workspace, branch and folder name. */
+    name: string
     baseRef?: string
     start?: boolean
   }): Promise<void> {
@@ -1297,8 +1299,12 @@ export class QueStore {
   }
 
   /** Sets a workspace's title (and branch, when asked). Throws for the dialog. */
-  async renameWorkspace(id: string, title: string, renameBranch: boolean): Promise<void> {
-    const ws = await this.api.workspace.rename({ id, title, renameBranch })
+  async renameWorkspace(id: string, title: string, branch?: string): Promise<void> {
+    const ws = await this.api.workspace.rename({
+      id,
+      title,
+      ...(branch !== undefined ? { branch } : {})
+    })
     this.upsertWorkspace(ws)
   }
 

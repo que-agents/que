@@ -30,11 +30,13 @@ import type {
   WorkspaceFiles,
   WorkspaceStatus
 } from '../../../preload/index.d'
-import { nameFromTitle, titleOf } from '../../../shared/brief'
+import { titleOf } from '../../../shared/brief'
+import { randomWorkspaceName } from '../../../shared/names'
 import {
   ErrorCodes,
   QUIET_REFUSED_METHODS,
-  type WorkspaceCreateParams
+  type WorkspaceCreateParams,
+  type WorkspaceRenameParams
 } from '../../../shared/protocol'
 import { workspaceSlug } from '../../../shared/slug'
 import { makeQuietState, makeUserConfig } from './fixtures'
@@ -91,7 +93,7 @@ class FakeBridge {
   private prCalls: Array<{ id: string; title: string }> = []
   private createCallLog: WorkspaceCreateParams[] = []
   private startCallLog: string[] = []
-  private renameCallLog: Array<{ id: string; title: string; renameBranch: boolean }> = []
+  private renameCallLog: WorkspaceRenameParams[] = []
   private pushedBranches = new Set<string>()
   private quiet: QuietState = makeQuietState()
   private unlocks: QuietUnlock[] = []
@@ -376,13 +378,12 @@ class FakeBridge {
           const brief = p.brief?.trim() ? p.brief : undefined
           const title = p.title?.trim() || (brief ? titleOf(brief) : '')
           const id = fakeId('ws_')
-          const s =
-            name !== undefined
-              ? workspaceSlug(name)
-              : title
-                ? (nameFromTitle(title) ?? `ws-${id.slice(3, 11)}`)
-                : null
+          const s = name !== undefined ? workspaceSlug(name) : randomWorkspaceName()
           if (!s) throw rpcError('bad_request', `invalid workspace name ${name ?? ''}`)
+          const other = [...this.workspaces.values()].find(
+            (w) => w.projectId === projectId && w.name === s
+          )
+          if (other) throw rpcError('conflict', `workspace ${s} already exists (${other.id})`)
           const now = new Date().toISOString()
           const ws: Workspace = {
             ...(title ? { title } : {}),
@@ -507,14 +508,16 @@ class FakeBridge {
             ).id
           return { terminalId }
         },
-        rename: async ({ id, title, renameBranch }) => {
+        rename: async (p) => {
+          const { id, title } = p
           const ws = this.workspace(id)
           if (!title.trim()) throw rpcError('bad_request', 'title is required')
-          this.renameCallLog.push({ id, title, renameBranch: renameBranch === true })
-          const branch =
-            renameBranch && !this.pushedBranches.has(id)
-              ? (nameFromTitle(title) ?? ws.branch)
-              : ws.branch
+          this.renameCallLog.push(structuredClone(p))
+          const wanted = p.branch?.trim()
+          if (wanted !== undefined && wanted !== ws.branch && this.pushedBranches.has(id)) {
+            throw rpcError('conflict', `branch ${ws.branch} is on origin; it keeps its name`)
+          }
+          const branch = wanted || ws.branch
           const next = { ...ws, title: title.trim(), branch }
           this.workspaces.set(id, next)
           this.emit('workspace.updated', { ...next })
@@ -719,7 +722,7 @@ class FakeBridge {
   }
 
   /** Every workspace.rename call, in order. */
-  renameCalls(): Array<{ id: string; title: string; renameBranch: boolean }> {
+  renameCalls(): WorkspaceRenameParams[] {
     return this.renameCallLog.map((c) => ({ ...c }))
   }
 

@@ -17,7 +17,7 @@ hand; run `npm run docs` after changing a command.
 | `que term attach [options] <id>` | attach this TTY to a terminal (Ctrl-] detaches) |
 | `que project add [options] <path>` | register a git repository |
 | `que project list [options]` | list projects |
-| `que work [options] [brief]` | create a workspace (git worktree) from a brief and print its path; its first line is the title, and names the branch and folder |
+| `que work [options] [brief]` | create a workspace (git worktree) from a brief and print its path; the first line of the brief is its title, and its branch and folder get a random three-word name unless --name is given |
 | `que ws list [options]` | list workspaces |
 | `que ws remove [options] <workspace>` | remove a workspace: kill its terminals, run teardown, remove the worktree |
 | `que ws diff [options] <workspace>` | what a workspace changed against its base, committed and uncommitted, with its commits |
@@ -197,12 +197,14 @@ Options:
 ```text
 Usage: que work [options] [brief]
 
-create a workspace (git worktree) from a brief and print its path; its first
-line is the title, and names the branch and folder
+create a workspace (git worktree) from a brief and print its path; the first
+line of the brief is its title, and its branch and folder get a random
+three-word name unless --name is given
 
 Options:
   -r, --repo <repo>  repository path or configured repo name
-  --name <name>      name the workspace, branch and folder yourself
+  --name <name>      name the workspace, branch and folder yourself (default:
+                     random words)
   --base <ref>       base ref (default: origin/<default branch>)
   --open             open the workspace with `code -n`
   --json             print the workspace as JSON

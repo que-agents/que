@@ -2,8 +2,8 @@
 // in the launched app's daemon, the workspace terminal shows up as a tab, and
 // a Claude Code session typed into it (the fake, through que's hooks wrapper)
 // reports needs input back to `que status`, and the report lists the workspace
-// as waiting. And a workspace made from a brief in the dialog: named after its
-// first line, titled with it in the sidebar (the brief on hover), and claude
+// as waiting. And a workspace made from a brief in the dialog: under a random
+// three-word name, titled with its first line in the sidebar (the brief on hover), and claude
 // started on the start prompt in its only terminal.
 import { expect, test } from '@playwright/test'
 import type { StatusJson } from '../../src/cli/workspaces'
@@ -52,6 +52,7 @@ test('a claude session in a workspace terminal reports needs input to que status
     workspace = queJson<Workspace>(
       launched.queHome,
       'work',
+      '--name',
       'APP-1432 retry logic',
       '-r',
       repo,
@@ -106,12 +107,13 @@ test('a claude session in a workspace terminal reports needs input to que status
   })
 })
 
-test('a workspace described in a brief is named after it, titled with it, and starts claude on it', async () => {
+test('a workspace described in a brief gets a random name, is titled with it, and starts claude on it', async () => {
   const repo = makeRepo()
   const queHome = newQueHome()
   const brief = 'Raise the upload timeout\n\nThe upload test times out on slow CI runners.'
   let project: Project
   let workspace: Workspace
+  let name = ''
   let sidebar: SidebarPage
   let terminal: TerminalPage
 
@@ -124,15 +126,18 @@ test('a workspace described in a brief is named after it, titled with it, and st
     await expect(sidebar.project(project.id)).toBeVisible()
   })
 
-  await test.step('Describe the work; the branch and folder are named from its first line', async () => {
+  await test.step('Describe the work under a random name, drawing another once', async () => {
     await sidebar.projectAddWorkspace(project.id).click()
     await sidebar.newWorkspaceBrief.fill(brief)
-    await expect(sidebar.newWorkspaceSlug).toHaveText('Branch and folder: raise-the-upload-timeout')
+    await expect(sidebar.newWorkspaceName).toHaveValue(/^[a-z]+-[a-z]+-[a-z]+$/)
+    await sidebar.newWorkspaceNewName.click()
+    await expect(sidebar.newWorkspaceName).toHaveValue(/^[a-z]+-[a-z]+-[a-z]+$/)
+    name = await sidebar.newWorkspaceName.inputValue()
     await expect(sidebar.newWorkspaceStart).toBeChecked()
     await sidebar.newWorkspaceSubmit.click()
     await expect(sidebar.newWorkspaceDialog).toHaveCount(0)
     const created = queJson<Workspace[]>(queHome, 'ws', 'list', '--json').find(
-      (w) => w.name === 'raise-the-upload-timeout'
+      (w) => w.name === name
     )
     expect(created).toMatchObject({ title: 'Raise the upload timeout', brief })
     workspace = created as Workspace

@@ -21,29 +21,60 @@ async function openRetry(user: ReturnType<typeof userEvent.setup>): Promise<void
 
 describe('work-mode dialogs', () => {
   describe('new workspace', () => {
-    it('names the branch from the first line of the brief, live, and refuses one it cannot name', async () => {
+    it('offers a random name, draws another on New name, and slugs a typed one live', async () => {
       const user = userEvent.setup()
       fakeBridge.seedProject(uploader)
       render(<App />)
       await user.click(await screen.findByRole('button', { name: 'New workspace in uploader' }))
-      const dialog = screen.getByRole('dialog', { name: 'New workspace in uploader' })
+      const dialog = screen.getByRole('dialog', { name: 'New workspace' })
       const brief = within(dialog).getByRole('textbox', { name: 'What are you doing?' })
+      const name = within(dialog).getByRole('textbox', { name: 'Branch and folder' })
       const submit = within(dialog).getByRole('button', { name: 'Create workspace' })
       expect(brief).toHaveFocus()
-      expect(submit).toBeDisabled()
+      expect((name as HTMLInputElement).value).toMatch(/^[a-z]+-[a-z]+-[a-z]+$/)
+      expect(submit).toBeDisabled() // starting Claude needs a brief
 
-      await user.type(brief, '✨🚀')
+      await user.type(brief, 'Retry uploads{Shift>}{Enter}{/Shift}Back off three times.')
+      expect(submit).toBeEnabled()
+      const drawn = new Set([(name as HTMLInputElement).value])
+      for (let i = 0; i < 5; i++) {
+        await user.click(within(dialog).getByRole('button', { name: 'New name' }))
+        expect((name as HTMLInputElement).value).toMatch(/^[a-z]+-[a-z]+-[a-z]+$/)
+        drawn.add((name as HTMLInputElement).value)
+      }
+      expect(drawn.size).toBeGreaterThan(1)
+
+      await user.clear(name)
+      await user.type(name, '!!!')
       expect(submit).toBeDisabled()
       expect(within(dialog).getByTestId('dialog-new-workspace-slug')).toHaveTextContent(
-        'Start the first line with a letter or digit.'
+        /Use letters, digits/
       )
-
-      await user.clear(brief)
-      await user.type(brief, 'APP-1432 Retry logic{Shift>}{Enter}{/Shift}Back off three times.')
+      await user.clear(name)
+      await user.type(name, 'APP-1432 Retry logic')
       expect(within(dialog).getByTestId('dialog-new-workspace-slug')).toHaveTextContent(
-        'Branch and folder: app-1432-retry-logic'
+        'Becomes app-1432-retry-logic'
       )
       expect(submit).toBeEnabled()
+    })
+
+    it('shows a name clash in the dialog and keeps it open', async () => {
+      const user = userEvent.setup()
+      fakeBridge.seedProject(uploader)
+      fakeBridge.seedWorkspace(makeWorkspace({ projectId: uploader.id, name: 'calm-amber-otter' }))
+      render(<App />)
+      await user.click(await screen.findByRole('button', { name: 'New workspace in uploader' }))
+      const dialog = screen.getByRole('dialog', { name: 'New workspace' })
+      const name = within(dialog).getByRole('textbox', { name: 'Branch and folder' })
+      await user.type(within(dialog).getByRole('textbox', { name: 'What are you doing?' }), 'x')
+      await user.clear(name)
+      await user.type(name, 'calm-amber-otter')
+      await user.click(within(dialog).getByRole('button', { name: 'Create workspace' }))
+
+      expect(await within(dialog).findByRole('alert')).toHaveTextContent(
+        'workspace calm-amber-otter already exists'
+      )
+      expect(screen.getByRole('dialog', { name: 'New workspace' })).toBeInTheDocument()
     })
 
     it('creates the workspace from the brief and starts claude in its only terminal', async () => {
@@ -51,10 +82,13 @@ describe('work-mode dialogs', () => {
       fakeBridge.seedProject(uploader)
       render(<App />)
       await user.click(await screen.findByRole('button', { name: 'New workspace in uploader' }))
-      const dialog = screen.getByRole('dialog', { name: 'New workspace in uploader' })
+      const dialog = screen.getByRole('dialog', { name: 'New workspace' })
       expect(
-        within(dialog).getByRole('checkbox', { name: 'Start claude with this brief' })
+        within(dialog).getByRole('checkbox', { name: 'Start Claude with this brief' })
       ).toBeChecked()
+      const name = (
+        within(dialog).getByRole('textbox', { name: 'Branch and folder' }) as HTMLInputElement
+      ).value
       await user.click(within(dialog).getByText('Advanced'))
       await user.type(within(dialog).getByRole('textbox', { name: /Base ref/ }), 'origin/release')
 
@@ -71,14 +105,12 @@ describe('work-mode dialogs', () => {
         {
           projectId: uploader.id,
           brief: 'Add retry logic to the uploader\nBack off exponentially.',
+          name,
           baseRef: 'origin/release'
         }
       ])
       const [ws] = await window.que.workspace.list()
-      expect(ws).toMatchObject({
-        name: 'add-retry-logic-to-the-uploader',
-        title: 'Add retry logic to the uploader'
-      })
+      expect(ws).toMatchObject({ name, title: 'Add retry logic to the uploader' })
       expect(fakeBridge.startCalls()).toEqual([ws.id])
       await waitFor(() => {
         expect(screen.getAllByRole('tab')).toHaveLength(1)
@@ -91,22 +123,21 @@ describe('work-mode dialogs', () => {
       fakeBridge.seedProject(uploader)
       render(<App />)
       await user.click(await screen.findByRole('button', { name: 'New workspace in uploader' }))
-      const dialog = screen.getByRole('dialog', { name: 'New workspace in uploader' })
+      const dialog = screen.getByRole('dialog', { name: 'New workspace' })
+      const name = within(dialog).getByRole('textbox', { name: 'Branch and folder' })
 
-      await user.type(
-        within(dialog).getByRole('textbox', { name: 'What are you doing?' }),
-        'Fix the flaky upload test'
-      )
       await user.click(
-        within(dialog).getByRole('checkbox', { name: 'Start claude with this brief' })
+        within(dialog).getByRole('checkbox', { name: 'Start Claude with this brief' })
       )
+      await user.clear(name)
+      await user.type(name, 'fix-flaky-upload')
       await user.click(within(dialog).getByRole('button', { name: 'Create workspace' }))
 
       await waitFor(() => {
         expect(screen.getAllByRole('tab')).toHaveLength(1)
       })
       expect(fakeBridge.startCalls()).toEqual([])
-      expect(screen.getByTestId('topbar-title')).toHaveTextContent('fix-the-flaky-upload-test')
+      expect(screen.getByTestId('topbar-title')).toHaveTextContent('fix-flaky-upload')
     })
 
     it('returns focus to the opener when cancelled with Escape', async () => {

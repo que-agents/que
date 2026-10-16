@@ -1,6 +1,4 @@
-// A brief is free text describing the work. Its first line is the title, and
-// the title's slug names the workspace, its branch, and its folder.
-import { slugify, WORKSPACE_NAME_RE } from './slug'
+// A brief is free text describing the work; its first line is the title.
 
 /** The brief's first non-empty line, trimmed, at most 80 characters. */
 export function titleOf(brief: string): string {
@@ -17,13 +15,4 @@ export function briefFile(title: string, brief: string): string {
   const body = `${brief.trimEnd()}\n`
   const first = brief.split('\n').find((l) => l.trim() !== '') ?? ''
   return first.trimStart().startsWith('# ') ? body : `# ${title}\n\n${body}`
-}
-
-/** A workspace name from a title: its slug cut to 48 characters, or null when nothing usable is left. */
-export function nameFromTitle(title: string): string | null {
-  const slug = slugify(title)
-    .replace(/^[^a-z0-9]+/, '')
-    .slice(0, 48)
-    .replace(/[-.]+$/, '')
-  return WORKSPACE_NAME_RE.test(slug) ? slug : null
 }

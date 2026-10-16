@@ -228,22 +228,25 @@ worktree_include = ["config/local", "missing.json"]
   })
 })
 
+const THREE_WORDS = /^[a-z]+-[a-z]+-[a-z]+$/
+
 describe('workspaces from a brief', () => {
   const brief = 'Fix the flaky upload test\n\nIt times out on slow CI runners; raise the timeout.'
 
-  it('takes the title from the first line, names the workspace after it, and writes the brief', async () => {
+  it('takes the title from the first line, draws a three-word name, and writes the brief', async () => {
     const repo = makeTempRepo(daemon.home)
     const project = await client.request('project.add', { path: repo })
 
     const ws = await client.request('workspace.create', { projectId: project.id, brief })
 
+    expect(ws.name).toMatch(THREE_WORDS)
     expect(ws).toMatchObject({
-      name: 'fix-the-flaky-upload-test',
-      branch: 'fix-the-flaky-upload-test',
-      path: join(daemon.home, 'worktrees', 'uploader', 'fix-the-flaky-upload-test'),
+      branch: ws.name,
+      path: join(daemon.home, 'worktrees', 'uploader', ws.name),
       title: 'Fix the flaky upload test',
       brief
     })
+    expect(gitIn(ws.path, 'rev-parse', '--abbrev-ref', 'HEAD')).toBe(ws.name)
     expect(fs.readFileSync(join(ws.path, '.que', 'brief.md'), 'utf8')).toBe(
       `# Fix the flaky upload test\n\n${brief}\n`
     )
@@ -254,60 +257,54 @@ describe('workspaces from a brief', () => {
     })
   }, 20_000)
 
-  it('prefers a given title, and keeps a given name exactly', async () => {
+  it('gives two workspaces from the same brief different names, and keeps a given name exactly', async () => {
     const project = await client.request('project.add', { path: makeTempRepo(daemon.home) })
 
-    const titled = await client.request('workspace.create', {
+    const first = await client.request('workspace.create', { projectId: project.id, brief })
+    const second = await client.request('workspace.create', {
       projectId: project.id,
       title: 'Speed up the diff view',
       brief
     })
     const named = await client.request('workspace.create', {
       projectId: project.id,
-      name: 'app-1490-upload-timeout',
+      name: 'APP-1490 upload timeout',
       brief
     })
 
-    expect(titled).toMatchObject({
-      name: 'speed-up-the-diff-view',
-      title: 'Speed up the diff view'
-    })
+    expect(second.name).toMatch(THREE_WORDS)
+    expect(second.name).not.toBe(first.name)
+    expect(second.title).toBe('Speed up the diff view')
     expect(named).toMatchObject({
       name: 'app-1490-upload-timeout',
       title: 'Fix the flaky upload test'
     })
-  }, 20_000)
-
-  it('adds -2, -3 when the name, branch, or folder is taken', async () => {
-    const repo = makeTempRepo(daemon.home)
-    gitIn(repo, 'branch', 'fix-the-flaky-upload-test')
-    const project = await client.request('project.add', { path: repo })
-
-    const second = await client.request('workspace.create', { projectId: project.id, brief })
-    const third = await client.request('workspace.create', { projectId: project.id, brief })
-
-    expect(second).toMatchObject({ name: 'fix-the-flaky-upload-test-2' })
-    expect(third).toMatchObject({ name: 'fix-the-flaky-upload-test-3' })
     await expect(
-      client.request('workspace.create', {
-        projectId: project.id,
-        name: 'fix-the-flaky-upload-test-2',
-        brief
-      })
+      client.request('workspace.create', { projectId: project.id, name: first.name, brief })
     ).rejects.toMatchObject({ code: 'conflict' })
   }, 20_000)
 
-  it('falls back to ws-<id> for a title with nothing to name, and refuses neither', async () => {
-    const project = await client.request('project.add', { path: makeTempRepo(daemon.home) })
+  it('draws again when the name, branch, or folder is taken, and gives up after 50 draws', async () => {
+    await daemon.close()
+    const draws = ['taken-branch-name', 'calm-amber-otter', 'calm-amber-otter', 'brisk-tidy-heron']
+    let n = 0
+    daemon = await startTestDaemon({
+      randomWorkspaceName: () => draws[Math.min(n++, draws.length - 1)]
+    })
+    client = daemon.client
+    const repo = makeTempRepo(daemon.home)
+    gitIn(repo, 'branch', 'taken-branch-name')
+    const project = await client.request('project.add', { path: repo })
 
-    const ws = await client.request('workspace.create', { projectId: project.id, brief: '✨🚀' })
+    const first = await client.request('workspace.create', { projectId: project.id, brief })
+    const second = await client.request('workspace.create', { projectId: project.id, brief })
+    expect([first.name, second.name]).toEqual(['calm-amber-otter', 'brisk-tidy-heron'])
 
-    expect(ws.name).toBe(`ws-${ws.id.slice(3, 11)}`)
-    expect(ws.title).toBe('✨🚀')
     await expect(
-      client.request('workspace.create', { projectId: project.id, brief: '  \n ' })
-    ).rejects.toMatchObject({ code: 'bad_request' })
-  }, 20_000)
+      client.request('workspace.create', { projectId: project.id, brief })
+    ).rejects.toMatchObject({ code: 'conflict' })
+    expect(n).toBe(54)
+  }, 30_000)
 })
 
 describe('workspace.start', () => {
@@ -391,7 +388,7 @@ describe('workspace.rename', () => {
     ).rejects.toMatchObject({ code: 'bad_request' })
   }, 20_000)
 
-  it('renames a branch never pushed to the new title, but not over an existing one', async () => {
+  it('renames a branch never pushed, but not to an invalid or existing name', async () => {
     const { repo, ws } = await created()
     gitIn(repo, 'branch', 'taken-branch-name')
     expect(await client.request('workspace.canRenameBranch', { id: ws.id })).toEqual({
@@ -401,23 +398,25 @@ describe('workspace.rename', () => {
     const renamed = await client.request('workspace.rename', {
       id: ws.id,
       title: 'Raise the upload test timeout',
-      renameBranch: true
+      branch: 'fix/upload-timeout'
     })
 
-    expect(renamed).toMatchObject({ branch: 'raise-the-upload-test-timeout', path: ws.path })
-    expect(gitIn(ws.path, 'rev-parse', '--abbrev-ref', 'HEAD')).toBe(
-      'raise-the-upload-test-timeout'
-    )
+    expect(renamed).toMatchObject({
+      branch: 'fix/upload-timeout',
+      name: ws.name,
+      path: ws.path
+    })
+    expect(gitIn(ws.path, 'rev-parse', '--abbrev-ref', 'HEAD')).toBe('fix/upload-timeout')
     await expect(
-      client.request('workspace.rename', {
-        id: ws.id,
-        title: 'Taken branch name',
-        renameBranch: true
-      })
+      client.request('workspace.rename', { id: ws.id, title: 'Again', branch: 'taken-branch-name' })
     ).rejects.toMatchObject({ code: 'conflict' })
-    expect((await client.request('workspace.get', { id: ws.id })).title).toBe(
-      'Raise the upload test timeout'
-    )
+    await expect(
+      client.request('workspace.rename', { id: ws.id, title: 'Again', branch: 'bad..name' })
+    ).rejects.toMatchObject({ code: 'bad_request' })
+    expect(await client.request('workspace.get', { id: ws.id })).toMatchObject({
+      title: 'Raise the upload test timeout',
+      branch: 'fix/upload-timeout'
+    })
   }, 20_000)
 
   it('keeps the name of a branch that is on origin', async () => {
@@ -433,10 +432,17 @@ describe('workspace.rename', () => {
       client.request('workspace.rename', {
         id: ws.id,
         title: 'Raise the upload test timeout',
-        renameBranch: true
+        branch: 'raise-the-upload-test-timeout'
       })
     ).rejects.toMatchObject({ code: 'conflict' })
     expect(gitIn(ws.path, 'rev-parse', '--abbrev-ref', 'HEAD')).toBe(ws.branch)
+    // The same branch is not a rename: the title still changes.
+    const renamed = await client.request('workspace.rename', {
+      id: ws.id,
+      title: 'Raise the upload test timeout',
+      branch: ws.branch
+    })
+    expect(renamed).toMatchObject({ title: 'Raise the upload test timeout', branch: ws.branch })
   }, 20_000)
 })
 

@@ -44,8 +44,8 @@ overnight tasks open pull requests.
 ```sh
 que doctor                     # checks the daemon, claude, gh, git, config, hooks
 que project add ~/code/uploader
-que work "APP-142 retry logic" -r ~/code/uploader   # a worktree on branch app-142-retry-logic
-que attach app-142-retry-logic # or click it in the app's sidebar
+que work "Add retry logic" -r ~/code/uploader --name app-142-retry   # a worktree on branch app-142-retry
+que attach app-142-retry       # or click it in the app's sidebar
 claude                         # in the workspace terminal; its status shows in the sidebar
 ```
 
@@ -156,7 +156,7 @@ Generated from `que --help`; options and arguments are in [docs/cli.md](docs/cli
 | `que term attach [options] <id>` | attach this TTY to a terminal (Ctrl-] detaches) |
 | `que project add [options] <path>` | register a git repository |
 | `que project list [options]` | list projects |
-| `que work [options] [brief]` | create a workspace (git worktree) from a brief and print its path; its first line is the title, and names the branch and folder |
+| `que work [options] [brief]` | create a workspace (git worktree) from a brief and print its path; the first line of the brief is its title, and its branch and folder get a random three-word name unless --name is given |
 | `que ws list [options]` | list workspaces |
 | `que ws remove [options] <workspace>` | remove a workspace: kill its terminals, run teardown, remove the worktree |
 | `que ws diff [options] <workspace>` | what a workspace changed against its base, committed and uncommitted, with its commits |

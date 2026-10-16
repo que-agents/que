@@ -1017,6 +1017,10 @@ body.resizing {
   flex: 1;
 }
 
+.name-draw {
+  align-self: flex-end;
+}
+
 .hint {
   margin: 0;
   color: var(--fg-muted);

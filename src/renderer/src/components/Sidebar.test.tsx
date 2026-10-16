@@ -293,7 +293,7 @@ describe('Sidebar', () => {
       expect(screen.queryByTestId(`sidebar-workspace-${board.id}`)).not.toBeInTheDocument()
     })
 
-    it('renames a workspace from its menu, and the branch too when it was never pushed', async () => {
+    it('renames a workspace from its menu, and its branch when it was never pushed', async () => {
       const user = userEvent.setup()
       seed()
       render(<App />)
@@ -304,28 +304,28 @@ describe('Sidebar', () => {
       await user.click(screen.getByRole('menuitem', { name: 'Rename…' }))
       const dialog = screen.getByRole('dialog', { name: 'Rename app-1432-retry-logic' })
       const title = within(dialog).getByRole('textbox', { name: 'Title' })
+      const branch = within(dialog).getByRole('textbox', { name: 'Branch' })
       expect(title).toHaveValue('app-1432-retry-logic')
+      expect(branch).toHaveValue(retry.branch)
+      await waitFor(() => expect(branch).toBeEnabled())
       await user.clear(title)
       await user.type(title, 'Retry uploads with backoff')
-      await user.click(
-        await within(dialog).findByRole('checkbox', {
-          name: 'Also rename the branch to retry-uploads-with-backoff'
-        })
-      )
+      await user.clear(branch)
+      await user.type(branch, 'fix/retry-backoff')
       await user.click(within(dialog).getByRole('button', { name: 'Rename' }))
 
       await waitFor(() => {
         expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
       })
       expect(fakeBridge.renameCalls()).toEqual([
-        { id: retry.id, title: 'Retry uploads with backoff', renameBranch: true }
+        { id: retry.id, title: 'Retry uploads with backoff', branch: 'fix/retry-backoff' }
       ])
       expect(screen.getByTestId(`sidebar-workspace-${retry.id}-name`)).toHaveTextContent(
         'Retry uploads with backoff'
       )
     })
 
-    it('offers no branch rename for a pushed branch', async () => {
+    it('keeps a pushed branch read-only and renames only the title', async () => {
       const user = userEvent.setup()
       seed()
       fakeBridge.setBranchPushed(board.id)
@@ -336,16 +336,15 @@ describe('Sidebar', () => {
       )
       await user.click(screen.getByRole('menuitem', { name: 'Rename…' }))
       const dialog = screen.getByRole('dialog', { name: 'Rename app-1440-quiet-board' })
+      expect(await within(dialog).findByText('Pushed branches keep their name')).toBeInTheDocument()
+      expect(within(dialog).getByRole('textbox', { name: 'Branch' })).toBeDisabled()
       await user.clear(within(dialog).getByRole('textbox', { name: 'Title' }))
       await user.type(within(dialog).getByRole('textbox', { name: 'Title' }), 'Quiet board polish')
       await user.click(within(dialog).getByRole('button', { name: 'Rename' }))
 
       await waitFor(() => {
-        expect(fakeBridge.renameCalls()).toEqual([
-          { id: board.id, title: 'Quiet board polish', renameBranch: false }
-        ])
+        expect(fakeBridge.renameCalls()).toEqual([{ id: board.id, title: 'Quiet board polish' }])
       })
-      expect(screen.queryByRole('checkbox', { name: /rename the branch/ })).not.toBeInTheDocument()
     })
 
     it('opens the workspace in the editor from its menu', async () => {
