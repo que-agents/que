@@ -307,7 +307,7 @@ export class TaskQueue {
   // ---- methods ----------------------------------------------------------------
 
   add(p: TaskAddParams): Task {
-    if (typeof p.brief !== 'string' || p.brief.trim() === '') throw badRequest('brief is required')
+    if (p.brief.trim() === '') throw badRequest('brief is required')
 
     if (!p.projectId === !p.workspaceId) {
       throw badRequest('pass exactly one of projectId or workspaceId')
@@ -326,10 +326,10 @@ export class TaskQueue {
 
     if (!['prompt', 'file'].includes(source)) throw badRequest(`invalid source ${source}`)
 
-    const positive = (v: unknown, key: string, int: boolean): void => {
+    const positive = (v: number | undefined, key: string, int: boolean): void => {
       if (v === undefined) return
 
-      if (typeof v !== 'number' || !(v > 0) || (int && !Number.isInteger(v))) {
+      if (!(v > 0) || (int && !Number.isInteger(v))) {
         throw badRequest(`${key} must be a positive ${int ? 'integer' : 'number'}`)
       }
     }
@@ -418,10 +418,7 @@ export class TaskQueue {
   }
 
   open(concurrency?: number): QueueState {
-    if (
-      concurrency !== undefined &&
-      (typeof concurrency !== 'number' || !Number.isInteger(concurrency) || concurrency < 1)
-    ) {
+    if (concurrency !== undefined && (!Number.isInteger(concurrency) || concurrency < 1)) {
       throw badRequest('concurrency must be a positive integer')
     }
 
