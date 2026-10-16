@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import type { Ticket } from '../shared/types'
 import { makeFakeIssue } from '../testing/fakes'
-import { levelOf, parseIssue, renderBrief, workspaceNameFor } from './tickets'
+import { renderBrief, ticketFrom, workspaceNameFor } from './tickets'
+import { decodeWorkItem } from './tickets.decode'
 
 const AT = '2026-10-14T08:00:00.000Z'
 
@@ -28,69 +29,19 @@ function ticket(overrides: Partial<Ticket> = {}): Ticket {
   }
 }
 
-describe('parseIssue', () => {
-  it('reads an issue in acli shape', () => {
-    expect(
-      parseIssue(makeFakeIssue({ fields: { labels: ['api'] } }), AT, 'example.atlassian.net')
-    ).toEqual({
-      key: 'APP-1432',
-      summary: 'Add retry logic to the uploader',
-      status: 'In Progress',
-      statusCategory: 'indeterminate',
-      priority: 'Medium',
-      type: 'Story',
-      level: 'standard',
-      parentKey: null,
-      assigned: true,
-      assignee: 'Test User',
-      projectKey: 'APP',
-      projectName: 'Uploader',
-      url: 'https://example.atlassian.net/browse/APP-1432',
-      labels: ['api'],
-      updatedAt: '2026-10-13T09:30:00.000+0000',
-      syncedAt: AT,
-      workspaceId: null
-    })
-  })
+describe('ticketFrom', () => {
+  it('stamps the sync time and links the page on the site', () => {
+    const item = decodeWorkItem(makeFakeIssue({ fields: { labels: ['api'] } }))
 
-  it('takes the project from the key prefix and has no age without project and updated', () => {
-    const issue = makeFakeIssue({ key: 'WEB-7' })
-    delete (issue.fields as Record<string, unknown>).project
-    delete (issue.fields as Record<string, unknown>).updated
-    expect(parseIssue(issue, AT)).toMatchObject({
-      key: 'WEB-7',
-      projectKey: 'WEB',
-      projectName: 'WEB',
-      updatedAt: null
-    })
-  })
-
-  it('returns null without a key or a summary', () => {
-    expect(parseIssue({ fields: { summary: 'x' } }, AT)).toBeNull()
-    expect(parseIssue(makeFakeIssue({ fields: { summary: '' } }), AT)).toBeNull()
-    expect(parseIssue(null, AT)).toBeNull()
-    expect(parseIssue('APP-1', AT)).toBeNull()
-  })
-
-  it('says unknown for an unrecognised status category and defaults the rest', () => {
-    const t = parseIssue(
-      {
-        key: 'OPS-7',
-        fields: { summary: 'Rotate keys', status: { name: 'Weird', statusCategory: { key: 'x' } } }
-      },
-      AT,
-      'acme.atlassian.net'
+    expect(item && ticketFrom(item, AT, 'example.atlassian.net')).toEqual(
+      ticket({ labels: ['api'], assignee: 'Test User', updatedAt: '2026-10-13T09:30:00.000+0000' })
     )
+  })
 
-    expect(t).toMatchObject({
-      statusCategory: 'unknown',
-      priority: null,
-      assignee: null,
-      labels: [],
-      projectKey: 'OPS',
-      url: 'https://acme.atlassian.net/browse/OPS-7',
-      updatedAt: null
-    })
+  it('has no link without a site', () => {
+    const item = decodeWorkItem(makeFakeIssue())
+
+    expect(item && ticketFrom(item, AT).url).toBe('')
   })
 })
 
@@ -141,17 +92,6 @@ describe('renderBrief', () => {
     expect(brief).not.toContain('Labels:')
     expect(brief).toContain('Priority: none')
     expect(brief.endsWith('## Description\n\n(none)\n')).toBe(true)
-  })
-})
-
-describe('levelOf', () => {
-  it('reads the hierarchy level, the subtask flag, and the type name', () => {
-    expect(levelOf({ name: 'Initiative', hierarchyLevel: 1 })).toBe('epic')
-    expect(levelOf({ name: 'Story', hierarchyLevel: 0 })).toBe('standard')
-    expect(levelOf({ name: 'Sub-task', hierarchyLevel: -1 })).toBe('subtask')
-    expect(levelOf({ name: 'Sub-task', subtask: true })).toBe('subtask')
-    expect(levelOf({ name: 'Epic' })).toBe('epic')
-    expect(levelOf(undefined)).toBe('standard')
   })
 })
 

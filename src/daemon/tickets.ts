@@ -15,11 +15,18 @@ import type {
   WorkspaceCreateParams
 } from '../shared/protocol'
 import { slugify, workspaceSlug } from '../shared/slug'
-import type { Project, Ticket, TicketLevel, Workspace } from '../shared/types'
+import type { Project, Ticket, Workspace } from '../shared/types'
 import { adfToText } from './adf-text'
 import { RpcError } from './errors'
 import type { Emit } from './status'
 import type { Store } from './store'
+import {
+  decodeParentLink,
+  decodeSearch,
+  decodeWorkItemView,
+  type WorkItem,
+  type WorkItemView
+} from './tickets.decode'
 import { shQuote } from './wrapper'
 import { git } from './workspaces'
 
@@ -34,59 +41,11 @@ const FIRST_SYNC_MS = 1000
 const KV_LAST_SYNC = 'tickets.last_sync_at'
 const KV_ERROR = 'tickets.error'
 
-type Obj = Record<string, unknown>
-
-const obj = (v: unknown): Obj => (typeof v === 'object' && v !== null ? (v as Obj) : {})
-const str = (v: unknown): string | null => (typeof v === 'string' && v !== '' ? v : null)
-
-/** Epic, standard or subtask, from the issue type's hierarchy level (its name as a fallback). */
-export function levelOf(issuetype: unknown): TicketLevel {
-  const t = obj(issuetype)
-  const level = typeof t.hierarchyLevel === 'number' ? t.hierarchyLevel : null
-
-  if (t.subtask === true || (level !== null && level < 0)) return 'subtask'
-
-  if ((level !== null && level >= 1) || str(t.name)?.toLowerCase() === 'epic') return 'epic'
-
-  return 'standard'
-}
-
-/** One issue from `acli jira workitem search/view --json`, or null without a key and summary. */
-export function parseIssue(raw: unknown, syncedAt: string, site = ''): Ticket | null {
-  const issue = obj(raw)
-  const fields = obj(issue.fields)
-  const key = str(issue.key)
-  const summary = str(fields.summary)
-
-  if (!key || !summary) return null
-  const status = obj(fields.status)
-  const category = obj(status.statusCategory).key
-  const project = obj(fields.project)
-  const prefix = key.split('-')[0]
-
-  const labels = Array.isArray(fields.labels)
-    ? fields.labels.filter((l): l is string => typeof l === 'string')
-    : []
-
+/** A decoded work item as que keeps it: synced at `syncedAt`, linked to its page on `site`. */
+export function ticketFrom(item: WorkItem, syncedAt: string, site = ''): Ticket {
   return {
-    key,
-    summary,
-    status: str(status.name) ?? 'Unknown',
-    statusCategory:
-      category === 'new' || category === 'indeterminate' || category === 'done'
-        ? category
-        : 'unknown',
-    priority: str(obj(fields.priority).name),
-    type: str(obj(fields.issuetype).name) ?? 'Task',
-    level: levelOf(fields.issuetype),
-    parentKey: null,
-    assigned: true,
-    assignee: str(obj(fields.assignee).displayName),
-    projectKey: str(project.key) ?? prefix,
-    projectName: str(project.name) ?? str(project.key) ?? prefix,
-    url: site ? `https://${site}/browse/${key}` : '',
-    labels,
-    updatedAt: str(fields.updated),
+    ...item,
+    url: site ? `https://${site}/browse/${item.key}` : '',
     syncedAt,
     workspaceId: null
   }
@@ -263,7 +222,7 @@ export class TicketService {
 
   private async syncOnce(): Promise<void> {
     const { store } = this.opts
-    let issues: unknown[]
+    let issues: WorkItem[]
 
     try {
       const stdout = await acli(
@@ -290,8 +249,10 @@ export class TicketService {
         throw new Error('acli printed output that is not JSON')
       }
 
-      if (!Array.isArray(parsed)) throw new Error('acli printed output that is not a list')
-      issues = parsed
+      const decoded = decodeSearch(parsed)
+
+      if (!decoded) throw new Error('acli printed output that is not a list')
+      issues = decoded
     } catch (err) {
       if (this.stopped) return
       const message = (err as Error).message
@@ -311,7 +272,7 @@ export class TicketService {
     if (this.stopped) return
     const at = new Date(this.now()).toISOString()
     const site = await this.siteHost()
-    const tickets = issues.flatMap((i) => parseIssue(i, at, site) ?? [])
+    const tickets = issues.map((i) => ticketFrom(i, at, site))
     const ordered = await this.withParents(tickets, at, site)
 
     if (this.stopped) return
@@ -390,17 +351,15 @@ export class TicketService {
             this.abort.signal
           )
 
-          const parent = obj(obj(JSON.parse(stdout)).fields).parent
-          const parentKey = str(obj(parent).key)
+          const link = decodeParentLink(JSON.parse(stdout))
+          const parentKey = link?.key ?? null
           checked.set(t.key, parentKey)
           parentOf.set(t.key, parentKey)
 
           if (parentKey && !inSearch.has(parentKey) && !synthesized.has(parentKey)) {
-            const p = parseIssue({ key: parentKey, fields: obj(obj(parent).fields) }, at, site)
-
-            if (p) {
+            if (link?.item) {
               synthesized.set(parentKey, {
-                ...p,
+                ...ticketFrom(link.item, at, site),
                 assigned: false,
                 assignee: null,
                 updatedAt: null,
@@ -462,19 +421,19 @@ export class TicketService {
   }
 
   private async brief(ticket: Ticket): Promise<string> {
-    const view = async (key: string, fields: string): Promise<Obj> => {
+    const view = async (key: string, fields: string): Promise<WorkItemView | null> => {
       const stdout = await acli(
         ['jira', 'workitem', 'view', key, '--json', '--fields', fields],
         this.abort.signal
       )
 
-      return obj(obj(JSON.parse(stdout)).fields)
+      return decodeWorkItemView(JSON.parse(stdout))
     }
 
     let description = '(could not be fetched)'
 
     try {
-      description = adfToText((await view(ticket.key, VIEW_FIELDS)).description)
+      description = adfToText((await view(ticket.key, VIEW_FIELDS))?.description ?? null)
     } catch (err) {
       this.opts.log?.(`fetching ${ticket.key} failed: ${(err as Error).message}`)
     }
@@ -494,8 +453,8 @@ export class TicketService {
         const f = await view(ticket.parentKey, PARENT_BRIEF_FIELDS)
         parent = {
           ...base,
-          summary: str(f.summary) ?? base.summary,
-          description: adfToText(f.description)
+          summary: f?.summary ?? base.summary,
+          description: adfToText(f?.description ?? null)
         }
       } catch (err) {
         this.opts.log?.(`fetching ${ticket.parentKey} failed: ${(err as Error).message}`)
