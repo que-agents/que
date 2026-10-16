@@ -134,6 +134,22 @@ describe('sidebar title summaries', () => {
     }, 30_000)
   })
 
+  describe('task workspaces', () => {
+    it('summarises the workspace of a task queued from a bare brief', async () => {
+      const { d, projectId } = await start()
+
+      const task = await d.client.request('task.add', { projectId, brief: RETRY_BRIEF })
+      await d.client.request('queue.open')
+
+      await expect
+        .poll(async () => (await d.client.request('task.get', { id: task.id })).workspaceId, opts)
+        .toMatch(/^ws_/)
+      const { workspaceId } = await d.client.request('task.get', { id: task.id })
+      await expect.poll(() => titleOf(d, workspaceId as string), opts).toBe(FAKE_SUMMARY)
+      expect(promptOf(summaryCalls(d)[0])).toContain(RETRY_BRIEF)
+    }, 45_000)
+  })
+
   describe('after a turn', () => {
     it('re-summarises on Stop with the transcript tail, once per interval', async () => {
       vi.stubEnv('QUE_WORKSPACE_ID', 'ws_01hzxouter000')
