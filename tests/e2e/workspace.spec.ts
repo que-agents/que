@@ -4,10 +4,9 @@
 // reports needs input back to `que status`, and the report lists the workspace
 // as waiting. And a workspace made from a brief in the dialog: under a random
 // three-word name, titled with its first line in the sidebar (the brief on hover), and claude
-// started on the start prompt in its only terminal.
+// started on the brief itself in its only terminal.
 import { expect, test } from '@playwright/test'
 import type { StatusJson } from '../../src/cli/workspaces'
-import { DEFAULT_WORKSPACE_START_PROMPT } from '../../src/shared/config'
 import type { TermInfo } from '../../src/shared/protocol'
 import type { Project, Workspace } from '../../src/shared/types'
 import { AppShellPage } from './pages/AppShellPage'
@@ -151,15 +150,12 @@ test('a workspace described in a brief gets a random name, is titled with it, an
     )
   })
 
-  await test.step('claude starts on the start prompt in the only terminal', async () => {
+  await test.step('Claude starts on the brief itself in the only terminal', async () => {
     await expect
-      .poll(
-        () => launched.claudeCalls().some((argv) => argv.includes(DEFAULT_WORKSPACE_START_PROMPT)),
-        {
-          message: 'claude never started on the start prompt',
-          timeout: 30_000
-        }
-      )
+      .poll(() => launched.claudeCalls().some((argv) => argv.at(-1) === brief), {
+        message: 'claude never started on the brief',
+        timeout: 30_000
+      })
       .toBe(true)
     const terms = queJson<TermInfo[]>(queHome, 'term', 'list', '--json').filter(
       (t) => t.workspaceId === workspace.id

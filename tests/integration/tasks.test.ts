@@ -115,9 +115,7 @@ describe('runner and finisher', () => {
       title: 'Add retry logic to the uploader',
       brief
     })
-    expect(fs.readFileSync(join(ws.path, '.que', 'brief.md'), 'utf8')).toBe(
-      `# Add retry logic to the uploader\n\n${brief}\n`
-    )
+    expect(fs.readFileSync(join(ws.path, '.que', 'brief.md'), 'utf8')).toBe(brief)
     expect(gitIn(ws.path, 'status', '--porcelain')).toBe('')
     const [pr] = readFakeLog(d.ghLog)
     expect(pr.argv.slice(0, 5)).toEqual([

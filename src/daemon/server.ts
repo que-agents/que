@@ -46,7 +46,7 @@ import { workspaceDiff } from './diff'
 import { readWorkspaceFile, workspaceFiles } from './files'
 import { sessionEnv, WorkspaceManager, workspaceTerminalEnv } from './workspaces'
 import { WorktreeWatcher } from './watcher'
-import { claudeCommand, defaultCliScript, installWrapper, resolveCliRunner } from './wrapper'
+import { defaultCliScript, installWrapper, resolveCliRunner, startCommand } from './wrapper'
 
 export interface ServerOptions {
   host: PtyHost
@@ -323,7 +323,7 @@ export class DaemonServer {
   }
 
   /**
-   * Starts claude on the start prompt in the workspace's first terminal (opened when it has
+   * Starts claude on the brief (or the configured start prompt) in the workspace's first terminal (opened when it has
    * none). Answers with the terminal at once; the command is typed once setup has ended.
    */
   private startWorkspace(id: string, cols = 120, rows = 30): { terminalId: string } {
@@ -334,7 +334,10 @@ export class DaemonServer {
         { cwd: ws.path, cols, rows, name: ws.name },
         { workspaceId: ws.id, env: this.terminalEnv(ws) }
       )
-    const command = claudeCommand(this.configOrDefault().startPrompt)
+    const command = startCommand(
+      this.configOrDefault().startPrompt,
+      ws.brief ? join(ws.path, '.que', 'brief.md') : null
+    )
     void this.workspaces.whenReady(ws.id).then(() => {
       const t = this.opts.host.get(first.id)
       if (t?.alive) t.write(command)

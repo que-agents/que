@@ -93,7 +93,7 @@ max_budget_usd = 5
 # default_permission_mode = "acceptEdits"   # unset: que.toml or Claude Code decides
 allow_bypass_permissions = false
 protected_branches = ["main", "master", "release"]
-start_prompt = "Read .que/brief.md. Restate the goal, read the relevant code, and propose a plan before editing anything."
+start_prompt = ""                    # empty: Claude starts on the brief itself
 # instructions_file = "~/.config/que/instructions.md"   # unset: no instructions
 
 [quiet_hours]

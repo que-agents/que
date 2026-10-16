@@ -5,7 +5,6 @@ import fs from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { DaemonClient } from '@shared/client'
-import { DEFAULT_WORKSPACE_START_PROMPT } from '@shared/config'
 import type { Events } from '@shared/protocol'
 import { startTestDaemon, type TestDaemon } from '../../src/testing/daemon-harness'
 import { readFakeLog } from '../../src/testing/fakes'
@@ -247,9 +246,7 @@ describe('workspaces from a brief', () => {
       brief
     })
     expect(gitIn(ws.path, 'rev-parse', '--abbrev-ref', 'HEAD')).toBe(ws.name)
-    expect(fs.readFileSync(join(ws.path, '.que', 'brief.md'), 'utf8')).toBe(
-      `# Fix the flaky upload test\n\n${brief}\n`
-    )
+    expect(fs.readFileSync(join(ws.path, '.que', 'brief.md'), 'utf8')).toBe(brief)
     expect(gitIn(ws.path, 'status', '--porcelain')).toBe('')
     expect(await client.request('workspace.get', { id: ws.id })).toMatchObject({
       title: 'Fix the flaky upload test',
@@ -308,7 +305,15 @@ describe('workspaces from a brief', () => {
 })
 
 describe('workspace.start', () => {
-  it('opens the first terminal at once and types claude on the start prompt once setup ends', async () => {
+  /** The claude runs the fake recorded, once at least `n` have started. */
+  async function claudeRuns(n = 1) {
+    await expect
+      .poll(() => readFakeLog(daemon.claudeLog).length, { timeout: 15_000 })
+      .toBeGreaterThanOrEqual(n)
+    return readFakeLog(daemon.claudeLog)
+  }
+
+  it('opens the first terminal at once and, once setup ends, starts claude on the brief verbatim', async () => {
     const gate = join(daemon.home, 'setup-gate')
     const repo = makeTempRepo(daemon.home, {
       queToml: `setup = "until [ -f '${gate}' ]; do sleep 0.05; done"\n`
@@ -317,7 +322,9 @@ describe('workspace.start', () => {
     fs.writeFileSync(instructions, 'Delegate broad searches to a smaller model.\n')
     await client.request('config.set', { patch: { instructions_file: instructions } })
     const project = await client.request('project.add', { path: repo })
-    const ws = await client.request('workspace.create', { projectId: project.id, brief: 'Fix it' })
+    const brief =
+      'Don\'t drop uploads on a 503\n\nRetry with backoff; cap the wait at $MAX_WAIT seconds.\n  Keep `the` indent and "quotes".'
+    const ws = await client.request('workspace.create', { projectId: project.id, brief })
 
     const { terminalId } = await client.request('workspace.start', { id: ws.id })
 
@@ -329,23 +336,41 @@ describe('workspace.start', () => {
 
     fs.writeFileSync(gate, '')
 
-    await expect
-      .poll(
-        () =>
-          readFakeLog(daemon.claudeLog).some((c) =>
-            c.argv.includes(DEFAULT_WORKSPACE_START_PROMPT)
-          ),
-        { timeout: 15_000 }
-      )
-      .toBe(true)
-    const [started] = readFakeLog(daemon.claudeLog)
-    expect(started.argv).toEqual(
-      expect.arrayContaining(['--append-system-prompt-file', instructions])
-    )
+    const [started] = await claudeRuns()
+    expect(started.argv.at(-1)).toBe(brief)
     expect(started.argv[started.argv.indexOf('--append-system-prompt-file') + 1]).toBe(instructions)
     const again = await client.request('workspace.start', { id: ws.id })
     expect(again.terminalId).toBe(terminalId)
     expect(await client.request('term.list', { workspaceId: ws.id })).toHaveLength(1)
+  }, 30_000)
+
+  it('sends a configured start prompt instead of the brief', async () => {
+    await client.request('config.set', {
+      patch: { start_prompt: "Read .que/brief.md, then say what you'd do first." }
+    })
+    const project = await client.request('project.add', { path: makeTempRepo(daemon.home) })
+    const ws = await client.request('workspace.create', {
+      projectId: project.id,
+      brief: 'Fix the flaky upload test'
+    })
+
+    await client.request('workspace.start', { id: ws.id })
+
+    const [started] = await claudeRuns()
+    expect(started.argv.at(-1)).toBe("Read .que/brief.md, then say what you'd do first.")
+  }, 30_000)
+
+  it('starts a bare claude in a workspace without a brief', async () => {
+    const project = await client.request('project.add', { path: makeTempRepo(daemon.home) })
+    const ws = await client.request('workspace.create', {
+      projectId: project.id,
+      name: 'app-1490-no-brief'
+    })
+
+    await client.request('workspace.start', { id: ws.id })
+
+    const [started] = await claudeRuns()
+    expect(started.argv).toEqual(['--settings', join(daemon.home, 'hooks.json')])
   }, 30_000)
 
   it('answers not_found for an unknown workspace', async () => {

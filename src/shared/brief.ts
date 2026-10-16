@@ -1,4 +1,6 @@
-// A brief is free text describing the work; its first line is the title.
+// A brief is free text describing the work; its first line is the title. It is
+// written verbatim to `<worktree>/.que/brief.md` and, by default, is the first
+// prompt claude starts on.
 
 /** The brief's first non-empty line, trimmed, at most 80 characters. */
 export function titleOf(brief: string): string {
@@ -7,12 +9,6 @@ export function titleOf(brief: string): string {
   return line.length > 80 ? `${line.slice(0, 79).trimEnd()}…` : line
 }
 
-/**
- * What `.que/brief.md` holds: `# <title>`, a blank line, then the brief; or the brief alone
- * when its first non-empty line is already a `# ` heading.
- */
-export function briefFile(title: string, brief: string): string {
-  const body = `${brief.trimEnd()}\n`
-  const first = brief.split('\n').find((l) => l.trim() !== '') ?? ''
-  return first.trimStart().startsWith('# ') ? body : `# ${title}\n\n${body}`
-}
+/** Offered in Settings when the user turns on a start prompt instead of the brief. */
+export const SUGGESTED_START_PROMPT =
+  'Read .que/brief.md. Restate the goal, read the relevant code, and propose a plan before editing anything.'

@@ -2,7 +2,6 @@ import os from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
-  DEFAULT_WORKSPACE_START_PROMPT,
   defaultJira,
   mergeConfigPatch,
   parseConfig,
@@ -38,7 +37,7 @@ describe('parseConfig', () => {
         },
         notifications: { chimeOnComplete: true, chimeOnNeedsInput: false, morningSummary: false },
         jira: defaultJira(),
-        startPrompt: DEFAULT_WORKSPACE_START_PROMPT
+        startPrompt: ''
       }
     })
   })
@@ -180,7 +179,7 @@ default_branch = "main"
 default_permission_mode = "yolo"
 allow_bypass_permissions = "yes"
 protected_branches = "main"
-start_prompt = " "
+start_prompt = 3
 `,
       env
     )
@@ -195,7 +194,7 @@ start_prompt = " "
         },
         { key: 'allow_bypass_permissions', message: 'must be true or false' },
         { key: 'protected_branches', message: 'must be a list of strings' },
-        { key: 'start_prompt', message: 'must be a non-empty string' }
+        { key: 'start_prompt', message: 'must be a string' }
       ]
     })
   })
@@ -242,6 +241,17 @@ start_prompt = " "
       const removed = mergeConfigPatch(merged, parseConfigAssignment('instructions_file=null'))
       expect(removed).toEqual({ concurrency: 3 })
     })
+  })
+
+  it('reads an empty or blank start_prompt as off, and round-trips it', () => {
+    for (const text of ['start_prompt = ""\n', 'start_prompt = "  "\n']) {
+      const r = parseConfig(text, env)
+      expect(r.ok && r.config.startPrompt).toBe('')
+    }
+    const set = parseConfig('start_prompt = "Read .que/brief.md first."\n', env)
+    expect(set.ok && set.config.startPrompt).toBe('Read .que/brief.md first.')
+    const again = parseConfig(stringifyConfig({ start_prompt: '' }), env)
+    expect(again.ok && again.config.startPrompt).toBe('')
   })
 
   it('reports a TOML syntax error without a key', () => {

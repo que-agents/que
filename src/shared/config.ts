@@ -76,7 +76,8 @@ export function defaultConfig(env: ConfigEnv): UserConfig {
     quietHours: defaultQuietHours(),
     notifications: defaultNotifications(),
     jira: defaultJira(),
-    startPrompt: DEFAULT_WORKSPACE_START_PROMPT
+    // Empty: claude starts on the brief itself.
+    startPrompt: ''
   }
 }
 
@@ -88,9 +89,6 @@ export const DEFAULT_JQL =
   'assignee = currentUser() AND statusCategory != Done ORDER BY updated DESC'
 export const DEFAULT_START_PROMPT =
   'Read .que/ticket.md, the ticket this workspace is for. Restate the goal in a sentence, look at the code it touches, and propose a plan before changing anything.'
-/** The first prompt typed into claude in a workspace made from a brief (`start_prompt`). */
-export const DEFAULT_WORKSPACE_START_PROMPT =
-  'Read .que/brief.md. Restate the goal, read the relevant code, and propose a plan before editing anything.'
 
 export function defaultJira(): JiraConfig {
   return {
@@ -344,9 +342,10 @@ export function parseConfig(text: string, env: ConfigEnv): ConfigResult<UserConf
   config.jira = parseJira(t.jira, errors)
   const startPrompt = t.start_prompt
   if (startPrompt !== undefined) {
-    if (typeof startPrompt !== 'string' || startPrompt.trim() === '') {
-      errors.push({ key: 'start_prompt', message: 'must be a non-empty string' })
-    } else config.startPrompt = startPrompt
+    // A blank prompt is off, like an unset one.
+    if (typeof startPrompt !== 'string') {
+      errors.push({ key: 'start_prompt', message: 'must be a string' })
+    } else config.startPrompt = startPrompt.trim() === '' ? '' : startPrompt
   }
 
   if (t.repos !== undefined) {

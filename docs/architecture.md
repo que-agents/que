@@ -204,9 +204,13 @@ explicit name is refused on a clash instead. The new-workspace dialog prefills
 such a name and lets the user draw another or type their own, which it sends as
 the explicit name. Tasks get random names too; tickets pass their own name. The
 title is the given one, else the brief's first line (`brief.ts`), and is what the
-sidebar shows; the brief goes to `<worktree>/.que/brief.md`. `workspace.start`
-opens the workspace's first terminal when it has none, answers with it, and once
-setup has ended types `claude '<start_prompt>'` into it. `workspace.rename`
+sidebar shows; the brief goes verbatim to `<worktree>/.que/brief.md`.
+`workspace.start` opens the workspace's first terminal when it has none, answers
+with it, and once setup has ended types the command that starts Claude. By
+default the brief is the first prompt: `claude "$(cat '<worktree>/.que/brief.md')"`,
+so the shell hands it over verbatim. With `start_prompt` set, that text is sent
+instead (`claude '<start_prompt>'`; it can tell Claude to read `.que/brief.md`),
+and a workspace without a brief gets a bare `claude`. `workspace.rename`
 changes the title and, for a branch with no `origin/<branch>`, can rename the
 branch to a name the user gives; the folder keeps its name.
 

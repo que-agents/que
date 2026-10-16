@@ -288,7 +288,7 @@ export interface UserConfig {
   quietHours: QuietHoursConfig
   notifications: NotificationsConfig
   jira: JiraConfig
-  /** The first prompt typed into claude when a workspace made from a brief is started. */
+  /** What claude starts on in a workspace made from a brief; empty (the default) means the brief itself. */
   startPrompt: string
 }
 
