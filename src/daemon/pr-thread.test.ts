@@ -1,9 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import { jsonPages, parsePrThread } from './pr-thread'
+import { decodeLineComments, decodePrView } from './pr-thread.decode'
 
 const WS = 'ws_01hzx3k9c2qf'
 const FETCHED = '2026-10-14T04:00:00.000Z'
-const parse = (view: unknown, lines: unknown = []) => parsePrThread(view, lines, WS, 7, FETCHED)
+
+// Each case goes in as `gh` prints it, through the decoders, then the mapping under test.
+const parse = (view: unknown, lines: unknown = []) =>
+  parsePrThread(decodePrView(view), decodeLineComments(lines), WS, 7, FETCHED)
 
 const comment = {
   id: 'IC_kwDOA1',

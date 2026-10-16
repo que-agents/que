@@ -8,7 +8,9 @@ import type { JsonValue, Project, PrThread, PullRequest, Workspace } from '../sh
 import { ghFailed, notFound } from './errors'
 import { isProtectedBranch } from './finisher'
 import { parsePullRequest, samePullRequest } from './pr-state'
+import { decodePullRequest } from './pr-state.decode'
 import { jsonPages, parsePrThread } from './pr-thread'
+import { decodeLineComments, decodePrView } from './pr-thread.decode'
 import type { Emit } from './status'
 import type { Store } from './store'
 
@@ -227,7 +229,14 @@ export class PrService {
       throw ghFailed((err as Error).message)
     }
 
-    const thread = parsePrThread(view, lines, ws.id, pr.number, new Date(this.now()).toISOString())
+    const thread = parsePrThread(
+      decodePrView(view),
+      decodeLineComments(lines),
+      ws.id,
+      pr.number,
+      new Date(this.now()).toISOString()
+    )
+
     this.threads.set(ws.id, { thread, number: pr.number, forUpdatedAt: pr.updatedAt ?? null })
 
     return thread
@@ -268,7 +277,8 @@ export class PrService {
     if (this.stopped) return
 
     if (this.failing.delete(ws.id)) this.opts.log?.(`pr check recovered for ${ws.id}`)
-    const next: PullRequest | null = parsePullRequest(items[0], new Date(this.now()).toISOString())
+    const raw = decodePullRequest(items[0])
+    const next = raw && parsePullRequest(raw, new Date(this.now()).toISOString())
     const current = this.opts.store.getWorkspace(ws.id)
 
     if (!current || current.archivedAt) return
