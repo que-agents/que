@@ -205,6 +205,7 @@ export class DaemonClient {
  * binary of the `electron` dev dependency (CLI and scripts under plain Node).
  */
 export function resolveRuntime(): string {
+  // nosemgrep: que-no-electron-outside-main -- dev-only lookup of the Electron binary path, not an API import
   return runtimeFrom(__dirname, process) ?? (require('electron') as unknown as string)
 }
 

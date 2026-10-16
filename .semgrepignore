@@ -1,0 +1,7 @@
+# Replaces Semgrep's built-in ignore list (which skips tests/); tests/ is scanned here.
+# Only build output and local state are listed.
+out/
+node_modules/
+release/
+test-results/
+.private/
