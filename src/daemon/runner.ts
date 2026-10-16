@@ -59,6 +59,12 @@ export function buildPrompt(
   return parts.join('\n\n')
 }
 
+/** The permission mode a run uses, and why it differs from what was asked, if it does. */
+export interface PermissionChoice {
+  mode: PermissionMode
+  warning: string | null
+}
+
 /**
  * The permission mode for a run: que.toml, else the user's default, else
  * acceptEdits. bypassPermissions needs both the repo and the user to opt in.
@@ -66,7 +72,7 @@ export function buildPrompt(
 export function resolvePermissionMode(
   repo: Pick<RepoConfig, 'permissionMode'>,
   config: Pick<UserConfig, 'defaultPermissionMode' | 'allowBypassPermissions'>
-): { mode: PermissionMode; warning: string | null } {
+): PermissionChoice {
   const wanted = repo.permissionMode ?? config.defaultPermissionMode ?? 'acceptEdits'
 
   if (wanted !== 'bypassPermissions') return { mode: wanted, warning: null }

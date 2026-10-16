@@ -3,8 +3,9 @@
 // without printing to stdout: hook stdout can be read as a decision (for
 // PermissionRequest), and que never decides anything for the user.
 import net from 'node:net'
+import { decodeHookEvent } from '../shared/hook.decode'
 import { quePaths } from '../shared/paths'
-import { encode } from '../shared/protocol'
+import { encode, type HookEvent } from '../shared/protocol'
 
 const BUDGET_MS = 1500
 
@@ -24,7 +25,7 @@ function deliver(
   socketPath: string,
   workspaceId: string,
   taskId: string | undefined,
-  payload: unknown
+  payload: HookEvent
 ): Promise<void> {
   return new Promise((resolve) => {
     const socket = net.connect(socketPath)
@@ -51,15 +52,15 @@ export async function runHook(): Promise<void> {
 
   const work = (async () => {
     const text = await readStdin()
-    let payload: unknown
+    let payload: HookEvent | null
 
     try {
-      payload = JSON.parse(text)
+      payload = decodeHookEvent(JSON.parse(text))
     } catch {
       return
     }
 
-    if (typeof payload !== 'object' || payload === null) return
+    if (!payload) return
     await deliver(
       process.env.QUE_SOCKET || quePaths().socket,
       workspaceId,
