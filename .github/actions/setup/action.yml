@@ -24,8 +24,11 @@ runs:
 
     - name: Install dependencies
       shell: bash
+      # The input reaches the shell as an environment variable, never interpolated into the script.
+      env:
+        SCRIPTS: ${{ inputs.scripts }}
       run: |
-        if [ "${{ inputs.scripts }}" = "true" ]; then
+        if [ "$SCRIPTS" = "true" ]; then
           npm ci
         else
           npm ci --ignore-scripts

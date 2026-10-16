@@ -29,6 +29,9 @@ tests, E2E tests, and Packaged app (`npm run smoke:packaged`). Lint also fails
 if the generated docs are stale. If you changed a CLI command or a
 config default, run `npm run docs` and commit the regenerated `docs/` files.
 
+A Semgrep check also runs on every pull request (registry rules plus `.semgrep/que.yml`). To run the
+custom rules locally, install `semgrep` and run `semgrep scan --config .semgrep/que.yml --error .`.
+
 ## Tests
 
 The repository carries three testing guides in `.claude/skills/` that apply to
