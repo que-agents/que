@@ -3,6 +3,7 @@
 // echo it. Events are server-pushed and carry no id.
 
 import type {
+  ConfigPatch,
   Project,
   PullRequest,
   QuietState,
@@ -366,7 +367,7 @@ export interface ConfigGetResult {
 
 export interface ConfigSetParams {
   /** Deep-merged into the file's table; `null` removes a key. */
-  patch: Record<string, unknown>
+  patch: ConfigPatch
   /** Let a change that shortens or removes tonight's window apply now. */
   applyTonight?: boolean
 }

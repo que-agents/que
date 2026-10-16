@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import type { PrCheck, PrThreadEntry, PullRequest, ReviewState } from '../../../preload/index.d'
-import { formatAge, formatDuration, type Tone } from '../format'
+import { formatAge, formatSpan, type Tone } from '../format'
 import { splitFences } from '../pr-text'
 import { useQue, useStore } from '../store'
 import { ExternalLinkIcon } from './icons'
@@ -184,9 +184,7 @@ export default function PullRequestView({ termKey }: { termKey: string }): React
                     <span className="pr-dot" title={c.state} />
                     <span className="pr-check-name">{c.name}</span>
                     {c.source && <span className="pr-check-source">{c.source}</span>}
-                    <span className="pr-check-time">
-                      {formatDuration(c.startedAt, c.completedAt)}
-                    </span>
+                    <span className="pr-check-time">{formatSpan(c.startedAt, c.completedAt)}</span>
                     {c.url && (
                       <a
                         className="pr-check-link"

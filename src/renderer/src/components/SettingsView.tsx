@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import type { QuietHoursConfig, UserConfig, Weekday } from '../../../preload/index.d'
 import { currentWindow } from '../../../daemon/quiet-hours'
-import { WEEKDAYS } from '../../../shared/types'
+import { type ConfigPatch, WEEKDAYS } from '../../../shared/types'
+import { errorMessage } from '../errors.decode'
 import { useQue, useStore } from '../store'
 import Dialog from './Dialog'
 import UnlockStatus from './UnlockStatus'
@@ -125,8 +126,8 @@ function quietOf(f: Form): QuietHoursConfig {
 }
 
 /** The config.set patch (the file's snake_case keys); `null` removes an override. */
-function patchOf(f: Form): Record<string, unknown> {
-  const quiet: Record<string, unknown> = {
+function patchOf(f: Form): ConfigPatch {
+  const quiet: ConfigPatch = {
     enabled: f.enabled,
     default: [f.start, f.end],
     unlock_minutes: Number(f.unlockMinutes)
@@ -193,7 +194,7 @@ export default function SettingsView(): React.JSX.Element {
       setErrors([])
       setSaved(true)
     } catch (err) {
-      setErrors([err instanceof Error ? err.message : String(err)])
+      setErrors([errorMessage(err)])
     }
   }
 

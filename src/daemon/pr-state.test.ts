@@ -1,9 +1,18 @@
 import { describe, expect, it } from 'vitest'
 import { checkRunsOf, parsePullRequest, samePullRequest } from './pr-state'
+import { decodeCheckRollup, decodePullRequest } from './pr-state.decode'
 
 const AT = '2026-10-14T03:00:00.000Z'
 const base = { number: 7, url: 'https://github.com/rquellh/que/pull/7', title: 'Add retry logic' }
-const parse = (extra: Record<string, unknown>) => parsePullRequest({ ...base, ...extra }, AT)
+
+// Each case goes in as `gh` prints it, through the decoder, then the mapping under test.
+const parse = (extra: Record<string, unknown>) => {
+  const raw = decodePullRequest({ ...base, ...extra })
+
+  return raw && parsePullRequest(raw, AT)
+}
+
+const runsOf = (rollup: unknown) => checkRunsOf(decodeCheckRollup(rollup))
 
 describe('parsePullRequest', () => {
   it('maps a plain open pull request', () => {
@@ -60,16 +69,6 @@ describe('parsePullRequest', () => {
   ])('review from %j is %s', (reviewDecision, review) => {
     expect(parse({ state: 'OPEN', reviewDecision })?.review).toBe(review)
   })
-
-  it.each([
-    [null],
-    ['text'],
-    [{ url: base.url }],
-    [{ number: 1 }],
-    [{ number: '1', url: base.url }]
-  ])('returns null for %j', (raw) => {
-    expect(parsePullRequest(raw, AT)).toBeNull()
-  })
 })
 
 describe('checkRunsOf', () => {
@@ -90,7 +89,7 @@ describe('checkRunsOf', () => {
 
   it('maps a check run with its workflow, url, and times', () => {
     expect(
-      checkRunsOf([
+      runsOf([
         run({
           name: 'unit tests',
           workflowName: 'CI',
@@ -113,7 +112,7 @@ describe('checkRunsOf', () => {
 
   it('maps a settled commit status, its createdAt as the completion time', () => {
     expect(
-      checkRunsOf([
+      runsOf([
         ctx({ targetUrl: 'https://preview.example.com/7', createdAt: '2026-10-14T03:01:00Z' })
       ])
     ).toEqual([
@@ -129,7 +128,7 @@ describe('checkRunsOf', () => {
   })
 
   it('leaves a pending commit status without a completion time, and missing fields null', () => {
-    expect(checkRunsOf([ctx({ state: 'PENDING', createdAt: '2026-10-14T03:01:00Z' })])).toEqual([
+    expect(runsOf([ctx({ state: 'PENDING', createdAt: '2026-10-14T03:01:00Z' })])).toEqual([
       {
         name: 'deploy/preview',
         source: null,
@@ -156,7 +155,7 @@ describe('checkRunsOf', () => {
     ['COMPLETED', 'STALE', 'skipped'],
     ['COMPLETED', null, 'skipped']
   ])('a check run %s / %s is %s', (status, conclusion, state) => {
-    expect(checkRunsOf([run({ status, conclusion })])[0].state).toBe(state)
+    expect(runsOf([run({ status, conclusion })])[0].state).toBe(state)
   })
 
   it.each([
@@ -166,12 +165,12 @@ describe('checkRunsOf', () => {
     ['PENDING', 'pending'],
     ['EXPECTED', 'pending']
   ])('a commit status %s is %s', (state, expected) => {
-    expect(checkRunsOf([ctx({ state })])[0].state).toBe(expected)
+    expect(runsOf([ctx({ state })])[0].state).toBe(expected)
   })
 
   it('recognises both shapes without __typename', () => {
     expect(
-      checkRunsOf([
+      runsOf([
         { name: 'lint', status: 'IN_PROGRESS', conclusion: null },
         { context: 'ci/legacy', state: 'ERROR' }
       ]).map((c) => [c.name, c.state])
@@ -182,7 +181,7 @@ describe('checkRunsOf', () => {
   })
 
   it('orders failing, pending, passing, skipped, and by name within each', () => {
-    const runs = checkRunsOf([
+    const runs = runsOf([
       run({ name: 'typecheck', conclusion: 'SKIPPED' }),
       run({ name: 'unit tests' }),
       ctx({ context: 'deploy/preview', state: 'PENDING' }),
@@ -202,13 +201,6 @@ describe('checkRunsOf', () => {
       ['skipped', 'typecheck']
     ])
   })
-
-  it.each([[undefined], [null], ['text'], [{ name: 'build' }], [[null, 'x', 3, { id: 1 }]]])(
-    'ignores garbage %j',
-    (rollup) => {
-      expect(checkRunsOf(rollup)).toEqual([])
-    }
-  )
 
   it('feeds parsePullRequest, whose summary follows the runs', () => {
     const pr = parse({

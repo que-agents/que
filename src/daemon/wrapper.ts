@@ -77,10 +77,13 @@ export function defaultCliScript(): string {
  * Node, so no separate Node install is needed. In development: $QUE_NODE or
  * the first `node` on PATH.
  */
-export function cliRunnerFrom(
-  dir: string,
-  node: () => string | null = resolveNode
-): { nodePath: string | null; runAsNode: boolean } {
+/** How the hook wrapper runs the CLI: under the app binary as Node when packaged. */
+export interface CliRunner {
+  nodePath: string | null
+  runAsNode: boolean
+}
+
+export function cliRunnerFrom(dir: string, node: () => string | null = resolveNode): CliRunner {
   const res = packagedResourcesDir(dir)
 
   if (res) return { nodePath: appExecutable(res), runAsNode: true }
@@ -88,16 +91,13 @@ export function cliRunnerFrom(
   return { nodePath: node(), runAsNode: false }
 }
 
-export function resolveCliRunner(): { nodePath: string | null; runAsNode: boolean } {
+export function resolveCliRunner(): CliRunner {
   return cliRunnerFrom(__dirname)
 }
 
-export function hooksSettings(): { hooks: Record<string, unknown[]> } {
-  const hooks: Record<string, unknown[]> = {}
-
-  for (const event of HOOK_EVENT_NAMES) {
-    hooks[event] = [{ hooks: [{ type: 'command', command: 'que hook', timeout: 5 }] }]
-  }
+export function hooksSettings() {
+  const command = { type: 'command', command: 'que hook', timeout: 5 }
+  const hooks = Object.fromEntries(HOOK_EVENT_NAMES.map((event) => [event, [{ hooks: [command] }]]))
 
   return { hooks }
 }
@@ -199,7 +199,7 @@ const ZSH_PREPEND = `if [[ -n "\${QUE_HOME-}" ]]; then
   export PATH
 fi`
 
-function zshFiles(): Record<string, string> {
+function zshFiles() {
   const header = '# que: workspace terminal startup; sources your own file of the same name.\n'
 
   return {

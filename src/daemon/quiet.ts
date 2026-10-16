@@ -154,7 +154,10 @@ export class QuietService {
     const w = this.window(now)
 
     if (!w || isUnlocked(now, this.unlock)) return
-    throw new RpcError('quiet_hours', quietMessage(w.end, this.o.config().quietHours.unlockMinutes))
+    throw new RpcError(
+      'quiet_hours',
+      quietMessage(w.end.getTime(), this.o.config().quietHours.unlockMinutes)
+    )
   }
 
   // ---- unlock -------------------------------------------------------------------
@@ -163,7 +166,7 @@ export class QuietService {
     const now = this.now()
     const m = minutes ?? this.o.config().quietHours.unlockMinutes
 
-    if (typeof m !== 'number' || !Number.isFinite(m) || m <= 0) {
+    if (!Number.isFinite(m) || m <= 0) {
       throw badRequest('minutes must be a positive number')
     }
 

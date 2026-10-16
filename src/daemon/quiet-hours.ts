@@ -25,9 +25,8 @@ export interface UnlockState {
   why?: string
 }
 
-type Moment = Date | number
-
-const ms = (t: Moment): number => (typeof t === 'number' ? t : t.getTime())
+/** A point in time as epoch milliseconds (a Date converts with `getTime()`). */
+type Moment = number
 
 function minutesOf(hhmm: string): [number, number] {
   const [h, m] = hhmm.split(':').map(Number)
@@ -71,7 +70,7 @@ function addDays(t: number, days: number): Date {
 
 /** The window containing `now` (one that started yesterday or today), else null. */
 export function currentWindow(now: Moment, cfg: QuietHoursConfig): ActiveWindow | null {
-  const t = ms(now)
+  const t = now
 
   for (const offset of [-1, 0]) {
     const w = windowStartingOn(addDays(t, offset), cfg)
@@ -88,7 +87,7 @@ export function isQuiet(now: Moment, cfg: QuietHoursConfig): boolean {
 
 /** The next start or end after `now`: the current window's end, else the next start. */
 export function nextBoundary(now: Moment, cfg: QuietHoursConfig): Date | null {
-  const t = ms(now)
+  const t = now
   const cur = currentWindow(t, cfg)
 
   if (cur) return cur.end
@@ -106,7 +105,7 @@ export function nextBoundary(now: Moment, cfg: QuietHoursConfig): Date | null {
 export function remaining(now: Moment, state: UnlockState): number {
   if (!state.until) return 0
 
-  return Math.max(0, state.until.getTime() - ms(now))
+  return Math.max(0, state.until.getTime() - now)
 }
 
 export function isUnlocked(now: Moment, state: UnlockState): boolean {
@@ -147,7 +146,7 @@ export function shortensTonight(
 
 /** `HH:MM` in local time. */
 export function hhmm(t: Moment): string {
-  const d = new Date(ms(t))
+  const d = new Date(t)
 
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
@@ -177,7 +176,7 @@ export function formatUnlocks(unlocks: readonly QuietUnlock[], now: Moment): str
   for (const u of unlocks) {
     const start = Date.parse(u.at)
     const planned = start + u.minutes * 60_000
-    const end = u.endedAt ? Date.parse(u.endedAt) : Math.min(planned, ms(now))
+    const end = u.endedAt ? Date.parse(u.endedAt) : Math.min(planned, now)
     total += Math.max(0, end - start)
   }
 

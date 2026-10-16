@@ -5,19 +5,17 @@
 import fs from 'node:fs'
 import { dirname } from 'node:path'
 import type { UpdateInfo } from '../shared/types'
+import {
+  decodeRelease,
+  decodeUpdateCheckState,
+  type GhRelease,
+  type UpdateCheckState
+} from './update-check.decode'
 
-export type { UpdateInfo }
+export type { UpdateCheckState, UpdateInfo }
 
 export const LATEST_RELEASE_URL = 'https://api.github.com/repos/rquellh/que/releases/latest'
 export const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000
-
-/** What is persisted between launches (QUE_HOME/state/update-check.json). */
-export interface UpdateCheckState {
-  /** Epoch ms of the last attempt, successful or not. */
-  checkedAt: number
-  /** The newest release seen by that attempt, if any. */
-  latest: UpdateInfo | null
-}
 
 type Semver = { core: [number, number, number]; pre: string[] }
 
@@ -75,9 +73,7 @@ export function shouldCheck(state: UpdateCheckState | null, now: number): boolea
 
 export function readState(path: string): UpdateCheckState | null {
   try {
-    const s = JSON.parse(fs.readFileSync(path, 'utf8')) as UpdateCheckState
-
-    return typeof s.checkedAt === 'number' ? s : null
+    return decodeUpdateCheckState(JSON.parse(fs.readFileSync(path, 'utf8')))
   } catch {
     return null
   }
@@ -101,18 +97,13 @@ export interface UpdateCheckOptions {
   timeoutMs?: number
 }
 
-/** The latest release from the API response, if it is a usable one. */
-function releaseOf(body: unknown): UpdateInfo | null {
-  const b = body as { tag_name?: unknown; html_url?: unknown; draft?: unknown }
+/** The decoded release, if it is a usable one. */
+function releaseOf(release: GhRelease | null): UpdateInfo | null {
+  if (!release || !release.htmlUrl.startsWith('https://github.com/')) return null
 
-  if (typeof b?.tag_name !== 'string' || typeof b.html_url !== 'string') return null
+  if (!parseVersion(release.tagName)) return null
 
-  if (!b.html_url.startsWith('https://github.com/')) return null
-  const parsed = parseVersion(b.tag_name)
-
-  if (!parsed) return null
-
-  return { version: b.tag_name.replace(/^v/, ''), url: b.html_url }
+  return { version: release.tagName.replace(/^v/, ''), url: release.htmlUrl }
 }
 
 /**
@@ -140,7 +131,7 @@ export async function checkForUpdate(opts: UpdateCheckOptions): Promise<UpdateIn
       signal: AbortSignal.timeout(opts.timeoutMs ?? 5000)
     })
 
-    if (res.ok) state.latest = releaseOf(await res.json())
+    if (res.ok) state.latest = releaseOf(decodeRelease(await res.json()))
   } catch {
     // Offline, timed out, or not JSON: say nothing.
   }

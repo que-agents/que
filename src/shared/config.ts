@@ -5,7 +5,9 @@ import os from 'node:os'
 import { join } from 'node:path'
 import { parse as parseToml, stringify as stringifyToml } from 'smol-toml'
 import {
+  type ConfigPatch,
   type JiraConfig,
+  type JsonValue,
   WEEKDAYS,
   type DayWindow,
   type NotificationsConfig,
@@ -474,6 +476,22 @@ export function stringifyConfig(raw: Record<string, unknown>): string {
   return stringifyToml(raw)
 }
 
+function isPatchTable(v: JsonValue | undefined): v is ConfigPatch {
+  return typeof v === 'object' && v !== null && !Array.isArray(v)
+}
+
+/** Combines two patches (the later wins, tables combine key by key), keeping `null` (a removal) as a value. */
+export function combineConfigPatches(a: ConfigPatch, b: ConfigPatch): ConfigPatch {
+  const out = { ...a }
+
+  for (const [k, v] of Object.entries(b)) {
+    const prev = out[k]
+    out[k] = isPatchTable(prev) && isPatchTable(v) ? combineConfigPatches(prev, v) : v
+  }
+
+  return out
+}
+
 /** Keys whose value is a list even when `que config set` is given one item. */
 const LIST_KEYS = new Set(['protected_branches', 'quiet_hours.default'])
 
@@ -481,7 +499,7 @@ const LIST_KEYS = new Set(['protected_branches', 'quiet_hours.default'])
  * `que config set key=value`: a dotted key into a nested patch, the value read
  * as a boolean, a number, `null` (remove), a comma list, or else a string.
  */
-export function parseConfigAssignment(arg: string): Record<string, unknown> {
+export function parseConfigAssignment(arg: string): ConfigPatch {
   const eq = arg.indexOf('=')
 
   if (eq <= 0) throw new Error(`expected key=value, got ${JSON.stringify(arg)}`)
@@ -501,17 +519,17 @@ export function parseConfigAssignment(arg: string): Record<string, unknown> {
     return s
   }
 
-  let value: unknown
+  let value: JsonValue
 
   if (text === 'null') value = null
   else if (text.includes(',')) value = text.split(',').map((x) => x.trim())
   else if (LIST_KEYS.has(key)) value = [text]
   else value = scalar(text)
-  const patch: Record<string, unknown> = {}
+  const patch: ConfigPatch = {}
   let at = patch
 
   for (const p of parts.slice(0, -1)) {
-    const next: Record<string, unknown> = {}
+    const next: ConfigPatch = {}
     at[p] = next
     at = next
   }

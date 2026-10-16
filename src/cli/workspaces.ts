@@ -165,7 +165,7 @@ function openInEditor(path: string): Promise<void> {
 }
 
 /** `-r` takes a configured repo name or a path. */
-function resolveRepo(ref: string): { path: string; name?: string } {
+function resolveRepo(ref: string) {
   const config = loadConfig({ queHome: queHome() })
 
   if (!config.ok) throw new CliError(`invalid config: ${formatConfigErrors(config.errors)}`)

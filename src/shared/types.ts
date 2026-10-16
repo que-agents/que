@@ -321,3 +321,11 @@ export type JsonValue =
   | string
   | JsonValue[]
   | { [key: string]: JsonValue }
+
+/**
+ * A `config.set` patch: a table of the config file's snake_case keys, deep-merged
+ * into the file; `null` removes a key.
+ */
+export interface ConfigPatch {
+  [key: string]: JsonValue
+}

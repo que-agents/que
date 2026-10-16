@@ -141,13 +141,19 @@ export function formatCost(usd: number): string {
   return `$${usd.toFixed(2)}`
 }
 
-const UNITS: Record<string, number> = { m: 60_000, h: 3_600_000, d: 86_400_000 }
+const UNITS = new Map([
+  ['m', 60_000],
+  ['h', 3_600_000],
+  ['d', 86_400_000]
+])
 
 /** `--since`: an ISO time, or a duration back from now like `90m`, `12h`, `2d`. */
 export function parseSince(value: string, now: number): string | null {
   const rel = /^(\d+(?:\.\d+)?)([mhd])$/.exec(value.trim())
 
-  if (rel) return new Date(now - Number(rel[1]) * UNITS[rel[2]]).toISOString()
+  const unit = rel && UNITS.get(rel[2])
+
+  if (rel && unit) return new Date(now - Number(rel[1]) * unit).toISOString()
   const t = Date.parse(value)
 
   return Number.isNaN(t) ? null : new Date(t).toISOString()
