@@ -47,22 +47,22 @@ For deciding **what** to test at which layer, use the `test-planning` skill. For
 
 ## 2. Infrastructure Quick Reference
 
-| Item                      | Location                                                                                                                            |
-| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| Test runner               | Vitest, `vitest.config.ts` at the repo root, two projects: `node` and `renderer`                                                    |
-| `node` project            | Environment `node`: `src/daemon/`, `src/cli/`, `src/shared/`, `src/testing/` logic tests, and `tests/integration/**/*.test.ts`      |
-| `renderer` project        | Environment `jsdom`: `src/renderer/src/**/*.test.tsx`, setup file `src/renderer/src/testing/setup.ts`                               |
-| Component testing         | React Testing Library (`@testing-library/react`, `@testing-library/user-event`, `@testing-library/jest-dom`)                        |
-| Subprocess fakes          | `tests/fakes/bin/claude`, `tests/fakes/bin/gh`, `tests/fakes/bin/code` (Node scripts, executable, put first on `PATH`)              |
-| Bridge fake               | `src/renderer/src/testing/fake-bridge.ts` — in-memory `window.que` with a fixture book                                              |
-| Custom render wrapper     | **None.** The renderer has no providers to inject — import `render` straight from `@testing-library/react`                          |
-| Fixture factories         | `src/testing/fixtures.ts` (node tests), `src/renderer/src/testing/fixtures.ts` (renderer tests)                                     |
-| Path aliases              | `@shared/*`, `@daemon/*`, `@renderer/*`                                                                                             |
-| Globals                   | **Off** — import `describe`, `it`, `expect`, `vi`, … from `'vitest'` in every file                                                  |
-| Run all tests             | `npm test` (`vitest run`, both projects)                                                                                            |
-| Run in watch mode         | `npm run test:watch`                                                                                                                |
-| Run a single file         | `npx vitest run src/daemon/status-engine.test.ts`                                                                                   |
-| Run one project           | `npx vitest run --project renderer`                                                                                                 |
+| Item                  | Location                                                                                                                       |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| Test runner           | Vitest, `vitest.config.ts` at the repo root, two projects: `node` and `renderer`                                               |
+| `node` project        | Environment `node`: `src/daemon/`, `src/cli/`, `src/shared/`, `src/testing/` logic tests, and `tests/integration/**/*.test.ts` |
+| `renderer` project    | Environment `jsdom`: `src/renderer/src/**/*.test.tsx`, setup file `src/renderer/src/testing/setup.ts`                          |
+| Component testing     | React Testing Library (`@testing-library/react`, `@testing-library/user-event`, `@testing-library/jest-dom`)                   |
+| Subprocess fakes      | `tests/fakes/bin/claude`, `tests/fakes/bin/gh`, `tests/fakes/bin/code` (Node scripts, executable, put first on `PATH`)         |
+| Bridge fake           | `src/renderer/src/testing/fake-bridge.ts` — in-memory `window.que` with a fixture book                                         |
+| Custom render wrapper | **None.** The renderer has no providers to inject — import `render` straight from `@testing-library/react`                     |
+| Fixture factories     | `src/testing/fixtures.ts` (node tests), `src/renderer/src/testing/fixtures.ts` (renderer tests)                                |
+| Path aliases          | `@shared/*`, `@daemon/*`, `@renderer/*`                                                                                        |
+| Globals               | **Off** — import `describe`, `it`, `expect`, `vi`, … from `'vitest'` in every file                                             |
+| Run all tests         | `npm test` (`vitest run`, both projects)                                                                                       |
+| Run in watch mode     | `npm run test:watch`                                                                                                           |
+| Run a single file     | `npx vitest run src/daemon/status-engine.test.ts`                                                                              |
+| Run one project       | `npx vitest run --project renderer`                                                                                            |
 
 Test file locations: logic tests and renderer component tests are **colocated** with the code (`status-engine.test.ts` next to `status-engine.ts`, `Sidebar.test.tsx` next to `Sidebar.tsx`); daemon integration tests live under `tests/integration/`. The first work package's tests (`tests/unit/protocol.test.ts`, `pty-host.test.ts`, `server.test.ts`) predate this layout and a single-project config — move each into place (colocated logic test, or `tests/integration/`) the first time you touch it, and don't add new files under `tests/unit/`.
 
@@ -76,32 +76,32 @@ The `node` project has **no** global setup: each daemon integration test builds 
 
 ### The Fake Bridge (`src/renderer/src/testing/fake-bridge.ts`)
 
-| Export                           | What it does                                                                                                                                                                                  |
-| -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `fakeBridge.api`                 | The in-memory `QueApi` (`term.*`, `workspace.*`, `task.*`, `quiet.*`, `app.*`) installed as `window.que` by `setup.ts`. Types come from `src/preload/index.d.ts`, so it can't drift silently. |
-| `fakeBridge.seedWorkspace(ws)`   | Puts a workspace in the book **silently** — state "already in the daemon" when the component first asks. Call **before** `render()`.                                                         |
-| `fakeBridge.setStatus(id, s)`    | Updates a workspace's status **and emits** `workspace.status`, exactly as the daemon's status engine would. Call before render to seed, or after render to drive a live update.              |
-| `fakeBridge.setQuietState(q)`    | Updates the quiet-hours state **and emits** `quiet.state` (active, window, unlock deadline).                                                                                                 |
-| `fakeBridge.getWorkspace(id)`    | Reads the book back — to assert that a UI action reached the "daemon" (Section 5b).                                                                                                          |
-| `fakeBridge.reset()`             | Empties the book and drops listeners. Called by `setup.ts`'s `afterEach`; never call it mid-test.                                                                                            |
+| Export                         | What it does                                                                                                                                                                                  |
+| ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `fakeBridge.api`               | The in-memory `QueApi` (`term.*`, `workspace.*`, `task.*`, `quiet.*`, `app.*`) installed as `window.que` by `setup.ts`. Types come from `src/preload/index.d.ts`, so it can't drift silently. |
+| `fakeBridge.seedWorkspace(ws)` | Puts a workspace in the book **silently** — state "already in the daemon" when the component first asks. Call **before** `render()`.                                                          |
+| `fakeBridge.setStatus(id, s)`  | Updates a workspace's status **and emits** `workspace.status`, exactly as the daemon's status engine would. Call before render to seed, or after render to drive a live update.               |
+| `fakeBridge.setQuietState(q)`  | Updates the quiet-hours state **and emits** `quiet.state` (active, window, unlock deadline).                                                                                                  |
+| `fakeBridge.getWorkspace(id)`  | Reads the book back — to assert that a UI action reached the "daemon" (Section 5b).                                                                                                           |
+| `fakeBridge.reset()`           | Empties the book and drops listeners. Called by `setup.ts`'s `afterEach`; never call it mid-test.                                                                                             |
 
 ### The Subprocess Fakes (`tests/fakes/bin/`)
 
-| Binary   | Behavior                                                                                                                                                                                                                                                                                                                                                                       |
-| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Binary   | Behavior                                                                                                                                                                                                                                                                                                                                               |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `claude` | Honours `-p`, `--output-format stream-json`, `--settings` (runs the configured hook commands with realistic hook JSON on stdin), `--resume`, `--max-turns`, and interactive mode; also `claude agents --json`. Scenario from `QUE_FAKE_CLAUDE_SCENARIO`: `success`, `stall`, `rate_limit`, `max_turns`, `crash`, `needs_input`. Defaults to `success`. |
-| `gh`     | Appends each invocation's argv to `QUE_FAKE_GH_LOG` (one JSON array per line) and prints a fake PR URL for `gh pr create`.                                                                                                                                                                                                                                                      |
-| `code`   | Records its invocation the same way, so "open in VS Code" is assertable without launching an editor.                                                                                                                                                                                                                                                                         |
+| `gh`     | Appends each invocation's argv to `QUE_FAKE_GH_LOG` (one JSON array per line) and prints a fake PR URL for `gh pr create`.                                                                                                                                                                                                                             |
+| `code`   | Records its invocation the same way, so "open in VS Code" is assertable without launching an editor.                                                                                                                                                                                                                                                   |
 
 ### Fixture Factories
 
-| Export (file)                                  | What it does                                                                                                                                                         |
-| ---------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `makeWorkspace(overrides)` (both)              | A realistic workspace: opaque id (`ws_01h…`), branch-style name (`APP-1432-retry-logic`), worktree path under `~/.que/worktrees/<project>/<name>`, status `idle`.     |
-| `makeTask(overrides)` (both)                   | A queued task with a real prompt, turn and dollar caps, and an opaque id (`task_01h…`).                                                                              |
+| Export (file)                                    | What it does                                                                                                                                                          |
+| ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `makeWorkspace(overrides)` (both)                | A realistic workspace: opaque id (`ws_01h…`), branch-style name (`APP-1432-retry-logic`), worktree path under `~/.que/worktrees/<project>/<name>`, status `idle`.     |
+| `makeTask(overrides)` (both)                     | A queued task with a real prompt, turn and dollar caps, and an opaque id (`task_01h…`).                                                                               |
 | `makeHookEvent(name, overrides)` (`src/testing`) | A realistic Claude Code hook payload: `hook_event_name`, `session_id`, `cwd`, `transcript_path`, plus per-event fields (`notification_type`, `message`, `tool_name`). |
-| `makeStreamResult(overrides)` (`src/testing`)  | A stream-json `result` message: `type: 'result'`, `subtype`, `num_turns`, `total_cost_usd`, `session_id`, `stop_reason`, `is_error`.                                 |
-| `makeConfig(overrides)` (`src/testing`)        | A fully-defaulted config (quiet window, caps, stall timeout) for logic tests.                                                                                         |
+| `makeStreamResult(overrides)` (`src/testing`)    | A stream-json `result` message: `type: 'result'`, `subtype`, `num_turns`, `total_cost_usd`, `session_id`, `stop_reason`, `is_error`.                                  |
+| `makeConfig(overrides)` (`src/testing`)          | A fully-defaulted config (quiet window, caps, stall timeout) for logic tests.                                                                                         |
 
 ---
 
@@ -168,16 +168,28 @@ import { Sidebar } from './Sidebar'
 
 it('lists each workspace under its project with a status badge', async () => {
   fakeBridge.seedWorkspace(
-    makeWorkspace({ id: 'ws_01hzx3k9c2qf', project: 'que', name: 'APP-1432-retry-logic', status: 'working' })
+    makeWorkspace({
+      id: 'ws_01hzx3k9c2qf',
+      project: 'que',
+      name: 'APP-1432-retry-logic',
+      status: 'working'
+    })
   )
   fakeBridge.seedWorkspace(
-    makeWorkspace({ id: 'ws_01hzx4m1p8rt', project: 'que', name: 'APP-1440-quiet-board', status: 'idle' })
+    makeWorkspace({
+      id: 'ws_01hzx4m1p8rt',
+      project: 'que',
+      name: 'APP-1440-quiet-board',
+      status: 'idle'
+    })
   )
 
   render(<Sidebar />)
 
   expect(await screen.findByRole('button', { name: /APP-1432-retry-logic/ })).toBeInTheDocument()
-  expect(screen.getByTestId('sidebar-workspace-ws_01hzx3k9c2qf-status')).toHaveTextContent('working')
+  expect(screen.getByTestId('sidebar-workspace-ws_01hzx3k9c2qf-status')).toHaveTextContent(
+    'working'
+  )
   expect(screen.getByTestId('sidebar-workspace-ws_01hzx4m1p8rt-status')).toHaveTextContent('idle')
 })
 ```
@@ -190,7 +202,9 @@ The daemon pushes events; the fake bridge pushes the same ones. `setStatus` and 
 
 ```tsx
 it('moves the badge to needs input when the status engine says so', async () => {
-  fakeBridge.seedWorkspace(makeWorkspace({ id: 'ws_01hzx3k9c2qf', name: 'APP-1432-retry-logic', status: 'working' }))
+  fakeBridge.seedWorkspace(
+    makeWorkspace({ id: 'ws_01hzx3k9c2qf', name: 'APP-1432-retry-logic', status: 'working' })
+  )
   render(<Sidebar />)
   const badge = await screen.findByTestId('sidebar-workspace-ws_01hzx3k9c2qf-status')
 
@@ -209,8 +223,19 @@ Seeding (`seedWorkspace`) is silent and belongs before `render()`; emitting (`se
 Some leaf components (a status badge, a report row) take plain props rather than calling the bridge. Render them with props built from the renderer fixtures — no harness, no bridge:
 
 ```tsx
-render(<ReportRow task={makeTask({ id: 'task_01hzy0d7w3ke', state: 'done', prUrl: 'https://github.com/rquellh/que/pull/88' })} />)
-expect(screen.getByRole('link', { name: /pull\/88/ })).toHaveAttribute('href', 'https://github.com/rquellh/que/pull/88')
+render(
+  <ReportRow
+    task={makeTask({
+      id: 'task_01hzy0d7w3ke',
+      state: 'done',
+      prUrl: 'https://github.com/rquellh/que/pull/88'
+    })}
+  />
+)
+expect(screen.getByRole('link', { name: /pull\/88/ })).toHaveAttribute(
+  'href',
+  'https://github.com/rquellh/que/pull/88'
+)
 ```
 
 Don't build a general-purpose wrapper around either pattern; write the two or three lines each test needs.
@@ -289,7 +314,9 @@ it('archives a workspace from its context menu', async () => {
   fakeBridge.seedWorkspace(makeWorkspace({ id: 'ws_01hzx3k9c2qf', name: 'APP-1432-retry-logic' }))
   render(<Sidebar />)
 
-  await user.click(await screen.findByRole('button', { name: /more actions for APP-1432-retry-logic/i }))
+  await user.click(
+    await screen.findByRole('button', { name: /more actions for APP-1432-retry-logic/i })
+  )
   await user.click(screen.getByRole('menuitem', { name: 'Archive' }))
 
   await waitFor(() => {
@@ -307,7 +334,12 @@ que is full of time: PTY output arrives when it arrives, the runner's stall time
 
 ```ts
 it('replays the screen to a client that attaches after the output was written', async () => {
-  const { id } = await client.request('term.create', { cols: 80, rows: 24, file: '/bin/sh', args: ['-c', 'printf QUE_ATTACH_7f3a; sleep 30'] })
+  const { id } = await client.request('term.create', {
+    cols: 80,
+    rows: 24,
+    file: '/bin/sh',
+    args: ['-c', 'printf QUE_ATTACH_7f3a; sleep 30']
+  })
 
   await expect
     .poll(async () => (await client.request('term.snapshot', { id })).text, { timeout: 10_000 })
@@ -325,12 +357,18 @@ it('replays the screen to a client that attaches after the output was written', 
 it('marks a headless task stuck when claude stops producing output', async () => {
   vi.stubEnv('QUE_FAKE_CLAUDE_SCENARIO', 'stall')
   const ws = await createWorkspace(client, home) // file-local helper: temp repo + project.add + workspace.create
-  const task = await client.request('task.add', { workspaceId: ws.id, prompt: 'Add retry logic to the uploader', stallTimeoutMs: 1_000 })
+  const task = await client.request('task.add', {
+    workspaceId: ws.id,
+    prompt: 'Add retry logic to the uploader',
+    stallTimeoutMs: 1_000
+  })
 
   await client.request('task.run', { id: task.id })
 
   await expect
-    .poll(async () => (await client.request('workspace.get', { id: ws.id })).status, { timeout: 10_000 })
+    .poll(async () => (await client.request('workspace.get', { id: ws.id })).status, {
+      timeout: 10_000
+    })
     .toBe('stuck')
 }, 20_000)
 ```
@@ -347,16 +385,27 @@ it('finishes a successful task with a push and a draft PR', async () => {
   const ghLog = join(home, 'gh.log')
   vi.stubEnv('QUE_FAKE_GH_LOG', ghLog)
   const ws = await createWorkspace(client, home)
-  const task = await client.request('task.add', { workspaceId: ws.id, prompt: 'Add retry logic to the uploader' })
+  const task = await client.request('task.add', {
+    workspaceId: ws.id,
+    prompt: 'Add retry logic to the uploader'
+  })
 
   await client.request('task.run', { id: task.id })
 
   await expect
-    .poll(async () => (await client.request('task.get', { id: task.id })).state, { timeout: 15_000 })
+    .poll(async () => (await client.request('task.get', { id: task.id })).state, {
+      timeout: 15_000
+    })
     .toBe('done')
-  const calls = fs.readFileSync(ghLog, 'utf8').trim().split('\n').map((l) => JSON.parse(l) as string[])
+  const calls = fs
+    .readFileSync(ghLog, 'utf8')
+    .trim()
+    .split('\n')
+    .map((l) => JSON.parse(l) as string[])
   expect(calls).toContainEqual(expect.arrayContaining(['pr', 'create', '--draft']))
-  expect((await client.request('task.get', { id: task.id })).prUrl).toMatch(/^https:\/\/github\.com\/.+\/pull\/\d+$/)
+  expect((await client.request('task.get', { id: task.id })).prUrl).toMatch(
+    /^https:\/\/github\.com\/.+\/pull\/\d+$/
+  )
 }, 30_000)
 ```
 
@@ -375,10 +424,18 @@ const T0 = new Date(2026, 9, 13, 22, 0).getTime()
 
 describe('applyHookEvent', () => {
   it('goes idle on Stop without mutating the previous state', () => {
-    const prev = { ...initialStatus('ws_01hzx3k9c2qf'), status: 'working' as const, lastEventAt: T0 }
+    const prev = {
+      ...initialStatus('ws_01hzx3k9c2qf'),
+      status: 'working' as const,
+      lastEventAt: T0
+    }
     const before = structuredClone(prev)
 
-    const next = applyHookEvent(prev, makeHookEvent('Stop', { session_id: 'sess_8c1d2e' }), T0 + 5_000)
+    const next = applyHookEvent(
+      prev,
+      makeHookEvent('Stop', { session_id: 'sess_8c1d2e' }),
+      T0 + 5_000
+    )
 
     expect(next.status).toBe('idle')
     expect(prev).toEqual(before) // the reducer never touched its argument
@@ -386,11 +443,18 @@ describe('applyHookEvent', () => {
   })
 
   it('needs input on a permission prompt notification', () => {
-    const prev = { ...initialStatus('ws_01hzx3k9c2qf'), status: 'working' as const, lastEventAt: T0 }
+    const prev = {
+      ...initialStatus('ws_01hzx3k9c2qf'),
+      status: 'working' as const,
+      lastEventAt: T0
+    }
 
     const next = applyHookEvent(
       prev,
-      makeHookEvent('Notification', { notification_type: 'permission_prompt', message: 'Claude needs your permission to use Bash' }),
+      makeHookEvent('Notification', {
+        notification_type: 'permission_prompt',
+        message: 'Claude needs your permission to use Bash'
+      }),
       T0 + 1_000
     )
 
@@ -400,7 +464,11 @@ describe('applyHookEvent', () => {
 
 describe('checkStall', () => {
   it('marks a working session stuck once no event has arrived for the stall timeout', () => {
-    const working = { ...initialStatus('ws_01hzx3k9c2qf'), status: 'working' as const, lastEventAt: T0 }
+    const working = {
+      ...initialStatus('ws_01hzx3k9c2qf'),
+      status: 'working' as const,
+      lastEventAt: T0
+    }
 
     expect(checkStall(working, T0 + 299_000, { stallMs: 300_000 }).status).toBe('working')
     expect(checkStall(working, T0 + 300_000, { stallMs: 300_000 }).status).toBe('stuck')
@@ -428,7 +496,9 @@ describe('isQuiet', () => {
   })
 
   it('lets a per-day override replace the default window', () => {
-    const config = makeConfig({ quiet: { start: '22:00', end: '07:00', overrides: { fri: { start: '23:30', end: '09:00' } } } })
+    const config = makeConfig({
+      quiet: { start: '22:00', end: '07:00', overrides: { fri: { start: '23:30', end: '09:00' } } }
+    })
 
     expect(isQuiet(config, at(16, 22, 30))).toBe(false) // Friday 16 Oct 2026
   })
@@ -456,7 +526,10 @@ describe('nextTask', () => {
     let task = makeTask({ state: 'queued' })
     task = nextTask(task, { type: 'prepare' })
     task = nextTask(task, { type: 'started', sessionId: 'sess_8c1d2e' })
-    task = nextTask(task, { type: 'result', result: makeStreamResult({ subtype: 'success', num_turns: 14, total_cost_usd: 1.82 }) })
+    task = nextTask(task, {
+      type: 'result',
+      result: makeStreamResult({ subtype: 'success', num_turns: 14, total_cost_usd: 1.82 })
+    })
     task = nextTask(task, { type: 'finished', prUrl: 'https://github.com/rquellh/que/pull/88' })
 
     expect(task.state).toBe('done')
@@ -466,7 +539,10 @@ describe('nextTask', () => {
   it('pauses on a rate limit and resumes the same session', () => {
     const running = makeTask({ state: 'running', sessionId: 'sess_8c1d2e' })
 
-    const paused = nextTask(running, { type: 'rate_limited', resetsAt: new Date(2026, 9, 14, 3, 0).getTime() })
+    const paused = nextTask(running, {
+      type: 'rate_limited',
+      resetsAt: new Date(2026, 9, 14, 3, 0).getTime()
+    })
     const resumed = nextTask(paused, { type: 'resume' })
 
     expect(paused.state).toBe('paused')
@@ -514,7 +590,7 @@ export function makeHookEvent(name: HookEventName, overrides: Partial<HookEvent>
     cwd: '/Users/dev/.que/worktrees/que/APP-1432-retry-logic',
     transcript_path: `/Users/dev/.claude/projects/-Users-dev--que-worktrees-que-APP-1432-retry-logic/${sessionId}.jsonl`,
     permission_mode: 'default',
-    ...overrides,
+    ...overrides
   }
 }
 ```
@@ -537,7 +613,7 @@ export function makeStreamResult(overrides: Partial<StreamResult> = {}): StreamR
     session_id: 'sess_8c1d2e',
     stop_reason: 'end_turn',
     result: 'Added exponential backoff to the uploader and covered it with tests.',
-    ...overrides,
+    ...overrides
   }
 }
 ```
@@ -563,7 +639,7 @@ export function makeWorkspace(overrides: Partial<WorkspaceInfo> = {}): Workspace
     status: 'idle',
     archived: false,
     createdAt: '2026-10-13T21:04:00.000Z',
-    ...overrides,
+    ...overrides
   }
 }
 
@@ -578,7 +654,7 @@ export function makeTask(overrides: Partial<TaskInfo> = {}): TaskInfo {
     maxCostUsd: 5,
     costUsd: 0,
     turns: 0,
-    ...overrides,
+    ...overrides
   }
 }
 ```
@@ -589,8 +665,15 @@ Name fixtures for the case they represent, same as any other test data:
 
 ```ts
 const rateLimitedTask = makeTask({ state: 'paused', pausedReason: 'rate_limit' })
-const overBudgetResult = makeStreamResult({ subtype: 'error_max_turns', is_error: true, num_turns: 40 })
-const idlePrompt = makeHookEvent('Notification', { notification_type: 'idle_prompt', message: 'Claude is waiting for your input' })
+const overBudgetResult = makeStreamResult({
+  subtype: 'error_max_turns',
+  is_error: true,
+  num_turns: 40
+})
+const idlePrompt = makeHookEvent('Notification', {
+  notification_type: 'idle_prompt',
+  message: 'Claude is waiting for your input'
+})
 ```
 
 ### The Identity Invariants Fixtures Must Respect
@@ -648,14 +731,14 @@ await user.keyboard('{Meta>}t{/Meta}')
 
 Use the highest-priority query that works for your case:
 
-| Priority | Query                  | When to Use                                                     |
-| -------- | ---------------------- | --------------------------------------------------------------- |
+| Priority | Query                  | When to Use                                                      |
+| -------- | ---------------------- | ---------------------------------------------------------------- |
 | 1        | `getByRole`            | Buttons, tabs, menu items, headings, inputs, selects, checkboxes |
-| 2        | `getByLabelText`       | Form fields with a `<label htmlFor>`                            |
-| 3        | `getByPlaceholderText` | Inputs identified only by placeholder                           |
-| 4        | `getByText`            | Non-interactive text content                                    |
-| 5        | `getByDisplayValue`    | Inputs identified by their current value                        |
-| 6        | `getByTestId`          | Only when no semantic query works                               |
+| 2        | `getByLabelText`       | Form fields with a `<label htmlFor>`                             |
+| 3        | `getByPlaceholderText` | Inputs identified only by placeholder                            |
+| 4        | `getByText`            | Non-interactive text content                                     |
+| 5        | `getByDisplayValue`    | Inputs identified by their current value                         |
+| 6        | `getByTestId`          | Only when no semantic query works                                |
 
 ### When `getByTestId` Is Correct
 
@@ -748,19 +831,19 @@ await waitFor(() => {
 
 ### Common Matchers Reference
 
-| Matcher                           | Use For                                     |
-| --------------------------------- | ------------------------------------------- |
-| `.toBeInTheDocument()`            | Element exists in DOM                       |
-| `.toBeVisible()`                  | Element exists AND is visible to the user   |
-| `.toHaveTextContent('text')`      | Element contains text                       |
-| `.toHaveValue('value')`           | Input has value                             |
-| `.toBeDisabled()`                 | Button/input is disabled                    |
-| `.toBeChecked()`                  | Checkbox is checked                         |
-| `.toHaveAttribute('attr', 'val')` | Element has an HTML attribute               |
-| `.toMatchObject({...})`           | Socket result / task carries these fields   |
-| `.toContainEqual(...)`            | A recorded fake-binary call is in the log   |
-| `.rejects.toMatchObject({ code })`| A daemon request fails with a structured error |
-| `.not.toBeInTheDocument()`        | Element does NOT exist (use with `queryBy`) |
+| Matcher                            | Use For                                        |
+| ---------------------------------- | ---------------------------------------------- |
+| `.toBeInTheDocument()`             | Element exists in DOM                          |
+| `.toBeVisible()`                   | Element exists AND is visible to the user      |
+| `.toHaveTextContent('text')`       | Element contains text                          |
+| `.toHaveValue('value')`            | Input has value                                |
+| `.toBeDisabled()`                  | Button/input is disabled                       |
+| `.toBeChecked()`                   | Checkbox is checked                            |
+| `.toHaveAttribute('attr', 'val')`  | Element has an HTML attribute                  |
+| `.toMatchObject({...})`            | Socket result / task carries these fields      |
+| `.toContainEqual(...)`             | A recorded fake-binary call is in the log      |
+| `.rejects.toMatchObject({ code })` | A daemon request fails with a structured error |
+| `.not.toBeInTheDocument()`         | Element does NOT exist (use with `queryBy`)    |
 
 ---
 
@@ -809,14 +892,26 @@ import { makeWorkspace } from '@renderer/testing/fixtures'
 import { QuietBoard } from './QuietBoard'
 
 // ── File-scope fixtures (only what this file needs) ──
-const retryLogic = makeWorkspace({ id: 'ws_01hzx3k9c2qf', name: 'APP-1432-retry-logic', status: 'working' })
+const retryLogic = makeWorkspace({
+  id: 'ws_01hzx3k9c2qf',
+  name: 'APP-1432-retry-logic',
+  status: 'working'
+})
 
 // ── Test Suites ──────────────────────────────
 describe('QuietBoard', () => {
-  describe('rendering', () => { /* ... */ })
-  describe('status updates', () => { /* ... */ })
-  describe('unlock', () => { /* ... */ })
-  describe('empty state', () => { /* ... */ })
+  describe('rendering', () => {
+    /* ... */
+  })
+  describe('status updates', () => {
+    /* ... */
+  })
+  describe('unlock', () => {
+    /* ... */
+  })
+  describe('empty state', () => {
+    /* ... */
+  })
 })
 ```
 
@@ -829,17 +924,29 @@ import { DaemonClient } from '@shared/client'
 import { DaemonServer } from '@daemon/server'
 
 // ── Harness (temp QUE_HOME, PATH with fakes, server, client) ──
-beforeEach(async () => { /* ... */ })
-afterEach(async () => { /* ... */ })
+beforeEach(async () => {
+  /* ... */
+})
+afterEach(async () => {
+  /* ... */
+})
 
 // ── File-local helpers (createWorkspace, makeTempRepo) ──
 
 // ── Test Suites ──────────────────────────────
 describe('task runner', () => {
-  describe('success', () => { /* ... */ })
-  describe('caps', () => { /* ... */ })
-  describe('rate limit', () => { /* ... */ })
-  describe('stall', () => { /* ... */ })
+  describe('success', () => {
+    /* ... */
+  })
+  describe('caps', () => {
+    /* ... */
+  })
+  describe('rate limit', () => {
+    /* ... */
+  })
+  describe('stall', () => {
+    /* ... */
+  })
 })
 ```
 
@@ -853,9 +960,15 @@ import { makeHookEvent } from '../testing/fixtures'
 
 // ── Test Suites ──────────────────────────────
 describe('applyHookEvent', () => {
-  describe('transitions', () => { /* ... */ })
-  describe('stale session ids', () => { /* ... */ })
-  describe('purity', () => { /* ... */ }) // input-not-mutated assertions
+  describe('transitions', () => {
+    /* ... */
+  })
+  describe('stale session ids', () => {
+    /* ... */
+  })
+  describe('purity', () => {
+    /* ... */
+  }) // input-not-mutated assertions
 })
 ```
 
@@ -868,16 +981,16 @@ describe('applyHookEvent', () => {
 
 ### Standard Behavioral Describe Groupings
 
-| Grouping            | When to Use                                                          |
-| ------------------- | -------------------------------------------------------------------- |
-| `rendering`         | Static rendering, initial state, layout                              |
-| `status updates`    | UI reacting to `workspace.status` / `quiet.state` events             |
-| `user interactions` | Clicks, typing, selecting, and the bridge calls they make            |
-| `transitions`       | Reducer / state-machine steps                                        |
-| `clock`             | Behavior that depends on `now()` (quiet window, unlock, stall)       |
-| `scenarios`         | One per fake `claude` scenario in a runner integration test          |
-| `errors`            | Structured daemon errors, crashes, malformed input, disconnects      |
-| `purity`            | Input-not-mutated checks on pure reducers                            |
+| Grouping            | When to Use                                                     |
+| ------------------- | --------------------------------------------------------------- |
+| `rendering`         | Static rendering, initial state, layout                         |
+| `status updates`    | UI reacting to `workspace.status` / `quiet.state` events        |
+| `user interactions` | Clicks, typing, selecting, and the bridge calls they make       |
+| `transitions`       | Reducer / state-machine steps                                   |
+| `clock`             | Behavior that depends on `now()` (quiet window, unlock, stall)  |
+| `scenarios`         | One per fake `claude` scenario in a runner integration test     |
+| `errors`            | Structured daemon errors, crashes, malformed input, disconnects |
+| `purity`            | Input-not-mutated checks on pure reducers                       |
 
 ---
 
@@ -950,7 +1063,9 @@ await new Promise((r) => setTimeout(r, 2000))
 expect((await client.request('task.get', { id })).state).toBe('done')
 
 // CORRECT - wait on the condition, with real timers
-await expect.poll(async () => (await client.request('task.get', { id })).state, { timeout: 15_000 }).toBe('done')
+await expect
+  .poll(async () => (await client.request('task.get', { id })).state, { timeout: 15_000 })
+  .toBe('done')
 ```
 
 ```ts
@@ -1002,7 +1117,9 @@ render(<Sidebar />)
 ```ts
 // WRONG - one home for the whole file: SQLite rows, worktrees, and sockets leak between tests
 const home = fs.mkdtempSync(join(os.tmpdir(), 'que-it-'))
-beforeAll(async () => { /* start the daemon once in home */ })
+beforeAll(async () => {
+  /* start the daemon once in home */
+})
 
 // CORRECT - a fresh temp home per test, removed in afterEach
 beforeEach(async () => {
@@ -1047,7 +1164,9 @@ expect((await client.request('workspace.get', { id })).status).toBe('idle')
 expect(screen.getByText('QUE_ATTACH_7f3a')).toBeInTheDocument()
 
 // CORRECT - content via the daemon's headless mirror (integration) or screenText() (E2E)
-await expect.poll(async () => (await client.request('term.snapshot', { id })).text).toContain('QUE_ATTACH_7f3a')
+await expect
+  .poll(async () => (await client.request('term.snapshot', { id })).text)
+  .toContain('QUE_ATTACH_7f3a')
 ```
 
 ---

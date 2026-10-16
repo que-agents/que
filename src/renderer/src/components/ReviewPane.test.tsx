@@ -31,6 +31,7 @@ async function openWorkspace(user: ReturnType<typeof userEvent.setup>): Promise<
   await waitFor(() => {
     expect(pane.dataset.activeTerm).not.toBe('')
   })
+
   return pane.dataset.activeTerm as string
 }
 

@@ -15,5 +15,6 @@ export function slugify(name: string): string {
 /** The slug if it is a valid workspace name, otherwise null. */
 export function workspaceSlug(name: string): string | null {
   const slug = slugify(name)
+
   return WORKSPACE_NAME_RE.test(slug) ? slug : null
 }

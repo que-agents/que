@@ -32,6 +32,10 @@ config default, run `npm run docs` and commit the regenerated `docs/` files.
 A Semgrep check also runs on every pull request (registry rules plus `.semgrep/que.yml`). To run the
 custom rules locally, install `semgrep` and run `semgrep scan --config .semgrep/que.yml --error .`.
 
+## Lint and format
+
+`npm run lint` runs oxlint (with the vendored rules in `tools/oxlint/`, see its README) and an oxfmt format check; `npm run format` writes the formatting. `npm ci` installs a pre-commit hook (husky and lint-staged) that lints and formats the staged files.
+
 ## Tests
 
 The repository carries three testing guides in `.claude/skills/` that apply to
@@ -47,6 +51,11 @@ never internal modules; a fresh temp `QUE_HOME` for every test; no sleeps, wait
 on a condition; inject the clock into anything time-dependent.
 `npm run test:flaky -- 10` runs the Vitest suites ten times when you suspect a
 flaky test.
+
+Two mechanical commits (the oxfmt reformat and the blank-line autofix) are
+listed in `.git-blame-ignore-revs`; run
+`git config blame.ignoreRevsFile .git-blame-ignore-revs` once so `git blame`
+skips them.
 
 ## Pull requests
 

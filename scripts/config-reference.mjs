@@ -15,6 +15,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const target = join(root, 'docs/configuration.md')
 const tmp = mkdtempSync(join(os.tmpdir(), 'que-config-ref-'))
 const outfile = join(tmp, 'config.js')
+
 buildSync({
   entryPoints: [join(root, 'src/shared/config.ts')],
   outfile,
@@ -26,7 +27,9 @@ buildSync({
   nodePaths: [join(root, 'node_modules')],
   logLevel: 'error'
 })
+
 const config = createRequire(import.meta.url)(outfile)
+
 rmSync(tmp, { recursive: true, force: true })
 
 const HOME = '/Users/you/.que'
@@ -72,8 +75,11 @@ start_prompt = ${JSON.stringify(d.jira.startPrompt)}
 // The block must parse back to exactly the defaults (worktree_root aside, which
 // expands ~ against the real home).
 const parsed = config.parseConfig(userDefaults, { queHome: HOME })
+
 if (!parsed.ok) throw new Error(`generated defaults do not parse: ${JSON.stringify(parsed.errors)}`)
+
 parsed.config.worktreeRoot = d.worktreeRoot
+
 if (JSON.stringify(parsed.config) !== JSON.stringify(d)) {
   throw new Error('generated defaults do not round-trip to defaultConfig()')
 }
@@ -87,31 +93,40 @@ permission_mode = "acceptEdits"        # ${config.PERMISSION_MODES.join(' | ')}
 test = "npm test"                      # the command a task must make pass
 instructions = "Keep changes small."   # appended to every task brief for this repo
 allowed_tools = ["Bash(npm test)"]     # passed to claude as --allowedTools`
+
 const repoParsed = config.parseRepoConfig(repoExample)
+
 if (!repoParsed.ok)
   throw new Error(`que.toml example does not parse: ${JSON.stringify(repoParsed.errors)}`)
 
 const blocks = { 'config-defaults': userDefaults, 'repo-example': repoExample }
 let stale = false
+
 for (const file of [target, join(root, 'README.md')]) {
   const current = readFileSync(file, 'utf8')
   let next = current
+
   for (const [name, body] of Object.entries(blocks)) {
     const re = new RegExp(`(<!-- generated:${name} -->\\n)[\\s\\S]*?(<!-- /generated -->)`)
+
     if (!re.test(next)) throw new Error(`${file} has no generated:${name} block`)
     next = next.replace(re, `$1\`\`\`toml\n${body}\n\`\`\`\n$2`)
   }
+
   if (next === current) continue
   stale = true
+
   if (!process.argv.includes('--check')) {
     writeFileSync(file, next)
     console.log(`wrote ${file}`)
   }
 }
+
 if (process.argv.includes('--check')) {
   if (stale) {
     console.error('the generated config blocks are stale; run npm run docs')
     process.exit(1)
   }
+
   console.log('the generated config blocks are up to date')
 }

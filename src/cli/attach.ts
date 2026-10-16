@@ -8,6 +8,7 @@ export async function attach(id: string): Promise<void> {
   const stdout = process.stdout
   const client = await DaemonClient.connectOrStart()
   const interactive = stdin.isTTY && stdout.isTTY
+
   const size = (): { cols: number; rows: number } => ({
     cols: stdout.columns || 80,
     rows: stdout.rows || 24
@@ -16,19 +17,23 @@ export async function attach(id: string): Promise<void> {
   let finished = false
   let resolveDone!: () => void
   const done = new Promise<void>((r) => (resolveDone = r))
+
   const finish = (msg?: string): void => {
     if (finished) return
     finished = true
     process.off('SIGWINCH', onResize)
     stdin.off('data', onInput)
+
     try {
       stdin.setRawMode(false)
     } catch {
       // stdin already closed.
     }
+
     stdin.pause()
     // Reset attributes and show the cursor in case the program hid it.
     stdout.write('\x1b[0m\x1b[?25h\r\n')
+
     if (msg) stdout.write(`${msg}\r\n`)
     void client
       .request('term.detach', { id })
@@ -41,14 +46,18 @@ export async function attach(id: string): Promise<void> {
 
   const onInput = (buf: Buffer): void => {
     const i = buf.indexOf(0x1d) // Ctrl-]
+
     if (i >= 0) {
       if (i > 0)
         void client.request('term.write', { id, data: buf.subarray(0, i).toString('utf8') })
       finish('[detached]')
+
       return
     }
+
     void client.request('term.write', { id, data: buf.toString('utf8') }).catch(() => {})
   }
+
   const onResize = (): void => {
     void client.request('term.resize', { id, ...size() }).catch(() => {})
   }
@@ -66,18 +75,21 @@ export async function attach(id: string): Promise<void> {
   // Subscribe before switching the TTY so errors (no such terminal, quiet
   // hours) print normally, with or without a TTY.
   let res: TermAttachResult
+
   try {
     res = await client.request('term.attach', { id, ...size() })
   } catch (err) {
     client.close()
     throw err
   }
+
   if (!interactive) {
     await client.request('term.detach', { id }).catch(() => {})
     client.close()
     console.error('que: attach needs an interactive terminal')
     process.exit(1)
   }
+
   client.onClose(() => finish('[daemon connection closed]'))
   stdin.setRawMode(true)
   stdin.resume()

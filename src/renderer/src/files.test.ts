@@ -58,6 +58,7 @@ describe('buildTree', () => {
     it('marks each changed file and counts them on every directory above', () => {
       const put = makeDiffFile({ path: 'src/upload/put.ts' })
       const retry = makeDiffFile({ path: 'src/upload/retry.ts', status: 'added' })
+
       const tree = buildTree(
         ['README.md', 'src/index.ts', 'src/upload/put.ts', 'src/upload/retry.ts', 'tests/a.ts'],
         changes(put, retry)
@@ -139,6 +140,7 @@ describe('newlyChanged', () => {
     'src/upload/retry.ts',
     'tests/e2e/upload.spec.ts'
   ]
+
   const tree = (...files: DiffFile[]): DirNode => buildTree(listing, changes(...files))
   const index = makeDiffFile({ path: 'src/index.ts' })
   const retry = makeDiffFile({ path: 'src/upload/retry.ts' })
@@ -164,6 +166,7 @@ describe('newlyChanged', () => {
 
   it('counts every directory of a previous fold as holding its changes', () => {
     const folded = buildTree(['tests/e2e/upload.spec.ts'], changes(spec))
+
     const unfolded = buildTree(
       ['tests/e2e/upload.spec.ts', 'tests/unit/retry.test.ts'],
       changes(spec)

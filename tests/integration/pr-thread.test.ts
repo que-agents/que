@@ -35,13 +35,16 @@ afterEach(async () => {
 
 const opts = { timeout: 10_000 }
 const prOf = async (id: string) => (await client.request('workspace.get', { id })).pr
+
 const views = () =>
   readFakeLog(daemon.ghLog).filter((c) => c.argv[0] === 'pr' && c.argv[1] === 'view')
+
 const apiCalls = () => readFakeLog(daemon.ghLog).filter((c) => c.argv[0] === 'api')
 
 function record<E extends keyof Events>(event: E): Events[E][] {
   const seen: Events[E][] = []
   client.on(event, (data) => seen.push(data))
+
   return seen
 }
 
@@ -49,6 +52,7 @@ async function workspace(name = 'app-1520-pr-thread'): Promise<Workspace> {
   const repo = makeTempRepo(daemon.home)
   addBareOrigin(repo)
   const project = await client.request('project.add', { path: repo })
+
   return client.request('workspace.create', { projectId: project.id, name })
 }
 
@@ -91,6 +95,7 @@ async function workspaceWithThread(): Promise<Workspace> {
     ]
   })
   await expect.poll(async () => (await prOf(ws.id))?.updatedAt, opts).toBe(UPDATED)
+
   return ws
 }
 

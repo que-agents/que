@@ -10,6 +10,7 @@ const objects = (v: unknown): Obj[] => (Array.isArray(v) ? v.filter(isObj) : [])
 const str = (v: unknown): string => (typeof v === 'string' ? v : '')
 const strOrNull = (v: unknown): string | null => (typeof v === 'string' && v ? v : null)
 const numOrNull = (v: unknown): number | null => (typeof v === 'number' ? v : null)
+
 const idOf = (v: unknown): string =>
   typeof v === 'string' || typeof v === 'number' ? String(v) : ''
 
@@ -51,6 +52,7 @@ export function parsePrThread(
 ): PrThread {
   const v = isObj(view) ? view : {}
   const entries: PrThreadEntry[] = []
+
   for (const c of objects(v.comments)) {
     entries.push(
       entry('comment', {
@@ -62,9 +64,11 @@ export function parsePrThread(
       })
     )
   }
+
   for (const r of objects(v.reviews)) {
     const state = REVIEW_STATES[str(r.state)] ?? 'commented'
     const body = str(r.body)
+
     // GitHub wraps every batch of line comments in an empty COMMENTED review.
     if (state === 'commented' && !body.trim()) continue
     entries.push(
@@ -78,6 +82,7 @@ export function parsePrThread(
       })
     )
   }
+
   for (const l of objects(lineComments)) {
     entries.push(
       entry('line', {
@@ -92,8 +97,10 @@ export function parsePrThread(
       })
     )
   }
+
   // Array.prototype.sort is stable, so equal times keep their order above.
   entries.sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0))
+
   return { workspaceId, number, entries, fetchedAt }
 }
 
@@ -103,13 +110,16 @@ export function jsonPages(text: string): unknown[] {
   let depth = 0
   let start = -1
   let inString = false
+
   for (let i = 0; i < text.length; i++) {
     const ch = text[i]
+
     if (inString) {
       if (ch === '\\') i++
       else if (ch === '"') inString = false
       continue
     }
+
     if (ch === '"') inString = true
     else if (ch === '[' || ch === '{') {
       if (depth++ === 0) start = i
@@ -117,6 +127,8 @@ export function jsonPages(text: string): unknown[] {
       if (--depth === 0) pages.push(JSON.parse(text.slice(start, i + 1)))
     } else if (depth === 0 && !/\s/.test(ch)) throw new Error('not JSON')
   }
+
   if (depth !== 0 || inString) throw new Error('not JSON')
+
   return pages
 }

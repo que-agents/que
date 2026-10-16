@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import type { QuietHoursConfig, UserConfig, Weekday } from '../../../preload/index.d'
 import { currentWindow } from '../../../daemon/quiet-hours'
 import { WEEKDAYS } from '../../../shared/types'
@@ -37,18 +37,22 @@ const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/
 
 function toForm(c: UserConfig): Form {
   const q = c.quietHours
+
   const days = Object.fromEntries(
     WEEKDAYS.map((d) => {
       const o = q.days[d]
+
       const day: DayForm =
         o === undefined
           ? { mode: 'inherit', start: q.default.start, end: q.default.end }
           : o === 'none'
             ? { mode: 'none', start: q.default.start, end: q.default.end }
             : { mode: 'custom', start: o.start, end: o.end }
+
       return [d, day]
     })
   ) as Record<Weekday, DayForm>
+
   return {
     enabled: q.enabled,
     start: q.default.start,
@@ -69,23 +73,32 @@ function toForm(c: UserConfig): Form {
 /** The form's problems, one line each; empty when it can be saved. */
 function validate(f: Form): string[] {
   const errors: string[] = []
+
   const window = (label: string, start: string, end: string): void => {
     if (!HHMM.test(start) || !HHMM.test(end)) errors.push(`${label}: use 24-hour HH:MM times`)
     else if (start === end) errors.push(`${label}: start and end must differ`)
   }
+
   window('Quiet hours', f.start, f.end)
+
   for (const d of WEEK) {
     if (f.days[d].mode === 'custom') window(capital(d), f.days[d].start, f.days[d].end)
   }
+
   const minutes = Number(f.unlockMinutes)
+
   if (f.unlockMinutes.trim() === '' || !Number.isFinite(minutes) || minutes <= 0) {
     errors.push('Unlock minutes must be a positive number')
   }
+
   const poll = Number(f.pollMinutes)
+
   if (f.pollMinutes.trim() === '' || !Number.isFinite(poll) || poll <= 0) {
     errors.push('Sync minutes must be a positive number')
   }
+
   if (f.startPrompt.trim() === '') errors.push('The start prompt cannot be empty')
+
   return errors
 }
 
@@ -95,11 +108,14 @@ function capital(s: string): string {
 
 function quietOf(f: Form): QuietHoursConfig {
   const days: QuietHoursConfig['days'] = {}
+
   for (const d of WEEKDAYS) {
     const day = f.days[d]
+
     if (day.mode === 'none') days[d] = 'none'
     else if (day.mode === 'custom') days[d] = { start: day.start, end: day.end }
   }
+
   return {
     enabled: f.enabled,
     default: { start: f.start, end: f.end },
@@ -115,10 +131,12 @@ function patchOf(f: Form): Record<string, unknown> {
     default: [f.start, f.end],
     unlock_minutes: Number(f.unlockMinutes)
   }
+
   for (const d of WEEKDAYS) {
     const day = f.days[d]
     quiet[d] = day.mode === 'inherit' ? null : day.mode === 'none' ? 'none' : [day.start, day.end]
   }
+
   return {
     quiet_hours: quiet,
     notifications: {
@@ -148,9 +166,8 @@ export default function SettingsView(): React.JSX.Element {
   const [confirming, setConfirming] = useState(false)
   const [saved, setSaved] = useState(false)
 
-  useEffect(() => {
-    if (config && form === null) setForm(toForm(config.config))
-  }, [config, form])
+  // The form is seeded from the config once it first arrives.
+  if (config && form === null) setForm(toForm(config.config))
 
   if (!form || !config) {
     return (
@@ -164,11 +181,13 @@ export default function SettingsView(): React.JSX.Element {
     setForm({ ...form, ...patch })
     setSaved(false)
   }
+
   const updateDay = (d: Weekday, patch: Partial<DayForm>): void =>
     update({ days: { ...form.days, [d]: { ...form.days[d], ...patch } } })
 
   const save = async (applyTonight: boolean): Promise<void> => {
     setConfirming(false)
+
     try {
       await store.saveConfig({ patch: patchOf(form), applyTonight })
       setErrors([])
@@ -182,15 +201,20 @@ export default function SettingsView(): React.JSX.Element {
     e.preventDefault()
     const problems = validate(form)
     setErrors(problems)
+
     if (problems.length > 0) return
+
     // Tonight's window in progress would end sooner (or go away): ask first.
     if (quiet?.inQuietHours && quiet.windowEnd) {
       const next = currentWindow(store.now(), quietOf(form))
+
       if (!next || next.end.getTime() < Date.parse(quiet.windowEnd)) {
         setConfirming(true)
+
         return
       }
     }
+
     void save(false)
   }
 
@@ -251,6 +275,7 @@ export default function SettingsView(): React.JSX.Element {
             <tbody>
               {WEEK.map((d) => {
                 const day = form.days[d]
+
                 return (
                   <tr key={d} data-testid={`settings-day-${d}`}>
                     <th scope="row">{capital(d)}</th>

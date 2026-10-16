@@ -108,6 +108,7 @@ export async function startTestDaemon(opts: TestDaemonOptions = {}): Promise<Tes
 
   const paths = ensureDirs(quePaths())
   const host = new LeakCheckedPtyHost()
+
   const server = new DaemonServer({
     host,
     version: 'test',
@@ -119,11 +120,13 @@ export async function startTestDaemon(opts: TestDaemonOptions = {}): Promise<Tes
     quietTickMs: opts.quietTickMs ?? 200,
     now: opts.now
   })
+
   await server.listen(paths.socket)
   const client = new DaemonClient(paths.socket)
   await client.connect()
 
   let closed = false
+
   return {
     home,
     socket: paths.socket,
@@ -147,6 +150,7 @@ export async function startTestDaemon(opts: TestDaemonOptions = {}): Promise<Tes
       host.killAll()
       await server.close()
       vi.unstubAllEnvs()
+
       try {
         await assertPidsGone([...host.pids, ...taskPids])
       } finally {

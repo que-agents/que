@@ -18,24 +18,29 @@ const now = new Date(2026, 9, 14, 2, 0).getTime()
 const clock = (): number => now
 const windowStart = new Date(2026, 9, 13, 19, 0)
 const windowEnd = new Date(2026, 9, 14, 7, 0)
+
 const quiet = makeQuietState({
   inQuietHours: true,
   windowStart: windowStart.toISOString(),
   windowEnd: windowEnd.toISOString()
 })
+
 const ago = (minutes: number): string => new Date(now - minutes * 60_000).toISOString()
 
 const uploader = makeProject()
+
 const retry = makeWorkspace({
   id: 'ws_01hzx3k9c2qf',
   name: 'app-1432-retry-logic',
   status: 'working'
 })
+
 const auth = makeWorkspace({
   id: 'ws_01hzx5t6y2wa',
   name: 'app-1451-token-refresh',
   status: 'needs_input'
 })
+
 const running = makeTask({
   id: 'tsk_01hzy0d7w3ke',
   title: 'Add retry logic to the uploader',
@@ -47,6 +52,7 @@ const running = makeTask({
   costUsd: 1.82,
   updatedAt: ago(2)
 })
+
 const paused = makeTask({
   id: 'tsk_01hzy1f2g5mn',
   title: 'Document the upload limits',
@@ -56,6 +62,7 @@ const paused = makeTask({
   pausedUntil: new Date(2026, 9, 14, 3, 0).toISOString(),
   updatedAt: ago(30)
 })
+
 const stuck = makeTask({
   id: 'tsk_01hzy2h8j4pq',
   title: 'Fix the flaky upload test',
@@ -64,6 +71,7 @@ const stuck = makeTask({
   reason: 'no_heartbeat',
   updatedAt: ago(60)
 })
+
 const doneTonight = makeTask({ id: 'tsk_01hzy3k2l6rs', state: 'done', updatedAt: ago(90) })
 const doneYesterday = makeTask({ id: 'tsk_01hzy4m5n7tu', state: 'done', updatedAt: ago(26 * 60) })
 const shell = makeTermInfo({ name: retry.name, workspaceId: retry.id, createdAt: ago(75) })
@@ -72,6 +80,7 @@ function seed(): void {
   fakeBridge.seedProject(uploader)
   fakeBridge.seedWorkspace(retry)
   fakeBridge.seedWorkspace(auth)
+
   for (const t of [running, paused, stuck, doneTonight, doneYesterday]) fakeBridge.seedTask(t)
   fakeBridge.seedTerminal(shell)
   fakeBridge.setQuietState(quiet)

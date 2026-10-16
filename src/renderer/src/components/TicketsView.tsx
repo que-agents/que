@@ -10,6 +10,7 @@ function syncedAt(iso: string | null): string {
   if (!iso) return 'synced never'
   const d = new Date(iso)
   const pad = (n: number): string => String(n).padStart(2, '0')
+
   return `synced ${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
@@ -25,18 +26,22 @@ const ticketDone = (t: Ticket): boolean => t.statusCategory === 'done'
 /** Keep the nodes that match, or whose subtasks do; a matching node keeps all its subtasks. */
 function filterNodes(filter: string, nodes: TicketNode[]): TicketNode[] {
   const kept: TicketNode[] = []
+
   for (const n of nodes) {
     if (hit(filter, n.ticket)) kept.push(n)
     else {
       const subtasks = n.subtasks.filter((s) => hit(filter, s))
+
       if (subtasks.length > 0) kept.push({ ticket: n.ticket, subtasks })
     }
   }
+
   return kept
 }
 
 function statusTone(t: Ticket): string {
   if (t.statusCategory === 'done') return 'good'
+
   return t.statusCategory === 'indeterminate' ? 'busy' : 'neutral'
 }
 
@@ -45,17 +50,20 @@ export default function TicketsView(): React.JSX.Element {
   const store = useStore()
   const { connected, tickets, ticketsSync, filter } = useQue()
   const tree = buildTicketTree(tickets)
+
   const groups = tree.groups
     .map((g) => ({
       epic: g.epic,
       children: hit(filter, g.epic) ? g.children : filterNodes(filter, g.children)
     }))
     .filter((g) => g.children.length > 0 || hit(filter, g.epic))
+
   const loose = filterNodes(filter, tree.loose)
   const [syncing, setSyncing] = useState(false)
 
   const sync = async (): Promise<void> => {
     setSyncing(true)
+
     try {
       await store.syncTickets()
     } finally {
@@ -124,6 +132,7 @@ export default function TicketsView(): React.JSX.Element {
 
 function TicketLink({ t }: { t: Ticket }): React.JSX.Element {
   if (!t.url) return <span className="key">{t.key}</span>
+
   return (
     <a
       className="key"
@@ -190,6 +199,7 @@ function TicketRow({
   const store = useStore()
   const { connected, workspaces } = useQue()
   const ws = t.workspaceId ? workspaces[t.workspaceId] : undefined
+
   return (
     <li
       className={ticketDone(t) ? 'report-row ticket done' : 'report-row ticket'}

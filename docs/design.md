@@ -11,16 +11,16 @@ them; nothing sets a colour, font, or radius inline.
 
 ## Surfaces
 
-| Token             | Value     | Use                                                   |
-| ----------------- | --------- | ----------------------------------------------------- |
-| `--bg-side`       | `#111111` | The sidebar.                                          |
+| Token             | Value     | Use                                                    |
+| ----------------- | --------- | ------------------------------------------------------ |
+| `--bg-side`       | `#111111` | The sidebar.                                           |
 | `--bg`            | `#181818` | The main area, the terminal, the quiet board, windows. |
-| `--bg-input`      | `#0e0e0e` | Text fields.                                          |
-| `--bg-raised`     | `#202020` | Buttons, menus, dialogs, banners.                     |
-| `--bg-hover`      | `#262626` | Hover on rows, buttons, menu items.                   |
-| `--bg-active`     | `#2c2c2c` | The selected row; scrollbar thumbs.                   |
-| `--border`        | `#272727` | Hairlines and dashed guides.                          |
-| `--border-strong` | `#363636` | Menus, dialogs, hovered buttons.                      |
+| `--bg-input`      | `#0e0e0e` | Text fields.                                           |
+| `--bg-raised`     | `#202020` | Buttons, menus, dialogs, banners.                      |
+| `--bg-hover`      | `#262626` | Hover on rows, buttons, menu items.                    |
+| `--bg-active`     | `#2c2c2c` | The selected row; scrollbar thumbs.                    |
+| `--border`        | `#272727` | Hairlines and dashed guides.                           |
+| `--border-strong` | `#363636` | Menus, dialogs, hovered buttons.                       |
 
 Surfaces step up by one token per layer: the sidebar is darker than the main
 area, raised things (menus, dialogs) sit one step above it. Regions are divided
@@ -31,12 +31,12 @@ the window's bottom edge above a solid hairline.
 
 ## Text
 
-| Token            | Value     | Use                                                   |
-| ---------------- | --------- | ----------------------------------------------------- |
-| `--fg`           | `#eeeeee` | Names, titles, the selected row, anything primary.    |
-| `--fg-secondary` | `#c9c9c9` | Rows at rest, buttons, menu items.                    |
-| `--fg-muted`     | `#9b9b9b` | Hints, form labels, totals, the branch.               |
-| `--fg-faint`     | `#6f6f6f` | Section labels, paths, counts, breadcrumbs, empties.  |
+| Token            | Value     | Use                                                  |
+| ---------------- | --------- | ---------------------------------------------------- |
+| `--fg`           | `#eeeeee` | Names, titles, the selected row, anything primary.   |
+| `--fg-secondary` | `#c9c9c9` | Rows at rest, buttons, menu items.                   |
+| `--fg-muted`     | `#9b9b9b` | Hints, form labels, totals, the branch.              |
+| `--fg-faint`     | `#6f6f6f` | Section labels, paths, counts, breadcrumbs, empties. |
 
 Body text is the system sans at 13px. Anything that is a label, an identifier,
 or a measurement is mono at 10–11px: section labels, branch names, paths,
@@ -46,17 +46,17 @@ so the DOM keeps the plain word.
 
 ## Accent and tones
 
-| Token              | Value     | Use                                                                   |
-| ------------------ | --------- | --------------------------------------------------------------------- |
-| `--accent`         | `#c26157` | Links, the active tab's underline, focus rings, the terminal cursor.  |
+| Token              | Value     | Use                                                                        |
+| ------------------ | --------- | -------------------------------------------------------------------------- |
+| `--accent`         | `#c26157` | Links, the active tab's underline, focus rings, the terminal cursor.       |
 | `--accent-2`       | `#ffb162` | Quiet-hours state: the unlock countdown, paused, needs input on the board. |
-| `--inverse`        | `#e6e6e6` | The one primary button on a screen, light on dark.                    |
-| `--tone-busy`      | `#4f8cf5` | working, running, preparing.                                          |
-| `--tone-attention` | `#f99c00` | needs input, paused.                                                  |
-| `--tone-bad`       | `#fb2c36` | stuck, failed, exited badly; the danger button.                       |
-| `--tone-good`      | `#34c26b` | done, idle after work.                                                |
-| `--tone-neutral`   | `#7a7a7a` | idle, queued.                                                         |
-| `--tone-muted`     | `#5a5a5a` | stopped, exited.                                                      |
+| `--inverse`        | `#e6e6e6` | The one primary button on a screen, light on dark.                         |
+| `--tone-busy`      | `#4f8cf5` | working, running, preparing.                                               |
+| `--tone-attention` | `#f99c00` | needs input, paused.                                                       |
+| `--tone-bad`       | `#fb2c36` | stuck, failed, exited badly; the danger button.                            |
+| `--tone-good`      | `#34c26b` | done, idle after work.                                                     |
+| `--tone-neutral`   | `#7a7a7a` | idle, queued.                                                              |
+| `--tone-muted`     | `#5a5a5a` | stopped, exited.                                                           |
 
 The accent is the only warm colour and it is used sparingly, so it keeps
 meaning "this is the thing" (the active tab, a link, the cursor). A status

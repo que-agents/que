@@ -20,6 +20,7 @@ let taskCounter = 0
 export function makeHookEvent(name: HookEventName, overrides: Partial<HookEvent> = {}): HookEvent {
   sessionCounter += 1
   const sessionId = overrides.session_id ?? `sess_${sessionCounter.toString(16).padStart(6, '0')}`
+
   return {
     hook_event_name: name,
     session_id: sessionId,
@@ -63,6 +64,7 @@ export function makeQuietHours(overrides: Partial<QuietHoursConfig> = {}): Quiet
 export function makeWorkspace(overrides: Partial<Workspace> = {}): Workspace {
   wsCounter += 1
   const name = overrides.name ?? `ha-${1430 + wsCounter}-retry-logic`
+
   return {
     id: `ws_01hzx${wsCounter.toString(36).padStart(7, '0')}`,
     projectId: 'prj_01hzw7q2m4nb',
@@ -86,6 +88,7 @@ export function makeWorkspace(overrides: Partial<Workspace> = {}): Workspace {
 /** A queued task with a real brief, the default caps, and an opaque id. */
 export function makeTask(overrides: Partial<Task> = {}): Task {
   taskCounter += 1
+
   return {
     id: `tsk_01hzy${taskCounter.toString(36).padStart(7, '0')}`,
     projectId: 'prj_01hzw7q2m4nb',
@@ -159,6 +162,7 @@ let prEntryCounter = 0
 /** One entry of a pull request's conversation: an issue comment by default. */
 export function makePrThreadEntry(overrides: Partial<PrThreadEntry> = {}): PrThreadEntry {
   prEntryCounter += 1
+
   return {
     id: `c${prEntryCounter}`,
     kind: 'comment',

@@ -22,12 +22,14 @@ afterEach(async () => {
 /** Real time, shifted so that "now" starts at `start` (local wall clock). */
 function clockFrom(start: Date): () => number {
   const offset = start.getTime() - Date.now()
+
   return () => Date.now() + offset
 }
 
 function record<E extends keyof Events>(c: DaemonClient, event: E): Events[E][] {
   const seen: Events[E][] = []
   c.on(event, (data) => seen.push(data))
+
   return seen
 }
 
@@ -44,6 +46,7 @@ const NIGHT = new Date(2026, 9, 14, 2, 0)
 
 async function start(config: string, now: Date): Promise<TestDaemon> {
   daemon = await startTestDaemon({ config, now: clockFrom(now) })
+
   return daemon
 }
 
@@ -71,6 +74,7 @@ describe('quiet hours', () => {
       // the first client (still detached) never received its output.
       const other = new DaemonClient(d.socket)
       await other.connect()
+
       try {
         await other.request('quiet.unlock', { why: 'check the detach' })
         await expect
@@ -161,10 +165,12 @@ describe('quiet hours', () => {
       addBareOrigin(repo)
       const { id: projectId } = await d.client.request('project.add', { path: repo })
       await d.client.request('quiet.unlock', { why: 'queue tonight' })
+
       const task = await d.client.request('task.add', {
         projectId,
         brief: 'Add retry logic to the uploader'
       })
+
       await d.client.request('queue.open')
       await expect
         .poll(async () => (await d.client.request('task.get', { id: task.id })).state, {
@@ -247,6 +253,7 @@ describe('quiet hours', () => {
         `${QUIET()}\n[notifications]\nmorning_summary = true\n`,
         new Date(2026, 9, 14, 6, 59, 58)
       )
+
       const summaries = record(d.client, 'quiet.morningSummary')
       const changes = record(d.client, 'quiet.changed')
 
@@ -269,10 +276,12 @@ describe('quiet hours', () => {
       const d = daemon
       const summaries = record(d.client, 'quiet.morningSummary')
       const project = await d.client.request('project.add', { path: makeTempRepo(d.home) })
+
       const ws = await d.client.request('workspace.create', {
         projectId: project.id,
         name: 'app-1432-retry-logic'
       })
+
       await expect
         .poll(async () => (await d.client.request('workspace.get', { id: ws.id })).status, {
           timeout: 10_000

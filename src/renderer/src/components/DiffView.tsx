@@ -49,7 +49,7 @@ export default function DiffView({
                   .replace(/\n$/, '')
                   .split('\n')
                   .map((line, i) => (
-                    // biome-ignore lint/suspicious/noArrayIndexKey: patch lines are static and have no identity
+                    // patch lines are static and have no identity
                     <span key={`${file.path}:${i}`} className="line" data-kind={lineKind(line)}>
                       {line || ' '}
                     </span>

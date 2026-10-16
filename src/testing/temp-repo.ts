@@ -38,22 +38,27 @@ export interface TempRepoOptions {
 export function makeTempRepo(dir: string, opts: TempRepoOptions = {}): string {
   const repo = join(dir, opts.name ?? 'uploader')
   fs.mkdirSync(repo, { recursive: true })
+
   const git = (...args: string[]): void => {
     gitIn(repo, ...args)
   }
+
   git('init', '-b', opts.branch ?? 'main')
   fs.writeFileSync(join(repo, 'README.md'), '# uploader\n')
   git('add', '.')
   git('commit', '-m', 'Initial commit')
   const ignored = Object.keys(opts.ignored ?? {})
   fs.writeFileSync(join(repo, 'que.toml'), opts.queToml ?? 'setup = "true"\n')
+
   if (ignored.length > 0) fs.writeFileSync(join(repo, '.gitignore'), `${ignored.join('\n')}\n`)
   git('add', '.')
   git('commit', '-m', 'Add que.toml')
+
   for (const [path, contents] of Object.entries(opts.ignored ?? {})) {
     fs.mkdirSync(dirname(join(repo, path)), { recursive: true })
     fs.writeFileSync(join(repo, path), contents)
   }
+
   return repo
 }
 
@@ -66,5 +71,6 @@ export function addBareOrigin(repo: string): string {
   gitIn(dirname(repo), 'clone', '--bare', '--quiet', repo, bare)
   gitIn(repo, 'remote', 'add', 'origin', bare)
   gitIn(repo, 'fetch', '--quiet', 'origin')
+
   return bare
 }

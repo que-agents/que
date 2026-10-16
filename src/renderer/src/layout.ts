@@ -14,6 +14,7 @@ export function diffId(path: string): string {
 export function diffPathOf(id: string | null): string | null {
   if (!id?.startsWith(DIFF_PREFIX)) return null
   const path = id.slice(DIFF_PREFIX.length)
+
   return path === '' ? null : path
 }
 
@@ -26,6 +27,7 @@ export function fileId(path: string): string {
 export function filePathOf(id: string | null): string | null {
   if (!id?.startsWith(FILE_PREFIX)) return null
   const path = id.slice(FILE_PREFIX.length)
+
   return path === '' ? null : path
 }
 
@@ -50,6 +52,7 @@ export interface PaneLayout {
 export const RATIO_MIN = 0.2
 export const RATIO_MAX = 0.8
 export const RATIO_DEFAULT = 0.5
+
 export const NO_SPLIT: PaneLayout = {
   split: null,
   second: [],
@@ -60,6 +63,7 @@ export const NO_SPLIT: PaneLayout = {
 
 export function clampRatio(r: number): number {
   const n = Number.isFinite(r) ? r : RATIO_DEFAULT
+
   return Math.round(Math.min(RATIO_MAX, Math.max(RATIO_MIN, n)) * 1000) / 1000
 }
 
@@ -71,22 +75,29 @@ export function isRemembered(l: PaneLayout): boolean {
 /** Parses a remembered layout; null when it is neither a split nor holds a view tab. */
 export function parseLayout(raw: string | null): PaneLayout | null {
   if (!raw) return null
+
   try {
     const v = JSON.parse(raw) as Partial<PaneLayout> | null
     const sp = v?.split
+
     const split =
       sp && (sp.direction === 'row' || sp.direction === 'column')
         ? { direction: sp.direction, ratio: clampRatio(Number(sp.ratio)) }
         : null
+
     const views: string[] = []
+
     if (Array.isArray(v?.views)) {
       for (const k of v.views as unknown[]) {
         if (typeof k === 'string' && isViewId(k) && !views.includes(k)) views.push(k)
       }
     }
+
     if (!split && views.length === 0) return null
     const id = (x: unknown): string | null => (typeof x === 'string' ? x : null)
+
     if (!split) return { ...NO_SPLIT, active: [id(v?.active?.[0]), null], views }
+
     return {
       split,
       second: Array.isArray(v?.second) ? v.second.filter((x) => typeof x === 'string') : [],
@@ -113,12 +124,17 @@ export function reconcileLayout(
   const views = l.views
   const live = (id: string): boolean => ids.has(id) || views.includes(id)
   const second = l.second.filter(live)
+
   const active: [string | null, string | null] = [
     l.active[0] && live(l.active[0]) && !second.includes(l.active[0]) ? l.active[0] : null,
     l.active[1] && second.includes(l.active[1]) ? l.active[1] : null
   ]
+
   const firstCount = [...tabIds, ...views].filter((id) => !second.includes(id)).length
+
   if (second.length === 0) return { ...NO_SPLIT, views: l.views, active: [active[0], null] }
+
   if (firstCount === 0) return { ...NO_SPLIT, views: l.views, active: [active[1], null] }
+
   return { ...l, second, active }
 }

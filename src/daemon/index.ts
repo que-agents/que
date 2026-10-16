@@ -38,8 +38,10 @@ async function main(): Promise<void> {
       log('another daemon is already listening; exiting')
       process.exitCode = 0
       logStream.end()
+
       return
     }
+
     fs.rmSync(paths.socket, { force: true })
     log('removed stale socket')
   }
@@ -54,11 +56,13 @@ async function main(): Promise<void> {
     host.killAll()
     void server.close().finally(() => {
       fs.rmSync(paths.socket, { force: true })
+
       try {
         if (fs.readFileSync(paths.pid, 'utf8').trim() === String(process.pid)) fs.rmSync(paths.pid)
       } catch {
         // Pid file already gone.
       }
+
       logStream.end(() => process.exit(0))
       setTimeout(() => process.exit(0), 1000).unref()
     })
@@ -70,6 +74,7 @@ async function main(): Promise<void> {
     log,
     onShutdown: () => shutdown('daemon.shutdown')
   })
+
   await server.listen(paths.socket)
   fs.writeFileSync(paths.pid, `${process.pid}\n`)
   log(`listening on ${paths.socket} (version ${VERSION}, node ${process.version})`)

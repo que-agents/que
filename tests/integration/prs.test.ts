@@ -24,12 +24,14 @@ afterEach(async () => {
 function record<E extends keyof Events>(c: DaemonClient, event: E): Events[E][] {
   const seen: Events[E][] = []
   c.on(event, (data) => seen.push(data))
+
   return seen
 }
 
 async function project() {
   const repo = makeTempRepo(daemon.home)
   addBareOrigin(repo)
+
   return (await client.request('project.add', { path: repo })).id
 }
 
@@ -37,7 +39,7 @@ async function workspace(branch?: string, projectId?: string) {
   return client.request('workspace.create', {
     projectId: projectId ?? (await project()),
     name: branch ?? 'APP-1432 retry logic',
-    ...(branch ? { branch } : {})
+    branch: branch || undefined
   })
 }
 

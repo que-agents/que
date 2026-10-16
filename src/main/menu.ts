@@ -7,6 +7,7 @@ import { describeCliInstall, installCli } from './install-cli'
 
 async function installCommand(): Promise<void> {
   const launcher = join(process.resourcesPath, 'cli', 'que')
+
   try {
     const plan = installCli(launcher, os.homedir())
     const { message, detail } = describeCliInstall(plan)
@@ -43,6 +44,7 @@ export function installMenu(): void {
         ]
       }
     : { role: 'appMenu' }
+
   Menu.setApplicationMenu(
     Menu.buildFromTemplate([
       appMenu,

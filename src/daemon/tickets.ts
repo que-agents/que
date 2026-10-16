@@ -35,6 +35,7 @@ const KV_LAST_SYNC = 'tickets.last_sync_at'
 const KV_ERROR = 'tickets.error'
 
 type Obj = Record<string, unknown>
+
 const obj = (v: unknown): Obj => (typeof v === 'object' && v !== null ? (v as Obj) : {})
 const str = (v: unknown): string | null => (typeof v === 'string' && v !== '' ? v : null)
 
@@ -42,8 +43,11 @@ const str = (v: unknown): string | null => (typeof v === 'string' && v !== '' ? 
 export function levelOf(issuetype: unknown): TicketLevel {
   const t = obj(issuetype)
   const level = typeof t.hierarchyLevel === 'number' ? t.hierarchyLevel : null
+
   if (t.subtask === true || (level !== null && level < 0)) return 'subtask'
+
   if ((level !== null && level >= 1) || str(t.name)?.toLowerCase() === 'epic') return 'epic'
+
   return 'standard'
 }
 
@@ -53,14 +57,17 @@ export function parseIssue(raw: unknown, syncedAt: string, site = ''): Ticket | 
   const fields = obj(issue.fields)
   const key = str(issue.key)
   const summary = str(fields.summary)
+
   if (!key || !summary) return null
   const status = obj(fields.status)
   const category = obj(status.statusCategory).key
   const project = obj(fields.project)
   const prefix = key.split('-')[0]
+
   const labels = Array.isArray(fields.labels)
     ? fields.labels.filter((l): l is string => typeof l === 'string')
     : []
+
   return {
     key,
     summary,
@@ -97,8 +104,10 @@ export function renderBrief(
     ticket.url,
     `Status: ${ticket.status} · Priority: ${ticket.priority ?? 'none'} · Type: ${ticket.type}`
   ]
+
   if (ticket.labels.length > 0) lines.push(`Labels: ${ticket.labels.join(', ')}`)
   lines.push('', '## Description', '', description.trim() || '(none)', '')
+
   if (parent) {
     lines.push(
       `## ${parent.isEpic ? 'Epic' : 'Parent'} ${parent.key}: ${parent.summary}`,
@@ -107,15 +116,18 @@ export function renderBrief(
       ''
     )
   }
+
   return lines.join('\n')
 }
 
 /** `<key lowercased>-<slug of summary>`, at most 64 characters, no trailing hyphen. */
 export function workspaceNameFor(ticket: Ticket): string {
   const key = ticket.key.toLowerCase()
+
   const capped = slugify(`${key}-${ticket.summary}`)
     .slice(0, 64)
     .replace(/[-._]+$/, '')
+
   return workspaceSlug(capped) ?? key
 }
 
@@ -136,9 +148,12 @@ function acli(args: string[], signal?: AbortSignal): Promise<string> {
           if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
             return reject(new Error('acli is not installed or not on PATH'))
           }
+
           const first = (s: string) => s.trim().split('\n')[0]?.trim() ?? ''
+
           return reject(new Error(first(String(stderr)) || first(String(stdout)) || err.message))
         }
+
         resolvePromise(stdout)
       }
     ).stdin?.end()
@@ -187,6 +202,7 @@ export class TicketService {
   stop(): void {
     this.stopped = true
     this.abort.abort()
+
     if (this.timer) clearTimeout(this.timer)
     this.timer = null
   }
@@ -198,8 +214,10 @@ export class TicketService {
 
   private schedule(ms?: number): void {
     if (this.stopped) return
+
     const wait =
       ms ?? this.opts.pollMs ?? Math.max(100, this.opts.config().jira.pollMinutes * 60_000)
+
     this.timer = setTimeout(() => {
       void this.sync().finally(() => this.schedule())
     }, wait)
@@ -210,12 +228,14 @@ export class TicketService {
     this.inflight.add(p)
     const done = () => this.inflight.delete(p)
     p.then(done, done)
+
     return p
   }
 
   /** The cached tickets and how the last sync went; never touches the network. */
   list(): TicketsListResult {
     const tickets = this.opts.store.listTickets()
+
     return {
       tickets,
       sync: {
@@ -229,18 +249,22 @@ export class TicketService {
   /** Fetches the queue now and returns the result (a failure shows in `sync.error`). */
   async sync(): Promise<TicketsListResult> {
     if (this.stopped) return this.list()
+
     if (!this.running) {
       this.running = this.track(this.syncOnce()).finally(() => {
         this.running = null
       })
     }
+
     await this.running
+
     return this.list()
   }
 
   private async syncOnce(): Promise<void> {
     const { store } = this.opts
     let issues: unknown[]
+
     try {
       const stdout = await acli(
         [
@@ -257,12 +281,15 @@ export class TicketService {
         ],
         this.abort.signal
       )
+
       let parsed: unknown
+
       try {
         parsed = JSON.parse(stdout)
       } catch {
         throw new Error('acli printed output that is not JSON')
       }
+
       if (!Array.isArray(parsed)) throw new Error('acli printed output that is not a list')
       issues = parsed
     } catch (err) {
@@ -270,36 +297,47 @@ export class TicketService {
       const message = (err as Error).message
       store.setKv(KV_ERROR, message)
       this.site = ''
+
       if (!this.failing) {
         this.failing = true
         this.opts.log?.(`ticket sync failed: ${message}`)
       }
+
       this.opts.emit('tickets.synced', this.list())
+
       return
     }
+
     if (this.stopped) return
     const at = new Date(this.now()).toISOString()
     const site = await this.siteHost()
     const tickets = issues.flatMap((i) => parseIssue(i, at, site) ?? [])
     const ordered = await this.withParents(tickets, at, site)
+
     if (this.stopped) return
     store.upsertTickets(ordered.tickets)
+
     for (const [key, parentKey] of ordered.checked) store.setTicketParent(key, parentKey, at)
     store.deleteTicketsNotIn(tickets.map((t) => t.key))
     store.setKv(KV_ERROR, null)
     store.setKv(KV_LAST_SYNC, at)
+
     if (this.failing) {
       this.failing = false
       this.opts.log?.('ticket sync recovered')
     }
+
     this.opts.emit('tickets.synced', this.list())
   }
 
   /** The tracker's host for links: `[jira] site`, else the CLI's auth status (cached), else ''. */
   private async siteHost(): Promise<string> {
     const configured = this.opts.config().jira.site
+
     if (configured) return configured
+
     if (this.site) return this.site
+
     try {
       const out = await acli(['jira', 'auth', 'status'], this.abort.signal)
       this.site = /^\s*Site:\s*(\S+)/m.exec(out)?.[1] ?? ''
@@ -307,6 +345,7 @@ export class TicketService {
       if (!this.stopped)
         this.opts.log?.(`reading the tracker site failed: ${(err as Error).message}`)
     }
+
     return this.site
   }
 
@@ -325,31 +364,40 @@ export class TicketService {
     const now = this.now()
     const parentOf = new Map<string, string | null>()
     const synthesized = new Map<string, Ticket>()
+
     const stale = (t: Ticket): boolean => {
       const stored = store.getTicket(t.key)
       const checkedAt = store.getTicketParentCheckedAt(t.key)
+
       if (!checkedAt || now - Date.parse(checkedAt) > PARENT_RECHECK_MS) return true
       const parent = stored?.parentKey
+
       return !!parent && !inSearch.has(parent) && !store.getTicket(parent)
     }
+
     for (const t of found) parentOf.set(t.key, store.getTicket(t.key)?.parentKey ?? null)
     const todo = found.filter((t) => t.level !== 'epic' && stale(t))
     const checked = new Map<string, string | null>()
     let next = 0
+
     const worker = async (): Promise<void> => {
       while (next < todo.length && !this.stopped) {
         const t = todo[next++]
+
         try {
           const stdout = await acli(
             ['jira', 'workitem', 'view', t.key, '--json', '--fields', PARENT_FIELDS],
             this.abort.signal
           )
+
           const parent = obj(obj(JSON.parse(stdout)).fields).parent
           const parentKey = str(obj(parent).key)
           checked.set(t.key, parentKey)
           parentOf.set(t.key, parentKey)
+
           if (parentKey && !inSearch.has(parentKey) && !synthesized.has(parentKey)) {
             const p = parseIssue({ key: parentKey, fields: obj(obj(parent).fields) }, at, site)
+
             if (p) {
               synthesized.set(parentKey, {
                 ...p,
@@ -368,14 +416,18 @@ export class TicketService {
         }
       }
     }
+
     await Promise.all(Array.from({ length: PARENT_CONCURRENCY }, worker))
 
     const out: Ticket[] = []
     const placed = new Set<string>()
+
     for (const t of found) {
       const parentKey = parentOf.get(t.key) ?? null
+
       if (parentKey && !inSearch.has(parentKey) && !placed.has(parentKey)) {
         const parent = synthesized.get(parentKey) ?? store.getTicket(parentKey)
+
         if (parent && !parent.assigned) {
           placed.add(parentKey)
           out.push({
@@ -385,21 +437,27 @@ export class TicketService {
           })
         }
       }
+
       out.push({ ...t, parentKey })
     }
+
     return { tickets: out, checked }
   }
 
   /** The id of the que project a ticket's tracker project is mapped to, or null. */
   projectFor(key: string): string | null {
     const ticket = this.opts.store.getTicket(key)
+
     if (!ticket) return null
+
     return this.mappedProject(ticket)?.id ?? null
   }
 
   private mappedProject(ticket: Ticket): Project | null {
     const name = this.opts.config().jira.projects[ticket.projectKey]
+
     if (!name) return null
+
     return this.opts.projects().find((p) => p.name === name) ?? null
   }
 
@@ -409,22 +467,29 @@ export class TicketService {
         ['jira', 'workitem', 'view', key, '--json', '--fields', fields],
         this.abort.signal
       )
+
       return obj(obj(JSON.parse(stdout)).fields)
     }
+
     let description = '(could not be fetched)'
+
     try {
       description = adfToText((await view(ticket.key, VIEW_FIELDS)).description)
     } catch (err) {
       this.opts.log?.(`fetching ${ticket.key} failed: ${(err as Error).message}`)
     }
+
     let parent: Parameters<typeof renderBrief>[2]
+
     if (ticket.parentKey) {
       const known = this.opts.store.getTicket(ticket.parentKey)
+
       const base = {
         key: ticket.parentKey,
         summary: known?.summary ?? '',
         isEpic: known?.level === 'epic'
       }
+
       try {
         const f = await view(ticket.parentKey, PARENT_BRIEF_FIELDS)
         parent = {
@@ -437,6 +502,7 @@ export class TicketService {
         parent = { ...base, description: '(could not be fetched)' }
       }
     }
+
     return renderBrief(ticket, description, parent)
   }
 
@@ -448,13 +514,16 @@ export class TicketService {
   private async startOnce(params: TicketsStartParams): Promise<TicketsStartResult> {
     const { store, home } = this.opts
     const ticket = store.getTicket(params.key)
+
     if (!ticket) throw new RpcError(ErrorCodes.NotFound, `no ticket ${params.key}`)
+
     if (ticket.level === 'epic') {
       throw new RpcError(
         ErrorCodes.BadRequest,
         `${ticket.key} is an epic, an overview; start one of its tickets`
       )
     }
+
     const brief = await this.brief(ticket)
 
     if (params.session) {
@@ -465,23 +534,28 @@ export class TicketService {
       const t = await this.opts.createSession(os.homedir())
       const prompt = `Read ${file}, the ticket I am working on. Restate the goal in a sentence, then propose a plan before changing anything.`
       this.opts.writeTerminal(t.id, `claude ${shQuote(prompt)}\r`)
+
       return { kind: 'session', terminalId: t.id }
     }
 
     const mapped = this.mappedProject(ticket)
     const projects = this.opts.projects()
     const project = params.projectId ? projects.find((p) => p.id === params.projectId) : mapped
+
     if (params.projectId && !project) {
       throw new RpcError(ErrorCodes.NotFound, `no project ${params.projectId}`)
     }
+
     if (!project) return { kind: 'needs_project', projects }
 
     if (mapped?.id !== project.id) await this.opts.learnProject(ticket.projectKey, project.name)
 
     const name = workspaceNameFor(ticket)
+
     const existing = store
       .listWorkspaces()
       .find((w) => w.projectId === project.id && w.name === name && !w.archivedAt)
+
     const workspace = existing ?? (await this.opts.createWorkspace({ projectId: project.id, name }))
 
     const dir = join(workspace.path, '.que')
@@ -493,20 +567,24 @@ export class TicketService {
     const t = await this.opts.openTerminal(workspace.id)
     this.opts.writeTerminal(t.id, `claude ${shQuote(this.opts.config().jira.startPrompt)}\r`)
     this.opts.emit('tickets.synced', this.list())
+
     return { kind: 'workspace', workspace }
   }
 
   /** Keeps `.que/` out of `git status` through the repository's exclude file. */
   private async excludeQueDir(worktree: string): Promise<void> {
     const r = await git(worktree, ['rev-parse', '--git-path', 'info/exclude'])
+
     if (!r.ok || !r.stdout) return
     const file = resolve(worktree, r.stdout)
     let current = ''
+
     try {
       current = fs.readFileSync(file, 'utf8')
     } catch {
       // Created below.
     }
+
     if (current.split('\n').some((l) => l.trim() === '.que/')) return
     fs.mkdirSync(dirname(file), { recursive: true })
     fs.writeFileSync(file, `${current}${current && !current.endsWith('\n') ? '\n' : ''}.que/\n`)

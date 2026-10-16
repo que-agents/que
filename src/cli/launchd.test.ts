@@ -12,6 +12,7 @@ const plist = renderPlist({
 /** The value following `<key>name</key>` (one line). */
 function valueAfter(key: string): string {
   const lines = plist.split('\n')
+
   return lines[lines.findIndex((l) => l.trim() === `<key>${key}</key>`) + 1]?.trim() ?? ''
 }
 

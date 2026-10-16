@@ -63,7 +63,9 @@ export class StatusService {
   stop(): void {
     this.stopped = true
     this.closed = true
+
     if (this.tickTimer) clearInterval(this.tickTimer)
+
     if (this.pollTimer) clearTimeout(this.pollTimer)
     this.tickTimer = null
     this.pollTimer = null
@@ -72,11 +74,14 @@ export class StatusService {
   private state(id: string): Tracked | undefined {
     if (this.closed) return undefined
     const known = this.states.get(id)
+
     if (known) return known
     const row = this.opts.store.getWorkspace(id)
+
     if (!row || row.archivedAt) return undefined
     const s = fromRow(row)
     this.states.set(id, s)
+
     return s
   }
 
@@ -92,6 +97,7 @@ export class StatusService {
     onlyFrom?: WorkspaceStatus
   ): void {
     const prev = this.state(id)
+
     if (!prev || (onlyFrom && prev.status !== onlyFrom)) return
     const now = this.now()
     this.commit(id, prev, { ...prev, status, reason, statusAt: now })
@@ -100,6 +106,7 @@ export class StatusService {
   /** Feeds one input to the engine for a workspace. */
   apply(id: string, input: StatusInput): void {
     const prev = this.state(id)
+
     if (!prev) return
     const stallTimeoutMs = this.opts.config().stallTimeoutMinutes * 60_000
     const next = reduce(prev, input, this.now(), { stallTimeoutMs })
@@ -109,6 +116,7 @@ export class StatusService {
   /** A hook event from `que hook`: stored, then fed to the engine. */
   hook(id: string, payload: HookEvent): void {
     const prev = this.state(id)
+
     if (!prev) return
     const event = String(payload.hook_event_name ?? '')
     this.opts.store.insertHookEvent(
@@ -118,9 +126,11 @@ export class StatusService {
       payload,
       new Date(this.now()).toISOString()
     )
+
     if (!payload.agent_id && typeof payload.transcript_path === 'string') {
       prev.transcriptPath = payload.transcript_path
     }
+
     this.apply(id, { kind: 'hook', event, payload })
   }
 
@@ -132,6 +142,7 @@ export class StatusService {
     this.states.set(id, next)
     const statusChanged = prev.status !== next.status || prev.reason !== next.reason
     const sessionChanged = prev.sessionId !== next.sessionId
+
     if (!statusChanged && !sessionChanged && prev.lastActivityAt === next.lastActivityAt) return
     this.opts.store.updateStatus(id, {
       status: next.status,
@@ -140,6 +151,7 @@ export class StatusService {
       lastActivityAt: iso(next.lastActivityAt),
       sessionId: next.sessionId
     })
+
     if (statusChanged) {
       this.opts.store.insertStatusLog(
         id,
@@ -153,12 +165,14 @@ export class StatusService {
       this.opts.emit('workspace.status', {
         id,
         status: next.status,
-        ...(next.reason ? { reason: next.reason } : {}),
+        reason: next.reason || undefined,
         at: new Date(next.statusAt).toISOString()
       })
     }
+
     if (sessionChanged) {
       const ws = this.opts.store.getWorkspace(id)
+
       if (ws) this.opts.emit('workspace.updated', ws)
     }
   }
@@ -167,10 +181,13 @@ export class StatusService {
   tick(): void {
     for (const ws of this.opts.store.listWorkspaces()) {
       const s = this.state(ws.id)
+
       if (s?.status !== 'working') continue
+
       if (s.transcriptPath) {
         try {
           const mtime = fs.statSync(s.transcriptPath).mtimeMs
+
           if (s.lastActivityAt === null || mtime > s.lastActivityAt) {
             this.commit(ws.id, s, { ...s, lastActivityAt: Math.floor(mtime) })
           }
@@ -178,6 +195,7 @@ export class StatusService {
           // No transcript (yet); the hook timestamps are all there is.
         }
       }
+
       this.apply(ws.id, { kind: 'tick' })
     }
   }
@@ -195,12 +213,16 @@ export class StatusService {
   async pollAgents(): Promise<void> {
     if (this.polling) return
     this.polling = true
+
     try {
       const entries = await listAgents()
+
       if (this.stopped) return
       const byPath = new Map(this.opts.store.listWorkspaces().map((w) => [w.path, w.id]))
+
       for (const entry of entries) {
         const id = entry.cwd ? byPath.get(entry.cwd) : undefined
+
         if (id) this.apply(id, { kind: 'agents_json', entry })
       }
     } finally {
@@ -218,11 +240,14 @@ function listAgents(): Promise<AgentEntry[]> {
       { encoding: 'utf8', timeout: 5_000 },
       (err, stdout) => {
         if (err) return resolve([])
+
         try {
           const parsed = JSON.parse(stdout) as unknown
+
           const list = Array.isArray(parsed)
             ? parsed
             : ((parsed as { agents?: unknown }).agents ?? [])
+
           resolve(Array.isArray(list) ? (list as AgentEntry[]) : [])
         } catch {
           resolve([])

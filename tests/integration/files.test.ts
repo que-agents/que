@@ -28,10 +28,12 @@ beforeEach(async () => {
   daemon = await startTestDaemon()
   const repo = makeTempRepo(daemon.home)
   const project = await daemon.client.request('project.add', { path: repo })
+
   const created = await daemon.client.request('workspace.create', {
     projectId: project.id,
     name: 'app-1600-files-tab'
   })
+
   await expect
     .poll(async () => (await daemon.client.request('workspace.get', { id: created.id })).status, {
       timeout: 10_000

@@ -447,7 +447,9 @@ export const QUIET_REFUSED_METHODS = [
 ] as const satisfies readonly MethodName[]
 
 export type MethodName = keyof Methods
+
 export type ParamsOf<M extends MethodName> = Methods[M]['params']
+
 export type ResultOf<M extends MethodName> = Methods[M]['result']
 
 // ---- event types ----------------------------------------------------------
@@ -480,6 +482,7 @@ export interface Events {
 }
 
 export type EventName = keyof Events
+
 export type EventData<E extends EventName> = Events[E]
 
 // ---- envelopes ------------------------------------------------------------
@@ -530,6 +533,7 @@ export class LineSplitter {
     this.buf += chunk
     const parts = this.buf.split('\n')
     this.buf = parts.pop() ?? ''
+
     return parts.filter((l) => l.trim().length > 0)
   }
 
@@ -549,6 +553,7 @@ export class MessageDecoder<T = unknown> {
   push(chunk: string | Uint8Array): T[] {
     const text = typeof chunk === 'string' ? chunk : this.decoder.decode(chunk, { stream: true })
     const out: T[] = []
+
     for (const line of this.lines.push(text)) {
       try {
         out.push(JSON.parse(line) as T)
@@ -556,6 +561,7 @@ export class MessageDecoder<T = unknown> {
         this.onError?.(line, err)
       }
     }
+
     return out
   }
 }

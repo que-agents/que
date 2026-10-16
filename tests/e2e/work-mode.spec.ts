@@ -35,6 +35,7 @@ test('a workspace made in the sidebar runs claude, shows needs input, opens in t
   let topbar: TopBarPage
   let changes: ChangesPage
   let shell: AppShellPage
+
   const statusOf = () =>
     queJson<StatusJson>(queHome, 'status', '--json').workspaces.find((w) => w.id === workspace.id)
 
@@ -60,9 +61,11 @@ test('a workspace made in the sidebar runs claude, shows needs input, opens in t
     await expect(sidebar.newWorkspaceSlug).toHaveText('Branch and folder: app-1432-retry-logic')
     await sidebar.newWorkspaceSubmit.click()
     await expect(sidebar.newWorkspaceDialog).toHaveCount(0)
+
     const created = queJson<Workspace[]>(queHome, 'ws', 'list', '--json').find(
       (w) => w.name === 'app-1432-retry-logic'
     )
+
     expect(created).toBeDefined()
     workspace = created as Workspace
     await expect(sidebar.workspace(workspace.id)).toBeVisible()

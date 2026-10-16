@@ -12,10 +12,12 @@ export default function UnlockStatus(): React.JSX.Element | null {
   useEffect(() => {
     if (until === null) return
     const t = setInterval(() => tick((n) => n + 1), 1000)
+
     return () => clearInterval(t)
   }, [until])
 
   if (until === null) return null
+
   return (
     <div className="unlock-status" role="status">
       <span data-testid="topbar-unlock-countdown">

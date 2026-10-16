@@ -26,6 +26,7 @@ export default function ChangesList({ termKey }: { termKey: string }): React.JSX
   const baseButton = useRef<HTMLButtonElement>(null)
   const chosen = diffScopes[termKey]?.commit ?? null
   const chosenCommit = chosen ? diff?.commits.find((c) => c.sha === chosen) : undefined
+
   const toggleMenu = (which: 'commits' | 'base'): void =>
     setMenu((m) => (m === which ? null : which))
 
@@ -37,6 +38,7 @@ export default function ChangesList({ termKey }: { termKey: string }): React.JSX
 
   const open = (i: number): void => {
     const f = files[i]
+
     if (!f) return
     setCursor(i)
     store.openDiff(termKey, f.path)
@@ -46,11 +48,14 @@ export default function ChangesList({ termKey }: { termKey: string }): React.JSX
     if (e.key === 'Enter') {
       e.preventDefault()
       open(at)
+
       return
     }
+
     if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return
     e.preventDefault()
     const next = at + (e.key === 'ArrowDown' ? 1 : -1)
+
     if (next >= 0 && next < files.length) setCursor(next)
   }
 
@@ -58,6 +63,7 @@ export default function ChangesList({ termKey }: { termKey: string }): React.JSX
   const dels = files.reduce((n, f) => n + f.deletions, 0)
 
   const now = store.now()
+
   const commitItems: MenuItem[] = [
     {
       label: 'All commits',
@@ -73,6 +79,7 @@ export default function ChangesList({ termKey }: { termKey: string }): React.JSX
       action: () => void store.setDiffCommit(termKey, c.sha)
     }))
   ]
+
   const baseItems: MenuItem[] = (diff?.bases ?? []).map((ref, i) => ({
     label: ref,
     testId: `option-${i}`,
@@ -195,6 +202,7 @@ export default function ChangesList({ termKey }: { termKey: string }): React.JSX
         >
           {files.map((f, i) => {
             const g = GLYPH[f.status]
+
             return (
               <div
                 key={f.path}

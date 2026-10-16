@@ -34,9 +34,11 @@ export function testEnv(
   extra: Record<string, string> = {}
 ): Record<string, string> {
   const env: Record<string, string> = {}
+
   for (const [k, v] of Object.entries(process.env)) if (v !== undefined) env[k] = v
   delete env.ELECTRON_RUN_AS_NODE
   delete env.ELECTRON_RENDERER_URL
+
   return {
     ...env,
     QUE_HOME: queHome,
@@ -61,6 +63,7 @@ export function testEnv(
 function pidAlive(pid: number): boolean {
   try {
     process.kill(pid, 0)
+
     return true
   } catch {
     return false
@@ -69,6 +72,7 @@ function pidAlive(pid: number): boolean {
 
 function readLog(path: string): string[][] {
   if (!existsSync(path)) return []
+
   return readFileSync(path, 'utf8')
     .trim()
     .split('\n')
@@ -87,6 +91,7 @@ export function newQueHome(config = '[quiet_hours]\nenabled = false\n'): string 
     '[user]\n\tname = que e2e\n\temail = e2e@que.invalid\n[commit]\n\tgpgsign = false\n'
   )
   writeFileSync(join(queHome, 'config.toml'), config)
+
   return queHome
 }
 
@@ -103,6 +108,7 @@ export async function launchApp(
     w.setSize(1024, 680)
     w.center()
   })
+
   return {
     app,
     window,
@@ -115,11 +121,13 @@ export async function launchApp(
       await app.close().catch(() => {})
       const pidFile = join(queHome, 'daemon.pid')
       const pid = existsSync(pidFile) ? Number(readFileSync(pidFile, 'utf8').trim()) : null
+
       try {
         que(queHome, 'daemon', 'stop')
       } catch {
         // Already stopped.
       }
+
       if (pid !== null) {
         await expect
           .poll(() => pidAlive(pid), { message: `daemon pid ${pid} still alive`, timeout: 10_000 })
@@ -148,10 +156,12 @@ export async function findWindow(app: ElectronApplication, board: boolean): Prom
     .poll(
       () => {
         found = app.windows().find((w) => !w.isClosed() && w.url().endsWith('#board') === board)
+
         return found !== undefined
       },
       { message: `no ${board ? 'quiet board' : 'main'} window` }
     )
     .toBe(true)
+
   return found as Page
 }

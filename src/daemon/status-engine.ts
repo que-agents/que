@@ -41,6 +41,7 @@ export interface ReduceOptions {
 }
 
 export const DEFAULT_STALL_TIMEOUT_MS = 5 * 60_000
+
 /** `claude agents --json` may only override hook-derived state older than this. */
 export const AGENTS_JSON_MIN_AGE_MS = 30_000
 
@@ -53,6 +54,7 @@ const WORKING_EVENTS = new Set([
   'SubagentStart',
   'SubagentStop'
 ])
+
 const NEEDS_INPUT_NOTIFICATIONS = new Set([
   'permission_prompt',
   'elicitation_dialog',
@@ -78,6 +80,7 @@ function transition(
   extra: Partial<StatusState> = {}
 ): StatusState {
   const changed = state.status !== status || state.reason !== reason
+
   return { ...state, ...extra, status, reason, statusAt: changed ? now : state.statusAt }
 }
 
@@ -89,6 +92,7 @@ function onHook(state: StatusState, event: string, p: HookPayload, now: number):
   if (WORKING_EVENTS.has(event)) {
     return transition(state, 'working', null, now, { ...seen, lastActivityAt: now })
   }
+
   switch (event) {
     case 'SessionStart':
     case 'Stop':
@@ -99,7 +103,9 @@ function onHook(state: StatusState, event: string, p: HookPayload, now: number):
       if (p.notification_type && NEEDS_INPUT_NOTIFICATIONS.has(p.notification_type)) {
         return transition(state, 'needs_input', null, now, seen)
       }
+
       if (p.notification_type === 'idle_prompt') return transition(state, 'idle', null, now, seen)
+
       return { ...state, ...seen }
     case 'StopFailure':
       return transition(state, 'stuck', `error:${p.error || 'unknown'}`, now, seen)
@@ -113,13 +119,17 @@ function onHook(state: StatusState, event: string, p: HookPayload, now: number):
 function onAgentsEntry(state: StatusState, entry: AgentEntry, now: number): StatusState {
   if (state.hookAt !== null && now - state.hookAt <= AGENTS_JSON_MIN_AGE_MS) return { ...state }
   const s = (entry.status ?? '').toLowerCase()
+
   if (s.includes('wait') || s.includes('blocked') || s.includes('input')) {
     return transition(state, 'needs_input', null, now)
   }
+
   if (s === 'idle') return transition(state, 'idle', null, now)
+
   if (s.includes('working') || s.includes('running')) {
     return transition(state, 'working', null, now, { lastActivityAt: now })
   }
+
   return { ...state }
 }
 
@@ -138,9 +148,12 @@ export function reduce(
     case 'tick': {
       if (state.status !== 'working') return { ...state }
       const last = state.lastActivityAt ?? state.statusAt
+
       if (now - last > opts.stallTimeoutMs) return transition(state, 'stuck', 'no_heartbeat', now)
+
       return { ...state }
     }
+
     case 'agents_json':
       return onAgentsEntry(state, input.entry, now)
   }
@@ -158,7 +171,9 @@ const STATUSES: WorkspaceStatus[] = [
 /** Workspace counts per status. */
 export function summarize(workspaces: ReadonlyArray<{ status: WorkspaceStatus }>): StatusSummary {
   const s = Object.fromEntries(STATUSES.map((k) => [k, 0])) as StatusSummary
+
   for (const w of workspaces) s[w.status] += 1
+
   return s
 }
 
@@ -180,16 +195,20 @@ export function traySummary(
 ): StatusSummary {
   const effective = new Map(workspaces.map((w) => [w.id, w.status]))
   const unplaced: WorkspaceStatus[] = []
+
   for (const t of tasks) {
     const status: WorkspaceStatus | null = TASK_WORKING.has(t.state)
       ? 'working'
       : t.state === 'stuck'
         ? 'stuck'
         : null
+
     if (!status) continue
+
     if (t.workspaceId && effective.has(t.workspaceId)) effective.set(t.workspaceId, status)
     else if (status === 'working') unplaced.push(status)
   }
+
   return summarize([...effective.values(), ...unplaced].map((status) => ({ status })))
 }
 
@@ -204,8 +223,10 @@ export function quietTrayTitle(
   now: number
 ): string {
   const base = trayTitle(s)
+
   if (!quiet?.inQuietHours || !quiet.unlockedUntil) return base
   const left = Math.max(0, Math.ceil((Date.parse(quiet.unlockedUntil) - now) / 1000))
   const mmss = `${String(Math.floor(left / 60)).padStart(2, '0')}:${String(left % 60).padStart(2, '0')}`
+
   return `🔓 ${mmss} · ${base}`
 }

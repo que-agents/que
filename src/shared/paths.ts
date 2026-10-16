@@ -39,11 +39,13 @@ export function quePaths(): QuePaths {
   const logsDir = join(home, 'logs')
   let socket = join(home, 'daemon.sock')
   let socketFallback = false
+
   if (socket.length > MAX_SOCKET_PATH) {
     const uid = typeof process.getuid === 'function' ? process.getuid() : 0
     socket = join('/tmp', `que-${uid}`, 'daemon.sock')
     socketFallback = true
   }
+
   return {
     home,
     socket,
@@ -66,5 +68,6 @@ export function ensureDirs(p: QuePaths = quePaths()): QuePaths {
   fs.mkdirSync(p.home, { recursive: true, mode: 0o700 })
   fs.mkdirSync(p.logsDir, { recursive: true, mode: 0o700 })
   fs.mkdirSync(join(p.socket, '..'), { recursive: true, mode: 0o700 })
+
   return p
 }

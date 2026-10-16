@@ -346,6 +346,7 @@ describe('nextTask', () => {
   it('never mutates its input and always returns a new object', () => {
     const prev = running()
     const before = structuredClone(prev)
+
     const events: TaskEvent[] = [
       { type: 'start' },
       stream(makeStreamResult()),
@@ -360,6 +361,7 @@ describe('nextTask', () => {
       const next = step(prev, event, T0 + 900_000)
       expect(next).not.toBe(prev)
     }
+
     expect(prev).toEqual(before)
   })
 })

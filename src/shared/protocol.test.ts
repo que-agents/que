@@ -21,9 +21,11 @@ describe('MessageDecoder', () => {
       { id: 1, method: 'term.write', params: { id: 'term_7f3a', data: 'héllo ✓ 🚀' } },
       { event: 'term.created', data: { id: 'term_7f3a' } }
     ]
+
     const bytes = new TextEncoder().encode(msgs.map(encode).join(''))
     const decoder = new MessageDecoder()
     const out: unknown[] = []
+
     for (const b of bytes) out.push(...decoder.push(new Uint8Array([b])))
     expect(out).toEqual(msgs)
   })

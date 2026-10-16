@@ -17,6 +17,7 @@ import { checkForUpdate } from './update-check'
 // quitting leaves terminals alive.
 
 let mainWindow: BrowserWindow | null = null
+
 /** The quiet board, while quiet hours are locked. */
 let boardWindow: BrowserWindow | null = null
 let quiet: QuietState | null = null
@@ -24,9 +25,11 @@ let client: DaemonClient | null = null
 let connecting: Promise<DaemonClient> | null = null
 let tray: QueTray | null = null
 const e2e = process.env.QUE_E2E === '1'
+
 // Everything que keeps lives under QUE_HOME, the app's own data (window
 // storage, caches) included, so a test QUE_HOME isolates all of it.
 app.setPath('userData', join(queHome(), 'app'))
+
 /** A newer release, once the update check has found one. */
 let update: UpdateInfo | null = null
 
@@ -75,6 +78,7 @@ const ALLOWED: ReadonlySet<MethodName> = new Set<MethodName>([
   'tickets.start',
   'tickets.projectFor'
 ])
+
 const FORWARDED_EVENTS: EventName[] = [
   'term.data',
   'term.exit',
@@ -95,6 +99,7 @@ const FORWARDED_EVENTS: EventName[] = [
   'config.changed',
   'tickets.synced'
 ]
+
 /** Events after which the tray title is recomputed. */
 const TRAY_EVENTS: EventName[] = [
   'workspace.created',
@@ -106,13 +111,16 @@ const TRAY_EVENTS: EventName[] = [
 
 function getClient(): Promise<DaemonClient> {
   if (client?.connected) return Promise.resolve(client)
+
   if (!connecting) {
     connecting = DaemonClient.connectOrStart({ log: (m) => console.log(`[daemon] ${m}`) })
       .then((c) => {
         client = c
+
         for (const ev of FORWARDED_EVENTS) {
           c.on(ev, (data) => sendToRenderer('que:event', ev, data))
         }
+
         for (const ev of TRAY_EVENTS) c.on(ev, () => tray?.refresh(c))
         tray?.refresh(c)
         c.on('quiet.changed', (q) => applyQuiet(q))
@@ -122,12 +130,14 @@ function getClient(): Promise<DaemonClient> {
           if (client === c) client = null
           sendToRenderer('que:event', 'daemon.disconnected', {})
         })
+
         return c
       })
       .finally(() => {
         connecting = null
       })
   }
+
   return connecting
 }
 
@@ -145,6 +155,7 @@ function showBoard(): void {
     const win = boardWindow
     win.once('ready-to-show', () => {
       if (win.isDestroyed() || !isLocked()) return
+
       if (e2e) win.showInactive()
       else win.show()
     })
@@ -155,6 +166,7 @@ function showBoard(): void {
 function closeBoard(): void {
   const win = boardWindow
   boardWindow = null
+
   if (win && !win.isDestroyed()) win.close()
 }
 
@@ -166,11 +178,13 @@ function applyQuiet(q: QuietState): void {
   const wasLocked = isLocked()
   quiet = q
   tray?.setQuiet(q)
+
   if (isLocked()) {
     mainWindow?.hide()
     showBoard()
   } else {
     closeBoard()
+
     if (wasLocked) showWindow()
   }
 }
@@ -178,12 +192,14 @@ function applyQuiet(q: QuietState): void {
 /** One notification with the night's totals, when quiet hours end. */
 function morningSummary(report: Report): void {
   if (e2e || !Notification.isSupported()) return
+
   const body = [
     `${report.totals.needsInput} need input`,
     `${report.workspaces.filter((w) => w.status === 'stuck').length} stuck`,
     `${report.groups.done.length} tasks done`,
     `${report.totals.prs} PRs`
   ].join(' · ')
+
   new Notification({ title: 'que · good morning', body }).show()
 }
 
@@ -210,6 +226,7 @@ function createWindow(): void {
       additionalArguments: e2e ? ['--que-e2e'] : []
     }
   })
+
   if (e2e && !isLocked()) mainWindow.showInactive()
 
   mainWindow.on('closed', () => {
@@ -220,8 +237,10 @@ function createWindow(): void {
   const external = (url: string): void => {
     if (!e2e && /^https?:\/\//.test(url)) void shell.openExternal(url)
   }
+
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     external(url)
+
     return { action: 'deny' }
   })
   mainWindow.webContents.on('will-navigate', (ev, url) => {
@@ -251,6 +270,7 @@ function showWindow(): void {
     mainWindow.show()
     mainWindow.focus()
   }
+
   if (!e2e) app.focus({ steal: true })
 }
 
@@ -262,6 +282,7 @@ function startUpdateCheck(): void {
     statePath: join(queHome(), 'state', 'update-check.json')
   }).then((info) => {
     update = info
+
     if (info) sendToRenderer('que:update', info)
   })
 }
@@ -270,7 +291,9 @@ function sendToRenderer(channel: string, ...args: unknown[]): void {
   for (const win of [mainWindow, boardWindow]) {
     if (!win || win.isDestroyed()) continue
     const wc = win.webContents
+
     if (wc.isDestroyed() || wc.isCrashed()) continue
+
     try {
       wc.send(channel, ...args)
     } catch {
@@ -284,9 +307,11 @@ function registerIpc(): void {
 
   ipcMain.handle('dialog:openFolder', async () => {
     const opts: Electron.OpenDialogOptions = { properties: ['openDirectory', 'createDirectory'] }
+
     const result = mainWindow
       ? await dialog.showOpenDialog(mainWindow, opts)
       : await dialog.showOpenDialog(opts)
+
     return result.canceled ? null : (result.filePaths[0] ?? null)
   })
 
@@ -296,6 +321,7 @@ function registerIpc(): void {
     const child = spawn('code', ['-n', path], { detached: true, stdio: 'ignore' })
     child.on('error', (err) => console.error(`code -n ${path} failed: ${err.message}`))
     child.unref()
+
     return { ok: true }
   })
 
@@ -304,22 +330,26 @@ function registerIpc(): void {
   // Opens only the release page the check found; the renderer cannot pass a URL.
   ipcMain.handle('app:openUpdate', () => {
     if (update) void shell.openExternal(update.url)
+
     return { ok: true }
   })
 
   ipcMain.handle('app:trayTitle', () => {
     if (!e2e) throw new Error('app.trayTitle is only available under QUE_E2E=1')
+
     return tray?.title() ?? ''
   })
 
   ipcMain.handle('que:request', async (_e, method: MethodName, params: unknown) => {
     if (!ALLOWED.has(method)) throw new Error(`method not allowed: ${method}`)
     const c = await getClient()
+
     try {
       return { ok: true, result: await c.request(method, params as never) }
     } catch (err) {
       // Errors thrown across ipc lose their fields; return them as data.
       const e = err as { code?: string; message?: string }
+
       return { ok: false, error: { code: e.code ?? 'error', message: e.message ?? String(err) } }
     }
   })
@@ -340,25 +370,30 @@ app.whenReady().then(async () => {
     process.env.PATH = mergePath(process.env.PATH, login)
     console.log(login ? 'PATH: merged the login shell PATH' : 'PATH: login shell PATH unavailable')
   }
+
   registerIpc()
   installMenu()
+
   const quietCall = (method: 'quiet.unlock' | 'quiet.lock'): void => {
     void getClient()
       .then((c) => c.request(method))
       .catch((err) => console.error(`${method} failed:`, err))
   }
+
   tray = createTray({
     show: showApp,
     quit: () => app.quit(),
     unlock: () => quietCall('quiet.unlock'),
     lock: () => quietCall('quiet.lock')
   })
+
   try {
     const c = await getClient()
     applyQuiet(await c.request('quiet.state'))
   } catch (err) {
     console.error('failed to reach que daemon:', err)
   }
+
   if (!mainWindow) createWindow()
   startUpdateCheck()
   app.on('activate', () => {

@@ -46,7 +46,9 @@ interface RawDir {
 function byName(a: { name: string }, b: { name: string }): number {
   const x = a.name.toLowerCase()
   const y = b.name.toLowerCase()
+
   if (x !== y) return x < y ? -1 : 1
+
   return a.name < b.name ? -1 : a.name > b.name ? 1 : 0
 }
 
@@ -56,28 +58,37 @@ export function buildTree(
   changed: ReadonlyMap<string, DiffFile>
 ): DirNode {
   const root: RawDir = { dirs: new Map(), files: new Map() }
+
   const add = (path: string): void => {
     const parts = path.split('/').filter(Boolean)
     const name = parts.pop()
+
     if (name === undefined) return
     let at = root
+
     for (const part of parts) {
       let next = at.dirs.get(part)
+
       if (!next) {
         next = { dirs: new Map(), files: new Map() }
         at.dirs.set(part, next)
       }
+
       at = next
     }
+
     at.files.set(name, path)
   }
+
   for (const p of paths) add(p)
+
   for (const p of changed.keys()) add(p)
 
   const convert = (raw: RawDir, path: string, name: string): DirNode => {
     let dir = raw
     let at = path
     let label = name
+
     // A directory whose only entry is another directory folds into one row.
     while (at !== '' && dir.files.size === 0 && dir.dirs.size === 1) {
       const [childName, child] = [...dir.dirs][0]
@@ -85,9 +96,11 @@ export function buildTree(
       at = `${at}/${childName}`
       label = `${label}/${childName}`
     }
+
     const dirs = [...dir.dirs]
       .map(([n, d]) => convert(d, at === '' ? n : `${at}/${n}`, n))
       .sort(byName)
+
     const files: FileNode[] = [...dir.files]
       .map(([n, p]) => ({
         kind: 'file' as const,
@@ -96,31 +109,40 @@ export function buildTree(
         change: changed.get(p) ?? null
       }))
       .sort(byName)
+
     const count =
       dirs.reduce((n, d) => n + d.changed, 0) + files.filter((f) => f.change !== null).length
+
     return { kind: 'dir', path: at, name: label, dirs, files, changed: count }
   }
+
   return convert(root, '', '')
 }
 
 /** The rows the tree shows: each directory's entries only while it is in the expanded set. */
 export function flatten(tree: DirNode, expanded: ReadonlySet<string>): TreeRow[] {
   const rows: TreeRow[] = []
+
   const walk = (dir: DirNode, level: number): void => {
     for (const d of dir.dirs) {
       const open = expanded.has(d.path)
       rows.push({ node: d, level, open })
+
       if (open) walk(d, level + 1)
     }
+
     for (const f of dir.files) rows.push({ node: f, level, open: false })
   }
+
   walk(tree, 1)
+
   return rows
 }
 
 /** The directories open when a workspace's files first load: those with a changed file beneath. */
 export function defaultExpanded(tree: DirNode): Set<string> {
   const open = new Set<string>()
+
   const walk = (dir: DirNode): void => {
     for (const d of dir.dirs) {
       if (d.changed === 0) continue
@@ -128,7 +150,9 @@ export function defaultExpanded(tree: DirNode): Set<string> {
       walk(d)
     }
   }
+
   walk(tree)
+
   return open
 }
 
@@ -139,26 +163,35 @@ export function defaultExpanded(tree: DirNode): Set<string> {
  */
 export function newlyChanged(previous: DirNode | null, next: DirNode): string[] {
   const before = new Map<string, number>()
+
   const record = (dir: DirNode): void => {
     const depth = dir.path === '' ? 0 : dir.path.split('/').length
+
     for (const d of dir.dirs) {
       // Each directory of a folded chain (`a` and `a/b` for the row `a/b`) holds the same changes.
       const parts = d.path.split('/')
+
       for (let i = depth + 1; i <= parts.length; i++) {
         before.set(parts.slice(0, i).join('/'), d.changed)
       }
+
       record(d)
     }
   }
+
   if (previous) record(previous)
   const opened: string[] = []
+
   const walk = (dir: DirNode): void => {
     for (const d of dir.dirs) {
       if (d.changed === 0) continue
+
       if ((before.get(d.path) ?? 0) === 0) opened.push(d.path)
       walk(d)
     }
   }
+
   walk(next)
+
   return opened
 }

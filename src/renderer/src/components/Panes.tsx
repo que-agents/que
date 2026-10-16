@@ -37,6 +37,7 @@ export function PaneDivider({
     if (!dragging.current) return
     const box = e.currentTarget.parentElement?.getBoundingClientRect()
     const size = row ? box?.width : box?.height
+
     if (!box || !size) return
     onChange((row ? e.clientX - box.left : e.clientY - box.top) / size)
   }
@@ -44,9 +45,11 @@ export function PaneDivider({
   const end = (e: React.PointerEvent<HTMLHRElement>): void => {
     if (!dragging.current) return
     dragging.current = false
+
     if (e.currentTarget.hasPointerCapture?.(e.pointerId)) {
       e.currentTarget.releasePointerCapture(e.pointerId)
     }
+
     document.body.classList.remove('resizing')
   }
 
@@ -78,6 +81,7 @@ export function PaneDivider({
       onKeyDown={(e) => {
         const back = row ? 'ArrowLeft' : 'ArrowUp'
         const forward = row ? 'ArrowRight' : 'ArrowDown'
+
         const next =
           e.key === back
             ? ratio - STEP
@@ -88,6 +92,7 @@ export function PaneDivider({
                 : e.key === 'End'
                   ? RATIO_MAX
                   : null
+
         if (next === null) return
         e.preventDefault()
         onChange(next)
@@ -162,6 +167,7 @@ function Pane({ termKey, index }: { termKey: string; index: 0 | 1 }): React.JSX.
             const path = filePath ?? diffPathOf(id) ?? id
             const label = basename(path)
             const selected = id === activeId
+
             return (
               <span
                 key={id}
@@ -239,6 +245,7 @@ export default function Panes({ termKey }: { termKey: string }): React.JSX.Eleme
     setPaneSource(() => {
       const count = store.layout(termKey).split ? 2 : 1
       const focused = store.focusedPane(termKey)
+
       return Array.from({ length: count }, (_, index) => ({
         index,
         activeTermId: store.paneActive(termKey, index as 0 | 1)?.id ?? null,
@@ -246,12 +253,14 @@ export default function Panes({ termKey }: { termKey: string }): React.JSX.Eleme
         focused: focused === index
       }))
     })
+
     return () => setPaneSource(null)
   }, [store, termKey])
 
   const template = split
     ? `${split.ratio}fr 7px ${Math.round((1 - split.ratio) * 1000) / 1000}fr`
     : undefined
+
   const style = split
     ? split.direction === 'row'
       ? { gridTemplateColumns: template }

@@ -5,3 +5,5 @@ node_modules/
 release/
 test-results/
 .private/
+# Vendored lint rules: they run inside oxlint at lint time, never in the app.
+tools/oxlint/anti-slop/

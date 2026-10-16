@@ -37,6 +37,7 @@ test('a task queued from the CLI runs overnight-style, shows in the sidebar, and
 
   await test.step('Register the project and queue a task with the CLI', async () => {
     project = queJson<Project>(queHome, 'project', 'add', repo, '--json')
+
     const added = queJson<Task>(
       queHome,
       'add',
@@ -45,6 +46,7 @@ test('a task queued from the CLI runs overnight-style, shows in the sidebar, and
       'Add retry logic to the uploader',
       '--json'
     )
+
     expect(added).toMatchObject({
       projectId: project.id,
       title: 'Add retry logic to the uploader',

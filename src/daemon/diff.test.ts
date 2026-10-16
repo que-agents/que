@@ -133,6 +133,7 @@ describe('parseRefs', () => {
       'refs/remotes/origin/release',
       ''
     ].join('\n')
+
     expect(parseRefs(out)).toEqual([
       'main',
       'app-1432-retry-logic',

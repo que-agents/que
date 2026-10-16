@@ -57,6 +57,7 @@ describe('safety', () => {
           rows: 24
         })
       }
+
       const pids = (await daemon.client.request('term.list')).map((t) => t.pid)
       expect(pids).toHaveLength(3)
       expect(pids.every(pidAlive)).toBe(true)
@@ -98,8 +99,10 @@ describe('safety', () => {
 
     afterEach(async () => {
       client?.close()
+
       // Stop a daemon a failed test left running, by its own pid only.
       if (daemonPid !== null && pidAlive(daemonPid)) process.kill(daemonPid, 'SIGTERM')
+
       if (daemonPid !== null) await assertPidsGone([daemonPid], 5_000)
       vi.unstubAllEnvs()
       fs.rmSync(fakeHome, { recursive: true, force: true })
@@ -114,6 +117,7 @@ describe('safety', () => {
 
     it('writes nothing outside QUE_HOME', async () => {
       const c = client as DaemonClient
+
       const { id } = await c.request('term.create', {
         file: '/bin/sh',
         args: ['-c', 'printf QUE_SAFETY_2d9c; sleep 30'],
@@ -121,6 +125,7 @@ describe('safety', () => {
         cols: 80,
         rows: 24
       })
+
       await expect
         .poll(async () => (await c.request('term.snapshot', { id })).text, { timeout: 10_000 })
         .toContain('QUE_SAFETY_2d9c')
@@ -321,8 +326,10 @@ describe('safety: hooks wrapper', () => {
 
   it('the claude wrapper refuses (127) rather than run itself when no real claude is on PATH', async () => {
     const daemon = await startTestDaemon()
+
     try {
       const wrapper = join(daemon.home, 'bin', 'claude')
+
       const r = await new Promise<{ code: number | null; stderr: string }>((resolve) => {
         execFile(
           wrapper,

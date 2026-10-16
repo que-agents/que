@@ -21,6 +21,7 @@ if (!window.matchMedia) {
       dispatchEvent: () => false
     }) as MediaQueryList
 }
+
 if (!window.ResizeObserver) {
   window.ResizeObserver = class {
     observe(): void {}
@@ -28,6 +29,7 @@ if (!window.ResizeObserver) {
     disconnect(): void {}
   }
 }
+
 // No canvas in jsdom: report "no context" quietly, as a GPU-less browser would.
 HTMLCanvasElement.prototype.getContext = (() => null) as HTMLCanvasElement['getContext']
 
@@ -35,6 +37,7 @@ window.que = fakeBridge.api
 
 // jsdom has no AudioContext: tests that care about the chime install their own player.
 const silent = { play: () => {} }
+
 setChimePlayer(silent)
 
 afterEach(() => {
