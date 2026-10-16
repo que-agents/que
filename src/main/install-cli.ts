@@ -43,7 +43,7 @@ export function planCliInstall(input: PlanInput): CliInstallPlan {
 }
 
 /** What the result dialog says. */
-export function describeCliInstall(plan: CliInstallPlan): { message: string; detail: string } {
+export function describeCliInstall(plan: CliInstallPlan) {
   if (plan.action === 'refuse') {
     return {
       message: `${plan.link} already exists`,

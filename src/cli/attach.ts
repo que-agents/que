@@ -9,7 +9,7 @@ export async function attach(id: string): Promise<void> {
   const client = await DaemonClient.connectOrStart()
   const interactive = stdin.isTTY && stdout.isTTY
 
-  const size = (): { cols: number; rows: number } => ({
+  const size = () => ({
     cols: stdout.columns || 80,
     rows: stdout.rows || 24
   })
