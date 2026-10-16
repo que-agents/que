@@ -215,7 +215,7 @@ How the pieces fit: [docs/architecture.md](docs/architecture.md). How it looks a
 [docs/design.md](docs/design.md). Tests follow the
 three guides in `.claude/skills/` (`test-planning`, `vitest-testing`,
 `e2e-testing`); see [CONTRIBUTING.md](CONTRIBUTING.md). What is next:
-[ROADMAP.md](ROADMAP.md).
+[ROADMAP.md](ROADMAP.md). Vulnerabilities: [SECURITY.md](SECURITY.md).
 
 ## License
 

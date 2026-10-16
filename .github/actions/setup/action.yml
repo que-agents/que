@@ -1,0 +1,32 @@
+name: Set up Node and dependencies
+description: Install Node 24 and the npm dependencies, with the npm and Electron downloads cached.
+
+inputs:
+  scripts:
+    description: "Run npm lifecycle scripts. 'false' skips the Electron download and the node-pty rebuild."
+    default: 'true'
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v4
+      with:
+        node-version: 24
+        cache: npm
+
+    - name: Cache the Electron download
+      if: inputs.scripts == 'true'
+      uses: actions/cache@v4
+      with:
+        path: ${{ runner.os == 'macOS' && '~/Library/Caches/electron' || '~/.cache/electron' }}
+        key: electron-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+        restore-keys: electron-${{ runner.os }}-
+
+    - name: Install dependencies
+      shell: bash
+      run: |
+        if [ "${{ inputs.scripts }}" = "true" ]; then
+          npm ci
+        else
+          npm ci --ignore-scripts
+        fi
