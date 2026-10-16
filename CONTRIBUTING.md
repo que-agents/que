@@ -47,6 +47,11 @@ on a condition; inject the clock into anything time-dependent.
 `npm run test:flaky -- 10` runs the Vitest suites ten times when you suspect a
 flaky test.
 
+Two mechanical commits (the oxfmt reformat and the blank-line autofix) are
+listed in `.git-blame-ignore-revs`; run
+`git config blame.ignoreRevsFile .git-blame-ignore-revs` once so `git blame`
+skips them.
+
 ## Pull requests
 
 - One change per pull request, with tests at the layer the change lives in.
