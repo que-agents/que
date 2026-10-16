@@ -1,0 +1,115 @@
+// Decodes one item of `gh pr list --json number,url,title,state,isDraft,
+// reviewDecision,statusCheckRollup,mergedAt,updatedAt` into typed fields.
+// Missing or mistyped fields read as empty; pr-state.ts maps the result onto
+// the PullRequest que keeps.
+
+/** A check run in the rollup (GitHub Actions and other apps). */
+export interface GhCheckRun {
+  kind: 'run'
+  name: string
+  workflowName: string | null
+  /** QUEUED, IN_PROGRESS, COMPLETED, ...; empty when missing. */
+  status: string
+  /** SUCCESS, FAILURE, SKIPPED, ...; empty while running. */
+  conclusion: string
+  detailsUrl: string | null
+  startedAt: string | null
+  completedAt: string | null
+}
+
+/** A commit status in the rollup. */
+export interface GhStatusContext {
+  kind: 'status'
+  name: string
+  /** SUCCESS, FAILURE, ERROR, PENDING, EXPECTED; empty when missing. */
+  state: string
+  targetUrl: string | null
+  createdAt: string | null
+}
+
+export type GhCheck = GhCheckRun | GhStatusContext
+
+export interface GhPullRequest {
+  number: number
+  url: string
+  title: string
+  /** OPEN, CLOSED or MERGED; empty when missing. */
+  state: string
+  isDraft: boolean
+  mergedAt: string | null
+  /** APPROVED, CHANGES_REQUESTED, REVIEW_REQUIRED; empty when there is none. */
+  reviewDecision: string
+  updatedAt: string | null
+  checks: GhCheck[]
+}
+
+type Obj = { [key: string]: unknown }
+
+const isObj = (v: unknown): v is Obj => !!v && typeof v === 'object' && !Array.isArray(v)
+const str = (v: unknown): string => (typeof v === 'string' ? v : '')
+const strOrNull = (v: unknown): string | null => (typeof v === 'string' && v ? v : null)
+
+/** One rollup item; null when it is neither a check run nor a commit status. */
+function decodeCheck(i: Obj): GhCheck | null {
+  const statusContext =
+    i.__typename === 'StatusContext' ||
+    (i.__typename !== 'CheckRun' && 'state' in i && !('status' in i) && !('conclusion' in i))
+
+  if (statusContext) {
+    return {
+      kind: 'status',
+      name: str(i.context) || str(i.name),
+      state: str(i.state),
+      targetUrl: strOrNull(i.targetUrl),
+      createdAt: strOrNull(i.createdAt)
+    }
+  }
+
+  const checkRun = i.__typename === 'CheckRun' || 'status' in i || 'conclusion' in i
+
+  if (!checkRun) return null
+
+  return {
+    kind: 'run',
+    name: str(i.name) || str(i.context),
+    workflowName: strOrNull(i.workflowName),
+    status: str(i.status),
+    conclusion: str(i.conclusion),
+    detailsUrl: strOrNull(i.detailsUrl),
+    startedAt: strOrNull(i.startedAt),
+    completedAt: strOrNull(i.completedAt)
+  }
+}
+
+/** The `statusCheckRollup` list; items it does not recognise are dropped. */
+export function decodeCheckRollup(v: unknown): GhCheck[] {
+  if (!Array.isArray(v)) return []
+  const checks: GhCheck[] = []
+
+  for (const i of v) {
+    const check = isObj(i) ? decodeCheck(i) : null
+
+    if (check) checks.push(check)
+  }
+
+  return checks
+}
+
+/** One `gh pr list` item; null when it has no number or url. */
+export function decodePullRequest(v: unknown): GhPullRequest | null {
+  if (!isObj(v)) return null
+
+  if (typeof v.number !== 'number' || typeof v.url !== 'string' || !v.url) return null
+
+  return {
+    number: v.number,
+    url: v.url,
+    title: str(v.title),
+    state: str(v.state),
+    isDraft: v.isDraft === true,
+    mergedAt: strOrNull(v.mergedAt),
+    reviewDecision: str(v.reviewDecision),
+    updatedAt: typeof v.updatedAt === 'string' ? v.updatedAt : null,
+    checks: decodeCheckRollup(v.statusCheckRollup)
+  }
+}
