@@ -13,9 +13,11 @@ function useSubmit(): {
 } {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
   const run = async (fn: () => Promise<void>): Promise<void> => {
     setBusy(true)
     setError(null)
+
     try {
       await fn()
     } catch (err) {
@@ -24,11 +26,13 @@ function useSubmit(): {
       setBusy(false)
     }
   }
+
   return { busy, error, run }
 }
 
 function FormError({ error, testId }: { error: string | null; testId: string }) {
   if (!error) return null
+
   return (
     <p className="form-error" role="alert" data-testid={`${testId}-error`}>
       {error}
@@ -53,6 +57,7 @@ export function NewWorkspaceDialog({
 
   const submit = (e: FormEvent): void => {
     e.preventDefault()
+
     if (!slug) return
     void run(async () => {
       await store.createWorkspace({

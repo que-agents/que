@@ -46,15 +46,19 @@ function deliver(
 
 export async function runHook(): Promise<void> {
   const workspaceId = process.env.QUE_WORKSPACE_ID
+
   if (!workspaceId) return
+
   const work = (async () => {
     const text = await readStdin()
     let payload: unknown
+
     try {
       payload = JSON.parse(text)
     } catch {
       return
     }
+
     if (typeof payload !== 'object' || payload === null) return
     await deliver(
       process.env.QUE_SOCKET || quePaths().socket,
@@ -63,5 +67,6 @@ export async function runHook(): Promise<void> {
       payload
     )
   })()
+
   await Promise.race([work.catch(() => {}), new Promise((r) => setTimeout(r, BUDGET_MS).unref())])
 }

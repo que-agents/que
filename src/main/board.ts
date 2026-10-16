@@ -26,14 +26,17 @@ export function createBoardWindow(opts: { e2e: boolean }): BrowserWindow {
       additionalArguments: opts.e2e ? ['--que-e2e'] : []
     }
   })
+
   win.center()
   // No links and no navigation out of the board.
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
   win.webContents.on('will-navigate', (ev) => ev.preventDefault())
+
   if (!app.isPackaged && process.env.ELECTRON_RENDERER_URL) {
     void win.loadURL(`${process.env.ELECTRON_RENDERER_URL}#${BOARD_HASH}`)
   } else {
     void win.loadFile(join(__dirname, '../renderer/index.html'), { hash: BOARD_HASH })
   }
+
   return win
 }

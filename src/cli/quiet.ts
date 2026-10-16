@@ -9,33 +9,43 @@ import { CliError, withClient } from './common'
 /** One line about quiet hours, for `que quiet status` and `que status`. */
 export function describeQuietState(q: QuietState, now = Date.now()): string {
   if (!q.enabled) return 'quiet hours off'
+
   if (!q.inQuietHours) {
     return q.nextBoundary
       ? `work hours · quiet hours start ${hhmm(Date.parse(q.nextBoundary))}`
       : 'work hours'
   }
+
   const until = q.windowEnd ? hhmm(Date.parse(q.windowEnd)) : '?'
+
   if (q.unlockedUntil) {
     return `quiet hours until ${until} · unlocked, ${formatCountdown(Date.parse(q.unlockedUntil) - now)} left`
   }
+
   return `quiet hours until ${until}`
 }
 
 /** Combines two patches, keeping `null` (a removal) as a value. */
 function combine(a: Record<string, unknown>, b: Record<string, unknown>): Record<string, unknown> {
   const out = { ...a }
+
   for (const [k, v] of Object.entries(b)) {
     const prev = out[k]
+
     const table = (x: unknown): x is Record<string, unknown> =>
       typeof x === 'object' && x !== null && !Array.isArray(x)
+
     out[k] = table(prev) && table(v) ? combine(prev, v) : v
   }
+
   return out
 }
 
 function positiveMinutes(value: string): number {
   const n = Number(value)
+
   if (!Number.isFinite(n) || n <= 0) throw new CliError('minutes must be a positive number')
+
   return n
 }
 
@@ -53,6 +63,7 @@ export function registerQuietCommands(program: Command): void {
           minutes: minutes === undefined ? undefined : positiveMinutes(minutes),
           why: opts.why || undefined
         })
+
         if (opts.json) console.log(JSON.stringify(q, null, 2))
         else if (!q.inQuietHours) console.log('not in quiet hours; nothing to unlock')
         else console.log(describeQuietState(q))
@@ -66,6 +77,7 @@ export function registerQuietCommands(program: Command): void {
     .action((opts: { json?: boolean }) =>
       withClient(async (c) => {
         const q = await c.request('quiet.lock')
+
         if (opts.json) console.log(JSON.stringify(q, null, 2))
         else console.log(describeQuietState(q))
       })
@@ -79,6 +91,7 @@ export function registerQuietCommands(program: Command): void {
     .action((opts: { json?: boolean }) =>
       withClient(async (c) => {
         const q = await c.request('quiet.state')
+
         if (opts.json) console.log(JSON.stringify(q, null, 2))
         else console.log(describeQuietState(q))
       })
@@ -92,6 +105,7 @@ export function registerQuietCommands(program: Command): void {
     .action((opts: { json?: boolean }) =>
       withClient(async (c) => {
         const r = await c.request('config.get')
+
         if (opts.json) return console.log(JSON.stringify(r, null, 2))
         const cfg = r.config
         console.log(`config ${r.path}`)
@@ -113,6 +127,7 @@ export function registerQuietCommands(program: Command): void {
     .action((assignments: string[], opts: { applyTonight?: boolean; json?: boolean }) =>
       withClient(async (c) => {
         let patch: Record<string, unknown> = {}
+
         for (const a of assignments) {
           try {
             patch = combine(patch, parseConfigAssignment(a))
@@ -120,7 +135,9 @@ export function registerQuietCommands(program: Command): void {
             throw new CliError((err as Error).message)
           }
         }
+
         const r = await c.request('config.set', { patch, applyTonight: opts.applyTonight === true })
+
         if (opts.json) console.log(JSON.stringify(r, null, 2))
         else console.log(`updated ${r.path}`)
       })

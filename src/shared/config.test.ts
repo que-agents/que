@@ -254,6 +254,7 @@ describe('config patches', () => {
       quiet_hours: { enabled: true, default: ['19:00', '07:00'], saturday: 'none' },
       repos: { uploader: { path: '/Users/dev/code/uploader' } }
     }
+
     const before = structuredClone(raw)
 
     const merged = mergeConfigPatch(raw, {

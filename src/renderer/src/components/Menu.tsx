@@ -51,20 +51,27 @@ export default function Menu({
 
   useEffect(() => {
     const menu = ref.current
+
     const first =
       menu?.querySelector<HTMLElement>('[aria-checked=true]') ??
       menu?.querySelector<HTMLElement>('[role^=menuitem]')
+
     first?.focus()
+
     const onDown = (e: MouseEvent): void => {
       const target = e.target as Node
+
       if (ref.current?.contains(target) || anchor?.current?.contains(target)) return
       onClose()
     }
+
     const onKey = (e: KeyboardEvent): void => {
       if (e.key === 'Escape') onClose()
     }
+
     document.addEventListener('mousedown', onDown)
     document.addEventListener('keydown', onKey)
+
     return () => {
       document.removeEventListener('mousedown', onDown)
       document.removeEventListener('keydown', onKey)
@@ -95,6 +102,7 @@ export default function Menu({
             item.action()
           }
         }
+
         return item.selected === undefined ? (
           <button key={item.testId} role="menuitem" {...common}>
             {item.label}

@@ -12,6 +12,7 @@ import {
 import App from '../App'
 
 const retry = makeWorkspace({ id: 'ws_01hzx3k9c2qf', name: 'app-1432-retry-logic' })
+
 const done = makeTask({
   id: 'tsk_01hzy0d7w3ke',
   title: 'Add retry logic to the uploader',
@@ -23,6 +24,7 @@ const done = makeTask({
   startedAt: '2026-10-14T01:00:00.000Z',
   finishedAt: '2026-10-14T01:03:05.000Z'
 })
+
 const stuck = makeTask({
   id: 'tsk_01hzy1f2g5mn',
   title: 'Document the upload limits',
@@ -83,6 +85,7 @@ describe('ReportView', () => {
       waitingSince: new Date(2026, 9, 14, 2, 14).toISOString(),
       pr: makePullRequest({ state: 'open' })
     })
+
     const quietOne = makeWorkspaceDigest({ id: 'ws_01hzx3k9c2qf', status: 'idle' })
 
     it('lists each workspace in daemon order with its facts and pull request', async () => {
@@ -200,12 +203,14 @@ describe('ReportView', () => {
   describe('status updates', () => {
     it('refreshes on its own when a task changes state, showing why it is stuck', async () => {
       const user = userEvent.setup()
+
       const running = makeTask({
         id: 'tsk_01hzy2h8j4pq',
         title: 'Fix the flaky upload test',
         workspaceId: null,
         state: 'running'
       })
+
       fakeBridge.seedProject(makeProject())
       fakeBridge.seedTask(running)
       await openReport(user)
@@ -222,6 +227,7 @@ describe('ReportView', () => {
     it('lists the groups done, stuck, failed, paused, running, queued, then stopped', async () => {
       const user = userEvent.setup()
       fakeBridge.seedProject(makeProject())
+
       for (const state of [
         'stopped',
         'queued',

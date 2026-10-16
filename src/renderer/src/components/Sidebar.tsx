@@ -18,13 +18,17 @@ type OpenMenu = { kind: 'project' | 'workspace'; id: string; at?: Point }
 function WorkspaceBadge({ w, task }: { w: Workspace; task?: Task }): React.JSX.Element {
   const testId = `sidebar-workspace-${w.id}-status`
   const interactive = w.status === 'working' || w.status === 'needs_input'
+
   if (task && isLiveTask(task.state)) return <TaskBadge state={task.state} testId={testId} />
+
   if (task?.state === 'done' && !interactive) return <TaskBadge state="done" testId={testId} />
+
   return <StatusBadge status={w.status} reason={w.statusReason} testId={testId} />
 }
 
 export default function Sidebar(): React.JSX.Element {
   const store = useStore()
+
   const {
     projects,
     workspaces,
@@ -39,6 +43,7 @@ export default function Sidebar(): React.JSX.Element {
     searchFocusNonce,
     sort
   } = useQue()
+
   const searchRef = useRef<HTMLInputElement>(null)
   // the nonce re-runs the focus on every request
   useEffect(() => {
@@ -62,8 +67,10 @@ export default function Sidebar(): React.JSX.Element {
   const toggle = (id: string): void =>
     setCollapsed((prev) => {
       const next = new Set(prev)
+
       if (next.has(id)) next.delete(id)
       else next.add(id)
+
       return next
     })
 
@@ -243,6 +250,7 @@ export default function Sidebar(): React.JSX.Element {
           const open = filtering || !collapsed.has(p.id)
           const list = sortWorkspaces(narrowed.workspacesOf(p.id), sort)
           const projectMenu = menuFor('project', p.id)
+
           return (
             <div key={p.id} className="project" data-testid={`sidebar-project-${p.id}`}>
               <div className="project-head">
@@ -293,6 +301,7 @@ export default function Sidebar(): React.JSX.Element {
                 <ul>
                   {list.map((w) => {
                     const workspaceMenu = menuFor('workspace', w.id)
+
                     return (
                       <li
                         key={w.id}

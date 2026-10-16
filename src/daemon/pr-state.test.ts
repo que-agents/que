@@ -80,6 +80,7 @@ describe('checkRunsOf', () => {
     conclusion: 'SUCCESS',
     ...extra
   })
+
   const ctx = (extra: Record<string, unknown>) => ({
     __typename: 'StatusContext',
     context: 'deploy/preview',
@@ -239,10 +240,12 @@ describe('samePullRequest', () => {
       state: 'OPEN',
       statusCheckRollup: [{ name: 'build', status: 'IN_PROGRESS', conclusion: null }]
     })
+
     const passing = parse({
       state: 'OPEN',
       statusCheckRollup: [{ name: 'build', status: 'COMPLETED', conclusion: 'SUCCESS' }]
     })
+
     const otherUrl = parse({
       state: 'OPEN',
       statusCheckRollup: [

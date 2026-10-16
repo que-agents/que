@@ -53,6 +53,7 @@ export function detectWake(
 export function defaultTitle(brief: string): string {
   const first = brief.split('\n').find((l) => l.trim() !== '') ?? ''
   const line = first.trim()
+
   return line.length > 80 ? `${line.slice(0, 79).trimEnd()}…` : line
 }
 
@@ -108,6 +109,7 @@ export class TaskQueue {
       this.patch(t.id, { pid: null })
       this.apply(t.id, { type: 'restart' })
     }
+
     this.lastWall = this.now()
     this.lastMono = performance.now()
     const tick = setInterval(() => this.tick(), this.o.tickMs ?? 5_000)
@@ -121,6 +123,7 @@ export class TaskQueue {
   /** Daemon shutdown: stops the timers, every run, and the keep-awake. */
   async shutdown(): Promise<void> {
     this.closed = true
+
     for (const t of this.timers) clearInterval(t)
     this.timers = []
     await this.runner.close()
@@ -130,9 +133,11 @@ export class TaskQueue {
   /** Pids of task runs and the keep-awake (for leak checks). */
   pids(): number[] {
     const pids = this.runner.pids()
+
     if (this.caffeinate?.pid !== undefined && this.caffeinate.exitCode === null) {
       pids.push(this.caffeinate.pid)
     }
+
     return pids
   }
 
@@ -146,15 +151,18 @@ export class TaskQueue {
   apply(id: string, event: TaskEvent): Task | undefined {
     if (this.closed) return undefined
     const prev = this.o.store.getTask(id)
+
     if (!prev) return undefined
     const next = nextTask(prev, event, this.now(), this.limits())
     this.commit(prev, next)
+
     return next
   }
 
   private patch(id: string, fields: Partial<Task>): void {
     if (this.closed) return
     const prev = this.o.store.getTask(id)
+
     if (prev) this.commit(prev, { ...prev, ...fields })
   }
 
@@ -162,10 +170,12 @@ export class TaskQueue {
     const changed = (Object.keys(next) as Array<keyof Task>).some(
       (k) => k !== 'updatedAt' && next[k] !== prev[k]
     )
+
     if (!changed) return
     next.updatedAt = new Date(this.now()).toISOString()
     this.o.store.updateTask(next)
     const statusChanged = prev.state !== next.state || prev.reason !== next.reason
+
     if (statusChanged) {
       this.o.log(
         `task ${next.id} ${prev.state} -> ${next.state}${next.reason ? ` (${next.reason})` : ''}`
@@ -181,6 +191,7 @@ export class TaskQueue {
       this.keepAwake()
       this.kick()
     }
+
     const updated: Array<keyof Task> = [
       'costUsd',
       'turns',
@@ -190,6 +201,7 @@ export class TaskQueue {
       'workspaceId',
       'pid'
     ]
+
     if (updated.some((k) => prev[k] !== next[k])) this.o.emit('task.updated', next)
   }
 
@@ -197,6 +209,7 @@ export class TaskQueue {
 
   private concurrency(): number {
     const override = Number(this.o.store.getKv(KV_CONCURRENCY))
+
     return Number.isInteger(override) && override > 0 ? override : this.o.config().concurrency
   }
 
@@ -220,9 +233,12 @@ export class TaskQueue {
     const active = this.o.store.listTasks([...ACTIVE_STATES])
     const busy = new Set(active.map((t) => t.workspaceId).filter((w): w is string => w !== null))
     let slots = this.concurrency() - active.length
+
     for (const t of this.o.store.listTasks(['queued'])) {
       if (slots <= 0) break
+
       if (t.workspaceId && busy.has(t.workspaceId)) continue
+
       if (t.workspaceId) busy.add(t.workspaceId)
       slots -= 1
       this.runner.start(t.id)
@@ -238,14 +254,18 @@ export class TaskQueue {
     const woke = detectWake(this.lastWall, this.lastMono, wall, mono)
     this.lastWall = wall
     this.lastMono = mono
+
     if (woke) this.o.log('wake: the machine slept; re-checking running tasks')
+
     for (const t of this.o.store.listTasks(['running', 'paused'])) {
       if (woke && t.state === 'running' && !this.runner.isRunning(t.id)) {
         this.apply(t.id, { type: 'exit', code: null, signal: null })
         continue
       }
+
       this.apply(t.id, { type: 'tick' })
     }
+
     this.keepAwake()
   }
 
@@ -253,13 +273,17 @@ export class TaskQueue {
   private keepAwake(): void {
     if (this.closed) return
     const needed = this.o.store.listTasks([...ACTIVE_STATES]).length > 0
+
     if (needed && !this.caffeinate) {
       const bin = findOnPath('caffeinate', process.env.PATH)
+
       if (!bin) {
         if (!this.warnedNoCaffeinate) this.o.log('caffeinate not found; the machine may sleep')
         this.warnedNoCaffeinate = true
+
         return
       }
+
       const child = spawn(bin, ['-i', '-w', String(process.pid)], { stdio: 'ignore' })
       child.once('error', () => {})
       child.once('exit', () => {
@@ -276,6 +300,7 @@ export class TaskQueue {
   private stopCaffeinate(): void {
     const c = this.caffeinate
     this.caffeinate = null
+
     if (c && c.exitCode === null) c.kill('SIGTERM')
   }
 
@@ -283,29 +308,38 @@ export class TaskQueue {
 
   add(p: TaskAddParams): Task {
     if (typeof p.brief !== 'string' || p.brief.trim() === '') throw badRequest('brief is required')
+
     if (!p.projectId === !p.workspaceId) {
       throw badRequest('pass exactly one of projectId or workspaceId')
     }
+
     let projectId: string
+
     if (p.workspaceId) {
       const ws = this.o.workspaces.get(p.workspaceId)
       projectId = ws.projectId
     } else {
       projectId = this.o.workspaces.project(p.projectId as string).id
     }
+
     const source = p.source ?? 'prompt'
+
     if (!['prompt', 'file'].includes(source)) throw badRequest(`invalid source ${source}`)
+
     const positive = (v: unknown, key: string, int: boolean): void => {
       if (v === undefined) return
+
       if (typeof v !== 'number' || !(v > 0) || (int && !Number.isInteger(v))) {
         throw badRequest(`${key} must be a positive ${int ? 'integer' : 'number'}`)
       }
     }
+
     positive(p.maxTurns, 'maxTurns', true)
     positive(p.maxBudgetUsd, 'maxBudgetUsd', false)
     const title = (p.title?.trim() || defaultTitle(p.brief)).slice(0, 200)
     const config = this.o.config()
     const now = new Date(this.now()).toISOString()
+
     const task: Task = {
       id: newId('tsk_'),
       projectId,
@@ -334,11 +368,13 @@ export class TaskQueue {
       createdAt: now,
       updatedAt: now
     }
+
     this.o.store.insertTask(task)
     this.o.log(`task ${task.id} added: ${title}`)
     this.o.emit('task.created', task)
     this.emitState()
     this.kick()
+
     return task
   }
 
@@ -348,18 +384,23 @@ export class TaskQueue {
 
   get(id: string): Task {
     const t = this.o.store.getTask(id)
+
     if (!t) throw notFound(`no task ${id}`)
+
     return t
   }
 
   stop(id: string): Task {
     const t = this.get(id)
+
     if (!LIVE_STATES.has(t.state)) throw conflict(`task ${id} is already ${t.state}`)
+
     return this.apply(id, { type: 'stop' }) ?? t
   }
 
   remove(id: string): void {
     const t = this.get(id)
+
     if (LIVE_STATES.has(t.state)) throw conflict(`task ${id} is ${t.state}; stop it first`)
     this.o.store.deleteTask(id)
     this.emitState()
@@ -383,12 +424,15 @@ export class TaskQueue {
     ) {
       throw badRequest('concurrency must be a positive integer')
     }
+
     this.o.store.setKv(KV_OPEN, 'true')
     this.o.store.setKv(KV_OPENED_AT, new Date(this.now()).toISOString())
+
     if (concurrency !== undefined) this.o.store.setKv(KV_CONCURRENCY, String(concurrency))
     this.o.log(`queue opened (concurrency ${this.concurrency()})`)
     this.emitState()
     this.kick()
+
     return this.state()
   }
 
@@ -397,11 +441,13 @@ export class TaskQueue {
     this.o.store.setKv(KV_CONCURRENCY, null)
     this.o.log('queue closed')
     this.emitState()
+
     return this.state()
   }
 
   state(): QueueState {
     const count = (states: TaskState[]) => this.o.store.listTasks(states).length
+
     return {
       open: this.isOpen(),
       concurrency: this.concurrency(),
@@ -420,30 +466,40 @@ export class TaskQueue {
     if (since !== undefined && Number.isNaN(Date.parse(since))) {
       throw badRequest('since must be an ISO time')
     }
+
     const now = this.now()
     const from = reportSince(since, this.o.store.getKv(KV_OPENED_AT) ?? null, now)
     const names = new Map<string, string>()
+
     for (const t of this.o.store.listTasks()) {
       if (!t.workspaceId || names.has(t.workspaceId)) continue
       const ws = this.o.store.getWorkspace(t.workspaceId)
+
       if (ws) names.set(ws.id, ws.name)
     }
+
     const digests: WorkspaceDigest[] = []
+
     for (const ws of this.o.store.listWorkspaces()) {
       let project: Project
+
       try {
         project = this.o.workspaces.project(ws.projectId)
       } catch {
         continue
       }
+
       const log = this.o.store.listStatusLog(ws.id, from)
+
       const digest = buildWorkspaceDigest(ws, project, log, Date.parse(from), now, {
         commitsAhead: null
       })
+
       if (!digest) continue
       digest.commitsAhead = await commitsAhead(ws, project)
       digests.push(digest)
     }
+
     return buildReport(this.o.store.listTasks(), names, from, now, sortDigests(digests))
   }
 }

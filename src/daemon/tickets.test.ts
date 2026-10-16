@@ -81,6 +81,7 @@ describe('parseIssue', () => {
       AT,
       'acme.atlassian.net'
     )
+
     expect(t).toMatchObject({
       statusCategory: 'unknown',
       priority: null,
@@ -104,6 +105,7 @@ describe('workspaceNameFor', () => {
         summary: 'Add retry logic to the uploader so that flaky networks do not lose files'
       })
     )
+
     expect(name.length).toBeLessThanOrEqual(64)
     expect(name.endsWith('-')).toBe(false)
     expect(name.startsWith('app-1432-add-retry-logic')).toBe(true)

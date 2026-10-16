@@ -103,10 +103,12 @@ describe('que add, run, task list, report', () => {
 
   it('carries the interactive workspaces in --json and prints them as text', async () => {
     const project = await daemon.client.request('project.add', { path: makeTempRepo(daemon.home) })
+
     const ws = await daemon.client.request('workspace.create', {
       projectId: project.id,
       name: 'app-1432-retry-logic'
     })
+
     await expect
       .poll(async () => (await daemon.client.request('workspace.get', { id: ws.id })).status, {
         timeout: 10_000

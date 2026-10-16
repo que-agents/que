@@ -22,6 +22,7 @@ afterEach(async () => {
 function record<E extends keyof Events>(c: DaemonClient, event: E): Events[E][] {
   const seen: Events[E][] = []
   c.on(event, (data) => seen.push(data))
+
   return seen
 }
 
@@ -29,6 +30,7 @@ describe('terminals', () => {
   describe('output', () => {
     it('mirrors program output into the snapshot and reports the exit code', async () => {
       const exits = record(client, 'term.exit')
+
       const { id } = await client.request('term.create', {
         file: '/bin/sh',
         args: ['-c', 'printf "QUE_MIRROR_4b1e\\n"; exit 3'],
@@ -79,6 +81,7 @@ describe('terminals', () => {
       vi.stubEnv('CLAUDECODE', '1')
       vi.stubEnv('CLAUDE_CODE_CHILD_SESSION', '1')
       vi.stubEnv('CLAUDE_CONFIG_DIR', '/Users/dev/.claude-work')
+
       const { id } = await client.request('term.create', {
         file: '/bin/sh',
         args: [
@@ -92,10 +95,12 @@ describe('terminals', () => {
       await expect
         .poll(async () => (await client.request('term.snapshot', { id })).text, { timeout: 10_000 })
         .toContain('QUE_ENV_END')
+
       const lines = (await client.request('term.snapshot', { id })).text
         .split('\n')
         .map((l) => l.trim())
         .filter((l) => l.includes('='))
+
       expect(lines).toEqual([
         'CLAUDE_CONFIG_DIR=/Users/dev/.claude-work',
         'QUE_TERMINAL=1',
@@ -112,6 +117,7 @@ describe('terminals', () => {
         file: '/bin/sh',
         args: ['-c', 'printf QUE_ATTACH_7f3a; sleep 30']
       })
+
       await expect
         .poll(async () => (await client.request('term.snapshot', { id })).text, { timeout: 10_000 })
         .toContain('QUE_ATTACH_7f3a')

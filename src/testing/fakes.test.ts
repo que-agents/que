@@ -9,6 +9,7 @@ import { FAKES_BIN, readFakeLog } from './fakes'
 import { gitIn } from './temp-repo'
 
 const CLAUDE = join(FAKES_BIN, 'claude')
+
 const HOOK_EVENTS = [
   'SessionStart',
   'UserPromptSubmit',
@@ -79,9 +80,11 @@ function start(args: string[], env: Record<string, string>): { proc: ChildProces
     cwd: dir,
     env: { ...process.env, QUE_FAKE_CLAUDE_TRANSCRIPT_DIR: join(dir, 'tr'), ...env }
   })
+
   children.push(proc)
   const out: string[] = []
   proc.stdout?.on('data', (c: Buffer) => out.push(c.toString('utf8')))
+
   return { proc, out }
 }
 
@@ -91,6 +94,7 @@ function exitCode(proc: ChildProcess): Promise<number | null> {
 
 function hooks(): { marker?: string; payload: Record<string, unknown> }[] {
   if (!fs.existsSync(hookLog)) return []
+
   return fs
     .readFileSync(hookLog, 'utf8')
     .split('\n')
@@ -122,6 +126,7 @@ describe('fake claude', () => {
   describe('scenarios', () => {
     it('success: streams init → assistant → result, writes the change, fires hooks in order', async () => {
       const prompt = 'Add retry logic to the uploader'
+
       const r = await run(
         CLAUDE,
         headless(prompt, '--session-id', 'b3c1d2e4-0000-4000-8000-1a2b3c4d5e6f'),
@@ -152,6 +157,7 @@ describe('fake claude', () => {
         'Stop',
         'SessionEnd'
       ])
+
       for (const { marker, payload } of hooks()) {
         expect(marker).toBe('m_51f2')
         expect(payload).toMatchObject({
@@ -161,6 +167,7 @@ describe('fake claude', () => {
         })
         expect(fs.existsSync(payload.transcript_path as string)).toBe(true)
       }
+
       expect(hooks()[2].payload).toMatchObject({
         tool_name: 'Write',
         tool_input: { content: prompt }
@@ -171,6 +178,7 @@ describe('fake claude', () => {
       const { proc, out } = start(headless('Refactor the queue'), {
         QUE_FAKE_CLAUDE_SCENARIO: 'stall'
       })
+
       await expect.poll(() => out.join(''), { timeout: 10_000 }).toContain('"type":"assistant"')
 
       proc.kill('SIGTERM')
@@ -183,6 +191,7 @@ describe('fake claude', () => {
       const { proc, out } = start(headless('Refactor the queue'), {
         QUE_FAKE_CLAUDE_SCENARIO: 'rate_limit'
       })
+
       await expect.poll(hookNames, { timeout: 10_000 }).toContain('StopFailure')
 
       const msgs = stream(out.join(''))
@@ -209,15 +218,18 @@ describe('fake claude', () => {
 
     it('rate_limit: reports resetsAt QUE_FAKE_CLAUDE_RESET_SECONDS from now, in epoch seconds', async () => {
       const startedAt = Math.floor(Date.now() / 1000)
+
       const { proc, out } = start(headless('Refactor the queue'), {
         QUE_FAKE_CLAUDE_SCENARIO: 'rate_limit',
         QUE_FAKE_CLAUDE_RESET_SECONDS: '90'
       })
+
       await expect.poll(() => out.join(''), { timeout: 10_000 }).toContain('rate_limit_event')
 
       const event = stream(out.join('')).find((m) => m.type === 'rate_limit_event') as {
         rate_limit_info: { status: string; resetsAt: number }
       }
+
       expect(event.rate_limit_info.status).toBe('rejected')
       expect(event.rate_limit_info.resetsAt).toBeGreaterThanOrEqual(startedAt + 90)
       expect(event.rate_limit_info.resetsAt).toBeLessThanOrEqual(Math.floor(Date.now() / 1000) + 90)
@@ -228,6 +240,7 @@ describe('fake claude', () => {
     it('success: commits its change when QUE_FAKE_CLAUDE_COMMIT=1, and leaves it uncommitted otherwise', async () => {
       gitIn(dir, 'init', '-b', 'main')
       gitIn(dir, 'commit', '--allow-empty', '-m', 'Initial commit')
+
       const identity = {
         GIT_AUTHOR_NAME: 'que test',
         GIT_AUTHOR_EMAIL: 'test@que.invalid',
@@ -355,9 +368,11 @@ describe('fake caffeinate', () => {
     const log = join(dir, 'caffeinate.log')
     const sleeper = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'])
     children.push(sleeper)
+
     const caffeinate = spawn(join(FAKES_BIN, 'caffeinate'), ['-i', '-w', String(sleeper.pid)], {
       env: { ...process.env, QUE_FAKE_CAFFEINATE_LOG: log }
     })
+
     children.push(caffeinate)
     await expect.poll(() => readFakeLog(log).length, { timeout: 10_000 }).toBe(1)
     expect(readFakeLog(log)[0]).toMatchObject({

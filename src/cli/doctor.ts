@@ -25,6 +25,7 @@ function run(file: string, args: string[]): Promise<{ ok: boolean; out: string }
 function executable(path: string): boolean {
   try {
     fs.accessSync(path, fs.constants.X_OK)
+
     return true
   } catch {
     return false
@@ -37,6 +38,7 @@ export async function runDoctor(): Promise<number> {
 
   let daemonPath: { ok: boolean; detail: string } | null = null
   const client = await DaemonClient.tryConnect(paths)
+
   if (client) {
     try {
       const ping = await client.request('daemon.ping')
@@ -133,10 +135,12 @@ export async function runDoctor(): Promise<number> {
   })
 
   const wrapper = [join(paths.binDir, 'claude'), join(paths.binDir, 'que')]
+
   const missing = [
     ...wrapper.filter((p) => !executable(p)),
     ...(fs.existsSync(paths.hooksJson) ? [] : [paths.hooksJson])
   ]
+
   checks.push({
     name: 'wrapper',
     ok: missing.length === 0,
@@ -151,5 +155,6 @@ export async function runDoctor(): Promise<number> {
     const tag = c.ok ? 'ok  ' : c.required ? 'FAIL' : 'warn'
     console.log(`${tag}  ${c.name.padEnd(10)} ${c.detail}`)
   }
+
   return checks.some((c) => c.required && !c.ok) ? 1 : 0
 }

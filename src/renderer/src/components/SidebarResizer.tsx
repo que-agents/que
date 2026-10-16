@@ -14,6 +14,7 @@ export function clampSidebarWidth(w: number): number {
 export function loadSidebarWidth(): number {
   try {
     const n = Number(localStorage.getItem(STORAGE_KEY))
+
     return Number.isFinite(n) && n > 0 ? clampSidebarWidth(n) : SIDEBAR_DEFAULT
   } catch {
     return SIDEBAR_DEFAULT
@@ -31,6 +32,7 @@ export function useSidebarWidth(): [number, (w: number) => void] {
     }
   }, [width])
   const set = useCallback((w: number) => setWidth(clampSidebarWidth(w)), [])
+
   return [width, set]
 }
 
@@ -56,9 +58,11 @@ export default function SidebarResizer({
   const end = (e: React.PointerEvent<HTMLHRElement>): void => {
     if (!drag.current) return
     drag.current = null
+
     if (e.currentTarget.hasPointerCapture?.(e.pointerId)) {
       e.currentTarget.releasePointerCapture(e.pointerId)
     }
+
     document.body.classList.remove('resizing')
   }
 
@@ -98,6 +102,7 @@ export default function SidebarResizer({
                 : e.key === 'End'
                   ? SIDEBAR_MAX
                   : null
+
         if (next === null) return
         e.preventDefault()
         onChange(next)

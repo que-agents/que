@@ -137,7 +137,9 @@ const ID_ALPHABET = 'abcdefghijklmnopqrstuvwxyz234567'
 export function newId(prefix: 'prj_' | 'ws_' | 'tsk_'): string {
   const bytes = randomBytes(12)
   let out = prefix
+
   for (const b of bytes) out += ID_ALPHABET[b & 31]
+
   return out
 }
 
@@ -164,12 +166,15 @@ interface TicketRow {
 
 function ticketFromRow(r: TicketRow): Ticket {
   let labels: string[] = []
+
   try {
     const parsed = JSON.parse(r.labels_json) as unknown
+
     if (Array.isArray(parsed)) labels = parsed.filter((l): l is string => typeof l === 'string')
   } catch {
     // Unreadable labels are no labels.
   }
+
   return {
     parentKey: r.parent_key ?? null,
     level: r.level === 'epic' || r.level === 'subtask' ? r.level : 'standard',
@@ -328,8 +333,10 @@ function toProject(r: ProjectRow): Project {
 
 function parsePr(json: string | null): PullRequest | null {
   if (!json) return null
+
   try {
     const v = JSON.parse(json) as unknown
+
     return v && typeof v === 'object' ? (v as PullRequest) : null
   } catch {
     return null
@@ -377,12 +384,16 @@ export class Store {
     this.db.exec(
       'CREATE TABLE IF NOT EXISTS migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)'
     )
+
     const row = this.db.prepare('SELECT MAX(version) AS v FROM migrations').get() as {
       v: number | null
     }
+
     const current = row.v ?? 0
+
     for (let i = current; i < MIGRATIONS.length; i++) {
       this.db.exec('BEGIN')
+
       try {
         this.db.exec(MIGRATIONS[i])
         this.db
@@ -425,11 +436,13 @@ export class Store {
 
   getProject(id: string): Project | undefined {
     const r = this.row<ProjectRow>('SELECT * FROM projects WHERE id = ?', id)
+
     return r ? toProject(r) : undefined
   }
 
   getProjectByPath(path: string): Project | undefined {
     const r = this.row<ProjectRow>('SELECT * FROM projects WHERE path = ?', path)
+
     return r ? toProject(r) : undefined
   }
 
@@ -439,6 +452,7 @@ export class Store {
 
   deleteProject(id: string): void {
     this.db.exec('BEGIN')
+
     try {
       this.db
         .prepare(
@@ -484,6 +498,7 @@ export class Store {
 
   getWorkspace(id: string): Workspace | undefined {
     const r = this.row<WorkspaceRow>('SELECT * FROM workspaces WHERE id = ?', id)
+
     return r ? toWorkspace(r) : undefined
   }
 
@@ -507,6 +522,7 @@ export class Store {
       : this.rows<WorkspaceRow>(
           'SELECT * FROM workspaces WHERE archived_at IS NULL ORDER BY created_at, id'
         )
+
     return rows.map(toWorkspace)
   }
 
@@ -633,6 +649,7 @@ export class Store {
 
   getTask(id: string): Task | undefined {
     const r = this.row<TaskRow>('SELECT * FROM tasks WHERE id = ?', id)
+
     return r ? toTask(r) : undefined
   }
 
@@ -645,6 +662,7 @@ export class Store {
             ...states
           )
         : this.rows<TaskRow>('SELECT * FROM tasks ORDER BY created_at, rowid')
+
     return rows.map(toTask)
   }
 
@@ -658,6 +676,7 @@ export class Store {
     const r = this.db
       .prepare('INSERT INTO quiet_unlocks (at, minutes, why, until) VALUES (?, ?, ?, ?)')
       .run(u.at, u.minutes, u.why, u.until)
+
     return Number(r.lastInsertRowid)
   }
 
@@ -674,15 +693,18 @@ export class Store {
         'SELECT id, at, why, until FROM quiet_unlocks WHERE ended_at IS NULL ORDER BY id DESC LIMIT 1'
       )
       .get() as { id: number; at: string; why: string | null; until: string } | undefined
+
     return r
   }
 
   /** Unlocks started at or after `since`, oldest first. */
   listUnlocks(since?: string): QuietUnlock[] {
     type UnlockRow = { at: string; minutes: number; why: string | null; ended_at: string | null }
+
     const rows = since
       ? this.rows<UnlockRow>('SELECT * FROM quiet_unlocks WHERE at >= ? ORDER BY id', since)
       : this.rows<UnlockRow>('SELECT * FROM quiet_unlocks ORDER BY id')
+
     return rows.map((r) => ({ at: r.at, minutes: r.minutes, why: r.why, endedAt: r.ended_at }))
   }
 
@@ -703,7 +725,9 @@ export class Store {
          synced_at = excluded.synced_at, position = excluded.position,
          parent_key = excluded.parent_key, level = excluded.level, assigned = excluded.assigned`
     )
+
     this.db.exec('BEGIN')
+
     try {
       for (const [position, t] of tickets.entries()) {
         stmt.run(
@@ -726,6 +750,7 @@ export class Store {
           t.assigned ? 1 : 0
         )
       }
+
       this.db.exec('COMMIT')
     } catch (err) {
       this.db.exec('ROLLBACK')
@@ -742,6 +767,7 @@ export class Store {
 
   getTicket(key: string): Ticket | undefined {
     const r = this.row<TicketRow>('SELECT * FROM tickets WHERE key = ?', key)
+
     return r ? ticketFromRow(r) : undefined
   }
 
@@ -750,6 +776,7 @@ export class Store {
     const r = this.db.prepare('SELECT parent_checked_at FROM tickets WHERE key = ?').get(key) as
       | { parent_checked_at: string | null }
       | undefined
+
     return r?.parent_checked_at ?? null
   }
 
@@ -768,9 +795,11 @@ export class Store {
   deleteTicketsNotIn(keys: string[]): void {
     const keep = new Set(keys)
     const del = this.db.prepare('DELETE FROM tickets WHERE key = ?')
+
     const rows = this.rows<{ key: string }>(
       'SELECT key FROM tickets WHERE workspace_id IS NULL AND assigned != 0'
     )
+
     for (const r of rows) if (!keep.has(r.key)) del.run(r.key)
     this.db
       .prepare(
@@ -790,6 +819,7 @@ export class Store {
     const r = this.db.prepare('SELECT value FROM kv WHERE key = ?').get(key) as
       | { value: string }
       | undefined
+
     return r?.value
   }
 

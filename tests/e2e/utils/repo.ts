@@ -23,12 +23,14 @@ const GIT_ENV = {
  */
 export function makeRepo(opts: { origin?: boolean } = {}): string {
   const dir = mkdtempSync(join(os.tmpdir(), 'que-e2e-repo-'))
+
   const git = (...args: string[]) =>
     execFileSync('git', ['-c', 'commit.gpgsign=false', ...args], {
       cwd: dir,
       env: GIT_ENV,
       stdio: 'ignore'
     })
+
   git('init', '-b', 'main')
   writeFileSync(join(dir, 'README.md'), '# uploader\n')
   git('add', '.')
@@ -36,6 +38,7 @@ export function makeRepo(opts: { origin?: boolean } = {}): string {
   writeFileSync(join(dir, 'que.toml'), 'setup = "true"\n')
   git('add', '.')
   git('commit', '-m', 'Add que.toml')
+
   if (opts.origin) {
     const bare = `${dir}.git`
     execFileSync('git', ['clone', '--bare', '--quiet', dir, bare], {
@@ -45,5 +48,6 @@ export function makeRepo(opts: { origin?: boolean } = {}): string {
     git('remote', 'add', 'origin', bare)
     git('fetch', '--quiet', 'origin')
   }
+
   return dir
 }

@@ -15,6 +15,7 @@ import ChangesList from './ChangesList'
 
 const retry = makeWorkspace({ id: 'ws_01hzx3k9c2qf', name: 'app-1432-retry-logic' })
 const put = makeDiffFile()
+
 const readme = makeDiffFile({
   path: 'README.md',
   status: 'added',
@@ -26,6 +27,7 @@ const readme = makeDiffFile({
 
 const newest = makeDiffCommit()
 const oldest = makeWorkspaceDiff().commits[1]
+
 /** Twenty minutes after the newest fixture commit. */
 const now = (): number => Date.parse('2026-10-14T14:00:00.000Z')
 
@@ -44,6 +46,7 @@ async function openChanges(user: ReturnType<typeof userEvent.setup>): Promise<st
     expect(pane.dataset.activeTerm).not.toBe('')
   })
   await user.click(screen.getByRole('button', { name: 'Review pane' }))
+
   return pane.dataset.activeTerm as string
 }
 
@@ -278,7 +281,9 @@ describe('ChangesList', () => {
       const items = within(screen.getByRole('menu', { name: 'Commits' })).getAllByRole(
         'menuitemradio'
       )
+
       expect(items).toHaveLength(3)
+
       for (const item of items) expect(item).toBeDisabled()
     })
   })
@@ -294,6 +299,7 @@ describe('ChangesList', () => {
       const items = within(screen.getByRole('menu', { name: 'Compare against' })).getAllByRole(
         'menuitemradio'
       )
+
       expect(items.map((i) => i.textContent)).toEqual(['origin/main', 'main'])
       expect(items[0]).toHaveAttribute('data-testid', 'changes-base-option-0')
       expect(items[0]).toHaveAttribute('aria-checked', 'true')

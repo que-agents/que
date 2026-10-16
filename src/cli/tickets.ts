@@ -14,14 +14,19 @@ function truncate(s: string, width: number): string {
 
 async function printList(c: DaemonClient, r: TicketsListResult): Promise<void> {
   if (r.sync.error) console.log(`sync error: ${r.sync.error}`)
+
   if (r.tickets.length === 0) {
     console.log('no tickets')
+
     return
   }
+
   const names = new Map<string, string>()
+
   if (r.tickets.some((t) => t.workspaceId)) {
     for (const w of await c.request('workspace.list')) names.set(w.id, w.name)
   }
+
   const cells = (t: Ticket, depth: number): string[] => [
     `${'  '.repeat(depth)}${t.key}`,
     truncate(t.summary, SUMMARY_WIDTH),
@@ -30,37 +35,50 @@ async function printList(c: DaemonClient, r: TicketsListResult): Promise<void> {
     formatAge(t.updatedAt),
     t.workspaceId ? (names.get(t.workspaceId) ?? t.workspaceId) : '-'
   ]
+
   const keys = new Set(r.tickets.map((t) => t.key))
   const children = new Map<string, Ticket[]>()
+
   for (const t of r.tickets) {
     if (t.parentKey && keys.has(t.parentKey)) {
       children.set(t.parentKey, [...(children.get(t.parentKey) ?? []), t])
     }
   }
+
   const roots = r.tickets.filter((t) => !t.parentKey || !keys.has(t.parentKey))
   const isEpic = (t: Ticket): boolean => t.level === 'epic'
+
   type Entry = { epic: string } | { row: string[] }
+
   const entries: Entry[] = []
+
   const add = (t: Ticket, depth: number): void => {
     const nested = isEpic(t) ? 1 : depth + 1
+
     if (isEpic(t)) {
       const mark = t.assigned ? '' : ' (not yours)'
       entries.push({ epic: `${t.key}  ${truncate(t.summary, SUMMARY_WIDTH)}  ${t.status}${mark}` })
     } else entries.push({ row: cells(t, depth) })
+
     for (const c of children.get(t.key) ?? []) add(c, nested)
   }
+
   for (const t of roots.filter(isEpic)) add(t, 0)
+
   for (const t of roots.filter((x) => !isEpic(x))) add(t, 0)
 
   const header = ['KEY', 'SUMMARY', 'STATUS', 'PRIORITY', 'UPDATED', 'WORKSPACE']
   const rows = entries.flatMap((e) => ('row' in e ? [e.row] : []))
   const widths = header.map((h, i) => Math.max(h.length, ...rows.map((row) => row[i].length)))
+
   const fmt = (row: string[]): string =>
     row
       .map((c, i) => c.padEnd(widths[i]))
       .join('  ')
       .trimEnd()
+
   console.log(fmt(header))
+
   for (const e of entries) console.log('epic' in e ? e.epic : fmt(e.row))
 }
 
@@ -76,6 +94,7 @@ export function registerTicketCommands(program: Command): void {
     .action(async (opts: { json?: boolean }) => {
       await withClient(async (c) => {
         const r = await c.request('tickets.list', {})
+
         if (opts.json) console.log(JSON.stringify(r, null, 2))
         else await printList(c, r)
       })
@@ -88,6 +107,7 @@ export function registerTicketCommands(program: Command): void {
     .action(async (opts: { json?: boolean }) => {
       await withClient(async (c) => {
         const r = await c.request('tickets.sync', {})
+
         if (opts.json) console.log(JSON.stringify(r, null, 2))
         else await printList(c, r)
       })
@@ -101,13 +121,16 @@ export function registerTicketCommands(program: Command): void {
     .action(async (key: string, opts: { project?: string; session?: boolean }) => {
       await withClient(async (c) => {
         const projectId = opts.project ? (await findProject(c, opts.project)).id : undefined
+
         const r = await c.request('tickets.start', {
           key,
           projectId,
           session: opts.session || undefined
         })
+
         if (r.kind === 'needs_project') {
           console.error('que cannot tell which project; pass -p <project>:')
+
           for (const p of r.projects) console.error(`  ${p.name}`)
           process.exitCode = 2
         } else if (r.kind === 'session') {
@@ -124,7 +147,9 @@ export function registerTicketCommands(program: Command): void {
     .action(async (key: string) => {
       await withClient(async (c) => {
         const ticket = (await c.request('tickets.list', {})).tickets.find((t) => t.key === key)
+
         if (!ticket) throw new CliError(`no ticket ${key}`)
+
         if (!ticket.url) throw new CliError(`${key} has no link`)
         execFileSync('open', [ticket.url], { stdio: 'inherit' })
       })

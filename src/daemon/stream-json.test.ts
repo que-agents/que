@@ -24,9 +24,11 @@ describe('StreamParser', () => {
 
   it('decodes multi-byte UTF-8 split across byte chunks', () => {
     const p = new StreamParser()
+
     const bytes = new TextEncoder().encode(
       `${JSON.stringify({ type: 'assistant', note: 'naïve – ✓' })}\n`
     )
+
     const out: StreamMessage[] = []
 
     for (const b of bytes) out.push(...p.push(new Uint8Array([b])))

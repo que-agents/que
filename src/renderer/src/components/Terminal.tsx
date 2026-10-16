@@ -29,6 +29,7 @@ export default function Terminal({ id, focused = true }: Props): React.JSX.Eleme
 
   useEffect(() => {
     const host = hostRef.current
+
     if (!host) return
 
     const term = new XTerm({
@@ -46,6 +47,7 @@ export default function Terminal({ id, focused = true }: Props): React.JSX.Eleme
         selectionBackground: '#363636'
       }
     })
+
     const fit = new FitAddon()
     term.loadAddon(fit)
     term.open(host)
@@ -65,16 +67,20 @@ export default function Terminal({ id, focused = true }: Props): React.JSX.Eleme
     // paste when the running program has enabled it.
     term.attachCustomKeyEventHandler((ev) => {
       if (!isMac || ev.type !== 'keydown' || !ev.metaKey) return true
+
       if (ev.key.toLowerCase() === 'c' && term.hasSelection()) {
         void navigator.clipboard.writeText(term.getSelection())
         ev.preventDefault()
+
         return false
       }
+
       return true
     })
 
     fit.fit()
     termRef.current = term
+
     if (focusedRef.current) term.focus()
 
     let disposed = false
@@ -86,6 +92,7 @@ export default function Terminal({ id, focused = true }: Props): React.JSX.Eleme
     cleanups.push(
       window.que.term.on('term.data', (e) => {
         if (e.id !== id) return
+
         if (attached) term.write(e.data)
         else queued.push(e.data)
       }),
@@ -101,10 +108,12 @@ export default function Terminal({ id, focused = true }: Props): React.JSX.Eleme
         if (disposed) return
         // Replay the daemon's mirror before streaming live data.
         term.write(res.snapshot)
+
         for (const d of queued) term.write(d)
         queued = []
         attached = true
         setActiveTerminal(id, term)
+
         // Sync in case the window resized while the attach was in flight.
         if (term.cols !== res.cols || term.rows !== res.rows) {
           void window.que.term.resize({ id, cols: term.cols, rows: term.rows })
@@ -116,20 +125,24 @@ export default function Terminal({ id, focused = true }: Props): React.JSX.Eleme
     )
 
     let frame = 0
+
     const observer = new ResizeObserver(() => {
       cancelAnimationFrame(frame)
       frame = requestAnimationFrame(() => {
         fit.fit()
+
         if (attached)
           void window.que.term.resize({ id, cols: term.cols, rows: term.rows }).catch(() => {})
       })
     })
+
     observer.observe(host)
 
     return () => {
       disposed = true
       cancelAnimationFrame(frame)
       observer.disconnect()
+
       for (const c of cleanups) c()
       // Detach only; the terminal keeps running in the daemon.
       void window.que.term.detach({ id }).catch(() => {})

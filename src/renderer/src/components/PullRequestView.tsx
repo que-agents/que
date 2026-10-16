@@ -32,6 +32,7 @@ const REVIEW: Record<ReviewState, { label: string; tone: Tone }> = {
 function checksSummary(checks: readonly PrCheck[]): string {
   return SUMMARY_ORDER.flatMap((state) => {
     const n = checks.filter((c) => c.state === state).length
+
     return n === 0 ? [] : [`${n} ${state}`]
   }).join(' · ')
 }
@@ -68,6 +69,7 @@ function Comment({
 }): React.JSX.Element {
   const id = `pr-comment-${index}`
   const review = entry.kind === 'review' && entry.state ? REVIEW[entry.state] : null
+
   return (
     <li className="pr-comment" data-testid={id} data-kind={entry.kind}>
       <div className="pr-comment-head">

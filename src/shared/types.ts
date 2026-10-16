@@ -166,6 +166,7 @@ export const WEEKDAYS = [
   'friday',
   'saturday'
 ] as const
+
 export type Weekday = (typeof WEEKDAYS)[number]
 
 /** A per-weekday override: its own window, or `none` (no quiet hours that day). */

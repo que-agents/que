@@ -26,8 +26,10 @@ export function shQuote(s: string): string {
 function isExecutableFile(p: string): boolean {
   try {
     const st = fs.statSync(p)
+
     if (!st.isFile()) return false
     fs.accessSync(p, fs.constants.X_OK)
+
     return true
   } catch {
     return false
@@ -41,11 +43,14 @@ export function findOnPath(
   skip: string[] = []
 ): string | null {
   const skipReal = new Set(skip.flatMap((d) => [d, safeRealpath(d)]))
+
   for (const dir of (pathEnv ?? '').split(delimiter)) {
     if (!dir || skipReal.has(dir) || skipReal.has(safeRealpath(dir))) continue
     const candidate = join(dir, name)
+
     if (isExecutableFile(candidate)) return candidate
   }
+
   return null
 }
 
@@ -77,7 +82,9 @@ export function cliRunnerFrom(
   node: () => string | null = resolveNode
 ): { nodePath: string | null; runAsNode: boolean } {
   const res = packagedResourcesDir(dir)
+
   if (res) return { nodePath: appExecutable(res), runAsNode: true }
+
   return { nodePath: node(), runAsNode: false }
 }
 
@@ -87,9 +94,11 @@ export function resolveCliRunner(): { nodePath: string | null; runAsNode: boolea
 
 export function hooksSettings(): { hooks: Record<string, unknown[]> } {
   const hooks: Record<string, unknown[]> = {}
+
   for (const event of HOOK_EVENT_NAMES) {
     hooks[event] = [{ hooks: [{ type: 'command', command: 'que hook', timeout: 5 }] }]
   }
+
   return { hooks }
 }
 
@@ -169,6 +178,7 @@ exec "$REAL" "$@"
 export function queScript(opts: WrapperOptions): string {
   const runner = opts.nodePath ? shQuote(opts.nodePath) : '/usr/bin/env node'
   const env = opts.runAsNode ? 'ELECTRON_RUN_AS_NODE=1 ' : ''
+
   return `#!/bin/sh
 # que CLI launcher for workspace terminals and hooks.
 ${env}exec ${runner} ${shQuote(opts.cliScript)} "$@"
@@ -180,8 +190,10 @@ ${env}exec ${runner} ${shQuote(opts.cliScript)} "$@"
 // directory back in front of PATH, since profiles commonly prepend to it.
 const ZSH_RESTORE_USER = `__que_zdotdir="$ZDOTDIR"
 ZDOTDIR="$__que_user_zdotdir"`
+
 const ZSH_BACK_TO_QUE = `__que_user_zdotdir="$ZDOTDIR"
 ZDOTDIR="$__que_zdotdir"`
+
 const ZSH_PREPEND = `if [[ -n "\${QUE_HOME-}" ]]; then
   path=("$QUE_HOME/bin" \${path:#\${(b)QUE_HOME}/bin})
   export PATH
@@ -189,6 +201,7 @@ fi`
 
 function zshFiles(): Record<string, string> {
   const header = '# que: workspace terminal startup; sources your own file of the same name.\n'
+
   return {
     '.zshenv': `${header}if [[ -n "\${QUE_USER_ZDOTDIR-}" ]]; then
   __que_user_zdotdir="$QUE_USER_ZDOTDIR"
@@ -237,6 +250,7 @@ export function installWrapper(opts: WrapperOptions): void {
   writeFile(join(paths.binDir, 'claude'), claudeScript(paths), 0o755)
   writeFile(join(paths.binDir, 'que'), queScript(opts), 0o755)
   writeFile(paths.hooksJson, `${JSON.stringify(hooksSettings(), null, 2)}\n`, 0o644)
+
   for (const [name, content] of Object.entries(zshFiles())) {
     writeFile(join(zdir, name), content, 0o644)
   }

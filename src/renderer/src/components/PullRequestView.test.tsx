@@ -27,6 +27,7 @@ async function openPr(user: ReturnType<typeof userEvent.setup>): Promise<HTMLEle
   await user.click(await screen.findByTestId(`sidebar-workspace-${ID}-open`))
   await user.click(await screen.findByTestId('topbar-review'))
   await user.click(screen.getByTestId('review-tab-pr'))
+
   return screen.findByTestId('pr-view')
 }
 

@@ -19,10 +19,12 @@ beforeEach(async () => {
   repo = makeTempRepo(daemon.home)
   addBareOrigin(repo)
   const project = await daemon.client.request('project.add', { path: repo })
+
   const created = await daemon.client.request('workspace.create', {
     projectId: project.id,
     name: 'app-1500-diff-view'
   })
+
   await expect
     .poll(async () => (await daemon.client.request('workspace.get', { id: created.id })).status, {
       timeout: 10_000
@@ -139,6 +141,7 @@ function branchTwoAhead(): { older: string; newer: string } {
   )
   commitAll('Retry uploads: back off (2x) & give up after 3')
   const newer = gitIn(ws.path, 'rev-parse', 'HEAD')
+
   return { older, newer }
 }
 
@@ -200,6 +203,7 @@ describe('workspace.diff commits, bases and narrowing', () => {
     fs.writeFileSync(join(ws.path, 'scratch.txt'), 'loose\n')
 
     const first = await daemon.client.request('workspace.diff', { id: ws.id, commit: older })
+
     const second = await daemon.client.request('workspace.diff', {
       id: ws.id,
       commit: newer.slice(0, 7)

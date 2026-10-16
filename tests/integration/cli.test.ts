@@ -145,10 +145,12 @@ describe('que status', () => {
     const project = await daemon.client.request('project.add', {
       path: makeTempRepo(daemon.home)
     })
+
     const ws = await daemon.client.request('workspace.create', {
       projectId: project.id,
       name: 'app-1432-retry-logic'
     })
+
     await expect
       .poll(async () => (await daemon.client.request('workspace.get', { id: ws.id })).status, {
         timeout: 10_000
@@ -199,10 +201,12 @@ describe('que status', () => {
     const repo = makeTempRepo(daemon.home)
     addBareOrigin(repo)
     const project = await daemon.client.request('project.add', { path: repo })
+
     const ws = await daemon.client.request('workspace.create', {
       projectId: project.id,
       name: 'app-1432-retry-logic'
     })
+
     setFakePullRequest(daemon.ghPrs, ws.branch, {
       number: 12,
       isDraft: false,

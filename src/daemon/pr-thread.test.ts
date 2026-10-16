@@ -12,6 +12,7 @@ const comment = {
   createdAt: '2026-10-14T03:00:00Z',
   url: 'https://github.com/rquellh/que/pull/7#issuecomment-1'
 }
+
 const review = {
   id: 'PRR_kwDOB2',
   author: { login: 'jules' },
@@ -20,6 +21,7 @@ const review = {
   submittedAt: '2026-10-14T03:10:00Z',
   url: 'https://github.com/rquellh/que/pull/7#pullrequestreview-2'
 }
+
 const lineComment = {
   id: 3301,
   user: { login: 'jules' },
@@ -122,6 +124,7 @@ describe('parsePrThread', () => {
 
   it('keeps the input order for entries posted at the same time', () => {
     const at = '2026-10-14T03:00:00Z'
+
     const entries = parse(
       {
         comments: [

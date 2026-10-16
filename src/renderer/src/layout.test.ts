@@ -103,6 +103,7 @@ describe('parseLayout', () => {
           views: [README, 'view:changes', 3, README, 'view:diff:', PUT]
         })
       )
+
       expect(parsed?.views).toEqual([README, PUT])
       expect(parseLayout(JSON.stringify({ ...NO_SPLIT, views: ['changes', 'pr'] }))).toBeNull()
       expect(parseLayout(JSON.stringify({ split: null }))).toBeNull()

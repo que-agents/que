@@ -26,6 +26,7 @@ afterEach(async () => {
 function record<E extends keyof Events>(c: DaemonClient, event: E): Events[E][] {
   const seen: Events[E][] = []
   c.on(event, (data) => seen.push(data))
+
   return seen
 }
 
@@ -63,6 +64,7 @@ describe('projects', () => {
 
   it('refuses to remove a project with workspaces unless forced', async () => {
     const project = await client.request('project.add', { path: makeTempRepo(daemon.home) })
+
     const ws = await client.request('workspace.create', {
       projectId: project.id,
       name: 'app-1440-quiet-board'
@@ -87,6 +89,7 @@ worktree_include = ["config/local", "missing.json"]
 `,
         ignored: { '.env': 'API_TOKEN=tok_51f2\n', 'config/local/db.json': '{"port":5433}\n' }
       })
+
       fs.writeFileSync(join(repo, '.worktreeinclude'), '.env\n')
       const mainHead = gitIn(repo, 'rev-parse', 'HEAD')
       const created = record(client, 'workspace.created')
@@ -192,19 +195,24 @@ worktree_include = ["config/local", "missing.json"]
   describe('remove', () => {
     it('kills its terminals, runs teardown, removes the worktree and branch', async () => {
       const marker = join(daemon.home, 'teardown-ran.txt')
+
       const repo = makeTempRepo(daemon.home, {
         queToml: `setup = "true"\nteardown = "pwd > '${marker}'"\n`
       })
+
       const project = await client.request('project.add', { path: repo })
+
       const ws = await client.request('workspace.create', {
         projectId: project.id,
         name: 'app-1470-cleanup'
       })
+
       const { id: termId } = await client.request('workspace.openTerminal', {
         id: ws.id,
         cols: 80,
         rows: 24
       })
+
       const [term] = await client.request('term.list', { workspaceId: ws.id })
       expect(term).toMatchObject({ id: termId, workspaceId: ws.id, cwd: ws.path, alive: true })
       const killed = record(client, 'term.killed')
@@ -232,11 +240,13 @@ describe('workspace.createPr', () => {
     const repo = makeTempRepo(daemon.home)
     const origin = addBareOrigin(repo)
     const { id: projectId } = await client.request('project.add', { path: repo })
+
     const ws = await client.request('workspace.create', {
       projectId,
       name: 'APP-1432 retry logic',
       branch: branch || undefined
     })
+
     return { origin, ws }
   }
 

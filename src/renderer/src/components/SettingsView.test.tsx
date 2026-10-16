@@ -14,6 +14,7 @@ function tonight(): { start: string; end: string; state: ReturnType<typeof makeQ
   const end = new Date(Date.now() + 3_600_000)
   start.setSeconds(0, 0)
   end.setSeconds(0, 0)
+
   return {
     start: hhmm(start),
     end: hhmm(end),
@@ -30,6 +31,7 @@ function tonight(): { start: string; end: string; state: ReturnType<typeof makeQ
 async function openSettings(user: ReturnType<typeof userEvent.setup>): Promise<HTMLElement> {
   render(<App />)
   await user.click(await screen.findByRole('button', { name: 'Settings' }))
+
   return screen.findByTestId('settings-view')
 }
 

@@ -26,6 +26,7 @@ test('a claude session in a workspace terminal reports needs input to que status
   let termId = ''
   let terminal: TerminalPage
   let sidebar: SidebarPage
+
   const statusOf = () =>
     queJson<StatusJson>(launched.queHome, 'status', '--json').workspaces.find(
       (w) => w.id === workspace.id

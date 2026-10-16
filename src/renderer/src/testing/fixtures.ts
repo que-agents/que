@@ -39,6 +39,7 @@ export function makeProject(overrides: Partial<Project> = {}): Project {
 export function makeWorkspace(overrides: Partial<Workspace> = {}): Workspace {
   wsCounter += 1
   const name = overrides.name ?? `ha-${1430 + wsCounter}-retry-logic`
+
   return {
     id: `ws_01hzx${wsCounter.toString(36).padStart(7, '0')}`,
     projectId: 'prj_01hzw7q2m4nb',
@@ -62,6 +63,7 @@ export function makeWorkspace(overrides: Partial<Workspace> = {}): Workspace {
 /** One workspace's line in the report: idle, 42 minutes of work, two commits ahead. */
 export function makeWorkspaceDigest(overrides: Partial<WorkspaceDigest> = {}): WorkspaceDigest {
   const name = overrides.name ?? 'app-1432-retry-logic'
+
   return {
     id: 'ws_01hzx3k9c2qf',
     name,
@@ -101,6 +103,7 @@ export function makePullRequest(overrides: Partial<PullRequest> = {}): PullReque
 /** A queued task with a real brief, the default caps, and an opaque id. */
 export function makeTask(overrides: Partial<Task> = {}): Task {
   taskCounter += 1
+
   return {
     id: `tsk_01hzy${taskCounter.toString(36).padStart(7, '0')}`,
     projectId: 'prj_01hzw7q2m4nb',
@@ -136,6 +139,7 @@ export function makeTask(overrides: Partial<Task> = {}): Task {
 export function makeTermInfo(overrides: Partial<TermInfo> = {}): TermInfo {
   termCounter += 1
   const n = termCounter.toString(16).padStart(4, '0')
+
   return {
     id: `6f1c2a7e-${n}-4b8d-9a3e-5c0d7e21${n}`,
     name: 'zsh',
@@ -290,6 +294,7 @@ export function makeWorkspaceFiles(overrides: Partial<WorkspaceFiles> = {}): Wor
 /** One text file of the worktree. */
 export function makeWorkspaceFile(overrides: Partial<WorkspaceFile> = {}): WorkspaceFile {
   const content = overrides.content === undefined ? 'export const retries = 3\n' : overrides.content
+
   return {
     workspaceId: 'ws_01hzx3k9c2qf',
     path: 'src/index.ts',
@@ -319,6 +324,7 @@ let prEntryCounter = 0
 /** One entry of a pull request's conversation: an issue comment by default. */
 export function makePrThreadEntry(overrides: Partial<PrThreadEntry> = {}): PrThreadEntry {
   prEntryCounter += 1
+
   return {
     id: `c${prEntryCounter}`,
     kind: 'comment',

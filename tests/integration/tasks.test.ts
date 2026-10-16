@@ -28,6 +28,7 @@ afterEach(async () => {
 function record<E extends keyof Events>(c: DaemonClient, event: E): Events[E][] {
   const seen: Events[E][] = []
   c.on(event, (data) => seen.push(data))
+
   return seen
 }
 
@@ -46,6 +47,7 @@ async function setup(opts: { config?: string; repo?: TempRepoOptions } = {}): Pr
   const repo = makeTempRepo(d.home, opts.repo)
   const origin = addBareOrigin(repo)
   const { id: projectId } = await d.client.request('project.add', { path: repo })
+
   return { d, repo, origin, projectId }
 }
 
@@ -58,6 +60,7 @@ async function waitFor(
   await expect
     .poll(async () => (await d.client.request('task.get', { id })).state, { timeout })
     .toBe(state)
+
   return d.client.request('task.get', { id })
 }
 
@@ -131,6 +134,7 @@ describe('runner and finisher', () => {
       projectId,
       brief: 'Document the retry policy'
     })
+
     await d.client.request('queue.open')
 
     const done = await waitFor(d, task.id, 'done')
@@ -249,6 +253,7 @@ describe('runner against the failure scenarios', () => {
       maxTurns: 7,
       maxBudgetUsd: 1.5
     })
+
     await d.client.request('queue.open')
 
     expect(await waitFor(d, task.id, 'stuck')).toMatchObject({ reason: 'max_turns', turns: 7 })
@@ -293,6 +298,7 @@ describe('queue', () => {
     const { d, projectId } = await setup()
     vi.stubEnv('QUE_FAKE_CLAUDE_SCENARIO', 'stall')
     const ids: string[] = []
+
     for (const brief of ['Refactor the queue', 'Rename the uploader', 'Split the API client']) {
       ids.push((await d.client.request('task.add', { projectId, brief })).id)
     }
@@ -376,10 +382,12 @@ describe('daemon restart', () => {
   it('re-queues a running task and resumes its session under the next daemon', async () => {
     const first = await setup()
     vi.stubEnv('QUE_FAKE_CLAUDE_DELAY_MS', '3000')
+
     const task = await first.d.client.request('task.add', {
       projectId: first.projectId,
       brief: 'Refactor the queue'
     })
+
     await first.d.client.request('queue.open')
     await expect
       .poll(async () => (await first.d.client.request('task.get', { id: task.id })).pid, {
@@ -401,6 +409,7 @@ describe('daemon restart', () => {
 describe('safety', () => {
   it('never pushes a protected branch', async () => {
     const { d, origin, projectId } = await setup()
+
     const ws = await d.client.request('workspace.create', {
       projectId,
       name: 'hotfix-release',
@@ -411,6 +420,7 @@ describe('safety', () => {
       workspaceId: ws.id,
       brief: 'Patch the release'
     })
+
     await d.client.request('queue.open')
 
     expect(await waitFor(d, task.id, 'failed')).toMatchObject({
@@ -425,8 +435,10 @@ describe('safety', () => {
     const { d, repo, origin, projectId } = await setup({
       repo: { queToml: 'setup = "true"\ndefault_branch = "trunk"\n' }
     })
+
     gitIn(repo, 'push', '--quiet', 'origin', 'main:trunk')
     const trunkBefore = gitIn(origin, 'rev-parse', 'trunk')
+
     const ws = await d.client.request('workspace.create', {
       projectId,
       name: 'trunk-work',

@@ -11,12 +11,14 @@ const locked = makeQuietState({
   windowStart: new Date(2026, 9, 13, 19, 0).toISOString(),
   windowEnd: new Date(2026, 9, 14, 7, 0).toISOString()
 })
+
 // A fixed clock inside tonight's window, so countdowns never depend on the wall clock.
 const NOW = new Date(2026, 9, 14, 2, 0).getTime()
 const clock = (): number => NOW
 const unlockedFor = (ms: number) => ({ unlockedUntil: new Date(NOW + ms).toISOString() })
 
 const retry = makeWorkspace({ id: 'ws_01hzx3k9c2qf', name: 'app-1432-retry-logic' })
+
 const task = makeTask({
   id: 'tsk_01hzy0d7w3ke',
   title: 'Add retry logic to the uploader',
@@ -28,6 +30,7 @@ const task = makeTask({
 function recordChimes(): ChimeKind[] {
   const played: ChimeKind[] = []
   setChimePlayer({ play: (kind) => played.push(kind) })
+
   return played
 }
 

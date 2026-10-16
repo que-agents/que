@@ -16,13 +16,17 @@ export function splitFences(body: string): TextPart[] {
   let text: string[] = []
   let code: string[] | null = null
   let lang = ''
+
   const flushText = (): void => {
     const t = text.join('\n')
+
     if (t.trim() !== '') parts.push({ kind: 'text', text: t.replace(/^\n+|\n+$/g, '') })
     text = []
   }
+
   for (const line of body.replace(/\r\n/g, '\n').split('\n')) {
     const fence = FENCE.exec(line)
+
     if (code === null) {
       if (fence) {
         flushText()
@@ -34,7 +38,9 @@ export function splitFences(body: string): TextPart[] {
       code = null
     } else code.push(line)
   }
+
   if (code !== null) parts.push({ kind: 'code', text: code.join('\n'), lang })
   else flushText()
+
   return parts
 }

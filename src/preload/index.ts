@@ -5,6 +5,7 @@ type Reply = { ok: true; result: unknown } | { ok: false; error: { code: string;
 
 async function call<T>(method: string, params?: unknown): Promise<T> {
   const reply = (await ipcRenderer.invoke('que:request', method, params)) as Reply
+
   if (reply.ok) return reply.result as T
   const err = new Error(reply.error.message) as Error & { code?: string }
   err.code = reply.error.code
@@ -15,7 +16,9 @@ function subscribe(event: string, cb: (data: unknown) => void): () => void {
   const listener = (_e: IpcRendererEvent, name: string, data: unknown): void => {
     if (name === event) cb(data)
   }
+
   ipcRenderer.on('que:event', listener)
+
   return () => ipcRenderer.removeListener('que:event', listener)
 }
 
@@ -98,6 +101,7 @@ const api: QueApi = {
     onUpdate: (cb) => {
       const listener = (_e: IpcRendererEvent, info: UpdateInfo): void => cb(info)
       ipcRenderer.on('que:update', listener)
+
       return () => ipcRenderer.removeListener('que:update', listener)
     },
     openUpdate: () => ipcRenderer.invoke('app:openUpdate'),

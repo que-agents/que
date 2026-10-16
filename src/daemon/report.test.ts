@@ -5,6 +5,7 @@ import { buildReport, formatDuration, formatReport, parseSince, reportSince } fr
 
 const NOW = Date.parse('2026-10-14T07:30:00.000Z')
 const SINCE = '2026-10-13T22:00:00.000Z'
+
 const WORKSPACES = new Map([
   ['ws_01hzx3k9c2qf', 'add-retry-logic'],
   ['ws_01hzx4m1p8rt', 'fix-flaky-upload-test']
@@ -23,6 +24,7 @@ const done = makeTask({
   createdAt: '2026-10-13T21:50:00.000Z',
   updatedAt: '2026-10-13T22:43:30.000Z'
 })
+
 const stuck = makeTask({
   title: 'Fix the flaky upload test',
   state: 'stuck',
@@ -36,6 +38,7 @@ const stuck = makeTask({
   createdAt: '2026-10-13T21:51:00.000Z',
   updatedAt: '2026-10-13T22:06:00.000Z'
 })
+
 const running = makeTask({
   title: 'Migrate the queue to sqlite',
   state: 'finishing',
@@ -44,12 +47,14 @@ const running = makeTask({
   createdAt: '2026-10-13T21:52:00.000Z',
   updatedAt: '2026-10-14T07:29:00.000Z'
 })
+
 const queuedLongAgo = makeTask({
   title: 'Write the changelog',
   workspaceId: null,
   createdAt: '2026-10-10T09:00:00.000Z',
   updatedAt: '2026-10-10T09:00:00.000Z'
 })
+
 const oldFailure = makeTask({
   title: 'Old failure',
   state: 'failed',
@@ -156,6 +161,7 @@ describe('buildReport', () => {
 
   describe('with workspaces', () => {
     const waiting = new Date(2026, 9, 14, 2, 5).toISOString()
+
     const digest = (over: Partial<WorkspaceDigest>): WorkspaceDigest => ({
       id: 'ws_a',
       name: 'app-1432-retry-logic',
@@ -174,6 +180,7 @@ describe('buildReport', () => {
       sessionId: null,
       ...over
     })
+
     const pr = {
       url: 'https://github.com/rquellh/que/pull/12',
       number: 12,
@@ -185,6 +192,7 @@ describe('buildReport', () => {
       updatedAt: null,
       checkedAt: '2026-10-14T02:00:00.000Z'
     }
+
     const digests = [
       digest({}),
       digest({
@@ -212,6 +220,7 @@ describe('buildReport', () => {
         buildReport([done], WORKSPACES, SINCE, NOW, digests),
         'Unlocked once'
       )
+
       const lines = text.split('\n')
 
       const at = lines.indexOf('Workspaces (2)')

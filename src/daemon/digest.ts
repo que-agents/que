@@ -27,6 +27,7 @@ export function buildWorkspaceDigest(
 ): WorkspaceDigest | null {
   const rows = [...log].sort((a, b) => a.at.localeCompare(b.at))
   const inside = rows.filter((r) => Date.parse(r.at) >= since)
+
   if (inside.length === 0 && !ATTENTION.has(ws.status)) return null
 
   let workingMs = 0
@@ -35,21 +36,28 @@ export function buildWorkspaceDigest(
   let prev: WorkspaceStatus | null = null
   rows.forEach((row, i) => {
     const at = Date.parse(row.at)
+
     if (row.status === 'working') {
       const from = Math.max(at, since)
       const to = Math.min(i + 1 < rows.length ? Date.parse(rows[i + 1].at) : now, now)
+
       if (to > from) workingMs += to - from
     }
+
     if (at >= since && row.status !== prev) {
       if (row.status === 'needs_input') needsInputCount += 1
+
       if (row.status === 'stuck') stuckCount += 1
     }
+
     prev = row.status
   })
 
   let waitingSince: string | null = null
+
   if (ws.status === 'needs_input') {
     waitingSince = ws.statusAt
+
     for (let i = rows.length - 1; i >= 0 && rows[i].status === 'needs_input'; i--) {
       waitingSince = rows[i].at
     }
@@ -80,10 +88,15 @@ const RANK: Partial<Record<WorkspaceStatus, number>> = { needs_input: 0, stuck: 
 export function sortDigests(digests: readonly WorkspaceDigest[]): WorkspaceDigest[] {
   return [...digests].sort((a, b) => {
     const r = (RANK[a.status] ?? 3) - (RANK[b.status] ?? 3)
+
     if (r !== 0) return r
+
     if (a.lastActivityAt === b.lastActivityAt) return 0
+
     if (a.lastActivityAt === null) return 1
+
     if (b.lastActivityAt === null) return -1
+
     return b.lastActivityAt.localeCompare(a.lastActivityAt)
   })
 }

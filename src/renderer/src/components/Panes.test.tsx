@@ -18,6 +18,7 @@ const two = makeTermInfo({ name: 'two', cwd: '/Users/dev/b' })
 
 const retry = makeWorkspace({ id: 'ws_01hzx3k9c2qf', name: 'app-1432-retry-logic' })
 const put = makeDiffFile()
+
 const readme = makeDiffFile({
   path: 'README.md',
   status: 'added',
@@ -46,6 +47,7 @@ async function openWorkspace(user: ReturnType<typeof userEvent.setup>): Promise<
   await waitFor(() => {
     expect(pane.dataset.activeTerm).not.toBe('')
   })
+
   return pane.dataset.activeTerm as string
 }
 
@@ -68,6 +70,7 @@ async function splitBeside(user: ReturnType<typeof userEvent.setup>): Promise<st
   await waitFor(() => {
     expect(pane.dataset.activeTerm).not.toBe('')
   })
+
   return pane.dataset.activeTerm as string
 }
 

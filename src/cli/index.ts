@@ -19,8 +19,10 @@ const VERSION = typeof __QUE_VERSION__ === 'string' ? __QUE_VERSION__ : '0.0.0-d
 function printTerms(terms: TermInfo[]): void {
   if (terms.length === 0) {
     console.log('no terminals')
+
     return
   }
+
   printTable(
     ['ID', 'STATE', 'PID', 'SIZE', 'NAME', 'CWD'],
     terms.map((t) => [
@@ -38,6 +40,7 @@ async function main(): Promise<void> {
   // Set when the app binary runs the CLI as Node; it has done its job and must
   // not reach programs started from here (an editor would start as plain Node).
   delete process.env.ELECTRON_RUN_AS_NODE
+
   // `que hook` runs inside Claude Code for every hook event: answer before
   // loading the rest of the CLI, and never fail.
   if (process.argv[2] === 'hook') {
@@ -63,15 +66,19 @@ async function main(): Promise<void> {
     .description('kill all terminals and stop the daemon')
     .action(async () => {
       const c = await DaemonClient.tryConnect()
+
       if (!c) {
         console.log('daemon not running')
+
         return
       }
+
       const { pid } = await c.request('daemon.ping')
       const closed = new Promise<void>((r) => c.onClose(r))
       await c.request('daemon.shutdown')
       await Promise.race([closed, new Promise((r) => setTimeout(r, 2000))])
       c.close()
+
       // Wait (briefly) for the process to actually exit.
       for (let i = 0; i < 30; i++) {
         try {
@@ -79,8 +86,10 @@ async function main(): Promise<void> {
         } catch {
           break
         }
+
         await new Promise((r) => setTimeout(r, 100))
       }
+
       console.log(`daemon stopped (pid ${pid})`)
     })
   daemon
@@ -90,16 +99,20 @@ async function main(): Promise<void> {
     .action(async (opts: { json?: boolean }) => {
       const paths = quePaths()
       const c = await DaemonClient.tryConnect(paths)
+
       if (!c) {
         if (opts.json) console.log(JSON.stringify({ running: false, socket: paths.socket }))
         else console.log(`daemon not running (socket ${paths.socket})`)
         process.exitCode = 3
+
         return
       }
+
       try {
         const info = await c.request('daemon.ping')
         const terms = await c.request('term.list')
         const alive = terms.filter((t) => t.alive).length
+
         if (opts.json) {
           console.log(
             JSON.stringify(
@@ -116,8 +129,10 @@ async function main(): Promise<void> {
               2
             )
           )
+
           return
         }
+
         console.log(
           `daemon running pid=${info.pid} version=${info.version} node=${info.nodeVersion}`
         )
@@ -137,6 +152,7 @@ async function main(): Promise<void> {
     .action((opts: { json?: boolean }) =>
       withClient(async (c) => {
         const terms = await c.request('term.list')
+
         if (opts.json) console.log(JSON.stringify(terms, null, 2))
         else printTerms(terms)
       }, false)
@@ -149,15 +165,18 @@ async function main(): Promise<void> {
     .action((opts: { cwd?: string; name?: string }) =>
       withClient(async (c) => {
         const cwd = opts.cwd ?? process.cwd()
+
         if (!fs.existsSync(cwd)) throw new Error(`no such directory: ${cwd}`)
         const cols = process.stdout.columns || 80
         const rows = process.stdout.rows || 24
+
         const { id } = await c.request('term.create', {
           cwd,
           name: opts.name,
           cols,
           rows
         })
+
         console.log(id)
       })
     )
@@ -215,12 +234,14 @@ main().catch((err) => {
     console.error(err.message)
     process.exit(3)
   }
+
   const msg =
     err instanceof DaemonError
       ? `${err.message} (${err.code})`
       : err instanceof CliError
         ? err.message
         : (err as Error).message
+
   console.error(`que: ${msg}`)
   process.exit(1)
 })

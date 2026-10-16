@@ -28,10 +28,14 @@ export function shouldChime(
 ): ChimeKind | null {
   if (!quiet || quiet.inQuietHours || !cfg) return null
   const turnEnded = event.state === 'idle' && TURN_STATES.has(event.prev ?? '')
+
   if (event.state === 'done' || turnEnded) return cfg.chimeOnComplete ? 'complete' : null
+
   const needsInput =
     event.state === 'needs_input' || (event.state === 'stuck' && event.reason === 'needs_input')
+
   if (needsInput) return cfg.chimeOnNeedsInput ? 'needs_input' : null
+
   return null
 }
 
@@ -74,6 +78,7 @@ let player: ChimePlayer = webAudioPlayer
 export function setChimePlayer(p: ChimePlayer): ChimePlayer {
   const prev = player
   player = p
+
   return prev
 }
 

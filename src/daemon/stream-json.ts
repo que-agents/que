@@ -40,6 +40,7 @@ export class StreamParser {
     this.buf += typeof chunk === 'string' ? chunk : this.decoder.decode(chunk, { stream: true })
     const lines = this.buf.split('\n')
     this.buf = lines.pop() ?? ''
+
     return this.parse(lines)
   }
 
@@ -47,6 +48,7 @@ export class StreamParser {
   flush(): StreamMessage[] {
     const rest = this.buf
     this.buf = ''
+
     return this.parse([rest])
   }
 
@@ -57,16 +59,20 @@ export class StreamParser {
 
   private parse(lines: string[]): StreamMessage[] {
     const out: StreamMessage[] = []
+
     for (const line of lines) {
       if (line.trim() === '') continue
+
       try {
         const v = JSON.parse(line) as unknown
+
         if (isObject(v) && typeof v.type === 'string') out.push(v as StreamMessage)
         else this.skipped += 1
       } catch {
         this.skipped += 1
       }
     }
+
     return out
   }
 }
@@ -95,11 +101,14 @@ export function isResult(m: StreamMessage): m is ResultMessage {
 export function assistantText(m: StreamMessage): string | null {
   if (m.type !== 'assistant' || !isObject(m.message)) return null
   const content = m.message.content
+
   if (!Array.isArray(content)) return null
+
   const texts = content
     .filter((b): b is { type: 'text'; text: string } => {
       return isObject(b) && b.type === 'text' && typeof b.text === 'string'
     })
     .map((b) => b.text)
+
   return texts.length > 0 ? texts.join('\n') : null
 }

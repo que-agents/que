@@ -22,17 +22,22 @@ export default function Dialog({ title, testId, onClose, children }: Props): Rea
 
   useEffect(() => {
     const opener = document.activeElement as HTMLElement | null
+
     const first = ref.current?.querySelector<HTMLElement>(
       'input:not([type=hidden]), textarea, select, button'
     )
+
     first?.focus()
+
     const onKey = (e: KeyboardEvent): void => {
       if (e.key === 'Escape') {
         e.stopPropagation()
         onCloseRef.current()
       }
     }
+
     window.addEventListener('keydown', onKey, true)
+
     return () => {
       window.removeEventListener('keydown', onKey, true)
       opener?.focus?.()

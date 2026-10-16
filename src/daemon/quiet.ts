@@ -67,8 +67,10 @@ export class QuietService {
   start(): void {
     this.stopped = false
     const open = this.o.store.openUnlock()
+
     if (open) {
       const until = Date.parse(open.until)
+
       if (until > this.now()) {
         this.unlock = {
           id: open.id,
@@ -80,6 +82,7 @@ export class QuietService {
         this.o.store.endUnlock(open.id, open.until)
       }
     }
+
     this.evaluate()
     this.tickTimer = setInterval(() => this.evaluate(), this.o.tickMs ?? 15_000)
     this.tickTimer.unref()
@@ -87,9 +90,11 @@ export class QuietService {
 
   stop(): void {
     this.stopped = true
+
     for (const t of [this.tickTimer, this.boundaryTimer, this.unlockTimer]) {
       if (t) clearTimeout(t)
     }
+
     this.tickTimer = this.boundaryTimer = this.unlockTimer = null
   }
 
@@ -99,7 +104,9 @@ export class QuietService {
   private quietConfig(now: number): QuietHoursConfig {
     const file = this.o.config().quietHours
     const held = this.held
+
     if (!held || now >= held.end || this.applyTonightFor === held.start) return file
+
     return effectiveConfig(now, held.cfg, file, false)
   }
 
@@ -118,6 +125,7 @@ export class QuietService {
   /** Quiet hours are on and no unlock is running: detail is refused. */
   locked(): boolean {
     const now = this.now()
+
     return this.window(now) !== null && !isUnlocked(now, this.unlock)
   }
 
@@ -127,6 +135,7 @@ export class QuietService {
     const w = currentWindow(now, cfg)
     const next = nextBoundary(now, cfg)
     const unlocked = w !== null && isUnlocked(now, this.unlock)
+
     return {
       enabled: cfg.enabled,
       inQuietHours: w !== null,
@@ -143,6 +152,7 @@ export class QuietService {
     if (!REFUSED.has(method) || this.stopped) return
     const now = this.now()
     const w = this.window(now)
+
     if (!w || isUnlocked(now, this.unlock)) return
     throw new RpcError('quiet_hours', quietMessage(w.end, this.o.config().quietHours.unlockMinutes))
   }
@@ -152,20 +162,24 @@ export class QuietService {
   unlockFor(minutes?: number, why?: string): QuietState {
     const now = this.now()
     const m = minutes ?? this.o.config().quietHours.unlockMinutes
+
     if (typeof m !== 'number' || !Number.isFinite(m) || m <= 0) {
       throw badRequest('minutes must be a positive number')
     }
+
     // Only meaningful during quiet hours; otherwise nothing is locked.
     if (!this.window(now)) return this.state()
     this.endUnlock(now)
     const until = now + m * 60_000
     const reason = why?.trim() || null
+
     const id = this.o.store.insertUnlock({
       at: new Date(now).toISOString(),
       minutes: m,
       why: reason,
       until: new Date(until).toISOString()
     })
+
     this.unlock = {
       id,
       until: new Date(until),
@@ -174,16 +188,20 @@ export class QuietService {
     }
     this.o.log?.(`quiet: unlocked for ${m} min${reason ? ` (${reason})` : ''}`)
     this.evaluate(true)
+
     return this.state()
   }
 
   lock(): QuietState {
     const now = this.now()
+
     if (this.unlock.until) {
       this.endUnlock(now)
       this.o.log?.('quiet: locked early')
     }
+
     this.evaluate(true)
+
     return this.state()
   }
 
@@ -191,6 +209,7 @@ export class QuietService {
     if (since !== undefined && Number.isNaN(Date.parse(since))) {
       throw badRequest('since must be an ISO time')
     }
+
     return this.o.store.listUnlocks(since ? new Date(Date.parse(since)).toISOString() : undefined)
   }
 
@@ -199,6 +218,7 @@ export class QuietService {
       const end = Math.min(at, this.unlock.until.getTime())
       this.o.store.endUnlock(this.unlock.id, new Date(end).toISOString())
     }
+
     this.unlock = { until: null, startedAt: null, id: null }
   }
 
@@ -225,29 +245,36 @@ export class QuietService {
     }
 
     const locked = w !== null && !isUnlocked(now, this.unlock)
+
     if (locked && !this.wasLocked) {
       this.o.log?.('quiet: detail locked; detaching every terminal subscription')
       this.o.detachAll()
     }
+
     this.wasLocked = locked
 
     const prev = this.lastWindow
     this.lastWindow = w
+
     if (prev && !w && now >= prev.end.getTime() - 1_000) void this.morningSummary(prev)
 
     const state = this.state()
     const key = JSON.stringify(state)
+
     if (force || key !== this.lastEmitted) {
       this.lastEmitted = key
       this.o.emit('quiet.changed', state)
     }
+
     this.schedule(now, state)
   }
 
   private async morningSummary(window: ActiveWindow): Promise<void> {
     const start = window.start.getTime()
+
     if (!this.o.config().notifications.morningSummary || this.summarized.has(start)) return
     this.summarized.add(start)
+
     try {
       const report = await this.o.report(window.start.toISOString())
       this.o.emit('quiet.morningSummary', { report })
@@ -258,16 +285,20 @@ export class QuietService {
 
   private schedule(now: number, state: QuietState): void {
     if (this.boundaryTimer) clearTimeout(this.boundaryTimer)
+
     if (this.unlockTimer) clearTimeout(this.unlockTimer)
     this.boundaryTimer = this.unlockTimer = null
+
     const at = (iso: string | null, set: (t: NodeJS.Timeout) => void): void => {
       if (!iso) return
       const delay = Date.parse(iso) - now + 5
+
       if (delay > MAX_TIMER_MS) return
       const t = setTimeout(() => this.evaluate(), Math.max(0, delay))
       t.unref()
       set(t)
     }
+
     at(state.nextBoundary, (t) => {
       this.boundaryTimer = t
     })

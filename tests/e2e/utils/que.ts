@@ -24,5 +24,6 @@ export function queResult(
     env: testEnv(queHome),
     encoding: 'utf8'
   })
+
   return { code: r.status, stdout: r.stdout, stderr: r.stderr }
 }

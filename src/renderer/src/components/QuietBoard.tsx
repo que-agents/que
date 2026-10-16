@@ -37,26 +37,33 @@ export default function QuietBoard(): React.JSX.Element {
   // Ages and elapsed times move on their own; events refresh everything else.
   useEffect(() => {
     const t = setInterval(() => tick((n) => n + 1), 30_000)
+
     return () => clearInterval(t)
   }, [])
 
   const now = store.now()
   const since = quiet?.windowStart ? Date.parse(quiet.windowStart) : now
   const projectName = (id: string): string => projects.find((p) => p.id === id)?.name ?? ''
+
   const tonight = Object.values(tasks).filter(
     (t) => isLiveTask(t.state) || Date.parse(t.updatedAt) >= since
   )
+
   const count = (pred: (t: Task) => boolean): number => tonight.filter(pred).length
   const paused = tonight.filter((t) => t.state === 'paused')
+
   const resets = paused
     .map((t) => t.pausedUntil)
     .filter((p): p is string => p !== null)
     .sort()[0]
+
   const ws = Object.values(workspaces)
+
   const wsCount = (status: Workspace['status']): number =>
     ws.filter((w) => w.status === status).length
 
   const live = newestFirst(Object.values(tasks).filter((t) => isLiveTask(t.state)))
+
   const taskRows: Row[] = live.map((t) => ({
     id: t.id,
     name: t.title,
@@ -69,8 +76,10 @@ export default function QuietBoard(): React.JSX.Element {
     turns: t.turns,
     costUsd: t.costUsd
   }))
+
   const workspaceRow = (w: Workspace): Row => {
     const terms = terminals.filter((t) => t.key === w.id && t.alive)
+
     return {
       id: w.id,
       name: w.name,
@@ -88,14 +97,17 @@ export default function QuietBoard(): React.JSX.Element {
       costUsd: null
     }
   }
+
   // Every workspace that is working, waiting or stuck, plus any with a live terminal.
   const shown = ws.filter(
     (w) =>
       ['working', 'needs_input', 'stuck'].includes(w.status) ||
       terminals.some((t) => t.key === w.id && t.alive)
   )
+
   const byStatus = (status: Workspace['status']): Row[] =>
     shown.filter((w) => w.status === status).map(workspaceRow)
+
   const rows: Row[] = [
     ...byStatus('needs_input'),
     ...byStatus('stuck'),
@@ -107,6 +119,7 @@ export default function QuietBoard(): React.JSX.Element {
   ]
 
   const unlockMinutes = quiet?.unlockMinutes ?? 20
+
   return (
     <section className="quiet-board" data-testid="quiet-board" aria-label="Quiet hours">
       <header className="quiet-board-header" data-testid="quiet-board-header">

@@ -25,9 +25,11 @@ export default function ReviewResizer({
   const end = (e: React.PointerEvent<HTMLHRElement>): void => {
     if (!drag.current) return
     drag.current = null
+
     if (e.currentTarget.hasPointerCapture?.(e.pointerId)) {
       e.currentTarget.releasePointerCapture(e.pointerId)
     }
+
     document.body.classList.remove('resizing')
   }
 
@@ -67,6 +69,7 @@ export default function ReviewResizer({
                 : e.key === 'End'
                   ? REVIEW_MAX
                   : null
+
         if (next === null) return
         e.preventDefault()
         onChange(next)

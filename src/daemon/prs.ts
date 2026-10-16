@@ -13,6 +13,7 @@ import type { Emit } from './status'
 import type { Store } from './store'
 
 const FIELDS = 'number,url,title,state,isDraft,reviewDecision,statusCheckRollup,mergedAt,updatedAt'
+
 /** A merged or closed pull request is only re-checked on every Nth tick. */
 const SETTLED_EVERY = 5
 
@@ -38,8 +39,10 @@ function ghJson(args: string[], cwd: string, signal: AbortSignal): Promise<JsonV
       (err, stdout, stderr) => {
         if (err) {
           const detail = String(stderr).trim().split('\n')[0] || err.message
+
           return reject(new Error(detail))
         }
+
         try {
           resolve(JSON.parse(stdout) as JsonValue)
         } catch {
@@ -56,7 +59,9 @@ async function ghPrList(branch: string, cwd: string, signal: AbortSignal): Promi
     cwd,
     signal
   )
+
   if (!Array.isArray(parsed)) throw new Error('gh printed output that is not JSON')
+
   return parsed
 }
 
@@ -73,8 +78,10 @@ function ghLineComments(number: number, cwd: string, signal: AbortSignal): Promi
       (err, stdout, stderr) => {
         if (err) {
           const detail = String(stderr).trim().split('\n')[0] || err.message
+
           return reject(new Error(detail))
         }
+
         try {
           resolve(
             jsonPages(stdout).flatMap((page) => (Array.isArray(page) ? page : [page])) as JsonValue
@@ -120,6 +127,7 @@ export class PrService {
   stop(): void {
     this.stopped = true
     this.abort.abort()
+
     if (this.timer) clearTimeout(this.timer)
     this.timer = null
   }
@@ -137,11 +145,14 @@ export class PrService {
   async tick(): Promise<void> {
     if (this.polling) return
     this.polling = true
+
     try {
       const n = this.tickCount++
+
       for (const ws of this.opts.listWorkspaces()) {
         if (this.stopped) return
         const settled = ws.pr?.state === 'merged' || ws.pr?.state === 'closed'
+
         if (settled && n % SETTLED_EVERY !== 0) continue
         await this.check(ws)
       }
@@ -154,6 +165,7 @@ export class PrService {
   async refresh(id: string): Promise<void> {
     if (this.stopped) return
     const ws = this.opts.store.getWorkspace(id)
+
     if (ws && !ws.archivedAt) await this.check(ws)
   }
 
@@ -163,13 +175,18 @@ export class PrService {
    */
   async thread(id: string, refresh = false): Promise<PrThread | null> {
     const ws = this.opts.store.getWorkspace(id)
+
     if (!ws || ws.archivedAt) throw notFound(`no workspace ${id}`)
     const pr = ws.pr
+
     if (!pr) {
       this.threads.delete(id)
+
       return null
     }
+
     const cached = this.threads.get(id)
+
     if (
       !refresh &&
       cached &&
@@ -178,10 +195,13 @@ export class PrService {
     ) {
       return cached.thread
     }
+
     const running = this.threadFetches.get(id)
+
     if (running) return running
     const fetch = this.fetchThread(ws, pr).finally(() => this.threadFetches.delete(id))
     this.threadFetches.set(id, fetch)
+
     return fetch
   }
 
@@ -193,6 +213,7 @@ export class PrService {
   private async fetchThread(ws: Workspace, pr: PullRequest): Promise<PrThread> {
     let view: unknown
     let lines: unknown
+
     try {
       ;[view, lines] = await Promise.all([
         ghJson(
@@ -205,8 +226,10 @@ export class PrService {
     } catch (err) {
       throw ghFailed((err as Error).message)
     }
+
     const thread = parsePrThread(view, lines, ws.id, pr.number, new Date(this.now()).toISOString())
     this.threads.set(ws.id, { thread, number: pr.number, forUpdatedAt: pr.updatedAt ?? null })
+
     return thread
   }
 
@@ -218,33 +241,44 @@ export class PrService {
   private check(ws: Workspace): Promise<void> {
     const p = this.checkOne(ws)
     this.inflight.add(p)
+
     return p.finally(() => this.inflight.delete(p))
   }
 
   private async checkOne(ws: Workspace): Promise<void> {
     const project = this.opts.projectOf(ws)
     const { protectedBranches } = this.opts.config()
+
     if (isProtectedBranch(ws.branch, project.defaultBranch, protectedBranches)) return
     let items: unknown[]
+
     try {
       items = await ghPrList(ws.branch, ws.path, this.abort.signal)
     } catch (err) {
       if (this.stopped) return
+
       if (!this.failing.has(ws.id)) {
         this.failing.add(ws.id)
         this.opts.log?.(`pr check failed for ${ws.id}: ${(err as Error).message}`)
       }
+
       return
     }
+
     if (this.stopped) return
+
     if (this.failing.delete(ws.id)) this.opts.log?.(`pr check recovered for ${ws.id}`)
     const next: PullRequest | null = parsePullRequest(items[0], new Date(this.now()).toISOString())
     const current = this.opts.store.getWorkspace(ws.id)
+
     if (!current || current.archivedAt) return
+
     if (!next) this.threads.delete(ws.id)
+
     if (samePullRequest(current.pr, next)) return
     this.opts.store.setWorkspacePr(ws.id, next)
     const updated = this.opts.store.getWorkspace(ws.id)
+
     if (updated) this.opts.emit('workspace.updated', updated)
   }
 }

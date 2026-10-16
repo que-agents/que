@@ -10,6 +10,7 @@ const PROJECT = {
   defaultBranch: 'main',
   createdAt: '2026-10-01T09:00:00.000Z'
 }
+
 const SINCE = Date.parse('2026-10-13T22:00:00.000Z')
 const NOW = Date.parse('2026-10-14T07:30:00.000Z')
 const EXTRAS = { commitsAhead: 3 }
@@ -27,6 +28,7 @@ const row = (
 describe('buildWorkspaceDigest', () => {
   it('sums 42 minutes of work and counts the two times it asked for input', () => {
     const ws = makeWorkspace({ status: 'idle', statusAt: '2026-10-14T01:00:00.000Z' })
+
     const log = [
       row('idle', '2026-10-13T21:00:00.000Z'),
       row('working', '2026-10-13T23:00:00.000Z'),
@@ -57,6 +59,7 @@ describe('buildWorkspaceDigest', () => {
 
   it('reports the start of a stretch that is still waiting', () => {
     const ws = makeWorkspace({ status: 'needs_input', statusAt: '2026-10-14T02:10:00.000Z' })
+
     const log = [
       row('idle', '2026-10-13T21:00:00.000Z'),
       row('working', '2026-10-14T02:00:00.000Z'),
@@ -74,6 +77,7 @@ describe('buildWorkspaceDigest', () => {
 
   it('clips time already spent working when the window opened', () => {
     const ws = makeWorkspace({ status: 'idle' })
+
     const log = [
       row('working', '2026-10-13T20:00:00.000Z'),
       row('idle', '2026-10-13T22:30:00.000Z')
@@ -88,6 +92,7 @@ describe('buildWorkspaceDigest', () => {
 
   it('counts a workspace still working to now, and its stalls', () => {
     const ws = makeWorkspace({ status: 'working' })
+
     const log = [
       row('working', '2026-10-14T06:00:00.000Z'),
       row('stuck', '2026-10-14T06:10:00.000Z', 'no_heartbeat'),
@@ -130,9 +135,12 @@ describe('sortDigests', () => {
       const ws = makeWorkspace({ name, status })
       const log = last ? [row(status, last)] : [row(status, '2026-10-13T20:00:00.000Z')]
       const d = buildWorkspaceDigest(ws, PROJECT, log, SINCE, NOW, EXTRAS)
+
       if (!d) throw new Error(`${name} has no digest`)
+
       return d
     }
+
     const digests = [
       make('idle-new', 'idle', '2026-10-14T05:00:00.000Z'),
       make('working-old', 'working', '2026-10-14T01:00:00.000Z'),

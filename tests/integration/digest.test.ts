@@ -24,6 +24,7 @@ async function idleWorkspace(d: TestDaemon, projectId: string, name: string): Pr
       timeout: 10_000
     })
     .toBe('idle')
+
   return ws
 }
 
@@ -42,6 +43,7 @@ async function setup(): Promise<{
   // Creation is behind us; the window opens after it.
   await d.client.request('workspace.list')
   const since = new Date().toISOString()
+
   return { d, projectId: project.id, busy, untouched, since }
 }
 
