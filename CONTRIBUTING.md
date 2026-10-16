@@ -29,6 +29,9 @@ tests, E2E tests, and Packaged app (`npm run smoke:packaged`). Lint also fails
 if the generated docs are stale. If you changed a CLI command or a
 config default, run `npm run docs` and commit the regenerated `docs/` files.
 
+A Semgrep check also runs on every pull request (registry rules plus `.semgrep/que.yml`). To run the
+custom rules locally, install `semgrep` and run `semgrep scan --config .semgrep/que.yml --error .`.
+
 ## Lint and format
 
 `npm run lint` runs oxlint (with the vendored rules in `tools/oxlint/`, see its README) and an oxfmt format check; `npm run format` writes the formatting. `npm ci` installs a pre-commit hook (husky and lint-staged) that lints and formats the staged files.

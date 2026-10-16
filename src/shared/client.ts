@@ -234,6 +234,7 @@ export function resolveRuntime(): string {
   const bundled = runtimeFrom(__dirname, process)
 
   if (bundled !== undefined && bundled !== null) return bundled
+  // nosemgrep: que-no-electron-outside-main -- dev-only lookup of the Electron binary path, not an API import
   const electronBinary: string = require('electron')
 
   return electronBinary
