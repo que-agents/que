@@ -165,6 +165,10 @@ describe('runner and finisher', () => {
 
 describe('runner environment', () => {
   it('starts claude as a fresh top-level session, whatever started the daemon', async () => {
+    // The runner passes harmless variables through and never adds any: a daemon
+    // started by launchd or a CI runner has no TERM, so set one to assert the
+    // pass-through rather than the shell this test happens to run in.
+    vi.stubEnv('TERM', 'xterm-256color')
     vi.stubEnv('TERM_PROGRAM', 'kitty')
     vi.stubEnv('CLAUDECODE', '1')
     vi.stubEnv('CLAUDE_CODE_CHILD_SESSION', '1')

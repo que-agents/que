@@ -96,6 +96,13 @@ export async function launchApp(
   const queHome = opts.queHome ?? newQueHome()
   const app = await electron.launch({ args: ['.'], cwd: ROOT, env: testEnv(queHome, opts.env) })
   const window = await app.firstWindow()
+  // One window size everywhere: hosted runners have a 1024px-wide display, which clamps the
+  // app's default 1100x720, so the specs see the same (narrow) layout on a laptop as in CI.
+  const browserWindow = await app.browserWindow(window)
+  await browserWindow.evaluate((w) => {
+    w.setSize(1024, 680)
+    w.center()
+  })
   return {
     app,
     window,

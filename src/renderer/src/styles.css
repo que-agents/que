@@ -628,6 +628,9 @@ body.resizing {
   min-height: 40px;
   padding: 8px 12px;
   flex: none;
+  /* Never spill into the review pane beside it: the title and the crumb shrink first (below),
+   * and whatever still does not fit is clipped rather than drawn over the pane's tabs. */
+  overflow: hidden;
   -webkit-app-region: drag;
 }
 
@@ -651,7 +654,7 @@ body.resizing {
 .topbar .title {
   font-size: 13px;
   font-weight: 600;
-  /* Shrinks to an ellipsis before the buttons do. */
+  /* Shrinks to an ellipsis after the crumb and long before the buttons. */
   min-width: 0;
   white-space: nowrap;
   overflow: hidden;
@@ -661,6 +664,12 @@ body.resizing {
 .crumb {
   color: var(--fg-faint);
   white-space: nowrap;
+  /* The project name gives way first (the sidebar shows it anyway), then the title, so the
+   * chips and buttons stay in view. */
+  flex-shrink: 8;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .crumb-sep {
