@@ -1,6 +1,7 @@
 // A workspace's tabs in one or two panes: its terminals, then its view tabs: a
 // changed file's diff, or a file of the worktree read-only. Pure: parsing a
 // remembered layout and fitting it to the terminals that still exist.
+import { decodeLayout } from './persisted.decode'
 
 const DIFF_PREFIX = 'view:diff:'
 const FILE_PREFIX = 'view:file:'
@@ -77,34 +78,25 @@ export function parseLayout(raw: string | null): PaneLayout | null {
   if (!raw) return null
 
   try {
-    const v = JSON.parse(raw) as Partial<PaneLayout> | null
-    const sp = v?.split
+    const v = decodeLayout(JSON.parse(raw))
 
-    const split =
-      sp && (sp.direction === 'row' || sp.direction === 'column')
-        ? { direction: sp.direction, ratio: clampRatio(Number(sp.ratio)) }
-        : null
+    if (!v) return null
+
+    const split = v.split
+      ? { direction: v.split.direction, ratio: clampRatio(v.split.ratio) }
+      : null
 
     const views: string[] = []
 
-    if (Array.isArray(v?.views)) {
-      for (const k of v.views as unknown[]) {
-        if (typeof k === 'string' && isViewId(k) && !views.includes(k)) views.push(k)
-      }
+    for (const k of v.views) {
+      if (isViewId(k) && !views.includes(k)) views.push(k)
     }
 
     if (!split && views.length === 0) return null
-    const id = (x: unknown): string | null => (typeof x === 'string' ? x : null)
 
-    if (!split) return { ...NO_SPLIT, active: [id(v?.active?.[0]), null], views }
+    if (!split) return { ...NO_SPLIT, active: [v.active[0], null], views }
 
-    return {
-      split,
-      second: Array.isArray(v?.second) ? v.second.filter((x) => typeof x === 'string') : [],
-      active: [id(v?.active?.[0]), id(v?.active?.[1])],
-      focused: v?.focused === 1 ? 1 : 0,
-      views
-    }
+    return { split, second: v.second, active: v.active, focused: v.focused, views }
   } catch {
     return null
   }

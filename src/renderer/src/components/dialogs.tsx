@@ -3,14 +3,11 @@
 import { type FormEvent, useState } from 'react'
 import type { Project, Workspace } from '../../../preload/index.d'
 import { workspaceSlug } from '../../../shared/slug'
+import { errorMessage } from '../errors.decode'
 import { useQue, useStore } from '../store'
 import Dialog from './Dialog'
 
-function useSubmit(): {
-  busy: boolean
-  error: string | null
-  run: (fn: () => Promise<void>) => Promise<void>
-} {
+function useSubmit() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -21,7 +18,7 @@ function useSubmit(): {
     try {
       await fn()
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      setError(errorMessage(err))
     } finally {
       setBusy(false)
     }

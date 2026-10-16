@@ -38,6 +38,8 @@ import {
 import { buildTree, newlyChanged } from './files'
 import { isLiveTask, latestTasks } from './format'
 import { chime, shouldChime } from './sound'
+import { errorCode, errorMessage } from './errors.decode'
+import { decodeDiffBases, decodeReview } from './persisted.decode'
 
 const DEFAULT_COLS = 80
 const DEFAULT_ROWS = 24
@@ -103,14 +105,14 @@ function loadReview(): ReviewState {
     const raw = localStorage.getItem(REVIEW_KEY)
 
     if (!raw) return fallback
-    const v = JSON.parse(raw) as Partial<ReviewState> | null
+    const v = decodeReview(JSON.parse(raw))
 
-    if (!v || typeof v !== 'object') return fallback
+    if (!v) return fallback
 
     return {
-      open: v.open === true,
+      open: v.open,
       tab: REVIEW_TABS.find((t) => t === v.tab) ?? 'changes',
-      width: typeof v.width === 'number' ? clampReviewWidth(v.width) : REVIEW_DEFAULT
+      width: v.width === null ? REVIEW_DEFAULT : clampReviewWidth(v.width)
     }
   } catch {
     return fallback
@@ -132,15 +134,8 @@ function loadDiffBases(): Record<string, string> {
     const raw = localStorage.getItem(DIFF_BASES_KEY)
 
     if (!raw) return {}
-    const v = JSON.parse(raw) as unknown
 
-    if (!v || typeof v !== 'object' || Array.isArray(v)) return {}
-
-    return Object.fromEntries(
-      Object.entries(v).filter(
-        (e): e is [string, string] => typeof e[1] === 'string' && e[1] !== ''
-      )
-    )
+    return decodeDiffBases(JSON.parse(raw))
   } catch {
     return {}
   }
@@ -276,10 +271,6 @@ function without<T>(rec: Record<string, T>, id: string): Record<string, T> {
   return rest
 }
 
-function message(err: unknown): string {
-  return err instanceof Error ? err.message : String(err)
-}
-
 export class QueStore {
   private state: QueState = {
     loaded: false,
@@ -366,8 +357,12 @@ export class QueStore {
     return () => this.listeners.delete(cb)
   }
 
-  private set(update: Partial<QueState> | ((s: QueState) => Partial<QueState>)): void {
-    const patch = typeof update === 'function' ? update(this.state) : update
+  /** Applies a patch computed from the current state. */
+  private setWith(update: (s: QueState) => Partial<QueState>): void {
+    this.set(update(this.state))
+  }
+
+  private set(patch: Partial<QueState>): void {
     this.state = { ...this.state, ...patch }
 
     if (patch.view) this.watchShown()
@@ -419,7 +414,7 @@ export class QueStore {
       ])
 
       const live = terms.filter((t) => t.alive)
-      this.set((s) => ({
+      this.setWith((s) => ({
         loaded: true,
         quiet: s.quiet ?? quiet,
         config: s.config ?? config,
@@ -436,7 +431,7 @@ export class QueStore {
       this.hydrateLayouts()
       await this.visit(this.currentKey())
     } catch (err) {
-      this.set({ error: message(err) })
+      this.set({ error: errorMessage(err) })
     }
   }
 
@@ -454,9 +449,9 @@ export class QueStore {
       config.on('config.changed', (c) => this.set({ config: c })),
       tickets.on('tickets.synced', (r) => this.set({ tickets: r.tickets, ticketsSync: r.sync })),
       project.on('project.added', (p) =>
-        this.set((s) => ({ projects: mergeProjects(s.projects, [p]) }))
+        this.setWith((s) => ({ projects: mergeProjects(s.projects, [p]) }))
       ),
-      project.on('project.removed', ({ id }) => this.set((s) => dropProject(s, id))),
+      project.on('project.removed', ({ id }) => this.setWith((s) => dropProject(s, id))),
       term.on('term.created', ({ id }) => {
         // A terminal this store is creating is placed in its pane by the creator.
         if (this.creating > 0) this.createdMeanwhile.add(id)
@@ -464,7 +459,7 @@ export class QueStore {
       }),
       term.on('term.killed', ({ id }) => this.removeTab(id)),
       term.on('term.exit', ({ id }) =>
-        this.set((s) => ({
+        this.setWith((s) => ({
           terminals: s.terminals.map((t) => (t.id === id ? { ...t, alive: false } : t))
         }))
       ),
@@ -474,7 +469,7 @@ export class QueStore {
       workspace.on('workspace.changed', ({ id }) => this.followChange(id)),
       workspace.on('workspace.removed', ({ id }) => {
         if (id in this.state.diffScopes) rememberDiffBase(id, null)
-        this.set((s) => ({
+        this.setWith((s) => ({
           workspaces: without(s.workspaces, id),
           diffScopes: without(s.diffScopes, id),
           view: s.view.kind === 'terminals' && s.view.key === id ? scratchView() : s.view
@@ -482,7 +477,7 @@ export class QueStore {
       }),
       workspace.on('workspace.status', (e) => {
         const prev = this.state.workspaces[e.id]?.status
-        this.set((s) => {
+        this.setWith((s) => {
           const ws = s.workspaces[e.id]
 
           if (!ws) return {}
@@ -498,8 +493,8 @@ export class QueStore {
 
         if (prev !== e.status) this.maybeChime({ state: e.status, reason: e.reason, prev })
       }),
-      task.on('task.created', (t) => this.set((s) => ({ tasks: { ...s.tasks, [t.id]: t } }))),
-      task.on('task.updated', (t) => this.set((s) => ({ tasks: { ...s.tasks, [t.id]: t } }))),
+      task.on('task.created', (t) => this.setWith((s) => ({ tasks: { ...s.tasks, [t.id]: t } }))),
+      task.on('task.updated', (t) => this.setWith((s) => ({ tasks: { ...s.tasks, [t.id]: t } }))),
       task.on('task.status', (e) => {
         const prev = this.state.tasks[e.id]
 
@@ -507,7 +502,7 @@ export class QueStore {
           this.maybeChime({ state: e.state, reason: e.reason })
         }
 
-        this.set((s) => {
+        this.setWith((s) => {
           const t = s.tasks[e.id]
 
           if (!t) return {}
@@ -518,7 +513,7 @@ export class QueStore {
         })
         // The status event carries no workspace, branch, or PR; re-read the task.
         void this.api.task.get({ id: e.id }).then(
-          (t) => this.set((s) => ({ tasks: { ...s.tasks, [t.id]: t } })),
+          (t) => this.setWith((s) => ({ tasks: { ...s.tasks, [t.id]: t } })),
           () => {}
         )
       })
@@ -535,7 +530,7 @@ export class QueStore {
 
   private upsertWorkspace(ws: Workspace): void {
     const prev = this.state.workspaces[ws.id]?.pr ?? null
-    this.set((s) => ({ workspaces: { ...s.workspaces, [ws.id]: ws } }))
+    this.setWith((s) => ({ workspaces: { ...s.workspaces, [ws.id]: ws } }))
     // The review pane open on Pull request follows the shown workspace's pull request:
     // fetch again when it appears, disappears, or changes upstream.
     const next = ws.pr ?? null
@@ -550,7 +545,7 @@ export class QueStore {
       void this.fetchPrThread(ws.id)
     } else if (changed && ws.id in this.state.prThreads) {
       // Not on screen: forget the stale conversation so the next look fetches it.
-      this.set((s) => ({ prThreads: without(s.prThreads, ws.id) }))
+      this.setWith((s) => ({ prThreads: without(s.prThreads, ws.id) }))
     }
 
     if (!this.state.projects.some((p) => p.id === ws.projectId)) {
@@ -570,7 +565,7 @@ export class QueStore {
 
     if (!info) return null
     const tab = toTab(info, false)
-    this.set((s) => ({ terminals: mergeTabs(s.terminals, [tab]) }))
+    this.setWith((s) => ({ terminals: mergeTabs(s.terminals, [tab]) }))
 
     return tab
   }
@@ -591,8 +586,8 @@ export class QueStore {
     await this.newTerminal(key)
   }
 
-  private fail(err: unknown): void {
-    this.set({ error: message(err) })
+  private fail(error: string): void {
+    this.set({ error })
   }
 
   // ---- actions --------------------------------------------------------------
@@ -803,12 +798,12 @@ export class QueStore {
           refresh ? { id: key, refresh: true } : { id: key }
         )
 
-        this.set((s) => ({
+        this.setWith((s) => ({
           prThreads: { ...s.prThreads, [key]: thread },
           prThreadErrors: { ...s.prThreadErrors, [key]: null }
         }))
       } catch (err) {
-        this.set((s) => ({ prThreadErrors: { ...s.prThreadErrors, [key]: message(err) } }))
+        this.setWith((s) => ({ prThreadErrors: { ...s.prThreadErrors, [key]: errorMessage(err) } }))
       }
     })()
 
@@ -857,7 +852,7 @@ export class QueStore {
 
             if (!current()) return
             rememberDiffBase(key, null)
-            this.set((s) => ({ diffScopes: without(s.diffScopes, key) }))
+            this.setWith((s) => ({ diffScopes: without(s.diffScopes, key) }))
             this.landDiff(key, diff)
 
             return
@@ -866,9 +861,9 @@ export class QueStore {
           }
         }
 
-        this.set((s) => ({
+        this.setWith((s) => ({
           diffs: without(s.diffs, key),
-          diffErrors: { ...s.diffErrors, [key]: message(err) }
+          diffErrors: { ...s.diffErrors, [key]: errorMessage(err) }
         }))
       }
     })()
@@ -881,7 +876,7 @@ export class QueStore {
    * changed file and held none before is opened, and the rest of the set stands.
    */
   private landDiff(key: string, diff: WorkspaceDiff): void {
-    this.set((s) => {
+    this.setWith((s) => {
       const expanded = s.filesExpanded[key]
 
       const patch: Partial<QueState> = {
@@ -909,14 +904,14 @@ export class QueStore {
   /** Compares a workspace against another ref (null: the daemon's choice), over every commit; remembered per workspace. */
   setDiffBase(key: string, base: string | null): Promise<void> {
     rememberDiffBase(key, base)
-    this.set((s) => ({ diffScopes: { ...s.diffScopes, [key]: { base, commit: null } } }))
+    this.setWith((s) => ({ diffScopes: { ...s.diffScopes, [key]: { base, commit: null } } }))
 
     return this.fetchDiff(key)
   }
 
   /** Narrows a workspace's diff to one commit's own changes (null: every commit). Not remembered. */
   setDiffCommit(key: string, commit: string | null): Promise<void> {
-    this.set((s) => ({
+    this.setWith((s) => ({
       diffScopes: { ...s.diffScopes, [key]: { ...(s.diffScopes[key] ?? NO_SCOPE), commit } }
     }))
 
@@ -946,15 +941,15 @@ export class QueStore {
         const files = await this.api.workspace.files({ id: key })
 
         if (!current()) return
-        this.set((s) => ({
+        this.setWith((s) => ({
           fileLists: { ...s.fileLists, [key]: files },
           fileListErrors: { ...s.fileListErrors, [key]: null }
         }))
       } catch (err) {
         if (!current()) return
-        this.set((s) => ({
+        this.setWith((s) => ({
           fileLists: without(s.fileLists, key),
-          fileListErrors: { ...s.fileListErrors, [key]: message(err) }
+          fileListErrors: { ...s.fileListErrors, [key]: errorMessage(err) }
         }))
       }
     })()
@@ -981,10 +976,10 @@ export class QueStore {
         file = null
 
         // The daemon's not-found code: the path left the worktree.
-        if ((err as { code?: unknown }).code !== 'not_found') error = message(err)
+        if (errorCode(err) !== 'not_found') error = errorMessage(err)
       }
 
-      this.set((s) => {
+      this.setWith((s) => {
         const contents = { ...(s.fileContents[key] ?? {}) }
 
         if (error === null) contents[path] = file
@@ -1025,7 +1020,7 @@ export class QueStore {
 
   /** Sets the Files tree's open directories for a workspace. */
   setFilesExpanded(key: string, expanded: ReadonlySet<string>): void {
-    this.set((s) => ({ filesExpanded: { ...s.filesExpanded, [key]: expanded } }))
+    this.setWith((s) => ({ filesExpanded: { ...s.filesExpanded, [key]: expanded } }))
   }
 
   private track(
@@ -1059,7 +1054,7 @@ export class QueStore {
       const r = await this.api.tickets.sync()
       this.set({ tickets: r.tickets, ticketsSync: r.sync })
     } catch (err) {
-      this.fail(err)
+      this.fail(errorMessage(err))
     }
   }
 
@@ -1091,7 +1086,7 @@ export class QueStore {
     try {
       await this.startTicket(key)
     } catch (err) {
-      this.fail(err)
+      this.fail(errorMessage(err))
     }
   }
 
@@ -1099,7 +1094,7 @@ export class QueStore {
     try {
       this.set({ quiet: await this.api.quiet.unlock() })
     } catch (err) {
-      this.fail(err)
+      this.fail(errorMessage(err))
     }
   }
 
@@ -1107,7 +1102,7 @@ export class QueStore {
     try {
       this.set({ quiet: await this.api.quiet.lock() })
     } catch (err) {
-      this.fail(err)
+      this.fail(errorMessage(err))
     }
   }
 
@@ -1209,7 +1204,7 @@ export class QueStore {
       place(id)
       await this.addTerminal(id)
     } catch (err) {
-      this.fail(err)
+      this.fail(errorMessage(err))
     } finally {
       this.creating--
 
@@ -1275,7 +1270,7 @@ export class QueStore {
   }
 
   private setLayout(key: string, layout: PaneLayout): void {
-    this.set((s) => ({ layouts: { ...s.layouts, [key]: layout } }))
+    this.setWith((s) => ({ layouts: { ...s.layouts, [key]: layout } }))
 
     try {
       if (isRemembered(layout)) localStorage.setItem(LAYOUT_PREFIX + key, JSON.stringify(layout))
@@ -1307,7 +1302,7 @@ export class QueStore {
       return
     }
 
-    this.set((s) => ({ layouts: { ...layouts, ...s.layouts } }))
+    this.setWith((s) => ({ layouts: { ...layouts, ...s.layouts } }))
   }
 
   /** Removes a tab, collapsing its key's split if a pane is left empty. */
@@ -1350,13 +1345,13 @@ export class QueStore {
 
       if (!dir) return
       const project = await this.api.project.add({ path: dir })
-      this.set((s) => ({
+      this.setWith((s) => ({
         projects: s.projects.some((p) => p.id === project.id)
           ? s.projects
           : [...s.projects, project]
       }))
     } catch (err) {
-      this.fail(err)
+      this.fail(errorMessage(err))
     }
   }
 
@@ -1370,12 +1365,12 @@ export class QueStore {
   /** Removes the project and, with it, its workspaces (terminals killed, worktrees deleted). */
   async removeProject(id: string): Promise<void> {
     await this.api.project.remove({ id, force: true })
-    this.set((s) => dropProject(s, id))
+    this.setWith((s) => dropProject(s, id))
   }
 
   async removeWorkspace(id: string, deleteBranch: boolean): Promise<void> {
     await this.api.workspace.remove({ id, deleteBranch })
-    this.set((s) => ({
+    this.setWith((s) => ({
       workspaces: without(s.workspaces, id),
       view: s.view.kind === 'terminals' && s.view.key === id ? scratchView() : s.view
     }))
@@ -1385,13 +1380,13 @@ export class QueStore {
     try {
       await this.api.app.openInEditor({ path })
     } catch (err) {
-      this.fail(err)
+      this.fail(errorMessage(err))
     }
   }
 
   async createPr(id: string, title: string): Promise<string> {
     const { prUrl } = await this.api.workspace.createPr({ id, title })
-    this.set((s) => {
+    this.setWith((s) => {
       const ws = s.workspaces[id]
 
       return ws ? { workspaces: { ...s.workspaces, [id]: { ...ws, prUrl } } } : {}

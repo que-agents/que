@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import type { PullRequest, Report, WorkspaceDigest } from '../../../preload/index.d'
 import { formatUnlocks } from '../../../daemon/quiet-hours'
 import { formatCost, formatDuration, REPORT_GROUPS } from '../format'
+import { errorMessage } from '../errors.decode'
 import { useQue, useStore } from '../store'
 import { hhmm } from '../../../daemon/quiet-hours'
 import { PrChip, StatusBadge, TaskBadge } from './StatusBadge'
@@ -47,7 +48,7 @@ export default function ReportView(): React.JSX.Element {
       setUnlocks(formatUnlocks(await store.fetchUnlocks(r.since), store.now()))
       setError(null)
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      setError(errorMessage(err))
     }
   }, [store])
 
