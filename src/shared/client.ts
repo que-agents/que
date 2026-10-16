@@ -41,9 +41,14 @@ export interface StartOptions {
   log?: (msg: string) => void
 }
 
-type Pending = { resolve: (v: unknown) => void; reject: (e: Error) => void }
+/** A reply's result is trusted to match its method: the daemon is this codebase's own server. */
+type AnyResult = ResultOf<MethodName>
 
-type Handler = (data: never) => void
+type Pending = { resolve: (v: AnyResult) => void; reject: (e: Error) => void }
+
+type AnyEvent = Events[EventName]
+
+type Handler = (data: AnyEvent) => void
 
 export class DaemonClient {
   private socket: net.Socket | null = null
@@ -97,7 +102,7 @@ export class DaemonClient {
     if (isEvent(msg)) {
       const set = this.handlers.get(msg.event)
 
-      if (set) for (const h of set) (h as (d: unknown) => void)(msg.data)
+      if (set) for (const h of set) h(msg.data as AnyEvent)
 
       return
     }
@@ -111,7 +116,7 @@ export class DaemonClient {
       const e = msg.error as ResponseError
       p.reject(new DaemonError(e.code, e.message))
     } else {
-      p.resolve(msg.result)
+      p.resolve(msg.result as AnyResult)
     }
   }
 
@@ -129,7 +134,7 @@ export class DaemonClient {
     const id = this.nextId++
 
     return new Promise((resolve, reject) => {
-      this.pending.set(id, { resolve: resolve as (v: unknown) => void, reject })
+      this.pending.set(id, { resolve: resolve as Pending['resolve'], reject })
       socket.write(encode({ id, method, params }))
     })
   }
@@ -187,7 +192,7 @@ export class DaemonClient {
     log('started daemon, waiting for ping')
 
     const deadline = Date.now() + (opts.timeoutMs ?? 5000)
-    let lastErr: unknown = null
+    let lastErr = 'no attempt'
 
     while (Date.now() < deadline) {
       const c = new DaemonClient(paths.socket)
@@ -198,7 +203,7 @@ export class DaemonClient {
 
         return c
       } catch (err) {
-        lastErr = err
+        lastErr = String(err)
         c.close()
         await delay(100)
       }
@@ -206,7 +211,7 @@ export class DaemonClient {
 
     throw new DaemonError(
       'start_timeout',
-      `daemon did not answer within ${opts.timeoutMs ?? 5000} ms (see ${paths.daemonLog}): ${String(lastErr)}`
+      `daemon did not answer within ${opts.timeoutMs ?? 5000} ms (see ${paths.daemonLog}): ${lastErr}`
     )
   }
 
