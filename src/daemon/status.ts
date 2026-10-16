@@ -118,18 +118,16 @@ export class StatusService {
     const prev = this.state(id)
 
     if (!prev) return
-    const event = String(payload.hook_event_name ?? '')
+    const event = payload.hook_event_name
     this.opts.store.insertHookEvent(
       id,
-      payload.session_id ?? null,
+      payload.session_id,
       event,
       payload,
       new Date(this.now()).toISOString()
     )
 
-    if (!payload.agent_id && typeof payload.transcript_path === 'string') {
-      prev.transcriptPath = payload.transcript_path
-    }
+    if (!payload.agent_id) prev.transcriptPath = payload.transcript_path
 
     this.apply(id, { kind: 'hook', event, payload })
   }

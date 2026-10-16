@@ -23,13 +23,9 @@ import {
   stringifyConfig,
   type UserConfig
 } from '../shared/config'
+import { decodeHookEvent } from '../shared/hook.decode'
 import { ensureDirs, quePaths, type QuePaths } from '../shared/paths'
-import type {
-  ConfigGetResult,
-  HookEvent,
-  TaskAddParams,
-  TermCreateParams
-} from '../shared/protocol'
+import type { ConfigGetResult, TaskAddParams, TermCreateParams } from '../shared/protocol'
 import type { TaskSource, TaskState } from '../shared/types'
 import { conflict, RpcError } from './errors'
 import { finishTask, isProtectedBranch } from './finisher'
@@ -772,16 +768,14 @@ export class DaemonServer {
         return this.createPr(str(p, 'id'), str(p, 'title'))
       case 'hook.event': {
         const ws = this.workspaces.get(str(p, 'workspaceId'))
-        const payload = p.payload
+        const payload = decodeHookEvent(p.payload)
 
-        if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
-          throw new RpcError(ErrorCodes.BadRequest, 'payload must be an object')
-        }
+        if (!payload) throw new RpcError(ErrorCodes.BadRequest, 'payload must be a hook event')
 
-        this.status.hook(ws.id, payload as HookEvent)
+        this.status.hook(ws.id, payload)
         const taskId = optString(p, 'taskId')
 
-        if (taskId) this.tasks.hook(taskId, payload as HookEvent)
+        if (taskId) this.tasks.hook(taskId, payload)
 
         return { ok: true }
       }
