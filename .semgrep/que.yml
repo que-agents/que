@@ -5,7 +5,7 @@ rules:
     severity: ERROR
     languages: [generic]
     paths:
-      include: ["/src/daemon/**", "/src/cli/**", "/src/shared/**"]
+      include: ['/src/daemon/**', '/src/cli/**', '/src/shared/**']
     pattern-regex: |-
       (\bfrom\s*|\brequire\(\s*|\bimport\(\s*|\bimport\s+)['"]electron(/[^'"]*)?['"]
 
@@ -15,7 +15,7 @@ rules:
     severity: ERROR
     languages: [typescript, javascript]
     paths:
-      include: ["/src/**", "/tests/**"]
+      include: ['/src/**', '/tests/**']
     patterns:
       - pattern-either:
           - pattern: vi.mock("$M", ...)
@@ -31,14 +31,14 @@ rules:
     languages: [typescript, javascript]
     paths:
       include:
-        - "/tests/**"
-        - "/src/**/*.test.ts"
-        - "/src/**/*.test.tsx"
-        - "/src/testing/**"
-        - "/src/renderer/src/testing/**"
+        - '/tests/**'
+        - '/src/**/*.test.ts'
+        - '/src/**/*.test.tsx'
+        - '/src/testing/**'
+        - '/src/renderer/src/testing/**'
       exclude:
-        - "/tests/fakes/**"
-        - "/src/testing/leak-check.ts"
+        - '/tests/fakes/**'
+        - '/src/testing/leak-check.ts'
     pattern-either:
       - pattern: new Promise(($R) => setTimeout($R, ...))
       - pattern: new Promise(($R) => { ... setTimeout($R, ...); ... })
@@ -51,7 +51,7 @@ rules:
     severity: ERROR
     languages: [generic]
     paths:
-      include: ["/src/**"]
+      include: ['/src/**']
     pattern-either:
       - pattern-regex: |-
           ["'`][^"'`\n]*\.claude/settings\.json
@@ -64,11 +64,11 @@ rules:
     severity: ERROR
     languages: [typescript, javascript]
     paths:
-      include: ["/src/**"]
+      include: ['/src/**']
     patterns:
       - pattern-either:
-          - pattern: "$F(..., { ..., shell: true, ... })"
-          - pattern: "$O.$F(..., { ..., shell: true, ... })"
+          - pattern: '$F(..., { ..., shell: true, ... })'
+          - pattern: '$O.$F(..., { ..., shell: true, ... })'
       - metavariable-regex:
           metavariable: $F
           regex: ^(spawn|spawnSync|exec|execSync|execFile|execFileSync|fork)$
@@ -79,9 +79,9 @@ rules:
     severity: ERROR
     languages: [typescript, javascript]
     paths:
-      include: ["/src/main/**"]
+      include: ['/src/main/**']
     pattern-either:
-      - pattern: "{ ..., nodeIntegration: true, ... }"
-      - pattern: "{ ..., contextIsolation: false, ... }"
-      - pattern: "{ ..., webSecurity: false, ... }"
-      - pattern: "{ ..., sandbox: false, ... }"
+      - pattern: '{ ..., nodeIntegration: true, ... }'
+      - pattern: '{ ..., contextIsolation: false, ... }'
+      - pattern: '{ ..., webSecurity: false, ... }'
+      - pattern: '{ ..., sandbox: false, ... }'
