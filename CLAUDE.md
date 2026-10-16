@@ -38,7 +38,7 @@ Path aliases: `@shared/*`, `@daemon/*`, `@renderer/*`.
 | `npm run test:contract` | Contract tests against the real `claude` (costs a few cents)            |
 | `npm run smoke`         | Start a daemon in a temp `QUE_HOME`, run one PTY, shut down             |
 | `npm run e2e`           | Build, then run the Playwright Electron specs                           |
-| `npm run verify`        | All of the above in order, stopping at the first failure (CI runs this) |
+| `npm run verify`        | All of the above in order, stopping at the first failure (CI runs the same checks, one workflow each) |
 | `npm run test:flaky`    | Vitest N times (`-- 10`), the last two under e2e load; log in test-results |
 | `npm run package`       | An unsigned `que.app` in `release/mac-arm64` (`npm run dist`: DMG + zip) |
 | `npm run smoke:packaged`| Package, launch the real app bundle, check daemon/terminal/tray/CLI     |

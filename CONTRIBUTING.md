@@ -24,7 +24,9 @@ npm run verify
 
 runs typecheck, lint, build, the Vitest suites, the smoke check, and the
 Playwright specs in that order and stops at the first failure. CI runs the
-same thing plus `npm run smoke:packaged`. If you changed a CLI command or a
+same steps split into five checks, one workflow each: Typecheck, Lint, Unit
+tests, E2E tests, and Packaged app (`npm run smoke:packaged`). Lint also fails
+if the generated docs are stale. If you changed a CLI command or a
 config default, run `npm run docs` and commit the regenerated `docs/` files.
 
 A Semgrep check also runs on every pull request (registry rules plus `.semgrep/que.yml`). To run the

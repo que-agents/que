@@ -1,0 +1,53 @@
+name: E2E tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  e2e:
+    name: E2E tests
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup
+
+      - run: npm run build
+
+      - run: node scripts/smoke.mjs
+
+      - name: Playwright
+        run: npx playwright test --reporter=list,json
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_NAME: test-results/playwright.json
+
+      - name: Summarize results
+        if: always()
+        run: |
+          if [ -f test-results/playwright.json ]; then
+            jq -r '.stats | "### E2E tests\n\(.expected) passed, \(.unexpected) failed, \(.flaky) flaky, \(.skipped) skipped"' test-results/playwright.json >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "### E2E tests: no results file" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload test results
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: test-results/
+          retention-days: 14
+          if-no-files-found: ignore
