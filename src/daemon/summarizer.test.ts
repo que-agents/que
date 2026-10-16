@@ -211,7 +211,56 @@ describe('SummaryThrottle', () => {
       t.forget('ws_a')
       expect(t.request('ws_a')).toEqual({ kind: 'now' })
     })
+  })
 
+  describe('unchanged input', () => {
+    const PROMPT = buildSummaryPrompt(BRIEF, 'Backoff is in.')
+    const NEWER = buildSummaryPrompt(BRIEF, 'Backoff is in; the tests pass.')
+
+    it('knows the prompt of the last answered call, and nothing before the first', () => {
+      const { t } = throttle()
+      expect(t.unchanged('ws_a', PROMPT)).toBe(false)
+
+      t.begin('ws_a')
+      t.done('ws_a', PROMPT)
+
+      expect(t.unchanged('ws_a', PROMPT)).toBe(true)
+      expect(t.unchanged('ws_a', NEWER)).toBe(false)
+      expect(t.unchanged('ws_b', PROMPT)).toBe(false)
+    })
+
+    it('does not remember the prompt of a call that got no answer', () => {
+      const { t } = throttle()
+      t.begin('ws_a')
+      t.done('ws_a')
+
+      expect(t.unchanged('ws_a', PROMPT)).toBe(false)
+    })
+
+    it('leaves the last call time standing when a run is skipped', () => {
+      const { t, at } = throttle()
+      t.begin('ws_a')
+      t.done('ws_a', PROMPT)
+
+      at(T0 + 6 * MINUTE)
+      expect(t.request('ws_a')).toEqual({ kind: 'now' })
+      t.begin('ws_a')
+      expect(t.skipped('ws_a')).toBeNull()
+
+      at(T0 + 6 * MINUTE + 10_000)
+      expect(t.request('ws_a')).toEqual({ kind: 'now' })
+    })
+
+    it('keeps a refresh that arrived during a skipped run pending', () => {
+      const { t, at } = throttle()
+      t.begin('ws_a')
+      t.done('ws_a', PROMPT)
+      at(T0 + 6 * MINUTE)
+      t.begin('ws_a')
+      expect(t.request('ws_a')).toEqual({ kind: 'pending' })
+
+      expect(t.skipped('ws_a')).toBe(T0 + 5 * MINUTE)
+    })
     it('reads the interval at each request', () => {
       let minutes = 5
       let now = T0

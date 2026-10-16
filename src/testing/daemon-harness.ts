@@ -72,7 +72,7 @@ export interface TestDaemonOptions {
   onShutdown?: () => void
   /** config.toml contents, written before the daemon starts (quiet hours and summaries off unless set). */
   config?: string
-  /** The clock quiet hours read (e.g. real time shifted to just before a boundary). */
+  /** The clock quiet hours and the summary throttle read (e.g. real time shifted ahead). */
   now?: () => number
   /** Quiet-hours re-evaluation interval. Default 200 ms (the daemon's is 15 s). */
   quietTickMs?: number
