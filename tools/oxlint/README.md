@@ -14,7 +14,7 @@ unrelated project by another author (React UI rules such as `no-gradient-text`).
 To update: copy the new upstream `src/` over this directory (same exclusions) and change the commit
 above, so the diff is reviewed like any other change.
 
-Tiers in `.oxlintrc.json`: `error` for the rules with no or few hits; `warn` for the type-boundary
+Tiers in `.oxlintrc.json`: `error` for the rules with no or few hits; `off` for the four type-boundary
 rules (`no-runtime-typeof`, `no-unsafe-dictionary-type`, `no-unknown-parameters`,
-`no-known-value-widening`), switched off in the files that parse external data (config, protocol,
-store, server, preload, test and script code); `off` for `require-safety-comment-for-type-assertion`.
+`no-known-value-widening`) until #84 gives the Claude stream, `gh` and Jira CLI JSON proper decoders,
+after which they come back at `error`; `off` for `require-safety-comment-for-type-assertion`.
