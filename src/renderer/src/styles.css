@@ -1069,12 +1069,14 @@ body.resizing {
   color: var(--tone);
 }
 
-/* A dim row: a 5px dot in its tone (`.tone-*` on the row), the name, the
- * project, the state word at the right and a fixed-width age column, over a
- * hairline. The state word is faint; give it a `.tone-*` to colour it. */
+/* A dim row: a 5px dot in its tone (`.tone-*` on the row), the name with the
+ * project right after it, the state word at the right and a fixed-width age
+ * column, over a hairline. The name takes its own width up to just over half
+ * the row, then ellipsises; the project column absorbs the slack. The state
+ * word is faint; give it a `.tone-*` to colour it. */
 .dot-row {
   display: grid;
-  grid-template-columns: 5px minmax(0, 3fr) minmax(0, 2fr) auto 8ch;
+  grid-template-columns: 5px fit-content(55%) minmax(0, 1fr) auto 8ch;
   align-items: center;
   column-gap: 10px;
   height: 30px;
