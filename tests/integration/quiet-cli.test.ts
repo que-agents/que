@@ -5,9 +5,9 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { ConfigGetResult } from '@shared/protocol'
 import type { QuietState } from '@shared/types'
-import { hhmm } from '@daemon/quiet-hours'
+import { hhmm } from '@shared/format'
 import type { StatusJson } from '../../src/cli/workspaces'
-import { runCli } from '../../src/testing/cli'
+import { runCli, runCliJson } from '../../src/testing/cli'
 import { startTestDaemon, type TestDaemon } from '../../src/testing/daemon-harness'
 import { makeTempRepo } from '../../src/testing/temp-repo'
 
@@ -30,10 +30,10 @@ afterEach(async () => {
 describe('que quiet status', () => {
   it('says quiet hours are on and until when, as text and as JSON', async () => {
     const text = await runCli('quiet', 'status')
-    const json = await runCli('quiet', 'status', '--json')
+    const json = await runCliJson<QuietState>('quiet', 'status', '--json')
 
     expect(text).toMatchObject({ code: 0, stdout: `quiet hours until ${windowEnd}\n` })
-    expect(JSON.parse(json.stdout) as QuietState).toMatchObject({
+    expect(json).toMatchObject({
       enabled: true,
       inQuietHours: true,
       unlockedUntil: null,
@@ -71,7 +71,7 @@ describe('que unlock and que lock', () => {
 
 describe('que config', () => {
   it('prints the config path and values, and sets dotted keys that the daemon reloads', async () => {
-    const got = JSON.parse((await runCli('config', 'get', '--json')).stdout) as ConfigGetResult
+    const got = await runCliJson<ConfigGetResult>('config', 'get', '--json')
     expect(got.path).toBe(daemon.configPath)
     expect(got.config.notifications.chimeOnComplete).toBe(true)
 
@@ -138,7 +138,7 @@ describe('detail commands during quiet hours', () => {
 
   it('que status keeps working and says quiet hours are on', async () => {
     const text = await runCli('status')
-    const json = JSON.parse((await runCli('status', '--json')).stdout) as StatusJson
+    const json = await runCliJson<StatusJson>('status', '--json')
 
     expect(text.code).toBe(0)
     expect(text.stdout.split('\n')[0]).toBe(`quiet hours until ${windowEnd}`)

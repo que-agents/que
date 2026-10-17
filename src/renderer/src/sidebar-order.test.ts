@@ -5,11 +5,13 @@ import { filterSidebar, matches, sortProjects, sortWorkspaces } from './sidebar-
 const alpha = makeProject({ id: 'p_a', name: 'alpha' })
 const beta = makeProject({ id: 'p_b', name: 'Beta' })
 const empty = makeProject({ id: 'p_c', name: 'charlie' })
+
 const old = makeWorkspace({
   projectId: 'p_a',
   name: 'old-one',
   statusAt: '2026-10-01T00:00:00.000Z'
 })
+
 const fresh = makeWorkspace({
   projectId: 'p_b',
   name: 'fresh-one',
@@ -17,6 +19,7 @@ const fresh = makeWorkspace({
   statusAt: '2026-10-02T00:00:00.000Z',
   lastActivityAt: '2026-10-10T00:00:00.000Z'
 })
+
 const mid = makeWorkspace({
   projectId: 'p_b',
   name: 'mid-one',

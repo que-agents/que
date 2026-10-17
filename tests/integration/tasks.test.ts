@@ -5,12 +5,15 @@
 import fs from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { DaemonClient } from '@shared/client'
 import type { Events } from '@shared/protocol'
-import type { Task, TaskState } from '@shared/types'
-import { startTestDaemon, type TestDaemon } from '../../src/testing/daemon-harness'
+import {
+  recordEvents,
+  startTestDaemon,
+  type TestDaemon,
+  waitForTaskState
+} from '../../src/testing/daemon-harness'
 import { readFakeLog } from '../../src/testing/fakes'
-import { pidAlive } from '../../src/testing/leak-check'
+import { pidAlive } from '../../src/shared/process'
 import {
   addBareOrigin,
   gitIn,
@@ -24,12 +27,6 @@ afterEach(async () => {
   await daemon?.close()
   daemon = undefined
 })
-
-function record<E extends keyof Events>(c: DaemonClient, event: E): Events[E][] {
-  const seen: Events[E][] = []
-  c.on(event, (data) => seen.push(data))
-  return seen
-}
 
 interface Setup {
   d: TestDaemon
@@ -46,19 +43,8 @@ async function setup(opts: { config?: string; repo?: TempRepoOptions } = {}): Pr
   const repo = makeTempRepo(d.home, opts.repo)
   const origin = addBareOrigin(repo)
   const { id: projectId } = await d.client.request('project.add', { path: repo })
-  return { d, repo, origin, projectId }
-}
 
-async function waitFor(
-  d: TestDaemon,
-  id: string,
-  state: TaskState,
-  timeout = 20_000
-): Promise<Task> {
-  await expect
-    .poll(async () => (await d.client.request('task.get', { id })).state, { timeout })
-    .toBe(state)
-  return d.client.request('task.get', { id })
+  return { d, repo, origin, projectId }
 }
 
 function taskLog(d: TestDaemon, id: string): string {
@@ -78,18 +64,18 @@ const originBranches = (origin: string) =>
     .filter(Boolean)
 
 const statesOf = (all: Events['task.status'][], id: string) =>
-  all.filter((s) => s.id === id).map((s) => s.state)
+  all.flatMap((s) => (s.id === id ? [s.state] : []))
 
 describe('runner and finisher', () => {
   it('success: runs claude in a new workspace, commits what it left, pushes, and opens a draft PR', async () => {
     const { d, origin, projectId } = await setup()
-    const statuses = record(d.client, 'task.status')
+    const statuses = recordEvents(d.client, 'task.status')
     const brief = 'Add retry logic to the uploader\nUse exponential backoff.'
 
     const task = await d.client.request('task.add', { projectId, brief })
     await d.client.request('queue.open')
 
-    const done = await waitFor(d, task.id, 'done')
+    const done = await waitForTaskState(d, task.id, 'done')
     expect(done).toMatchObject({
       title: 'Add retry logic to the uploader',
       reason: null,
@@ -139,9 +125,10 @@ describe('runner and finisher', () => {
       projectId,
       brief: 'Document the retry policy'
     })
+
     await d.client.request('queue.open')
 
-    const done = await waitFor(d, task.id, 'done')
+    const done = await waitForTaskState(d, task.id, 'done')
     expect(done.prUrl).toMatch(/\/pull\/1$/)
     expect(gitIn(origin, 'log', '--format=%s', `main..${done.branch}`)).toBe(
       'Add que-fake-change.txt'
@@ -156,7 +143,10 @@ describe('runner and finisher', () => {
     const task = await d.client.request('task.add', { projectId, brief: 'Check the uploader' })
     await d.client.request('queue.open')
 
-    expect(await waitFor(d, task.id, 'done')).toMatchObject({ reason: 'no_changes', prUrl: null })
+    expect(await waitForTaskState(d, task.id, 'done')).toMatchObject({
+      reason: 'no_changes',
+      prUrl: null
+    })
     expect(originBranches(origin)).toEqual(['main'])
     expect(readFakeLog(d.ghLog).filter((c) => c.argv[1] !== 'list')).toEqual([])
   }, 45_000)
@@ -167,12 +157,16 @@ describe('runner and finisher', () => {
     const task = await d.client.request('task.add', { projectId, brief: 'Add retry logic' })
     await d.client.request('queue.open')
 
-    expect(await waitFor(d, task.id, 'failed')).toMatchObject({ reason: 'setup_failed' })
+    expect(await waitForTaskState(d, task.id, 'failed')).toMatchObject({ reason: 'setup_failed' })
   }, 45_000)
 })
 
 describe('runner environment', () => {
   it('starts claude as a fresh top-level session, whatever started the daemon', async () => {
+    // The runner passes harmless variables through and never adds any: a daemon
+    // started by launchd or a CI runner has no TERM, so set one to assert the
+    // pass-through rather than the shell this test happens to run in.
+    vi.stubEnv('TERM', 'xterm-256color')
     vi.stubEnv('TERM_PROGRAM', 'kitty')
     vi.stubEnv('CLAUDECODE', '1')
     vi.stubEnv('CLAUDE_CODE_CHILD_SESSION', '1')
@@ -181,7 +175,7 @@ describe('runner environment', () => {
 
     const task = await d.client.request('task.add', { projectId, brief: 'Add retry logic' })
     await d.client.request('queue.open')
-    await waitFor(d, task.id, 'done', 30_000)
+    await waitForTaskState(d, task.id, 'done', 30_000)
 
     const [call] = readFakeLog(d.claudeLog)
     expect(call.env).toEqual(
@@ -212,7 +206,7 @@ describe('runner against the failure scenarios', () => {
       .toBeGreaterThan(0)
     const { pid } = await d.client.request('task.get', { id: task.id })
 
-    expect(await waitFor(d, task.id, 'stuck')).toMatchObject({ reason: 'no_heartbeat' })
+    expect(await waitForTaskState(d, task.id, 'stuck')).toMatchObject({ reason: 'no_heartbeat' })
     await expect.poll(() => pidAlive(pid as number), { timeout: 10_000 }).toBe(false)
   }, 45_000)
 
@@ -221,12 +215,12 @@ describe('runner against the failure scenarios', () => {
     vi.stubEnv('QUE_FAKE_CLAUDE_SCENARIO', 'rate_limit')
     vi.stubEnv('QUE_FAKE_CLAUDE_RESET_SECONDS', '1')
     vi.stubEnv('QUE_FAKE_CLAUDE_RESUME_OK', '1')
-    const statuses = record(d.client, 'task.status')
+    const statuses = recordEvents(d.client, 'task.status')
 
     const task = await d.client.request('task.add', { projectId, brief: 'Refactor the queue' })
     await d.client.request('queue.open')
 
-    const done = await waitFor(d, task.id, 'done', 30_000)
+    const done = await waitForTaskState(d, task.id, 'done', 30_000)
     expect(statesOf(statuses, task.id)).toEqual([
       'preparing',
       'running',
@@ -253,9 +247,13 @@ describe('runner against the failure scenarios', () => {
       maxTurns: 7,
       maxBudgetUsd: 1.5
     })
+
     await d.client.request('queue.open')
 
-    expect(await waitFor(d, task.id, 'stuck')).toMatchObject({ reason: 'max_turns', turns: 7 })
+    expect(await waitForTaskState(d, task.id, 'stuck')).toMatchObject({
+      reason: 'max_turns',
+      turns: 7
+    })
     expect(spawnLines(d, task.id)[0]).toContain('--max-turns 7 --max-budget-usd 1.5')
   }, 45_000)
 
@@ -266,7 +264,7 @@ describe('runner against the failure scenarios', () => {
     const task = await d.client.request('task.add', { projectId, brief: 'Refactor the queue' })
     await d.client.request('queue.open')
 
-    const failed = await waitFor(d, task.id, 'failed', 30_000)
+    const failed = await waitForTaskState(d, task.id, 'failed', 30_000)
     expect(failed).toMatchObject({ reason: 'crashed', attempts: 2 })
     const spawns = spawnLines(d, task.id)
     expect(spawns).toHaveLength(2)
@@ -287,7 +285,7 @@ describe('runner against the failure scenarios', () => {
       .toBeGreaterThan(0)
     const { pid } = await d.client.request('task.get', { id: task.id })
 
-    expect(await waitFor(d, task.id, 'stuck')).toMatchObject({ reason: 'needs_input' })
+    expect(await waitForTaskState(d, task.id, 'stuck')).toMatchObject({ reason: 'needs_input' })
     await expect.poll(() => pidAlive(pid as number), { timeout: 10_000 }).toBe(false)
   }, 45_000)
 })
@@ -297,6 +295,7 @@ describe('queue', () => {
     const { d, projectId } = await setup()
     vi.stubEnv('QUE_FAKE_CLAUDE_SCENARIO', 'stall')
     const ids: string[] = []
+
     for (const brief of ['Refactor the queue', 'Rename the uploader', 'Split the API client']) {
       ids.push((await d.client.request('task.add', { projectId, brief })).id)
     }
@@ -306,14 +305,14 @@ describe('queue', () => {
       concurrency: 2
     })
 
-    await waitFor(d, ids[0], 'running')
-    await waitFor(d, ids[1], 'running')
+    await waitForTaskState(d, ids[0], 'running')
+    await waitForTaskState(d, ids[1], 'running')
     expect(await d.client.request('queue.state')).toMatchObject({ running: 2, queued: 1 })
     expect((await d.client.request('task.get', { id: ids[2] })).state).toBe('queued')
 
     await d.client.request('task.stop', { id: ids[0] })
 
-    await waitFor(d, ids[2], 'running')
+    await waitForTaskState(d, ids[2], 'running')
     expect(await d.client.request('queue.state')).toMatchObject({ running: 2, queued: 0 })
   }, 60_000)
 
@@ -323,11 +322,11 @@ describe('queue', () => {
 
     const task = await d.client.request('task.add', { projectId, brief: 'Refactor the queue' })
     await d.client.request('queue.open')
-    await waitFor(d, task.id, 'running')
+    await waitForTaskState(d, task.id, 'running')
     await expect.poll(() => readFakeLog(d.caffeinateLog).length, { timeout: 10_000 }).toBe(1)
-    const caffeinate = readFakeLog(d.caffeinateLog)[0] as unknown as { argv: string[]; pid: number }
+    const caffeinate = readFakeLog(d.caffeinateLog)[0]
     expect(caffeinate.argv).toEqual(['-i', '-w', String(process.pid)])
-    expect(pidAlive(caffeinate.pid)).toBe(true)
+    expect(pidAlive(caffeinate.pid ?? -1)).toBe(true)
     await expect
       .poll(async () => (await d.client.request('task.get', { id: task.id })).pid, {
         timeout: 10_000
@@ -340,7 +339,7 @@ describe('queue', () => {
     })
 
     await expect.poll(() => pidAlive(pid as number), { timeout: 10_000 }).toBe(false)
-    await expect.poll(() => pidAlive(caffeinate.pid), { timeout: 10_000 }).toBe(false)
+    await expect.poll(() => pidAlive(caffeinate.pid ?? -1), { timeout: 10_000 }).toBe(false)
   }, 45_000)
 
   it('does not start tasks while closed', async () => {
@@ -350,7 +349,7 @@ describe('queue', () => {
 
     expect(await d.client.request('queue.state')).toMatchObject({ open: false, queued: 1 })
     await d.client.request('queue.open')
-    await waitFor(d, task.id, 'done')
+    await waitForTaskState(d, task.id, 'done')
     expect(await d.client.request('queue.close')).toMatchObject({ open: false, concurrency: 2 })
   }, 45_000)
 
@@ -380,10 +379,12 @@ describe('daemon restart', () => {
   it('re-queues a running task and resumes its session under the next daemon', async () => {
     const first = await setup()
     vi.stubEnv('QUE_FAKE_CLAUDE_DELAY_MS', '3000')
+
     const task = await first.d.client.request('task.add', {
       projectId: first.projectId,
       brief: 'Refactor the queue'
     })
+
     await first.d.client.request('queue.open')
     await expect
       .poll(async () => (await first.d.client.request('task.get', { id: task.id })).pid, {
@@ -396,7 +397,7 @@ describe('daemon restart', () => {
     expect(pidAlive(before.pid as number)).toBe(false)
     daemon = await startTestDaemon({ home: first.d.home })
 
-    const done = await waitFor(daemon, task.id, 'done', 30_000)
+    const done = await waitForTaskState(daemon, task.id, 'done', 30_000)
     expect(done).toMatchObject({ attempts: 2, sessionId: before.sessionId })
     expect(spawnLines(daemon, task.id)[1]).toContain(`--resume ${before.sessionId}`)
   }, 60_000)
@@ -405,6 +406,7 @@ describe('daemon restart', () => {
 describe('safety', () => {
   it('never pushes a protected branch', async () => {
     const { d, origin, projectId } = await setup()
+
     const ws = await d.client.request('workspace.create', {
       projectId,
       name: 'hotfix-release',
@@ -415,9 +417,10 @@ describe('safety', () => {
       workspaceId: ws.id,
       brief: 'Patch the release'
     })
+
     await d.client.request('queue.open')
 
-    expect(await waitFor(d, task.id, 'failed')).toMatchObject({
+    expect(await waitForTaskState(d, task.id, 'failed')).toMatchObject({
       reason: 'finisher:protected_branch'
     })
     expect(originBranches(origin)).toEqual(['main'])
@@ -429,8 +432,10 @@ describe('safety', () => {
     const { d, repo, origin, projectId } = await setup({
       repo: { queToml: 'setup = "true"\ndefault_branch = "trunk"\n' }
     })
+
     gitIn(repo, 'push', '--quiet', 'origin', 'main:trunk')
     const trunkBefore = gitIn(origin, 'rev-parse', 'trunk')
+
     const ws = await d.client.request('workspace.create', {
       projectId,
       name: 'trunk-work',
@@ -440,7 +445,7 @@ describe('safety', () => {
     const task = await d.client.request('task.add', { workspaceId: ws.id, brief: 'Patch trunk' })
     await d.client.request('queue.open')
 
-    expect(await waitFor(d, task.id, 'failed')).toMatchObject({
+    expect(await waitForTaskState(d, task.id, 'failed')).toMatchObject({
       reason: 'finisher:protected_branch'
     })
     expect(gitIn(origin, 'rev-parse', 'trunk')).toBe(trunkBefore)
@@ -455,7 +460,9 @@ describe('safety', () => {
     const task = await d.client.request('task.add', { projectId, brief: 'Refactor the queue' })
     await d.client.request('queue.open')
 
-    expect(await waitFor(d, task.id, 'done')).toMatchObject({ permissionMode: 'acceptEdits' })
+    expect(await waitForTaskState(d, task.id, 'done')).toMatchObject({
+      permissionMode: 'acceptEdits'
+    })
     expect(spawnLines(d, task.id)[0]).toContain('--permission-mode acceptEdits')
     expect(taskLog(d, task.id)).toContain('warning: bypassPermissions needs')
   }, 45_000)

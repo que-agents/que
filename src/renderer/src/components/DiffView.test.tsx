@@ -32,6 +32,7 @@ async function openFirstDiff(user: ReturnType<typeof userEvent.setup>): Promise<
   })
   await user.click(screen.getByTestId('topbar-review'))
   await user.click(await screen.findByTestId('changes-file-0'))
+
   return within(pane).findByTestId('diff-view')
 }
 

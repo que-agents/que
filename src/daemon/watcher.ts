@@ -9,6 +9,7 @@
 // a main worktree's `.git` is the gitdir itself.
 import fs from 'node:fs'
 import { isAbsolute, join, resolve } from 'node:path'
+import { errorMessage } from '../shared/errors.decode'
 
 /** Whether a path reported under the worktree is a change worth telling. */
 export function isWorktreeChange(rel: string): boolean {
@@ -25,8 +26,10 @@ export function isGitdirChange(rel: string): boolean {
 /** The absolute gitdir named by a `.git` file's `gitdir:` line, or null. */
 export function parseGitdirPointer(text: string, worktreePath: string): string | null {
   const match = /^gitdir:[ \t]*(.+?)[ \t]*$/m.exec(text)
+
   if (!match) return null
   const dir = match[1]
+
   return isAbsolute(dir) ? dir : resolve(worktreePath, dir)
 }
 
@@ -58,26 +61,34 @@ export class WorktreeWatcher {
   /** Starts watching a workspace's worktree; a no-op when already watched there. */
   watch(id: string, worktreePath: string): void {
     const current = this.watched.get(id)
+
     if (current?.path === worktreePath) return
+
     if (current) this.unwatch(id)
 
     let root: string
     let gitdir: string
+
     try {
       root = fs.realpathSync(worktreePath)
       const dotGit = join(root, '.git')
+
       if (fs.statSync(dotGit).isDirectory()) {
         gitdir = dotGit
       } else {
         const pointer = parseGitdirPointer(fs.readFileSync(dotGit, 'utf8'), root)
+
         if (!pointer) {
           this.log(`watcher: ${dotGit} is not a gitdir pointer; not watching ${id}`)
+
           return
         }
+
         gitdir = fs.realpathSync(pointer)
       }
     } catch (err) {
-      this.log(`watcher: cannot watch ${id} at ${worktreePath}: ${(err as Error).message}`)
+      this.log(`watcher: cannot watch ${id} at ${worktreePath}: ${errorMessage(err)}`)
+
       return
     }
 
@@ -89,15 +100,19 @@ export class WorktreeWatcher {
 
   unwatch(id: string): void {
     const entry = this.watched.get(id)
+
     if (!entry) return
     this.watched.delete(id)
+
     if (entry.timer) clearTimeout(entry.timer)
+
     for (const w of entry.watchers) w.close()
   }
 
   /** Watches exactly the workspaces in `wanted` (id to worktree path). */
   sync(wanted: Map<string, string>): void {
     for (const id of [...this.watched.keys()]) if (!wanted.has(id)) this.unwatch(id)
+
     for (const [id, path] of wanted) this.watch(id, path)
   }
 
@@ -117,18 +132,22 @@ export class WorktreeWatcher {
     counts: (rel: string | null) => boolean
   ): void {
     if (this.watched.get(id) !== entry) return
+
     try {
       const w = fs.watch(dir, { recursive: true }, (_event, filename) => {
         const rel = filename == null ? null : filename.toString().split('\\').join('/')
+
         if (counts(rel)) this.schedule(id, entry)
       })
+
       w.on('error', (err) => {
         this.log(`watcher: ${dir} for ${id} failed: ${err.message}`)
+
         if (this.watched.get(id) === entry) this.unwatch(id)
       })
       entry.watchers.push(w)
     } catch (err) {
-      this.log(`watcher: cannot watch ${dir} for ${id}: ${(err as Error).message}`)
+      this.log(`watcher: cannot watch ${dir} for ${id}: ${errorMessage(err)}`)
       this.unwatch(id)
     }
   }
@@ -138,6 +157,7 @@ export class WorktreeWatcher {
     if (this.watched.get(id) !== entry || entry.timer) return
     entry.timer = setTimeout(() => {
       entry.timer = null
+
       if (this.watched.get(id) === entry) this.emit(id)
     }, this.debounceMs)
     entry.timer.unref()

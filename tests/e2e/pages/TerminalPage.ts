@@ -47,6 +47,7 @@ export class TerminalPage {
   } {
     const root = this.page.getByTestId(`pane-${n}`)
     const viewport = root.getByTestId('terminal-viewport')
+
     return {
       root,
       viewport,
@@ -68,8 +69,10 @@ export class TerminalPage {
       .poll(
         async () => {
           const id = (await this.panes()).find((p) => p.index === n)?.activeTermId
+
           if (!id) return false
           const screen = await this.page.evaluate((t) => window.__que?.screenTextOf(t) ?? '', id)
+
           return screen.split('\n').some((line) => line.trim() === text)
         },
         { message: `no screen line "${text}" in pane ${n}`, timeout }
@@ -96,6 +99,7 @@ export class TerminalPage {
     await expect
       .poll(() => this.activeTermId(), { message: 'no terminal attached', timeout })
       .not.toBeNull()
+
     return (await this.activeTermId()) as string
   }
 

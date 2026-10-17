@@ -6,6 +6,7 @@
 export function titleOf(brief: string): string {
   const first = brief.split('\n').find((l) => l.trim() !== '') ?? ''
   const line = first.trim()
+
   return line.length > 80 ? `${line.slice(0, 79).trimEnd()}…` : line
 }
 

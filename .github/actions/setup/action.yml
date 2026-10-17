@@ -1,0 +1,43 @@
+name: Set up Node and dependencies
+description: Install Node 24, the npm dependencies, and the Electron binary, with the npm and Electron downloads cached.
+
+inputs:
+  scripts:
+    description: "Run npm lifecycle scripts and fetch the Electron binary. 'false' skips the Electron download and the node-pty rebuild."
+    default: 'true'
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v4
+      with:
+        node-version: 24
+        cache: npm
+
+    - name: Cache the Electron download
+      if: inputs.scripts == 'true'
+      uses: actions/cache@v4
+      with:
+        path: ${{ runner.os == 'macOS' && '~/Library/Caches/electron' || '~/.cache/electron' }}
+        key: electron-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+        restore-keys: electron-${{ runner.os }}-
+
+    - name: Install dependencies
+      shell: bash
+      # The input reaches the shell as an environment variable, never interpolated into the script.
+      env:
+        SCRIPTS: ${{ inputs.scripts }}
+      run: |
+        if [ "$SCRIPTS" = "true" ]; then
+          npm ci
+        else
+          npm ci --ignore-scripts
+        fi
+
+    - name: Fetch the Electron binary
+      if: inputs.scripts == 'true'
+      shell: bash
+      # Since Electron 42 the npm package downloads its binary on first use, not in postinstall; fetching it here
+      # keeps that download (and its stdout message) out of the tests and uses the cache restored above.
+      # `npx --no` runs the bin npm ci installed and never fetches a package from the registry.
+      run: npx --no install-electron

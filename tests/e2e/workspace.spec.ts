@@ -9,13 +9,13 @@ import { expect, test } from '@playwright/test'
 import type { StatusJson } from '../../src/cli/workspaces'
 import type { TermInfo } from '../../src/shared/protocol'
 import type { Project, Workspace } from '../../src/shared/types'
+import { makeTempRepo } from '../../src/testing/temp-repo'
 import { AppShellPage } from './pages/AppShellPage'
 import { ReportPage } from './pages/ReportPage'
 import { SidebarPage } from './pages/SidebarPage'
 import { TerminalPage } from './pages/TerminalPage'
-import { type LaunchedApp, launchApp, newQueHome } from './utils/app'
+import { type LaunchedApp, launchApp, newQueHome, tempDir } from './utils/app'
 import { que, queJson } from './utils/que'
-import { makeRepo } from './utils/repo'
 
 let launched: LaunchedApp
 
@@ -24,11 +24,12 @@ test.afterEach(async () => {
 })
 
 test('a claude session in a workspace terminal reports needs input to que status', async () => {
-  const repo = makeRepo()
+  const repo = makeTempRepo(tempDir('que-e2e-repo-'))
   let workspace: Workspace
   let termId = ''
   let terminal: TerminalPage
   let sidebar: SidebarPage
+
   const statusOf = () =>
     queJson<StatusJson>(launched.queHome, 'status', '--json').workspaces.find(
       (w) => w.id === workspace.id
@@ -101,13 +102,14 @@ test('a claude session in a workspace terminal reports needs input to que status
     await report.waitForLoad()
     await expect(report.workspace(workspace.id)).toBeVisible()
     await expect(report.workspaceFacts(workspace.id)).toContainText('asked for input 1×')
-    await expect(report.workspaceFacts(workspace.id)).toContainText('waiting since')
-    await expect(report.totals).toContainText('1 need input')
+    await expect(report.workspaceState(workspace.id)).toHaveAttribute('data-status', 'needs_input')
+    await expect(report.workspaceState(workspace.id)).toContainText('needs input · since')
+    await expect(report.totals).toContainText('1 needs input')
   })
 })
 
 test('a workspace described in a brief gets a random name, is titled with it, and starts claude on it', async () => {
-  const repo = makeRepo()
+  const repo = makeTempRepo(tempDir('que-e2e-repo-'))
   const queHome = newQueHome()
   const brief = 'Raise the upload timeout\n\nThe upload test times out on slow CI runners.'
   let project: Project
@@ -135,9 +137,11 @@ test('a workspace described in a brief gets a random name, is titled with it, an
     await expect(sidebar.newWorkspaceStart).toBeChecked()
     await sidebar.newWorkspaceSubmit.click()
     await expect(sidebar.newWorkspaceDialog).toHaveCount(0)
+
     const created = queJson<Workspace[]>(queHome, 'ws', 'list', '--json').find(
       (w) => w.name === name
     )
+
     expect(created).toMatchObject({ title: 'Raise the upload timeout', brief })
     workspace = created as Workspace
   })
@@ -157,9 +161,11 @@ test('a workspace described in a brief gets a random name, is titled with it, an
         timeout: 30_000
       })
       .toBe(true)
+
     const terms = queJson<TermInfo[]>(queHome, 'term', 'list', '--json').filter(
       (t) => t.workspaceId === workspace.id
     )
+
     expect(terms).toHaveLength(1)
     await expect.poll(() => terminal.activeTermId()).toBe(terms[0].id)
     await launched.window.screenshot({ path: 'test-results/workspace-from-brief.png' })

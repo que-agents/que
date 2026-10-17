@@ -1,12 +1,14 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { basename } from '../diff'
+import { clampRatio } from '../layout'
 import {
   diffPathOf,
   filePathOf,
   RATIO_DEFAULT,
   RATIO_MAX,
   RATIO_MIN,
-  useQue,
+  usePanes,
+  useQueSelector,
   useStore
 } from '../store'
 import { setPaneSource } from '../testHook'
@@ -17,9 +19,15 @@ import Terminal from './Terminal'
 
 const STEP = 0.05
 
+/** The grid track sizes of a split at this ratio: first pane, divider, second pane. */
+function paneTemplate(ratio: number): string {
+  return `${ratio}fr 7px ${Math.round((1 - ratio) * 1000) / 1000}fr`
+}
+
 /**
  * The divider between two panes. Drag it to resize, double-click it to go back
- * to an even split, or focus it and use the arrow keys.
+ * to an even split, or focus it and use the arrow keys. A drag resizes the grid
+ * directly and hands the ratio over once, on release.
  */
 export function PaneDivider({
   direction,
@@ -31,22 +39,32 @@ export function PaneDivider({
   onChange: (ratio: number) => void
 }): React.JSX.Element {
   const dragging = useRef(false)
+  const [live, setLive] = useState<number | null>(null)
   const row = direction === 'row'
 
-  const apply = (e: React.PointerEvent<HTMLHRElement>): void => {
-    if (!dragging.current) return
-    const box = e.currentTarget.parentElement?.getBoundingClientRect()
+  const apply = (e: React.PointerEvent<HTMLHRElement>): number | null => {
+    const grid = dragging.current ? e.currentTarget.parentElement : null
+    const box = grid?.getBoundingClientRect()
     const size = row ? box?.width : box?.height
-    if (!box || !size) return
-    onChange((row ? e.clientX - box.left : e.clientY - box.top) / size)
+
+    if (!grid || !box || !size) return null
+    const next = clampRatio((row ? e.clientX - box.left : e.clientY - box.top) / size)
+
+    grid.style[row ? 'gridTemplateColumns' : 'gridTemplateRows'] = paneTemplate(next)
+    setLive(next)
+
+    return next
   }
 
   const end = (e: React.PointerEvent<HTMLHRElement>): void => {
     if (!dragging.current) return
     dragging.current = false
+    setLive(null)
+
     if (e.currentTarget.hasPointerCapture?.(e.pointerId)) {
       e.currentTarget.releasePointerCapture(e.pointerId)
     }
+
     document.body.classList.remove('resizing')
   }
 
@@ -57,7 +75,7 @@ export function PaneDivider({
       aria-label="Resize panes"
       aria-valuemin={Math.round(RATIO_MIN * 100)}
       aria-valuemax={Math.round(RATIO_MAX * 100)}
-      aria-valuenow={Math.round(ratio * 100)}
+      aria-valuenow={Math.round((live ?? ratio) * 100)}
       tabIndex={0}
       data-testid="pane-divider"
       title="Drag to resize; double-click to reset"
@@ -67,17 +85,26 @@ export function PaneDivider({
         e.currentTarget.setPointerCapture?.(e.pointerId)
         document.body.classList.add('resizing')
       }}
-      onPointerMove={apply}
+      onPointerMove={(e) => void apply(e)}
       onPointerUp={(e) => {
         // The last move can be coalesced away under load; the release point is final.
-        apply(e)
+        const next = apply(e) ?? live
         end(e)
+
+        if (next !== null) onChange(next)
       }}
-      onPointerCancel={end}
+      onPointerCancel={(e) => {
+        const next = live
+        end(e)
+
+        // A cancelled drag keeps where it got to, as a drag whose every move was applied did.
+        if (next !== null) onChange(next)
+      }}
       onDoubleClick={() => onChange(RATIO_DEFAULT)}
       onKeyDown={(e) => {
         const back = row ? 'ArrowLeft' : 'ArrowUp'
         const forward = row ? 'ArrowRight' : 'ArrowDown'
+
         const next =
           e.key === back
             ? ratio - STEP
@@ -88,6 +115,7 @@ export function PaneDivider({
                 : e.key === 'End'
                   ? RATIO_MAX
                   : null
+
         if (next === null) return
         e.preventDefault()
         onChange(next)
@@ -97,8 +125,9 @@ export function PaneDivider({
 }
 
 function Pane({ termKey, index }: { termKey: string; index: 0 | 1 }): React.JSX.Element {
-  const store = useStore()
-  const { connected, error } = useQue()
+  const store = usePanes(termKey)
+  const connected = useQueSelector((s) => s.connected)
+  const error = useQueSelector((s) => s.error)
   const tabs = store.paneTabs(termKey, index)
   const views = store.paneViews(termKey, index)
   const activeId = store.paneActiveId(termKey, index)
@@ -162,6 +191,7 @@ function Pane({ termKey, index }: { termKey: string; index: 0 | 1 }): React.JSX.
             const path = filePath ?? diffPathOf(id) ?? id
             const label = basename(path)
             const selected = id === activeId
+
             return (
               <span
                 key={id}
@@ -230,8 +260,7 @@ function Pane({ termKey, index }: { termKey: string; index: 0 | 1 }): React.JSX.
 /** One workspace's (or the loose sessions') terminals, in one pane or two. */
 export default function Panes({ termKey }: { termKey: string }): React.JSX.Element {
   const store = useStore()
-  const { layouts } = useQue()
-  const layout = layouts[termKey] ?? store.layout(termKey)
+  const layout = useQueSelector((s) => s.layouts[termKey]) ?? store.layout(termKey)
   const split = layout.split
 
   // Tell the e2e test hook where the panes are.
@@ -239,6 +268,7 @@ export default function Panes({ termKey }: { termKey: string }): React.JSX.Eleme
     setPaneSource(() => {
       const count = store.layout(termKey).split ? 2 : 1
       const focused = store.focusedPane(termKey)
+
       return Array.from({ length: count }, (_, index) => ({
         index,
         activeTermId: store.paneActive(termKey, index as 0 | 1)?.id ?? null,
@@ -246,12 +276,12 @@ export default function Panes({ termKey }: { termKey: string }): React.JSX.Eleme
         focused: focused === index
       }))
     })
+
     return () => setPaneSource(null)
   }, [store, termKey])
 
-  const template = split
-    ? `${split.ratio}fr 7px ${Math.round((1 - split.ratio) * 1000) / 1000}fr`
-    : undefined
+  const template = split ? paneTemplate(split.ratio) : undefined
+
   const style = split
     ? split.direction === 'row'
       ? { gridTemplateColumns: template }

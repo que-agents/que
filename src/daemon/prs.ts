@@ -2,61 +2,77 @@
 // workspace's branch, stores what changed, and emits workspace.updated.
 // Also answers workspace.prThread: the conversation is fetched on demand and
 // cached until the tracker sees the pull request's updatedAt move.
-import { execFile } from 'node:child_process'
 import type { UserConfig } from '../shared/config'
-import type { Project, PrThread, PullRequest, Workspace } from '../shared/types'
+import { firstLine, run } from '../shared/exec'
+import type { JsonValue, Project, PrThread, PullRequest, Workspace } from '../shared/types'
 import { ghFailed, notFound } from './errors'
 import { isProtectedBranch } from './finisher'
 import { parsePullRequest, samePullRequest } from './pr-state'
+import { decodeHeadRef, decodePullRequest, type GhPullRequest } from './pr-state.decode'
+import { Poller } from './poller'
 import { jsonPages, parsePrThread } from './pr-thread'
+import { decodeLineComments, decodePrView } from './pr-thread.decode'
 import type { Emit } from './status'
 import type { Store } from './store'
+import { errorMessage } from '../shared/errors.decode'
 
 const FIELDS = 'number,url,title,state,isDraft,reviewDecision,statusCheckRollup,mergedAt,updatedAt'
+
+/** A project's tick lists at most this many of its most recent pull requests. */
+const LIST_LIMIT = 100
+
 /** A merged or closed pull request is only re-checked on every Nth tick. */
 const SETTLED_EVERY = 5
 
 export interface PrServiceOptions {
   store: Store
-  listWorkspaces: () => Workspace[]
   projectOf: (ws: Workspace) => Project
   emit: Emit
   config: () => UserConfig
   log?: (msg: string) => void
-  now?: () => number
-  /** Overrides the poll interval (otherwise `pr_poll_seconds`, at least 100 ms). */
-  pollMs?: number
 }
 
-/** Runs `gh <args>` in cwd and parses what it prints as JSON. */
-function ghJson(args: string[], cwd: string, signal: AbortSignal): Promise<unknown> {
-  return new Promise((resolve, reject) => {
-    execFile(
-      'gh',
-      args,
-      { cwd, encoding: 'utf8', timeout: 15_000, signal, maxBuffer: 32 * 1024 * 1024 },
-      (err, stdout, stderr) => {
-        if (err) {
-          const detail = String(stderr).trim().split('\n')[0] || err.message
-          return reject(new Error(detail))
-        }
-        try {
-          resolve(JSON.parse(stdout) as unknown)
-        } catch {
-          reject(new Error('gh printed output that is not JSON'))
-        }
-      }
-    ).stdin?.end()
-  })
+/** Runs `gh <args>` in cwd and parses what it prints (as JSON, unless `parse` says otherwise). */
+async function ghJson(
+  args: string[],
+  cwd: string,
+  signal: AbortSignal,
+  parse: (stdout: string) => JsonValue = (out) => JSON.parse(out) as JsonValue
+): Promise<JsonValue> {
+  const r = await run('gh', args, { cwd, timeoutMs: 15_000, signal, maxBuffer: 32 * 1024 * 1024 })
+
+  if (!r.ok) throw new Error(firstLine(r.stderr, r.error))
+
+  try {
+    return parse(r.stdout)
+  } catch {
+    throw new Error('gh printed output that is not JSON')
+  }
 }
 
-async function ghPrList(branch: string, cwd: string, signal: AbortSignal): Promise<unknown[]> {
-  const parsed = await ghJson(
-    ['pr', 'list', '--head', branch, '--state', 'all', '--limit', '1', '--json', FIELDS],
-    cwd,
-    signal
-  )
+/** The newest pull request for `branch`, or with no branch the repository's newest LIST_LIMIT. */
+async function ghPrList(
+  branch: string | null,
+  cwd: string,
+  signal: AbortSignal
+): Promise<unknown[]> {
+  const args = branch
+    ? ['pr', 'list', '--head', branch, '--state', 'all', '--limit', '1', '--json', FIELDS]
+    : [
+        'pr',
+        'list',
+        '--state',
+        'all',
+        '--limit',
+        String(LIST_LIMIT),
+        '--json',
+        `${FIELDS},headRefName`
+      ]
+
+  const parsed = await ghJson(args, cwd, signal)
+
   if (!Array.isArray(parsed)) throw new Error('gh printed output that is not JSON')
+
   return parsed
 }
 
@@ -64,25 +80,13 @@ async function ghPrList(branch: string, cwd: string, signal: AbortSignal): Promi
  * `gh api --paginate` prints one JSON array per page, back to back; this joins
  * them. A single page parses as is.
  */
-function ghLineComments(number: number, cwd: string, signal: AbortSignal): Promise<unknown> {
-  return new Promise((resolve, reject) => {
-    execFile(
-      'gh',
-      ['api', `repos/{owner}/{repo}/pulls/${number}/comments`, '--paginate'],
-      { cwd, encoding: 'utf8', timeout: 15_000, signal, maxBuffer: 32 * 1024 * 1024 },
-      (err, stdout, stderr) => {
-        if (err) {
-          const detail = String(stderr).trim().split('\n')[0] || err.message
-          return reject(new Error(detail))
-        }
-        try {
-          resolve(jsonPages(stdout).flatMap((page) => (Array.isArray(page) ? page : [page])))
-        } catch {
-          reject(new Error('gh printed output that is not JSON'))
-        }
-      }
-    ).stdin?.end()
-  })
+function ghLineComments(number: number, cwd: string, signal: AbortSignal): Promise<JsonValue> {
+  return ghJson(
+    ['api', `repos/{owner}/{repo}/pulls/${number}/comments`, '--paginate'],
+    cwd,
+    signal,
+    (out) => jsonPages(out).flatMap((page) => (Array.isArray(page) ? page : [page])) as JsonValue
+  )
 }
 
 interface CachedThread {
@@ -92,56 +96,55 @@ interface CachedThread {
 }
 
 export class PrService {
-  private timer: NodeJS.Timeout | null = null
   private polling = false
-  private stopped = true
   private tickCount = 0
-  private abort = new AbortController()
-  private inflight = new Set<Promise<void>>()
   /** Workspaces whose last check failed (and were logged), until one succeeds. */
   private failing = new Set<string>()
-  private readonly now: () => number
   /** Each workspace's last fetched conversation, valid while its pull request's updatedAt holds. */
   private threads = new Map<string, CachedThread>()
   private threadFetches = new Map<string, Promise<PrThread>>()
 
-  constructor(private opts: PrServiceOptions) {
-    this.now = opts.now ?? Date.now
-  }
+  private readonly poller = new Poller({
+    intervalMs: () => Math.max(100, this.opts.config().prPollSeconds * 1000),
+    tick: () => this.tick()
+  })
+
+  constructor(private opts: PrServiceOptions) {}
 
   start(): void {
-    if (this.abort.signal.aborted) this.abort = new AbortController()
-    this.stopped = false
-    this.schedulePoll()
+    this.poller.start()
   }
 
   stop(): void {
-    this.stopped = true
-    this.abort.abort()
-    if (this.timer) clearTimeout(this.timer)
-    this.timer = null
+    this.poller.stop()
   }
 
-  private schedulePoll(): void {
-    if (this.stopped) return
-    const ms = this.opts.pollMs ?? Math.max(100, this.opts.config().prPollSeconds * 1000)
-    this.timer = setTimeout(() => {
-      void this.tick().finally(() => this.schedulePoll())
-    }, ms)
-    this.timer.unref()
+  private get stopped(): boolean {
+    return this.poller.stopped
   }
 
-  /** One pass over every unarchived workspace, one `gh` call at a time. */
+  /** One pass over every unarchived workspace: one `gh pr list` per project, one at a time. */
   async tick(): Promise<void> {
     if (this.polling) return
     this.polling = true
+
     try {
       const n = this.tickCount++
-      for (const ws of this.opts.listWorkspaces()) {
-        if (this.stopped) return
+      const byProject = new Map<string, Workspace[]>()
+
+      for (const ws of this.opts.store.listWorkspaces()) {
         const settled = ws.pr?.state === 'merged' || ws.pr?.state === 'closed'
+
         if (settled && n % SETTLED_EVERY !== 0) continue
-        await this.check(ws)
+        const list = byProject.get(ws.projectId)
+
+        if (list) list.push(ws)
+        else byProject.set(ws.projectId, [ws])
+      }
+
+      for (const list of byProject.values()) {
+        if (this.stopped) return
+        await this.poller.track(this.checkProject(list))
       }
     } finally {
       this.polling = false
@@ -152,6 +155,7 @@ export class PrService {
   async refresh(id: string): Promise<void> {
     if (this.stopped) return
     const ws = this.opts.store.getWorkspace(id)
+
     if (ws && !ws.archivedAt) await this.check(ws)
   }
 
@@ -161,13 +165,18 @@ export class PrService {
    */
   async thread(id: string, refresh = false): Promise<PrThread | null> {
     const ws = this.opts.store.getWorkspace(id)
+
     if (!ws || ws.archivedAt) throw notFound(`no workspace ${id}`)
     const pr = ws.pr
+
     if (!pr) {
       this.threads.delete(id)
+
       return null
     }
+
     const cached = this.threads.get(id)
+
     if (
       !refresh &&
       cached &&
@@ -176,10 +185,13 @@ export class PrService {
     ) {
       return cached.thread
     }
+
     const running = this.threadFetches.get(id)
+
     if (running) return running
     const fetch = this.fetchThread(ws, pr).finally(() => this.threadFetches.delete(id))
     this.threadFetches.set(id, fetch)
+
     return fetch
   }
 
@@ -191,58 +203,123 @@ export class PrService {
   private async fetchThread(ws: Workspace, pr: PullRequest): Promise<PrThread> {
     let view: unknown
     let lines: unknown
+
     try {
       ;[view, lines] = await Promise.all([
         ghJson(
           ['pr', 'view', String(pr.number), '--json', 'comments,reviews'],
           ws.path,
-          this.abort.signal
+          this.poller.signal
         ),
-        ghLineComments(pr.number, ws.path, this.abort.signal)
+        ghLineComments(pr.number, ws.path, this.poller.signal)
       ])
     } catch (err) {
-      throw ghFailed((err as Error).message)
+      throw ghFailed(errorMessage(err))
     }
-    const thread = parsePrThread(view, lines, ws.id, pr.number, new Date(this.now()).toISOString())
+
+    const thread = parsePrThread(
+      decodePrView(view),
+      decodeLineComments(lines),
+      ws.id,
+      pr.number,
+      new Date().toISOString()
+    )
+
     this.threads.set(ws.id, { thread, number: pr.number, forUpdatedAt: pr.updatedAt ?? null })
+
     return thread
   }
 
   /** Resolves once every check that was running when stop() was called has ended. */
-  async drain(): Promise<void> {
-    await Promise.allSettled([...this.inflight])
+  drain(): Promise<void> {
+    return this.poller.drain()
   }
 
   private check(ws: Workspace): Promise<void> {
-    const p = this.checkOne(ws)
-    this.inflight.add(p)
-    return p.finally(() => this.inflight.delete(p))
+    return this.poller.track(this.checkOne(ws))
+  }
+
+  /** The workspaces whose branch que may ask about (never a protected one). */
+  private checkable(list: Workspace[]): Workspace[] {
+    const project = this.opts.projectOf(list[0])
+    const { protectedBranches } = this.opts.config()
+
+    return list.filter(
+      (ws) => !isProtectedBranch(ws.branch, project.defaultBranch, protectedBranches)
+    )
+  }
+
+  /**
+   * Checks one project's workspaces with one listing, matched by branch. A
+   * branch missing from a full page (LIST_LIMIT) may hold an older pull
+   * request, so it is asked about on its own.
+   */
+  private async checkProject(list: Workspace[]): Promise<void> {
+    const open = this.checkable(list)
+
+    if (open.length === 0) return
+    let items: unknown[]
+
+    try {
+      items = await ghPrList(null, open[0].path, this.poller.signal)
+    } catch (err) {
+      for (const ws of open) this.failed(ws, errorMessage(err))
+
+      return
+    }
+
+    if (this.stopped) return
+    const byBranch = new Map<string, GhPullRequest | null>()
+
+    for (const item of items) {
+      const head = decodeHeadRef(item)
+
+      if (head !== null && !byBranch.has(head)) byBranch.set(head, decodePullRequest(item))
+    }
+
+    for (const ws of open) {
+      if (this.stopped) return
+
+      if (byBranch.has(ws.branch) || items.length < LIST_LIMIT)
+        this.settle(ws, byBranch.get(ws.branch) ?? null)
+      else await this.checkOne(ws)
+    }
   }
 
   private async checkOne(ws: Workspace): Promise<void> {
-    const project = this.opts.projectOf(ws)
-    const { protectedBranches } = this.opts.config()
-    if (isProtectedBranch(ws.branch, project.defaultBranch, protectedBranches)) return
+    if (this.checkable([ws]).length === 0) return
     let items: unknown[]
+
     try {
-      items = await ghPrList(ws.branch, ws.path, this.abort.signal)
+      items = await ghPrList(ws.branch, ws.path, this.poller.signal)
     } catch (err) {
-      if (this.stopped) return
-      if (!this.failing.has(ws.id)) {
-        this.failing.add(ws.id)
-        this.opts.log?.(`pr check failed for ${ws.id}: ${(err as Error).message}`)
-      }
+      this.failed(ws, errorMessage(err))
+
       return
     }
-    if (this.stopped) return
+
+    if (!this.stopped) this.settle(ws, decodePullRequest(items[0]))
+  }
+
+  /** Logs a workspace's first failed check (until one succeeds). */
+  private failed(ws: Workspace, message: string): void {
+    if (this.stopped || this.failing.has(ws.id)) return
+    this.failing.add(ws.id)
+    this.opts.log?.(`pr check failed for ${ws.id}: ${message}`)
+  }
+
+  /** Stores and announces the pull request `gh` reported for a workspace (null: none). */
+  private settle(ws: Workspace, raw: GhPullRequest | null): void {
     if (this.failing.delete(ws.id)) this.opts.log?.(`pr check recovered for ${ws.id}`)
-    const next: PullRequest | null = parsePullRequest(items[0], new Date(this.now()).toISOString())
+    const next = raw && parsePullRequest(raw, new Date().toISOString())
     const current = this.opts.store.getWorkspace(ws.id)
+
     if (!current || current.archivedAt) return
+
     if (!next) this.threads.delete(ws.id)
+
     if (samePullRequest(current.pr, next)) return
     this.opts.store.setWorkspacePr(ws.id, next)
-    const updated = this.opts.store.getWorkspace(ws.id)
-    if (updated) this.opts.emit('workspace.updated', updated)
+    this.opts.emit('workspace.updated', { ...current, pr: next })
   }
 }

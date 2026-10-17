@@ -1,22 +1,29 @@
-import { useEffect, useState } from 'react'
 import type { Task, Workspace } from '../../../preload/index.d'
-import { hhmm } from '../../../daemon/quiet-hours'
-import { formatAge, formatCost, formatDuration, isLiveTask, newestFirst } from '../format'
+import { formatAge, formatDuration, hhmm } from '../../../shared/format'
+import {
+  boardCountItems,
+  boardEmptyLine,
+  boardTally,
+  NOTHING_RUNNING
+} from '../../../shared/quiet-board'
+import { ACTIVE_STATES } from '../../../shared/types'
+import { isLiveTask, newestFirst, statusBadge, type Tone, taskBadge } from '../format'
 import { useQue, useStore } from '../store'
-
-const RUNNING = new Set(['preparing', 'running', 'finishing'])
+import { useNow } from '../useNow'
+import CountLine from './CountLine'
+import { QMarkIcon, UnlockIcon } from './icons'
 
 interface Row {
   id: string
   name: string
   project: string
+  /** The raw state (`needs_input`, `running`), for data-state. */
   state: string
   stateText: string
-  pr: string
-  elapsedMs: number | null
+  dot: Tone
+  /** Only stuck takes a tone on its word. */
+  stuck: boolean
   lastActivity: string | null
-  turns: number | null
-  costUsd: number | null
 }
 
 /** `1.5` → `1.5`, `20` → `20`. */
@@ -25,148 +32,133 @@ function minutes(m: number): string {
 }
 
 /**
- * Quiet hours: the one question, "running and not stuck?". Counts and a row
- * per live task and per workspace with a live terminal; no terminal, no
- * output, no links. The only control is Unlock.
+ * Quiet hours: the one question, "running and not stuck?", answered from
+ * across the room without pulling anyone in. A dim strip, one faint count
+ * line, a dim row per live task and per workspace that is busy or has a live
+ * terminal, and a ghost Unlock: no sentences, no badges, no links. Needs input
+ * is not a night state here: it reads `waiting`, with no tone.
  */
 export default function QuietBoard(): React.JSX.Element {
   const store = useStore()
-  const { quiet, tasks, workspaces, projects, terminals, connected } = useQue()
-  const [, tick] = useState(0)
-
+  const { quiet, tasks, workspaces, projects, terminals, connected, config } = useQue()
   // Ages and elapsed times move on their own; events refresh everything else.
-  useEffect(() => {
-    const t = setInterval(() => tick((n) => n + 1), 30_000)
-    return () => clearInterval(t)
-  }, [])
-
-  const now = store.now()
+  const now = useNow()
   const since = quiet?.windowStart ? Date.parse(quiet.windowStart) : now
+  const windowEnd = quiet?.windowEnd ? Date.parse(quiet.windowEnd) : null
+  const until = windowEnd === null ? '--:--' : hhmm(windowEnd)
   const projectName = (id: string): string => projects.find((p) => p.id === id)?.name ?? ''
-  const tonight = Object.values(tasks).filter(
-    (t) => isLiveTask(t.state) || Date.parse(t.updatedAt) >= since
-  )
-  const count = (pred: (t: Task) => boolean): number => tonight.filter(pred).length
-  const paused = tonight.filter((t) => t.state === 'paused')
-  const resets = paused
-    .map((t) => t.pausedUntil)
-    .filter((p): p is string => p !== null)
-    .sort()[0]
   const ws = Object.values(workspaces)
-  const wsCount = (status: Workspace['status']): number =>
-    ws.filter((w) => w.status === status).length
+  const hasTerminal = (w: Workspace): boolean => terminals.some((t) => t.key === w.id && t.alive)
 
-  const live = newestFirst(Object.values(tasks).filter((t) => isLiveTask(t.state)))
-  const taskRows: Row[] = live.map((t) => ({
+  const tally = boardTally({
+    tasks: Object.values(tasks),
+    workspaces: ws.map((w) => ({ id: w.id, status: w.status, hasTerminal: hasTerminal(w) })),
+    sinceMs: since
+  })
+
+  const counts = boardCountItems(tally)
+
+  // Queued tasks are not running yet: the empty line counts them instead.
+  const live = newestFirst(
+    Object.values(tasks).filter((t) => isLiveTask(t.state) && t.state !== 'queued')
+  )
+
+  const taskRow = (t: Task): Row => ({
     id: t.id,
     name: t.title,
     project: projectName(t.projectId),
     state: t.state,
-    stateText: t.state,
-    pr: '-',
-    elapsedMs: t.startedAt ? now - Date.parse(t.startedAt) : null,
-    lastActivity: t.lastActivityAt,
-    turns: t.turns,
-    costUsd: t.costUsd
-  }))
-  const workspaceRow = (w: Workspace): Row => {
-    const terms = terminals.filter((t) => t.key === w.id && t.alive)
-    return {
-      id: w.id,
-      name: w.name,
-      project: projectName(w.projectId),
-      state: w.status,
-      stateText:
-        w.status === 'needs_input'
-          ? `needs input · since ${hhmm(Date.parse(w.statusAt))}`
-          : w.status.replace('_', ' '),
-      pr: w.pr ? `${w.pr.state}${w.pr.checks === 'failing' ? ' ✕' : ''}` : '-',
-      elapsedMs:
-        terms.length > 0 ? now - Math.min(...terms.map((t) => Date.parse(t.createdAt))) : null,
-      lastActivity: w.lastActivityAt,
-      turns: null,
-      costUsd: null
-    }
-  }
+    stateText:
+      ACTIVE_STATES.has(t.state) && t.startedAt
+        ? `${t.state} · ${formatDuration(now - Date.parse(t.startedAt), { seconds: false })}`
+        : t.state,
+    dot: taskBadge(t.state).tone,
+    stuck: false,
+    lastActivity: t.lastActivityAt
+  })
+
+  const workspaceRow = (w: Workspace): Row => ({
+    id: w.id,
+    name: w.name,
+    project: projectName(w.projectId),
+    state: w.status,
+    stateText: w.status === 'needs_input' ? 'waiting' : statusBadge(w.status).label,
+    dot: w.status === 'needs_input' ? 'neutral' : statusBadge(w.status).tone,
+    stuck: w.status === 'stuck',
+    lastActivity: w.lastActivityAt
+  })
+
   // Every workspace that is working, waiting or stuck, plus any with a live terminal.
   const shown = ws.filter(
-    (w) =>
-      ['working', 'needs_input', 'stuck'].includes(w.status) ||
-      terminals.some((t) => t.key === w.id && t.alive)
+    (w) => ['working', 'needs_input', 'stuck'].includes(w.status) || hasTerminal(w)
   )
+
   const byStatus = (status: Workspace['status']): Row[] =>
     shown.filter((w) => w.status === status).map(workspaceRow)
+
   const rows: Row[] = [
-    ...byStatus('needs_input'),
     ...byStatus('stuck'),
-    ...taskRows,
+    ...live.map(taskRow),
     ...byStatus('working'),
+    ...byStatus('needs_input'),
     ...shown
-      .filter((w) => !['needs_input', 'stuck', 'working'].includes(w.status))
+      .filter((w) => !['stuck', 'working', 'needs_input'].includes(w.status))
       .map(workspaceRow)
   ]
 
+  const summaryAt = config?.config.notifications.morningSummary ? windowEnd : null
   const unlockMinutes = quiet?.unlockMinutes ?? 20
+
   return (
     <section className="quiet-board" data-testid="quiet-board" aria-label="Quiet hours">
-      <header className="quiet-board-header" data-testid="quiet-board-header">
-        que · quiet hours · {hhmm(now)} · detail unlocks at{' '}
-        {quiet?.windowEnd ? hhmm(Date.parse(quiet.windowEnd)) : '--:--'}
+      <span className="corner tl" aria-hidden="true" />
+      <span className="corner tr" aria-hidden="true" />
+      <span className="corner bl" aria-hidden="true" />
+      <span className="corner br" aria-hidden="true" />
+      <header className="quiet-board-strip" data-testid="quiet-board-header">
+        <QMarkIcon />
+        <span className="quiet-board-label">Quiet hours</span>{' '}
+        <span className="quiet-board-clock">
+          {hhmm(now)} <span className="quiet-board-until">· until {until}</span>
+        </span>
       </header>
-      <div className="quiet-board-counts" data-testid="quiet-board-counts">
-        <p>
-          {count((t) => RUNNING.has(t.state))} running · {paused.length} paused
-          {resets ? ` (limit resets ${hhmm(Date.parse(resets))})` : ''} ·{' '}
-          {count((t) => t.state === 'stuck')} stuck · {count((t) => t.state === 'done')} done
-        </p>
-        <p>
-          {ws.length} {ws.length === 1 ? 'workspace' : 'workspaces'} · {wsCount('working')} working
-          · {wsCount('needs_input')} need input · {wsCount('stuck')} stuck
-        </p>
-      </div>
-      <div className="quiet-board-table">
+      <CountLine items={counts} testId="quiet-board-counts">
+        {NOTHING_RUNNING}
+      </CountLine>
+      <div className="quiet-board-rows">
         {rows.length === 0 ? (
-          <p className="empty-note" data-testid="quiet-board-empty">
-            Nothing running.
+          <p className="quiet-board-empty" data-testid="quiet-board-empty">
+            {boardEmptyLine({ queued: tally.queued, summaryAt })}
           </p>
         ) : (
-          <table>
-            <thead>
-              <tr>
-                <th scope="col">Name</th>
-                <th scope="col">Project</th>
-                <th scope="col">State</th>
-                <th scope="col">PR</th>
-                <th scope="col">Elapsed</th>
-                <th scope="col">Last activity</th>
-                <th scope="col">Turns</th>
-                <th scope="col">Cost</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r) => (
-                <tr key={r.id} data-testid={`quiet-board-row-${r.id}`} data-state={r.state}>
-                  <td className="name">{r.name}</td>
-                  <td>{r.project}</td>
-                  <td className={`state state-${r.state}`}>{r.stateText}</td>
-                  <td className="state">{r.pr}</td>
-                  <td>{r.elapsedMs === null ? '-' : formatDuration(r.elapsedMs)}</td>
-                  <td>{formatAge(r.lastActivity, now)}</td>
-                  <td>{r.turns ?? '-'}</td>
-                  <td>{r.costUsd === null ? '-' : formatCost(r.costUsd)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <ul aria-label="Running tonight">
+            {rows.map((r) => (
+              <li
+                key={r.id}
+                className={`dot-row tone-${r.dot}`}
+                data-testid={`quiet-board-row-${r.id}`}
+                data-state={r.state}
+              >
+                <span className="dot-row-name">{r.name}</span>{' '}
+                <span className="dot-row-project">{r.project}</span>{' '}
+                <span className={r.stuck ? 'dot-row-state tone-bad' : 'dot-row-state'}>
+                  {r.stateText}
+                </span>{' '}
+                <span className="dot-row-age">{formatAge(r.lastActivity, now, ' ago')}</span>
+              </li>
+            ))}
+          </ul>
         )}
       </div>
       <footer className="quiet-board-footer">
         <button
           type="button"
+          className="ghost"
           data-testid="quiet-board-unlock"
           disabled={!connected}
           onClick={() => void store.unlock()}
         >
+          <UnlockIcon />
           Unlock {minutes(unlockMinutes)} min
         </button>
       </footer>

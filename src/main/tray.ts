@@ -1,6 +1,7 @@
 // The menu-bar item: a template icon titled with the workspace counts
-// (`● working ▸ needs input ✕ stuck`), recomputed from the daemon on every
-// status change, led by the unlock countdown while one runs. Clicking it
+// (`● working ▸ needs input ✕ stuck`; `● working ✕ stuck` while quiet hours are
+// locked), recomputed from the daemon on every status change, led by the
+// unlock countdown while one runs. Clicking it
 // brings the window forward (the quiet board during quiet hours).
 import { Menu, nativeImage, Tray } from 'electron'
 import { quietTrayTitle, summarize, traySummary } from '../daemon/status-engine'
@@ -13,14 +14,17 @@ function iconBitmap(): Buffer {
   const buf = Buffer.alloc(size * size * 4)
   const cx = 14.5
   const cy = 13.5
+
   for (let y = 0; y < size; y++) {
     for (let x = 0; x < size; x++) {
       const d = Math.hypot(x - cx, y - cy)
       const ring = d <= 10 && d >= 6.5
       const stem = x >= 21 && x <= 24 && y >= 13 && y <= 29
+
       if (ring || stem) buf.writeUInt32LE(0xff000000, (y * size + x) * 4)
     }
   }
+
   return buf
 }
 
@@ -46,6 +50,7 @@ export function createTray(opts: TrayOptions): QueTray {
     height: 32,
     scaleFactor: 2
   })
+
   image.setTemplateImage(true)
   const tray = new Tray(image)
   let summary: StatusSummary = summarize([])
@@ -73,12 +78,15 @@ export function createTray(opts: TrayOptions): QueTray {
       { type: 'separator' },
       { label: 'Quit que', click: opts.quit }
     ])
+
   const render = (): void => {
     title = quietTrayTitle(summary, quiet, Date.now())
+
     if (tray.isDestroyed()) return
     tray.setTitle(title)
     tray.setToolTip(quiet?.inQuietHours ? 'que · quiet hours' : 'que')
   }
+
   // Left click brings the window forward; right click shows the menu (a
   // context menu set with setContextMenu would swallow the left click).
   tray.on('click', opts.show)
@@ -88,8 +96,10 @@ export function createTray(opts: TrayOptions): QueTray {
   const refresh = (client: DaemonClient): void => {
     if (running) {
       again = client
+
       return
     }
+
     running = true
     void Promise.all([client.request('workspace.list'), client.request('task.list')])
       .then(([workspaces, tasks]) => {
@@ -103,6 +113,7 @@ export function createTray(opts: TrayOptions): QueTray {
         running = false
         const next = again
         again = null
+
         if (next) refresh(next)
       })
   }
@@ -110,6 +121,7 @@ export function createTray(opts: TrayOptions): QueTray {
   const setQuiet = (q: QuietState | null): void => {
     quiet = q
     const ticking = Boolean(q?.inQuietHours && q.unlockedUntil)
+
     if (ticking && !countdown) {
       countdown = setInterval(render, 1000)
       countdown.unref()
@@ -117,6 +129,7 @@ export function createTray(opts: TrayOptions): QueTray {
       clearInterval(countdown)
       countdown = null
     }
+
     render()
   }
 

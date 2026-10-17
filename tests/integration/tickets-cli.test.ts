@@ -2,7 +2,7 @@
 // in-process daemon and the fake acli.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { TicketsListResult } from '@shared/protocol'
-import { runCli } from '../../src/testing/cli'
+import { runCli, runCliJson } from '../../src/testing/cli'
 import { startTestDaemon, type TestDaemon } from '../../src/testing/daemon-harness'
 import {
   fakeParentOf,
@@ -26,9 +26,7 @@ afterEach(async () => {
 
 describe('que tickets', () => {
   it('prints the list as JSON', async () => {
-    const r = await runCli('tickets', '--json')
-    expect(r.code).toBe(0)
-    const list = JSON.parse(r.stdout) as TicketsListResult
+    const list = await runCliJson<TicketsListResult>('tickets', '--json')
     expect(list.tickets.map((t) => t.key)).toEqual(['APP-1432'])
     expect(list.sync.error).toBeNull()
   })
@@ -113,7 +111,7 @@ describe('que tickets with epics', () => {
   })
 
   it('carries level, parentKey and assigned in the JSON', async () => {
-    const list = JSON.parse((await runCli('tickets', '--json')).stdout) as TicketsListResult
+    const list = await runCliJson<TicketsListResult>('tickets', '--json')
     const by = Object.fromEntries(list.tickets.map((t) => [t.key, t]))
     expect(by['APP-1400']).toMatchObject({ level: 'epic', parentKey: null, assigned: true })
     expect(by['APP-1300']).toMatchObject({ level: 'epic', assigned: false })

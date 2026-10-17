@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Task } from '@shared/types'
 import { makeStreamResult, makeTask } from '../testing/fixtures'
+import { decodeStreamEvent } from './stream-json.decode'
 import { nextTask, type TaskEvent } from './task-machine'
 
 const T0 = Date.parse('2026-10-14T02:00:00.000Z')
@@ -24,10 +25,14 @@ function running(overrides: Partial<Task> = {}): Task {
   })
 }
 
-const stream = (message: Record<string, unknown>): TaskEvent => ({
-  type: 'stream',
-  message: message as { type: string }
-})
+/** A raw stream-json line, decoded the way the runner's parser decodes it. */
+function stream(line: unknown): TaskEvent {
+  const message = decodeStreamEvent(line)
+
+  if (!message) throw new Error(`not a stream event: ${JSON.stringify(line)}`)
+
+  return { type: 'stream', message }
+}
 
 describe('nextTask', () => {
   describe('the happy path', () => {
@@ -346,6 +351,7 @@ describe('nextTask', () => {
   it('never mutates its input and always returns a new object', () => {
     const prev = running()
     const before = structuredClone(prev)
+
     const events: TaskEvent[] = [
       { type: 'start' },
       stream(makeStreamResult()),
@@ -360,6 +366,7 @@ describe('nextTask', () => {
       const next = step(prev, event, T0 + 900_000)
       expect(next).not.toBe(prev)
     }
+
     expect(prev).toEqual(before)
   })
 })

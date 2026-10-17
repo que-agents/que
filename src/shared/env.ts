@@ -54,17 +54,21 @@ const APP_INTERNAL: readonly string[] = [
  * other emulator's identity, no app internals, and `QUE_TERMINAL=1` so shells
  * and scripts can tell they run inside que.
  */
-export function cleanSpawnEnv(
-  base: NodeJS.ProcessEnv | Record<string, string> = process.env
-): Record<string, string> {
+export function cleanSpawnEnv(base: NodeJS.ProcessEnv | Record<string, string> = process.env) {
   const env: Record<string, string> = {}
+
   for (const [k, v] of Object.entries(base)) {
     if (v === undefined) continue
+
     if (AGENT_SESSION_MARKERS.includes(k)) continue
+
     if (TERMINAL_IDENTITY.includes(k) || TERMINAL_IDENTITY_PREFIX.test(k)) continue
+
     if (APP_INTERNAL.includes(k)) continue
     env[k] = v
   }
+
   env.QUE_TERMINAL = '1'
+
   return env
 }

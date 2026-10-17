@@ -111,6 +111,18 @@ export type TaskState =
   | 'failed'
   | 'stopped'
 
+/** States a task can still leave on its own (and can still be stopped). */
+export const LIVE_STATES: ReadonlySet<TaskState> = new Set([
+  'queued',
+  'preparing',
+  'running',
+  'paused',
+  'finishing'
+])
+
+/** States with a claude process (or the finisher) at work. */
+export const ACTIVE_STATES: ReadonlySet<TaskState> = new Set(['preparing', 'running', 'finishing'])
+
 /** Where a task's brief came from. */
 export type TaskSource = 'prompt' | 'file'
 
@@ -170,6 +182,7 @@ export const WEEKDAYS = [
   'friday',
   'saturday'
 ] as const
+
 export type Weekday = (typeof WEEKDAYS)[number]
 
 /** A per-weekday override: its own window, or `none` (no quiet hours that day). */
@@ -301,6 +314,9 @@ export interface UpdateInfo {
 }
 
 /** What the daemon says about quiet hours (quiet.state and the quiet.changed event). */
+/** A 24-hour `HH:MM` wall-clock time, as quiet-hours windows are written. */
+export const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/
+
 export interface QuietState {
   enabled: boolean
   inQuietHours: boolean
@@ -321,4 +337,21 @@ export interface QuietUnlock {
   why: string | null
   /** When it expired or was locked early; null while it lasts. */
   endedAt: string | null
+}
+
+/** Anything `JSON.parse` can return. */
+export type JsonValue =
+  | null
+  | boolean
+  | number
+  | string
+  | JsonValue[]
+  | { [key: string]: JsonValue }
+
+/**
+ * A `config.set` patch: a table of the config file's snake_case keys, deep-merged
+ * into the file; `null` removes a key.
+ */
+export interface ConfigPatch {
+  [key: string]: JsonValue
 }

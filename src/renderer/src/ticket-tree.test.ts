@@ -5,6 +5,7 @@ import { buildTicketTree, countOpenTickets } from './ticket-tree'
 
 const epic = (key: string, extra: Partial<Ticket> = {}): Ticket =>
   makeTicket({ key, level: 'epic', ...extra })
+
 const child = (key: string, parentKey: string | null, extra: Partial<Ticket> = {}): Ticket =>
   makeTicket({ key, parentKey, ...extra })
 

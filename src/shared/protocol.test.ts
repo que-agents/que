@@ -6,12 +6,36 @@ describe('LineSplitter', () => {
     const s = new LineSplitter()
     expect(s.push('{"id":1,"method":"term.')).toEqual([])
     expect(s.push('list"}\n{"id":2')).toEqual(['{"id":1,"method":"term.list"}'])
-    expect(s.pending).toBe('{"id":2')
     expect(s.push(',"method":"daemon.ping"}\n\n{"id":3}\n')).toEqual([
       '{"id":2,"method":"daemon.ping"}',
       '{"id":3}'
     ])
-    expect(s.pending).toBe('')
+    expect(s.flush()).toEqual([])
+  })
+
+  it('joins a line whose newline arrives chunks later', () => {
+    const s = new LineSplitter()
+    expect(s.push('{"event":"term.data",')).toEqual([])
+    expect(s.push('"data":{"id":"term_7f3a"')).toEqual([])
+    expect(s.push('')).toEqual([])
+    expect(s.push('}}')).toEqual([])
+    expect(s.push('\n{"id":4}')).toEqual(['{"event":"term.data","data":{"id":"term_7f3a"}}'])
+    expect(s.flush()).toEqual(['{"id":4}'])
+  })
+
+  it('returns every line of a chunk that holds many', () => {
+    const s = new LineSplitter()
+    const lines = Array.from({ length: 50 }, (_, i) => `{"id":${i + 1}}`)
+    expect(s.push(`${lines.join('\n')}\n`)).toEqual(lines)
+    expect(s.flush()).toEqual([])
+  })
+
+  it('ignores empty chunks and blank lines, and flush() drops a blank remainder', () => {
+    const s = new LineSplitter()
+    expect(s.push('')).toEqual([])
+    expect(s.push('\n  \n\n')).toEqual([])
+    expect(s.push('   ')).toEqual([])
+    expect(s.flush()).toEqual([])
   })
 })
 
@@ -21,9 +45,11 @@ describe('MessageDecoder', () => {
       { id: 1, method: 'term.write', params: { id: 'term_7f3a', data: 'héllo ✓ 🚀' } },
       { event: 'term.created', data: { id: 'term_7f3a' } }
     ]
+
     const bytes = new TextEncoder().encode(msgs.map(encode).join(''))
     const decoder = new MessageDecoder()
     const out: unknown[] = []
+
     for (const b of bytes) out.push(...decoder.push(new Uint8Array([b])))
     expect(out).toEqual(msgs)
   })

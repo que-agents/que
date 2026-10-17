@@ -1,10 +1,10 @@
 // `que doctor`: checks everything que depends on and says what is missing.
-import { execFile } from 'node:child_process'
 import fs from 'node:fs'
 import { join } from 'node:path'
 import { findOnPath } from '../daemon/wrapper'
 import { DaemonClient } from '../shared/client'
 import { configPath, describeQuietHours, formatConfigErrors, loadConfig } from '../shared/config'
+import { firstLine, run as exec } from '../shared/exec'
 import { quePaths } from '../shared/paths'
 
 interface Check {
@@ -14,17 +14,16 @@ interface Check {
   detail: string
 }
 
-function run(file: string, args: string[]): Promise<{ ok: boolean; out: string }> {
-  return new Promise((resolve) => {
-    execFile(file, args, { encoding: 'utf8', timeout: 10_000 }, (err, stdout, stderr) => {
-      resolve({ ok: !err, out: `${stdout}${stderr}`.trim().split('\n')[0] ?? '' })
-    }).stdin?.end()
-  })
+async function run(file: string, args: string[]): Promise<{ ok: boolean; out: string }> {
+  const r = await exec(file, args, { timeoutMs: 10_000 })
+
+  return { ok: r.ok, out: firstLine(`${r.stdout}${r.stderr}`) }
 }
 
 function executable(path: string): boolean {
   try {
     fs.accessSync(path, fs.constants.X_OK)
+
     return true
   } catch {
     return false
@@ -37,6 +36,7 @@ export async function runDoctor(): Promise<number> {
 
   let daemonPath: { ok: boolean; detail: string } | null = null
   const client = await DaemonClient.tryConnect(paths)
+
   if (client) {
     try {
       const ping = await client.request('daemon.ping')
@@ -133,10 +133,12 @@ export async function runDoctor(): Promise<number> {
   })
 
   const wrapper = [join(paths.binDir, 'claude'), join(paths.binDir, 'que')]
+
   const missing = [
     ...wrapper.filter((p) => !executable(p)),
     ...(fs.existsSync(paths.hooksJson) ? [] : [paths.hooksJson])
   ]
+
   checks.push({
     name: 'wrapper',
     ok: missing.length === 0,
@@ -151,5 +153,6 @@ export async function runDoctor(): Promise<number> {
     const tag = c.ok ? 'ok  ' : c.required ? 'FAIL' : 'warn'
     console.log(`${tag}  ${c.name.padEnd(10)} ${c.detail}`)
   }
+
   return checks.some((c) => c.required && !c.ok) ? 1 : 0
 }

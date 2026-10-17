@@ -14,17 +14,20 @@ import App from '../App'
 
 const uploader = makeProject()
 const api = makeProject({ id: 'prj_01hzw9c4v7kd', name: 'api', path: '/Users/dev/code/api' })
+
 const retry = makeWorkspace({
   id: 'ws_01hzx3k9c2qf',
   name: 'app-1432-retry-logic',
   status: 'working'
 })
+
 const board = makeWorkspace({
   id: 'ws_01hzx4m1p8rt',
   name: 'app-1440-quiet-board',
   status: 'stuck',
   statusReason: 'no_heartbeat'
 })
+
 const auth = makeWorkspace({
   id: 'ws_01hzx5t6y2wa',
   projectId: api.id,
@@ -71,6 +74,7 @@ describe('Sidebar', () => {
         title: 'Speed up the diff view for large changesets',
         brief: 'Speed up the diff view for large changesets\n\nVirtualize the file list.'
       })
+
       fakeBridge.seedProject(uploader)
       fakeBridge.seedWorkspace(briefed)
       render(<App />)
@@ -128,6 +132,7 @@ describe('Sidebar', () => {
         projectId: uploader.id,
         name: 'APP-1460 upload resume'
       })
+
       await window.que.workspace.remove({ id: board.id })
 
       expect(await screen.findByTestId(`sidebar-workspace-${created.id}-status`)).toHaveTextContent(
@@ -143,6 +148,7 @@ describe('Sidebar', () => {
       name: 'add-retry-logic',
       status: 'exited'
     })
+
     const task = makeTask({
       id: 'tsk_01hzy0d7w3ke',
       title: 'Add retry logic to the uploader',
@@ -394,11 +400,13 @@ describe('Sidebar', () => {
 
     it('removes a project from its ⋯ button too, saying nothing about workspaces when it has none', async () => {
       const user = userEvent.setup()
+
       const billing = makeProject({
         id: 'prj_01hzwb2x9m4e',
         name: 'billing',
         path: '/Users/dev/code/billing'
       })
+
       seed()
       fakeBridge.seedProject(billing)
       render(<App />)
@@ -438,6 +446,7 @@ describe('Sidebar', () => {
         name: 'zsh',
         cwd: '/Users/dev'
       })
+
       const node = makeTermInfo({
         id: '7d0c5b2a-2222-4000-8000-3e4f5a6b7c8d',
         name: 'node',
@@ -531,6 +540,7 @@ describe('Sidebar tickets entry', () => {
       name: 'zsh',
       cwd: '/Users/dev/code/uploader'
     })
+
     const node = makeTermInfo({
       id: '7d0c5b2a-4444-4000-8000-3e4f5a6b7c8d',
       name: 'node',
@@ -721,10 +731,12 @@ describe('Sidebar tickets entry', () => {
         expect(sort).toHaveAccessibleName('Sorted by name')
         expect(sort).toHaveAttribute('title', 'Sort by last activity')
         expect(names()[0]).toContain('api')
+
         const apiRows = (): string[] =>
           within(screen.getByTestId(`sidebar-project-${api.id}`))
             .getAllByTestId(/^sidebar-workspace-ws_\w+$/)
             .map((r) => r.textContent ?? '')
+
         expect(apiRows()[0]).toContain('a-old')
 
         await user.click(sort)

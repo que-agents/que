@@ -7,7 +7,8 @@ import type {
 } from '../../../preload/index.d'
 import { currentWindow } from '../../../daemon/quiet-hours'
 import { SUGGESTED_START_PROMPT } from '../../../shared/brief'
-import { WEEKDAYS } from '../../../shared/types'
+import { type ConfigPatch, HHMM, WEEKDAYS } from '../../../shared/types'
+import { errorMessage } from '../../../shared/errors.decode'
 import { useQue, useStore } from '../store'
 import Dialog from './Dialog'
 import UnlockStatus from './UnlockStatus'
@@ -44,22 +45,24 @@ interface Form {
 /** Monday first, as people read a week. */
 const WEEK: Weekday[] = [...WEEKDAYS.slice(1), WEEKDAYS[0]]
 
-const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/
-
 function toForm(c: UserConfig): Form {
   const q = c.quietHours
+
   const days = Object.fromEntries(
     WEEKDAYS.map((d) => {
       const o = q.days[d]
+
       const day: DayForm =
         o === undefined
           ? { mode: 'inherit', start: q.default.start, end: q.default.end }
           : o === 'none'
             ? { mode: 'none', start: q.default.start, end: q.default.end }
             : { mode: 'custom', start: o.start, end: o.end }
+
       return [d, day]
     })
   ) as Record<Weekday, DayForm>
+
   return {
     enabled: q.enabled,
     start: q.default.start,
@@ -83,30 +86,42 @@ function toForm(c: UserConfig): Form {
 /** The form's problems, one line each; empty when it can be saved. */
 function validate(f: Form): string[] {
   const errors: string[] = []
+
   const window = (label: string, start: string, end: string): void => {
     if (!HHMM.test(start) || !HHMM.test(end)) errors.push(`${label}: use 24-hour HH:MM times`)
     else if (start === end) errors.push(`${label}: start and end must differ`)
   }
+
   window('Quiet hours', f.start, f.end)
+
   for (const d of WEEK) {
     if (f.days[d].mode === 'custom') window(capital(d), f.days[d].start, f.days[d].end)
   }
+
   const minutes = Number(f.unlockMinutes)
+
   if (f.unlockMinutes.trim() === '' || !Number.isFinite(minutes) || minutes <= 0) {
     errors.push('Unlock minutes must be a positive number')
   }
+
   const poll = Number(f.pollMinutes)
+
   if (f.pollMinutes.trim() === '' || !Number.isFinite(poll) || poll <= 0) {
     errors.push('Sync minutes must be a positive number')
   }
+
   if (f.useStartPrompt && f.workspacePrompt.trim() === '') {
     errors.push('The workspace start prompt cannot be empty')
   }
+
   if (f.startPrompt.trim() === '') errors.push('The start prompt cannot be empty')
+
   const file = f.instructionsFile.trim()
+
   if (file !== '' && !file.startsWith('/') && !file.startsWith('~')) {
     errors.push('The instructions file must be an absolute path or start with ~')
   }
+
   return errors
 }
 
@@ -116,11 +131,14 @@ function capital(s: string): string {
 
 function quietOf(f: Form): QuietHoursConfig {
   const days: QuietHoursConfig['days'] = {}
+
   for (const d of WEEKDAYS) {
     const day = f.days[d]
+
     if (day.mode === 'none') days[d] = 'none'
     else if (day.mode === 'custom') days[d] = { start: day.start, end: day.end }
   }
+
   return {
     enabled: f.enabled,
     default: { start: f.start, end: f.end },
@@ -130,16 +148,18 @@ function quietOf(f: Form): QuietHoursConfig {
 }
 
 /** The config.set patch (the file's snake_case keys); `null` removes an override. */
-function patchOf(f: Form): Record<string, unknown> {
-  const quiet: Record<string, unknown> = {
+function patchOf(f: Form): ConfigPatch {
+  const quiet: ConfigPatch = {
     enabled: f.enabled,
     default: [f.start, f.end],
     unlock_minutes: Number(f.unlockMinutes)
   }
+
   for (const d of WEEKDAYS) {
     const day = f.days[d]
     quiet[d] = day.mode === 'inherit' ? null : day.mode === 'none' ? 'none' : [day.start, day.end]
   }
+
   return {
     quiet_hours: quiet,
     notifications: {
@@ -176,25 +196,28 @@ export default function SettingsView(): React.JSX.Element {
   const [instructionsError, setInstructionsError] = useState<string | null>(null)
   const instructionsFile = config?.config.instructionsFile
 
-  useEffect(() => {
-    if (config && form === null) setForm(toForm(config.config))
-  }, [config, form])
+  // The form is seeded from the config once it first arrives.
+  if (config && form === null) setForm(toForm(config.config))
 
   // The file's text, read again whenever the configured path changes.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: reload on a new path only
   useEffect(() => {
     let live = true
-    store.loadInstructions().then(
-      (r) => {
+
+    const load = async (): Promise<void> => {
+      try {
+        const r = await store.loadInstructions()
+
         if (!live) return
         setInstructions(r)
         setDraft(r.content)
         setInstructionsError(null)
-      },
-      (err: unknown) => {
-        if (live) setInstructionsError(err instanceof Error ? err.message : String(err))
+      } catch (err) {
+        if (live) setInstructionsError(errorMessage(err))
       }
-    )
+    }
+
+    void load()
+
     return () => {
       live = false
     }
@@ -212,17 +235,19 @@ export default function SettingsView(): React.JSX.Element {
     setForm({ ...form, ...patch })
     setSaved(false)
   }
+
   const updateDay = (d: Weekday, patch: Partial<DayForm>): void =>
     update({ days: { ...form.days, [d]: { ...form.days[d], ...patch } } })
 
   const save = async (applyTonight: boolean): Promise<void> => {
     setConfirming(false)
+
     try {
       await store.saveConfig({ patch: patchOf(form), applyTonight })
       setErrors([])
       setSaved(true)
     } catch (err) {
-      setErrors([err instanceof Error ? err.message : String(err)])
+      setErrors([errorMessage(err)])
     }
   }
 
@@ -233,7 +258,7 @@ export default function SettingsView(): React.JSX.Element {
       setInstructionsError(null)
       setInstructionsSaved(true)
     } catch (err) {
-      setInstructionsError(err instanceof Error ? err.message : String(err))
+      setInstructionsError(errorMessage(err))
     }
   }
 
@@ -241,15 +266,20 @@ export default function SettingsView(): React.JSX.Element {
     e.preventDefault()
     const problems = validate(form)
     setErrors(problems)
+
     if (problems.length > 0) return
+
     // Tonight's window in progress would end sooner (or go away): ask first.
     if (quiet?.inQuietHours && quiet.windowEnd) {
       const next = currentWindow(store.now(), quietOf(form))
+
       if (!next || next.end.getTime() < Date.parse(quiet.windowEnd)) {
         setConfirming(true)
+
         return
       }
     }
+
     void save(false)
   }
 
@@ -310,6 +340,7 @@ export default function SettingsView(): React.JSX.Element {
             <tbody>
               {WEEK.map((d) => {
                 const day = form.days[d]
+
                 return (
                   <tr key={d} data-testid={`settings-day-${d}`}>
                     <th scope="row">{capital(d)}</th>
@@ -446,12 +477,11 @@ export default function SettingsView(): React.JSX.Element {
               data-testid="settings-start-prompt-enabled"
               checked={form.useStartPrompt}
               onChange={(e) =>
-                update({
-                  useStartPrompt: e.target.checked,
-                  ...(e.target.checked && form.workspacePrompt.trim() === ''
-                    ? { workspacePrompt: SUGGESTED_START_PROMPT }
-                    : {})
-                })
+                update(
+                  e.target.checked && form.workspacePrompt.trim() === ''
+                    ? { useStartPrompt: true, workspacePrompt: SUGGESTED_START_PROMPT }
+                    : { useStartPrompt: e.target.checked }
+                )
               }
             />
             Use a start prompt instead of the brief

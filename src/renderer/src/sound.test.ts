@@ -3,11 +3,13 @@ import { makeQuietState, makeUserConfig } from '@renderer/testing/fixtures'
 import { shouldChime } from './sound'
 
 const workHours = makeQuietState({ inQuietHours: false })
+
 const quiet = makeQuietState({
   inQuietHours: true,
   windowStart: new Date(2026, 9, 13, 19, 0).toISOString(),
   windowEnd: new Date(2026, 9, 14, 7, 0).toISOString()
 })
+
 const unlocked = { ...quiet, unlockedUntil: new Date(2026, 9, 14, 2, 20).toISOString() }
 const defaults = makeUserConfig().notifications
 
