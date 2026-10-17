@@ -1,5 +1,5 @@
 // Shared CLI helpers: daemon connection, tables, and id-or-name lookups.
-import { quietMessage } from '../daemon/quiet-hours'
+import { isLocked, quietMessage } from '../daemon/quiet-hours'
 import { DaemonClient, DaemonError } from '../shared/client'
 import type { Project, Workspace } from '../shared/types'
 
@@ -80,7 +80,7 @@ function onlyOne<T extends { id: string }>(items: T[], what: string): T | undefi
 export async function assertNotQuiet(c: DaemonClient): Promise<void> {
   const q = await c.request('quiet.state')
 
-  if (q.inQuietHours && !q.unlockedUntil && q.windowEnd) {
+  if (isLocked(q) && q.windowEnd) {
     throw new DaemonError('quiet_hours', quietMessage(Date.parse(q.windowEnd), q.unlockMinutes))
   }
 }

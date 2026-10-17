@@ -29,6 +29,7 @@ import type {
   WorkspaceFiles,
   WorkspaceStatus
 } from '../../../preload/index.d'
+import { isLocked, quietMessage } from '../../../daemon/quiet-hours'
 import { ErrorCodes, QUIET_REFUSED_METHODS } from '../../../shared/protocol'
 import { workspaceSlug } from '../../../shared/slug'
 import { LIVE_STATES } from '../../../shared/types'
@@ -550,8 +551,13 @@ class FakeBridge {
   private refuseIfQuiet(method: (typeof QUIET_REFUSED_METHODS)[number]): void {
     if (!QUIET_REFUSED_METHODS.includes(method)) return
 
-    if (this.quiet.inQuietHours && !this.quiet.unlockedUntil) {
-      throw rpcError('quiet_hours', 'quiet hours until 07:00; run `que unlock` for 20 minutes')
+    if (isLocked(this.quiet)) {
+      // A state seeded without a window ends at 07:00, like the fixtures' night.
+      const end = this.quiet.windowEnd
+        ? Date.parse(this.quiet.windowEnd)
+        : new Date(2026, 9, 14, 7, 0).getTime()
+
+      throw rpcError('quiet_hours', quietMessage(end, this.quiet.unlockMinutes))
     }
   }
 

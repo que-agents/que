@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process'
 import os from 'node:os'
 import { join } from 'node:path'
 import { app, BrowserWindow, dialog, ipcMain, Notification, shell } from 'electron'
+import { isLocked } from '../daemon/quiet-hours'
 import { DaemonClient } from '../shared/client'
 import { loginShellPath, mergePath } from '../shared/login-path'
 import { queHome } from '../shared/paths'
@@ -142,11 +143,6 @@ function getClient(): Promise<DaemonClient> {
   return connecting
 }
 
-/** Quiet hours are on and detail is not unlocked: only the board shows. */
-function isLocked(): boolean {
-  return Boolean(quiet?.inQuietHours && !quiet.unlockedUntil)
-}
-
 function showBoard(): void {
   if (!boardWindow || boardWindow.isDestroyed()) {
     boardWindow = createBoardWindow({ e2e })
@@ -155,7 +151,7 @@ function showBoard(): void {
     })
     const win = boardWindow
     win.once('ready-to-show', () => {
-      if (win.isDestroyed() || !isLocked()) return
+      if (win.isDestroyed() || !isLocked(quiet)) return
 
       if (e2e) win.showInactive()
       else win.show()
@@ -176,11 +172,11 @@ function closeBoard(): void {
  * and the board shows. Unlocked or work hours: the reverse, with no prompt.
  */
 function applyQuiet(q: QuietState): void {
-  const wasLocked = isLocked()
+  const wasLocked = isLocked(quiet)
   quiet = q
   tray?.setQuiet(q)
 
-  if (isLocked()) {
+  if (isLocked(quiet)) {
     mainWindow?.hide()
     showBoard()
   } else {
@@ -211,7 +207,7 @@ function createWindow(): void {
     // Under e2e the window must not steal OS focus, or stray keystrokes from
     // the desktop land in the terminal under test. During quiet hours it
     // starts hidden behind the board.
-    show: !e2e && !isLocked(),
+    show: !e2e && !isLocked(quiet),
     backgroundColor: '#181818',
     title: 'que',
     // No native title bar: the app's chrome runs to the top, the traffic
@@ -228,7 +224,7 @@ function createWindow(): void {
     }
   })
 
-  if (e2e && !isLocked()) mainWindow.showInactive()
+  if (e2e && !isLocked(quiet)) mainWindow.showInactive()
 
   mainWindow.on('closed', () => {
     mainWindow = null
@@ -259,7 +255,7 @@ function createWindow(): void {
 
 /** Brings que forward: the board while locked, else the main window. */
 function showApp(): void {
-  if (isLocked()) showBoard()
+  if (isLocked(quiet)) showBoard()
   else showWindow()
 }
 

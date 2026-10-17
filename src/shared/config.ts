@@ -6,6 +6,7 @@ import { join } from 'node:path'
 import { parse as parseToml, stringify as stringifyToml } from 'smol-toml'
 import {
   type ConfigPatch,
+  HHMM,
   type JiraConfig,
   type JsonValue,
   WEEKDAYS,
@@ -183,8 +184,6 @@ function permissionMode(
 
   return v as PermissionMode
 }
-
-const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/
 
 /** `["19:00", "07:00"]` → a window; reports bad times and start == end. */
 function quietWindow(v: unknown, key: string, errors: ConfigError[]): QuietWindow | undefined {

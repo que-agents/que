@@ -36,6 +36,7 @@ import {
   isViewId
 } from './layout'
 import { buildTree, newlyChanged } from './files'
+import { isLocked } from '../../daemon/quiet-hours'
 import { isLiveTask, latestTasks } from './format'
 import { chime, shouldChime } from './sound'
 import { errorCode, errorMessage } from './errors.decode'
@@ -232,11 +233,6 @@ export interface StoreOptions {
   board?: boolean
   /** The clock for ages, countdowns and windows. Default Date.now. */
   now?: () => number
-}
-
-/** Quiet hours are on and detail is not unlocked: terminals and reports are refused. */
-export function isLocked(q: QuietState | null): boolean {
-  return Boolean(q?.inQuietHours && !q.unlockedUntil)
 }
 
 const SORT_KEY = 'que.sidebarSort'

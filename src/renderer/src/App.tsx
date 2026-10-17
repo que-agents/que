@@ -6,6 +6,7 @@ import {
   RemoveWorkspaceDialog,
   StartTicketDialog
 } from './components/dialogs'
+import { isLocked } from '../../daemon/quiet-hours'
 import { hhmm } from '../../shared/format'
 import QuietBoard from './components/QuietBoard'
 import ReportView from './components/ReportView'
@@ -18,7 +19,7 @@ import ReviewPane from './components/ReviewPane'
 import ReviewResizer from './components/ReviewResizer'
 import TopBar from './components/TopBar'
 import UpdateBanner from './components/UpdateBanner'
-import { isLocked, QueStore, StoreContext, useQue, useStore } from './store'
+import { QueStore, StoreContext, useQue, useStore } from './store'
 import { setReviewSource } from './testHook'
 
 function Dialogs(): React.JSX.Element | null {

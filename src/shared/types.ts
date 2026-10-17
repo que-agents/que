@@ -303,6 +303,9 @@ export interface UpdateInfo {
 }
 
 /** What the daemon says about quiet hours (quiet.state and the quiet.changed event). */
+/** A 24-hour `HH:MM` wall-clock time, as quiet-hours windows are written. */
+export const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/
+
 export interface QuietState {
   enabled: boolean
   inQuietHours: boolean
