@@ -211,14 +211,12 @@ describe('QuietBoard', () => {
       expect(await window.que.term.list()).toHaveLength(2) // the board never opens a terminal
     })
 
-    it('says when detail unlocks, and offers the configured unlock as its one ghost button', async () => {
+    it('notes that unlocks are logged, and offers the configured unlock as its one ghost button', async () => {
       seed()
 
       render(<App board now={clock} />)
 
-      expect(
-        await screen.findByText('detail unlocks at 07:00 · unlocks are logged')
-      ).toBeInTheDocument()
+      expect(await screen.findByText('unlocks are logged')).toBeInTheDocument()
       const unlock = screen.getByRole('button', { name: 'Unlock 20 min' })
       expect(unlock).toHaveClass('ghost')
     })

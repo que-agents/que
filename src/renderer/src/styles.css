@@ -1189,13 +1189,29 @@ body.resizing {
   color: var(--fg-faint);
 }
 
+/* Unlock is the one control, drawn not to tempt: a word and an icon in the
+ * footer's dark grey mono, no border and no fill; a hairline appears only
+ * under the pointer. */
 .quiet-board-footer button {
-  border-color: var(--border-strong);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 4px;
+  font: 11px var(--mono);
+  color: var(--fg-faint);
+  border-color: transparent;
   -webkit-app-region: no-drag;
 }
 
+.quiet-board-footer button svg {
+  width: 12px;
+  height: 12px;
+}
+
 .quiet-board-footer button:hover:not(:disabled) {
-  border-color: var(--border-strong);
+  background: none;
+  color: var(--fg-muted);
+  border-color: var(--border);
 }
 
 /* ---- settings ----------------------------------------------------------- */

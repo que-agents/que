@@ -11,7 +11,7 @@ import { ACTIVE_STATES } from '../../../shared/types'
 import { isLiveTask, newestFirst, statusBadge, type Tone, taskBadge } from '../format'
 import { useQue, useStore } from '../store'
 import { useNow } from '../useNow'
-import { QMarkIcon } from './icons'
+import { QMarkIcon, UnlockIcon } from './icons'
 
 interface Row {
   id: string
@@ -167,7 +167,7 @@ export default function QuietBoard(): React.JSX.Element {
         )}
       </div>
       <footer className="quiet-board-footer">
-        <span>detail unlocks at {until} · unlocks are logged</span>
+        <span>unlocks are logged</span>
         <button
           type="button"
           className="ghost"
@@ -175,6 +175,7 @@ export default function QuietBoard(): React.JSX.Element {
           disabled={!connected}
           onClick={() => void store.unlock()}
         >
+          <UnlockIcon />
           Unlock {minutes(unlockMinutes)} min
         </button>
       </footer>
