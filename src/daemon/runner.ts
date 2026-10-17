@@ -3,6 +3,7 @@
 // task machine (through `apply`), kills the run when the machine says so, and
 // hands a finished run to the finisher.
 import { type ChildProcess, execFileSync, spawn } from 'node:child_process'
+import { titleOf } from '../shared/brief'
 import { cleanSpawnEnv } from '../shared/env'
 import { randomUUID } from 'node:crypto'
 import fs from 'node:fs'
@@ -10,13 +11,13 @@ import { join } from 'node:path'
 import {
   loadRepoConfig,
   type PermissionMode,
+  resolvePermissionMode,
   type RepoConfig,
   type UserConfig
 } from '../shared/config'
 import type { QuePaths } from '../shared/paths'
-import { cappedSlug, WORKSPACE_NAME_RE } from '../shared/slug'
+import type { WorkspaceCreateParams } from '../shared/protocol'
 import type { Project, Task, Workspace } from '../shared/types'
-import { RpcError } from './errors'
 import { finishTask } from './finisher'
 import { StreamParser } from './stream-json'
 import type { TaskEvent } from './task-machine'
@@ -53,35 +54,6 @@ export function buildPrompt(
   if (repo.test) parts.push(`Run the test command \`${repo.test}\` and make it pass.`)
 
   return parts.join('\n\n')
-}
-
-/** The permission mode a run uses, and why it differs from what was asked, if it does. */
-export interface PermissionChoice {
-  mode: PermissionMode
-  warning: string | null
-}
-
-/**
- * The permission mode for a run: que.toml, else the user's default, else
- * acceptEdits. bypassPermissions needs both the repo and the user to opt in.
- */
-export function resolvePermissionMode(
-  repo: Pick<RepoConfig, 'permissionMode'>,
-  config: Pick<UserConfig, 'defaultPermissionMode' | 'allowBypassPermissions'>
-): PermissionChoice {
-  const wanted = repo.permissionMode ?? config.defaultPermissionMode ?? 'acceptEdits'
-
-  if (wanted !== 'bypassPermissions') return { mode: wanted, warning: null }
-
-  if (repo.permissionMode === 'bypassPermissions' && config.allowBypassPermissions) {
-    return { mode: wanted, warning: null }
-  }
-
-  return {
-    mode: 'acceptEdits',
-    warning:
-      'bypassPermissions needs permission_mode in que.toml and allow_bypass_permissions = true in the que config; running with acceptEdits'
-  }
 }
 
 export interface ClaudeArgsOptions {
@@ -124,13 +96,6 @@ export function buildClaudeArgs(o: ClaudeArgsOptions): string[] {
   if (o.allowedTools.length > 0) args.push('--allowedTools', o.allowedTools.join(','))
 
   return args
-}
-
-/** A workspace name from a task title: its slug, shortened, or `task-<id>`. */
-export function taskWorkspaceName(title: string, taskId: string): string {
-  const slug = cappedSlug(title, 48)
-
-  return WORKSPACE_NAME_RE.test(slug) ? slug : `task-${taskId.replace(/^tsk_/, '').slice(0, 8)}`
 }
 
 // ---- process groups ------------------------------------------------------------
@@ -239,21 +204,17 @@ export class TaskRunner {
     return !this.closed && this.o.store.getTask(id)?.state === 'preparing'
   }
 
-  private async createWorkspace(task: Task, project: Project): Promise<Workspace> {
-    const base = taskWorkspaceName(task.title, task.id)
+  /**
+   * The task's workspace, made from its brief. A title derived from the brief is left for
+   * create to derive again (a brief title the summariser may refresh); one the user gave
+   * (`que add --title`) is passed on and stays theirs.
+   */
+  private createWorkspace(task: Task, project: Project): Promise<Workspace> {
+    const params: WorkspaceCreateParams = { projectId: project.id, brief: task.brief }
 
-    for (let i = 1; i <= 50; i++) {
-      const name = i === 1 ? base : `${base.slice(0, 60)}-${i}`
+    if (task.title !== titleOf(task.brief)) params.title = task.title
 
-      try {
-        return await this.o.workspaces.create({ projectId: project.id, name })
-      } catch (err) {
-        if (err instanceof RpcError && err.code === 'conflict') continue
-        throw err
-      }
-    }
-
-    throw new Error(`no free workspace name for ${base}`)
+    return this.o.workspaces.create(params)
   }
 
   /** Waits until the workspace's setup command has finished. */

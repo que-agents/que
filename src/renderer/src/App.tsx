@@ -4,6 +4,7 @@ import {
   NewWorkspaceDialog,
   RemoveProjectDialog,
   RemoveWorkspaceDialog,
+  RenameWorkspaceDialog,
   StartTicketDialog
 } from './components/dialogs'
 import { isLocked } from '../../daemon/quiet-hours'
@@ -50,6 +51,10 @@ function Dialogs(): React.JSX.Element | null {
       if (!ws) return null
 
       if (dialog.kind === 'create-pr') return <CreatePrDialog workspace={ws} onClose={close} />
+
+      if (dialog.kind === 'rename-workspace') {
+        return <RenameWorkspaceDialog workspace={ws} onClose={close} />
+      }
 
       return <RemoveWorkspaceDialog workspace={ws} onClose={close} />
     }

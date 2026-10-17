@@ -22,7 +22,8 @@ import {
   configDefaults,
   defaultJira,
   defaultNotifications,
-  defaultQuietHours
+  defaultQuietHours,
+  MAX_SUMMARY_INTERVAL_MINUTES
 } from './config-defaults'
 import { errorCode, errorMessage } from './errors.decode'
 
@@ -32,7 +33,8 @@ export {
   DEFAULT_START_PROMPT,
   defaultJira,
   defaultNotifications,
-  defaultQuietHours
+  defaultQuietHours,
+  MAX_SUMMARY_INTERVAL_MINUTES
 } from './config-defaults'
 
 import { isTable } from './config-patch.decode'
@@ -50,6 +52,35 @@ export const PERMISSION_MODES = [
   'dontAsk',
   'auto'
 ] as const satisfies readonly PermissionMode[]
+
+/** The permission mode a session uses, and why it differs from what was asked, if it does. */
+export interface PermissionChoice {
+  mode: PermissionMode
+  warning: string | null
+}
+
+/**
+ * The permission mode for a session: que.toml, else the user's default, else
+ * acceptEdits. bypassPermissions needs both the repo and the user to opt in.
+ */
+export function resolvePermissionMode(
+  repo: { permissionMode?: PermissionMode },
+  config: Pick<UserConfig, 'defaultPermissionMode' | 'allowBypassPermissions'>
+): PermissionChoice {
+  const wanted = repo.permissionMode ?? config.defaultPermissionMode ?? 'acceptEdits'
+
+  if (wanted !== 'bypassPermissions') return { mode: wanted, warning: null }
+
+  if (repo.permissionMode === 'bypassPermissions' && config.allowBypassPermissions) {
+    return { mode: wanted, warning: null }
+  }
+
+  return {
+    mode: 'acceptEdits',
+    warning:
+      'bypassPermissions needs permission_mode in que.toml and allow_bypass_permissions = true in the que config; running with acceptEdits'
+  }
+}
 
 export interface ConfigError {
   /** Dotted key path, or '' for a syntax error. */
@@ -126,6 +157,11 @@ function prefixed(sub: ConfigError[], prefix: string, errors: ConfigError[]): vo
 }
 
 const isPositive = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v) && v > 0
+
+const isString = (v: unknown): v is string => typeof v === 'string'
+
+const isSummaryInterval = (v: unknown): v is number =>
+  Number.isInteger(v) && Number(v) >= 1 && Number(v) <= MAX_SUMMARY_INTERVAL_MINUTES
 
 const isNonEmptyString = (v: unknown): v is string => typeof v === 'string' && v.length > 0
 
@@ -323,9 +359,35 @@ export function parseConfig(text: string, env: ConfigEnv): ConfigResult<UserConf
   config.allowBypassPermissions =
     optionalBool(t, 'allow_bypass_permissions', errors) ?? config.allowBypassPermissions
   config.protectedBranches = stringList(t, 'protected_branches', errors) ?? config.protectedBranches
+  // Empty means unset, so `que config set instructions_file=` clears it.
+  const instructions = field(t, 'instructions_file', errors, isString, 'must be a path')?.trim()
+
+  if (instructions) config.instructionsFile = expandHome(instructions)
+
   config.quietHours = parseQuietHours(t.quiet_hours, errors)
   config.notifications = parseNotifications(t.notifications, errors)
   config.jira = parseJira(t.jira, errors)
+  const startPrompt = t.start_prompt
+
+  if (startPrompt !== undefined) {
+    // A blank prompt is off, like an unset one.
+    if (typeof startPrompt !== 'string') {
+      errors.push({ key: 'start_prompt', message: 'must be a string' })
+    } else config.startPrompt = startPrompt.trim() === '' ? '' : startPrompt
+  }
+
+  config.summaries = optionalBool(t, 'summaries', errors) ?? config.summaries
+  config.summaryModel =
+    field(t, 'summary_model', errors, isNonBlankString, 'must be a non-empty string')?.trim() ??
+    config.summaryModel
+  config.summaryIntervalMinutes =
+    field(
+      t,
+      'summary_interval_minutes',
+      errors,
+      isSummaryInterval,
+      `must be a whole number from 1 to ${MAX_SUMMARY_INTERVAL_MINUTES}`
+    ) ?? config.summaryIntervalMinutes
 
   if (t.repos !== undefined) {
     const repos = table(t.repos, 'repos', errors)

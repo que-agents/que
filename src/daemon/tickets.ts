@@ -3,7 +3,7 @@
 // brief and a claude session on it.
 import fs from 'node:fs'
 import os from 'node:os'
-import { dirname, join, resolve } from 'node:path'
+import { join } from 'node:path'
 import type { UserConfig } from '../shared/config'
 import { cleanSpawnEnv } from '../shared/env'
 import { firstLine, run } from '../shared/exec'
@@ -28,8 +28,8 @@ import {
   type WorkItem,
   type WorkItemView
 } from './tickets.decode'
-import { shQuote } from './wrapper'
-import { git } from './workspaces'
+import { claudeCommand } from './wrapper'
+import { excludeQueDir } from './workspaces'
 import { errorMessage } from '../shared/errors.decode'
 
 const SEARCH_FIELDS = 'key,summary,status,priority,issuetype,assignee,labels'
@@ -454,7 +454,7 @@ export class TicketService {
       fs.writeFileSync(file, brief)
       const t = await this.opts.createSession(os.homedir())
       const prompt = `Read ${file}, the ticket I am working on. Restate the goal in a sentence, then propose a plan before changing anything.`
-      this.opts.writeTerminal(t.id, `claude ${shQuote(prompt)}\r`)
+      this.opts.writeTerminal(t.id, claudeCommand(prompt))
 
       return { kind: 'session', terminalId: t.id }
     }
@@ -477,37 +477,25 @@ export class TicketService {
       .listWorkspaces()
       .find((w) => w.projectId === project.id && w.name === name && !w.archivedAt)
 
-    const workspace = existing ?? (await this.opts.createWorkspace({ projectId: project.id, name }))
+    const workspace =
+      existing ??
+      (await this.opts.createWorkspace({
+        projectId: project.id,
+        name,
+        title: `${ticket.key} ${ticket.summary}`,
+        brief
+      }))
 
     const dir = join(workspace.path, '.que')
     fs.mkdirSync(dir, { recursive: true })
     fs.writeFileSync(join(dir, 'ticket.md'), brief)
-    await this.excludeQueDir(workspace.path)
+    await excludeQueDir(workspace.path)
     store.setTicketWorkspace(ticket.key, workspace.id)
 
     const t = await this.opts.openTerminal(workspace.id)
-    this.opts.writeTerminal(t.id, `claude ${shQuote(this.opts.config().jira.startPrompt)}\r`)
+    this.opts.writeTerminal(t.id, claudeCommand(this.opts.config().jira.startPrompt))
     this.opts.emit('tickets.synced', this.list())
 
     return { kind: 'workspace', workspace }
-  }
-
-  /** Keeps `.que/` out of `git status` through the repository's exclude file. */
-  private async excludeQueDir(worktree: string): Promise<void> {
-    const r = await git(worktree, ['rev-parse', '--git-path', 'info/exclude'])
-
-    if (!r.ok || !r.stdout) return
-    const file = resolve(worktree, r.stdout)
-    let current = ''
-
-    try {
-      current = fs.readFileSync(file, 'utf8')
-    } catch {
-      // Created below.
-    }
-
-    if (current.split('\n').some((l) => l.trim() === '.que/')) return
-    fs.mkdirSync(dirname(file), { recursive: true })
-    fs.writeFileSync(file, `${current}${current && !current.endsWith('\n') ? '\n' : ''}.que/\n`)
   }
 }

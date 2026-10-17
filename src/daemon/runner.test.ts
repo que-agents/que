@@ -1,12 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { makeTask } from '../testing/fixtures'
-import {
-  buildClaudeArgs,
-  buildPrompt,
-  resolvePermissionMode,
-  SYSTEM_PROMPT,
-  taskWorkspaceName
-} from './runner'
+import { buildClaudeArgs, buildPrompt, SYSTEM_PROMPT } from './runner'
 
 describe('buildPrompt', () => {
   it('is the brief, then the repo instructions, then the repo test command', () => {
@@ -40,50 +34,6 @@ describe('SYSTEM_PROMPT', () => {
     expect(SYSTEM_PROMPT).toContain('If the repository has a test command, run it')
     expect(SYSTEM_PROMPT).toContain('Commit your work with a clear message.')
     expect(SYSTEM_PROMPT).toContain('suitable for a pull request description')
-  })
-})
-
-describe('resolvePermissionMode', () => {
-  const user = { defaultPermissionMode: undefined, allowBypassPermissions: false }
-
-  it('prefers que.toml, then the user default, then acceptEdits', () => {
-    expect(
-      resolvePermissionMode(
-        { permissionMode: 'plan' },
-        { ...user, defaultPermissionMode: 'default' }
-      ).mode
-    ).toBe('plan')
-    expect(resolvePermissionMode({}, { ...user, defaultPermissionMode: 'default' }).mode).toBe(
-      'default'
-    )
-    expect(resolvePermissionMode({}, user)).toEqual({ mode: 'acceptEdits', warning: null })
-  })
-
-  it('honours bypassPermissions only when the repo sets it and the user allows it', () => {
-    expect(
-      resolvePermissionMode(
-        { permissionMode: 'bypassPermissions' },
-        { ...user, allowBypassPermissions: true }
-      )
-    ).toEqual({ mode: 'bypassPermissions', warning: null })
-  })
-
-  it.each([
-    [
-      'the repo asks but the user has not allowed it',
-      { permissionMode: 'bypassPermissions' as const },
-      user
-    ],
-    [
-      'only the user default asks for it',
-      {},
-      { defaultPermissionMode: 'bypassPermissions' as const, allowBypassPermissions: true }
-    ]
-  ])('downgrades to acceptEdits with a warning when %s', (_, repo, config) => {
-    const r = resolvePermissionMode(repo, config)
-
-    expect(r.mode).toBe('acceptEdits')
-    expect(r.warning).toContain('allow_bypass_permissions')
   })
 })
 
@@ -138,23 +88,5 @@ describe('buildClaudeArgs', () => {
       '5f0c1d2e-0000-4000-8000-9a8b7c6d5e4f'
     ])
     expect(args.slice(-2)).toEqual(['--allowedTools', 'Bash(npm test),Edit'])
-  })
-})
-
-describe('taskWorkspaceName', () => {
-  it('slugs and shortens the title', () => {
-    expect(taskWorkspaceName('Add retry logic to the uploader', 'tsk_a2b3c4d5e6f7')).toBe(
-      'add-retry-logic-to-the-uploader'
-    )
-    expect(
-      taskWorkspaceName(
-        'Refactor the upload queue so that retries back off exponentially per host',
-        'tsk_x'
-      )
-    ).toBe('refactor-the-upload-queue-so-that-retries-back-o')
-  })
-
-  it('falls back to the task id when the title has no usable characters', () => {
-    expect(taskWorkspaceName('✨🚀', 'tsk_a2b3c4d5e6f7')).toBe('task-a2b3c4d5')
   })
 })

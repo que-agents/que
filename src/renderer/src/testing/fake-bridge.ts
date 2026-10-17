@@ -4,6 +4,7 @@
 import type {
   ConfigGetResult,
   ConfigSetParams,
+  InstructionsGetResult,
   Events,
   PrThread,
   PrThreadEntry,
@@ -31,8 +32,15 @@ import type {
 } from '../../../preload/index.d'
 import { isLocked, quietMessage } from '../../../daemon/quiet-hours'
 import { buildReport } from '../../../daemon/report'
+import { titleOf } from '../../../shared/brief'
 import { mergeConfigPatch } from '../../../shared/config-patch.decode'
-import { ErrorCodes, QUIET_REFUSED_METHODS } from '../../../shared/protocol'
+import { randomWorkspaceName } from '../../../shared/names'
+import {
+  ErrorCodes,
+  QUIET_REFUSED_METHODS,
+  type WorkspaceCreateParams,
+  type WorkspaceRenameParams
+} from '../../../shared/protocol'
 import { workspaceSlug } from '../../../shared/slug'
 import { LIVE_STATES } from '../../../shared/types'
 import { makeQuietState, makeUserConfig } from './fixtures'
@@ -90,11 +98,22 @@ class FakeBridge {
   private updateListeners = new Set<(info: UpdateInfo) => void>()
   private updateOpens = 0
   private prCalls: Array<{ id: string; title: string }> = []
+  private createCallLog: WorkspaceCreateParams[] = []
+  private startCallLog: string[] = []
+  private renameCallLog: WorkspaceRenameParams[] = []
+  private pushedBranches = new Set<string>()
   private quiet: QuietState = makeQuietState()
   private unlocks: QuietUnlock[] = []
   private unlockRequests: Array<{ minutes?: number; why?: string }> = []
   private configBook: ConfigGetResult = defaultConfigBook()
   private configSets: ConfigSetParams[] = []
+  /** The daemon's refusal of the next config.set, if one is set. */
+  private configRefusal: string | null = null
+  /** config.set calls held until released, when holding. */
+  private configHeld: Array<() => void> | null = null
+  /** The instructions file's text; null while it does not exist. */
+  private instructionsText: string | null = null
+  private instructionsSets: string[] = []
 
   constructor() {
     this.api = {
@@ -133,16 +152,51 @@ class FakeBridge {
       config: {
         get: async () => structuredClone(this.configBook),
         set: async (p) => {
+          const held = this.configHeld
+
+          if (held) await new Promise<void>((release) => held.push(release))
+
+          if (this.configRefusal !== null) {
+            const message = this.configRefusal
+            this.configRefusal = null
+            throw rpcError('bad_request', message)
+          }
+
           this.configSets.push(structuredClone(p))
           this.configBook = {
             ...this.configBook,
             raw: mergeConfigPatch(this.configBook.raw, p.patch)
           }
+
+          if ('instructions_file' in p.patch) {
+            const file = p.patch.instructions_file
+            this.configBook.config = {
+              ...this.configBook.config,
+              instructionsFile: typeof file === 'string' && file !== '' ? file : undefined
+            }
+          }
+
           this.emit('config.changed', structuredClone(this.configBook))
 
           return structuredClone(this.configBook)
         },
         on: (event, cb) => this.subscribe(event, cb as Listener)
+      },
+      instructions: {
+        get: async () => this.instructionsResult(),
+        set: async (p) => {
+          if (!this.configBook.config.instructionsFile) {
+            throw rpcError(
+              ErrorCodes.NotConfigured,
+              'no instructions file: set instructions_file in the que config first'
+            )
+          }
+
+          this.instructionsSets.push(p.content)
+          this.instructionsText = p.content
+
+          return this.instructionsResult()
+        }
       },
       term: {
         create: async (p) => {
@@ -388,17 +442,29 @@ class FakeBridge {
         }
       },
       workspace: {
-        create: async ({ projectId, name, baseRef, branch }) => {
+        create: async (p) => {
+          const { projectId, name, baseRef, branch } = p
+          this.createCallLog.push(structuredClone(p))
           const project = this.projects.get(projectId)
 
           if (!project) throw notFound('project', projectId)
-          const s = workspaceSlug(name)
+          const brief = p.brief?.trim() ? p.brief : undefined
+          const title = p.title?.trim() || (brief ? titleOf(brief) : '')
+          const titleSource = p.title?.trim() ? 'user' : 'brief'
+          const id = fakeId('ws_')
+          const s = name !== undefined ? workspaceSlug(name) : randomWorkspaceName()
 
-          if (!s) throw rpcError('bad_request', `invalid workspace name ${name}`)
+          if (!s) throw rpcError('bad_request', `invalid workspace name ${name ?? ''}`)
+
+          const other = [...this.workspaces.values()].find(
+            (w) => w.projectId === projectId && w.name === s
+          )
+
+          if (other) throw rpcError('conflict', `workspace ${s} already exists (${other.id})`)
           const now = new Date().toISOString()
 
           const ws: Workspace = {
-            id: fakeId('ws_'),
+            id,
             projectId,
             name: s,
             branch: branch ?? s,
@@ -415,6 +481,12 @@ class FakeBridge {
             pr: null
           }
 
+          if (title) {
+            ws.title = title
+            ws.titleSource = titleSource
+          }
+
+          if (brief) ws.brief = brief
           this.workspaces.set(ws.id, ws)
           this.emit('workspace.created', { ...ws })
 
@@ -519,6 +591,45 @@ class FakeBridge {
 
           return { prUrl }
         },
+        start: async ({ id, cols, rows }) => {
+          this.refuseIfQuiet('workspace.start')
+          const ws = this.workspace(id)
+          this.startCallLog.push(id)
+          const first = [...this.terminals.values()].find((t) => t.workspaceId === id && t.alive)
+
+          const terminalId =
+            first?.id ??
+            this.createTerminal(
+              { cwd: ws.path, cols: cols ?? 120, rows: rows ?? 30, name: ws.name },
+              ws.id
+            ).id
+
+          return { terminalId }
+        },
+        rename: async (p) => {
+          const { id, title } = p
+          const ws = this.workspace(id)
+
+          if (!title.trim()) throw rpcError('bad_request', 'title is required')
+          this.renameCallLog.push(structuredClone(p))
+          const wanted = p.branch?.trim()
+
+          if (wanted !== undefined && wanted !== ws.branch && this.pushedBranches.has(id)) {
+            throw rpcError('conflict', `branch ${ws.branch} is on origin; it keeps its name`)
+          }
+
+          const branch = wanted || ws.branch
+          const next: Workspace = { ...ws, title: title.trim(), titleSource: 'user', branch }
+          this.workspaces.set(id, next)
+          this.emit('workspace.updated', { ...next })
+
+          return { ...next }
+        },
+        canRenameBranch: async ({ id }) => {
+          this.workspace(id)
+
+          return { allowed: !this.pushedBranches.has(id) }
+        },
         on: (event, cb) => this.subscribe(event, cb as Listener)
       }
     }
@@ -545,6 +656,42 @@ class FakeBridge {
   /** Puts a config in the book silently (what config.get answers). Call before render(). */
   setConfig(config: Partial<UserConfig>, raw: Record<string, unknown> = {}): void {
     this.configBook = { ...this.configBook, config: makeUserConfig(config), raw }
+  }
+
+  /** The instructions file's text (instructions.get); null means it does not exist yet. */
+  seedInstructions(content: string | null): void {
+    this.instructionsText = content
+  }
+
+  /** Every instructions.set call's content, in order. */
+  instructionsSetCalls(): string[] {
+    return [...this.instructionsSets]
+  }
+
+  private instructionsResult(): InstructionsGetResult {
+    const path = this.configBook.config.instructionsFile
+
+    if (!path) return { exists: false, content: '' }
+
+    return { path, exists: this.instructionsText !== null, content: this.instructionsText ?? '' }
+  }
+
+  /** Makes the next config.set fail with this message, as the daemon refuses a bad value. */
+  refuseConfigSet(message: string): void {
+    this.configRefusal = message
+  }
+
+  /** Holds every config.set until releaseConfigSets(), as a slow daemon would. */
+  holdConfigSets(): void {
+    this.configHeld ??= []
+  }
+
+  /** Lets the held config.set calls through, in the order they arrived, and stops holding. */
+  releaseConfigSets(): void {
+    const held = this.configHeld ?? []
+    this.configHeld = null
+
+    for (const release of held) release()
   }
 
   /** Every config.set call's params, in order. */
@@ -692,6 +839,26 @@ class FakeBridge {
   /** Every workspace.createPr call, in order. */
   createPrCalls(): Array<{ id: string; title: string }> {
     return this.prCalls.map((c) => ({ ...c }))
+  }
+
+  /** Every workspace.create call's params, in order. */
+  createWorkspaceCalls(): WorkspaceCreateParams[] {
+    return structuredClone(this.createCallLog)
+  }
+
+  /** The workspace id of every workspace.start call, in order. */
+  startCalls(): string[] {
+    return [...this.startCallLog]
+  }
+
+  /** Every workspace.rename call, in order. */
+  renameCalls(): WorkspaceRenameParams[] {
+    return this.renameCallLog.map((c) => ({ ...c }))
+  }
+
+  /** Marks a workspace's branch as pushed to origin, so it cannot be renamed. Call before render(). */
+  setBranchPushed(id: string): void {
+    this.pushedBranches.add(id)
   }
 
   /** Replaces a task in the book and emits task.updated (cost, turns, PR changed). */
@@ -844,11 +1011,19 @@ class FakeBridge {
     this.updateListeners.clear()
     this.updateOpens = 0
     this.prCalls = []
+    this.createCallLog = []
+    this.startCallLog = []
+    this.renameCallLog = []
+    this.pushedBranches.clear()
     this.quiet = makeQuietState()
     this.unlocks = []
     this.unlockRequests = []
     this.configBook = defaultConfigBook()
     this.configSets = []
+    this.configRefusal = null
+    this.configHeld = null
+    this.instructionsText = null
+    this.instructionsSets = []
   }
 
   private workspace(id: string): Workspace {

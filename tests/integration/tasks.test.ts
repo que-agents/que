@@ -79,7 +79,6 @@ describe('runner and finisher', () => {
     expect(done).toMatchObject({
       title: 'Add retry logic to the uploader',
       reason: null,
-      branch: 'add-retry-logic-to-the-uploader',
       prUrl: 'https://github.com/rquellh/que/pull/1',
       costUsd: 0.0123,
       turns: 2,
@@ -87,13 +86,23 @@ describe('runner and finisher', () => {
       attempts: 1,
       pid: null
     })
+    // Task workspaces get a random three-word name, which is also the branch.
+    const branch = done.branch as string
+    expect(branch).toMatch(/^[a-z]+-[a-z]+-[a-z]+$/)
     expect(done.sessionId).toMatch(/^[0-9a-f-]{36}$/)
     expect(statesOf(statuses, task.id)).toEqual(['preparing', 'running', 'finishing', 'done'])
-    expect(originBranches(origin)).toContain('add-retry-logic-to-the-uploader')
-    expect(gitIn(origin, 'log', '--format=%s', 'main..add-retry-logic-to-the-uploader')).toBe(
+    expect(originBranches(origin)).toContain(branch)
+    expect(gitIn(origin, 'log', '--format=%s', `main..${branch}`)).toBe(
       'Add retry logic to the uploader'
     )
     const ws = await d.client.request('workspace.get', { id: done.workspaceId as string })
+    expect(ws).toMatchObject({
+      name: branch,
+      title: 'Add retry logic to the uploader',
+      titleSource: 'brief',
+      brief
+    })
+    expect(fs.readFileSync(join(ws.path, '.que', 'brief.md'), 'utf8')).toBe(brief)
     expect(gitIn(ws.path, 'status', '--porcelain')).toBe('')
     const [pr] = readFakeLog(d.ghLog)
     expect(pr.argv.slice(0, 5)).toEqual([
@@ -107,6 +116,22 @@ describe('runner and finisher', () => {
     const body = fs.readFileSync(pr.argv[pr.argv.indexOf('--body-file') + 1], 'utf8')
     expect(body).toMatch(/^Done: Add retry logic to the uploader/)
     expect(body).toContain(`Opened by que from workspace ${ws.name}.`)
+  }, 45_000)
+
+  it('keeps a title given with the task as the workspace title, pinned as set by the user', async () => {
+    const { d, projectId } = await setup()
+
+    const task = await d.client.request('task.add', {
+      projectId,
+      title: 'Uploader retries',
+      brief: 'Add retry logic to the uploader\nUse exponential backoff.'
+    })
+
+    await d.client.request('queue.open')
+
+    const done = await waitForTaskState(d, task.id, 'done')
+    const ws = await d.client.request('workspace.get', { id: done.workspaceId as string })
+    expect(ws).toMatchObject({ title: 'Uploader retries', titleSource: 'user' })
   }, 45_000)
 
   it('success: pushes the commit the agent made itself, adding none', async () => {

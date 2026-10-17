@@ -48,6 +48,11 @@ max_budget_usd = ${d.maxBudgetUsd}
 # default_permission_mode = "acceptEdits"   # unset: que.toml or Claude Code decides
 allow_bypass_permissions = ${d.allowBypassPermissions}
 protected_branches = ${toml(d.protectedBranches)}
+start_prompt = ${JSON.stringify(d.startPrompt)} # empty: Claude starts on the brief itself
+# instructions_file = "~/.config/que/instructions.md"   # unset: no instructions
+summaries = ${d.summaries} # sidebar titles summarised in the background
+summary_model = ${JSON.stringify(d.summaryModel)}
+summary_interval_minutes = ${d.summaryIntervalMinutes}
 
 [quiet_hours]
 enabled = ${d.quietHours.enabled}

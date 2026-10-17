@@ -7,6 +7,8 @@ import type {
   ConfigGetResult,
   ConfigSetParams,
   Events,
+  InstructionsGetResult,
+  InstructionsSetParams,
   ProjectAddParams,
   ProjectRemoveParams,
   QueueOpenParams,
@@ -44,6 +46,9 @@ import type {
   WorkspaceListParams,
   WorkspaceOpenTerminalParams,
   WorkspaceRemoveParams,
+  WorkspaceRenameParams,
+  WorkspaceStartParams,
+  WorkspaceStartResult,
   WorkspaceStatusEvent
 } from '../shared/protocol'
 import type {
@@ -65,6 +70,8 @@ import type {
 export type {
   ConfigGetResult,
   ConfigSetParams,
+  InstructionsGetResult,
+  InstructionsSetParams,
   Events,
   NotificationsConfig,
   Project,
@@ -173,6 +180,12 @@ export interface WorkspaceApi {
   openTerminal(params: WorkspaceOpenTerminalParams): Promise<{ id: string }>
   /** Commits what is uncommitted as `title`, pushes, and opens a draft PR. */
   createPr(params: WorkspaceCreatePrParams): Promise<WorkspaceCreatePrResult>
+  /** Types claude with the start prompt into the workspace's first terminal (opened when none) once setup is done. */
+  start(params: WorkspaceStartParams): Promise<WorkspaceStartResult>
+  /** Sets the title, and renames the branch when asked and allowed. */
+  rename(params: WorkspaceRenameParams): Promise<Workspace>
+  /** Whether rename may also rename the branch (it was never pushed). */
+  canRenameBranch(params: { id: string }): Promise<{ allowed: boolean }>
   /** What the workspace changed against its base, file by file. Refused in quiet hours. */
   diff(params: { id: string; base?: string; commit?: string }): Promise<WorkspaceDiff>
   /** The pull request's conversation: comments, reviews, line comments. Null without a PR. Refused in quiet hours. */
@@ -230,6 +243,13 @@ export interface ConfigApi {
   on(event: 'config.changed', cb: (data: ConfigGetResult) => void): () => void
 }
 
+/** Mirrors the daemon's instructions.* methods: the file named by instructions_file. */
+export interface InstructionsApi {
+  get(): Promise<InstructionsGetResult>
+  /** Rejects with code `not_configured` when instructions_file is unset. */
+  set(params: InstructionsSetParams): Promise<InstructionsGetResult>
+}
+
 /** Mirrors the daemon's tickets.* methods and the tickets.synced event. */
 export interface TicketsApi {
   list(): Promise<TicketsListResult>
@@ -242,6 +262,7 @@ export interface TicketsApi {
 export interface QueApi {
   quiet: QuietApi
   config: ConfigApi
+  instructions: InstructionsApi
   term: TermApi
   project: ProjectApi
   workspace: WorkspaceApi

@@ -17,6 +17,7 @@ import {
   defaultConfig,
   formatConfigErrors,
   loadConfig,
+  loadRepoConfig,
   mergeConfigPatch,
   parseConfig,
   readRawConfig,
@@ -25,8 +26,13 @@ import {
 } from '../shared/config'
 import { decodeHookEvent } from '../shared/hook.decode'
 import { ensureDirs, quePaths, type QuePaths } from '../shared/paths'
-import type { ConfigGetResult, TaskAddParams, TermCreateParams } from '../shared/protocol'
-import { ACTIVE_STATES, type TaskSource, type TaskState } from '../shared/types'
+import type {
+  ConfigGetResult,
+  InstructionsGetResult,
+  TaskAddParams,
+  TermCreateParams
+} from '../shared/protocol'
+import { ACTIVE_STATES, type TaskSource, type TaskState, type Workspace } from '../shared/types'
 import { conflict, RpcError } from './errors'
 import { finishTask, isProtectedBranch } from './finisher'
 import type { HostedTerminal, PtyHost, TermExtra } from './pty-host'
@@ -35,14 +41,20 @@ import { TaskQueue } from './queue'
 import { SYSTEM_PROMPT } from './runner'
 import { PrService } from './prs'
 import { StatusService } from './status'
+import { Summarizer } from './summarizer'
 import { TicketService } from './tickets'
 import { Store } from './store'
 import { workspaceDiff } from './diff'
 import { readWorkspaceFile, workspaceFiles } from './files'
-import { WorkspaceManager, workspaceTerminalEnv } from './workspaces'
+import {
+  sessionEnv,
+  WorkspaceManager,
+  workspaceTerminalEnv,
+  type WorkspaceTerminalEnv
+} from './workspaces'
 import { WorktreeWatcher } from './watcher'
-import { defaultCliScript, installWrapper, resolveCliRunner } from './wrapper'
-import { errorMessage } from '../shared/errors.decode'
+import { defaultCliScript, installWrapper, resolveCliRunner, startCommand } from './wrapper'
+import { errorCode, errorMessage } from '../shared/errors.decode'
 
 export interface ServerOptions {
   host: PtyHost
@@ -61,8 +73,12 @@ export interface ServerOptions {
   queueTickMs?: number
   /** Quiet-hours re-evaluation interval. Default 15 s. */
   quietTickMs?: number
-  /** The clock quiet hours read. Default Date.now. */
+  /** How long a sidebar-title summary call may run. Default 60 s. */
+  summaryTimeoutMs?: number
+  /** The clock quiet hours and the summary throttle read. Default Date.now. */
   now?: () => number
+  /** Draws the name of a workspace created without one. Default randomWorkspaceName. */
+  randomWorkspaceName?: () => string
 }
 
 interface Subscription {
@@ -125,6 +141,7 @@ export class DaemonServer {
   readonly workspaces: WorkspaceManager
   readonly tasks: TaskQueue
   readonly quiet: QuietService
+  readonly summaries: Summarizer
   /** The last good user config, the file stamp it was read at, and when the file was last statted. */
   private config: UserConfig
   private configStamp = ''
@@ -154,7 +171,20 @@ export class DaemonServer {
       status: this.status,
       emit,
       killTerminals: (id) => this.killWorkspaceTerminals(id),
-      log: (m) => this.log(m)
+      log: (m) => this.log(m),
+      randomName: opts.randomWorkspaceName,
+      onCreated: (ws) => this.summaries.created(ws),
+      onRemoved: (id) => this.summaries.forget(id)
+    })
+    this.summaries = new Summarizer({
+      store: this.store,
+      paths: this.paths,
+      emit,
+      config: () => this.configOrDefault(),
+      transcriptPath: (id) => this.status.transcriptPath(id),
+      log: (m) => this.log(m),
+      now: opts.now,
+      timeoutMs: opts.summaryTimeoutMs
     })
     this.tasks = new TaskQueue({
       store: this.store,
@@ -338,7 +368,7 @@ export class DaemonServer {
 
     const t = this.createTerminal(
       { cwd: ws.path, cols, rows, name: ws.name },
-      { workspaceId: ws.id, env: workspaceTerminalEnv(ws, this.paths, this.socketPath) }
+      { workspaceId: ws.id, env: this.terminalEnv(ws) }
     )
 
     return { id: t.id }
@@ -352,6 +382,35 @@ export class DaemonServer {
     return t
   }
 
+  /**
+   * Starts claude on the brief (or the configured start prompt) in the workspace's first terminal (opened when it has
+   * none). Answers with the terminal at once; the command is typed once setup has ended.
+   */
+  private startWorkspace(id: string, cols = 120, rows = 30): { terminalId: string } {
+    const ws = this.workspaces.get(id)
+
+    const first =
+      this.opts.host.list().find((t) => t.alive && t.workspaceId === ws.id) ??
+      this.createTerminal(
+        { cwd: ws.path, cols, rows, name: ws.name },
+        { workspaceId: ws.id, env: this.terminalEnv(ws) }
+      )
+
+    const command = startCommand(
+      this.configOrDefault().startPrompt,
+      ws.brief ? join(ws.path, '.que', 'brief.md') : null
+    )
+
+    void this.workspaces.whenReady(ws.id).then(() => {
+      const t = this.opts.host.get(first.id)
+
+      if (t?.alive) t.write(command)
+      else this.log(`workspace ${ws.id}: terminal ${first.id} is gone; claude not started`)
+    })
+
+    return { terminalId: first.id }
+  }
+
   private killTerminal(id: string): boolean {
     if (!this.opts.host.kill(id)) return false
     this.log(`term ${id} killed`)
@@ -361,6 +420,52 @@ export class DaemonServer {
     this.broadcast('term.killed', { id })
 
     return true
+  }
+
+  /**
+   * A workspace terminal's environment, with the instructions file and the
+   * permission mode from the current config and the project's que.toml.
+   */
+  private terminalEnv(ws: Workspace): WorkspaceTerminalEnv {
+    const repo = loadRepoConfig(this.workspaces.project(ws.projectId).path)
+
+    if (!repo.ok) this.log(`que.toml for ${ws.name} is invalid: ${formatConfigErrors(repo.errors)}`)
+    const session = sessionEnv(this.configOrDefault(), repo.ok ? repo.config : {})
+
+    return workspaceTerminalEnv(ws, this.paths, this.socketPath, session)
+  }
+
+  private getInstructions(): InstructionsGetResult {
+    const path = this.configOrDefault().instructionsFile
+
+    if (!path) return { exists: false, content: '' }
+
+    try {
+      return { path, exists: true, content: fs.readFileSync(path, 'utf8') }
+    } catch (err) {
+      if (errorCode(err) === 'ENOENT') return { path, exists: false, content: '' }
+
+      throw new RpcError(ErrorCodes.BadRequest, `${path}: ${errorMessage(err)}`)
+    }
+  }
+
+  private setInstructions(content: string): InstructionsGetResult {
+    const path = this.configOrDefault().instructionsFile
+
+    if (!path) {
+      throw new RpcError(
+        ErrorCodes.NotConfigured,
+        'no instructions file: set instructions_file in the que config first'
+      )
+    }
+
+    fs.mkdirSync(dirname(path), { recursive: true })
+    const tmp = `${path}.${process.pid}.tmp`
+    fs.writeFileSync(tmp, content)
+    fs.renameSync(tmp, path)
+    this.log(`instructions ${path} updated`)
+
+    return this.getInstructions()
   }
 
   /** Kills every terminal of a workspace; returns how many were still alive. */
@@ -505,6 +610,7 @@ export class DaemonServer {
       this.tickets.stop()
       await this.tickets.drain()
       await this.tasks.shutdown()
+      await this.summaries.close()
       this.status.stop()
       this.watcher.close()
       this.workspaces.close()
@@ -721,10 +827,22 @@ export class DaemonServer {
       case 'workspace.create':
         return this.workspaces.create({
           projectId: str(p, 'projectId'),
-          name: str(p, 'name'),
+          name: optString(p, 'name'),
+          title: optString(p, 'title'),
+          brief: optString(p, 'brief'),
           baseRef: optString(p, 'baseRef'),
           branch: optString(p, 'branch')
         })
+      case 'workspace.start':
+        return this.startWorkspace(str(p, 'id'), optNumber(p, 'cols'), optNumber(p, 'rows'))
+      case 'workspace.rename':
+        return this.workspaces.rename({
+          id: str(p, 'id'),
+          title: str(p, 'title'),
+          branch: optString(p, 'branch')
+        })
+      case 'workspace.canRenameBranch':
+        return { allowed: await this.workspaces.canRenameBranch(str(p, 'id')) }
       case 'workspace.list':
         return this.workspaces.list(optString(p, 'projectId'))
       case 'workspace.get':
@@ -776,6 +894,9 @@ export class DaemonServer {
         if (!payload) throw new RpcError(ErrorCodes.BadRequest, 'payload must be a hook event')
 
         this.status.hook(ws.id, payload)
+
+        if (payload.hook_event_name === 'Stop' && !payload.agent_id) this.summaries.stopped(ws.id)
+
         const taskId = optString(p, 'taskId')
 
         if (taskId) this.tasks.hook(taskId, payload)
@@ -840,6 +961,10 @@ export class DaemonServer {
         return this.getConfig()
       case 'config.set':
         return this.setConfig(p.patch, optBool(p, 'applyTonight') === true)
+      case 'instructions.get':
+        return this.getInstructions()
+      case 'instructions.set':
+        return this.setInstructions(str(p, 'content'))
       default:
         throw new RpcError(ErrorCodes.UnknownMethod, `unknown method ${method}`)
     }

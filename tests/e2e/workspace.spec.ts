@@ -2,16 +2,19 @@
 // in the launched app's daemon, the workspace terminal shows up as a tab, and
 // a Claude Code session typed into it (the fake, through que's hooks wrapper)
 // reports needs input back to `que status`, and the report lists the workspace
-// as waiting.
+// as waiting. And a workspace made from a brief in the dialog: under a random
+// three-word name, titled in the sidebar by the background summary of the session (the brief
+// on hover), and claude started on the brief itself in its only terminal.
 import { expect, test } from '@playwright/test'
 import type { StatusJson } from '../../src/cli/workspaces'
+import type { TermInfo } from '../../src/shared/protocol'
 import type { Project, Workspace } from '../../src/shared/types'
 import { makeTempRepo } from '../../src/testing/temp-repo'
 import { AppShellPage } from './pages/AppShellPage'
 import { ReportPage } from './pages/ReportPage'
 import { SidebarPage } from './pages/SidebarPage'
 import { TerminalPage } from './pages/TerminalPage'
-import { type LaunchedApp, launchApp, tempDir } from './utils/app'
+import { type LaunchedApp, launchApp, newQueHome, tempDir } from './utils/app'
 import { que, queJson } from './utils/que'
 
 let launched: LaunchedApp
@@ -49,6 +52,7 @@ test('a claude session in a workspace terminal reports needs input to que status
     workspace = queJson<Workspace>(
       launched.queHome,
       'work',
+      '--name',
       'APP-1432 retry logic',
       '-r',
       repo,
@@ -101,5 +105,71 @@ test('a claude session in a workspace terminal reports needs input to que status
     await expect(report.workspaceState(workspace.id)).toHaveAttribute('data-status', 'needs_input')
     await expect(report.workspaceState(workspace.id)).toContainText('needs input · since')
     await expect(report.totals).toContainText('1 needs input')
+  })
+})
+
+test('a workspace described in a brief gets a random name, a summarised title, and claude started on it', async () => {
+  const repo = makeTempRepo(tempDir('que-e2e-repo-'))
+  const queHome = newQueHome()
+  const brief = 'Raise the upload timeout\n\nThe upload test times out on slow CI runners.'
+  // The fake claude's default answer to the background summary call.
+  const summary = 'Fake summary of the session'
+  let project: Project
+  let workspace: Workspace
+  let name = ''
+  let sidebar: SidebarPage
+  let terminal: TerminalPage
+
+  await test.step('Register the project with the CLI and launch the app', async () => {
+    project = queJson<Project>(queHome, 'project', 'add', repo, '--json')
+    launched = await launchApp({ queHome })
+    sidebar = new SidebarPage(launched.window)
+    terminal = new TerminalPage(launched.window)
+    await sidebar.waitForLoad()
+    await expect(sidebar.project(project.id)).toBeVisible()
+  })
+
+  await test.step('Describe the work under a random name, drawing another once', async () => {
+    await sidebar.projectAddWorkspace(project.id).click()
+    await sidebar.newWorkspaceBrief.fill(brief)
+    await expect(sidebar.newWorkspaceName).toHaveValue(/^[a-z]+-[a-z]+-[a-z]+$/)
+    await sidebar.newWorkspaceNewName.click()
+    await expect(sidebar.newWorkspaceName).toHaveValue(/^[a-z]+-[a-z]+-[a-z]+$/)
+    name = await sidebar.newWorkspaceName.inputValue()
+    await expect(sidebar.newWorkspaceStart).toBeChecked()
+    await sidebar.newWorkspaceSubmit.click()
+    await expect(sidebar.newWorkspaceDialog).toHaveCount(0)
+
+    const created = queJson<Workspace[]>(queHome, 'ws', 'list', '--json').find(
+      (w) => w.name === name
+    )
+
+    expect(created).toMatchObject({ brief })
+    workspace = created as Workspace
+  })
+
+  await test.step('The sidebar title becomes the summary of the session, the brief on hover', async () => {
+    await expect(sidebar.workspaceName(workspace.id)).toHaveText(summary, { timeout: 15_000 })
+    await expect(sidebar.workspaceOpen(workspace.id)).toHaveAttribute(
+      'title',
+      `${brief}\n${workspace.path}`
+    )
+  })
+
+  await test.step('Claude starts on the brief itself in the only terminal', async () => {
+    await expect
+      .poll(() => launched.claudeCalls().some((argv) => argv.at(-1) === brief), {
+        message: 'claude never started on the brief',
+        timeout: 30_000
+      })
+      .toBe(true)
+
+    const terms = queJson<TermInfo[]>(queHome, 'term', 'list', '--json').filter(
+      (t) => t.workspaceId === workspace.id
+    )
+
+    expect(terms).toHaveLength(1)
+    await expect.poll(() => terminal.activeTermId()).toBe(terms[0].id)
+    await launched.window.screenshot({ path: 'test-results/workspace-from-brief.png' })
   })
 })

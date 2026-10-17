@@ -44,8 +44,8 @@ overnight tasks open pull requests.
 ```sh
 que doctor                     # checks the daemon, claude, gh, git, config, hooks
 que project add ~/code/uploader
-que work "APP-142 retry logic" -r ~/code/uploader   # a worktree on branch app-142-retry-logic
-que attach app-142-retry-logic # or click it in the app's sidebar
+que work "Add retry logic" -r ~/code/uploader --name app-142-retry   # a worktree on branch app-142-retry
+que attach app-142-retry       # or click it in the app's sidebar
 claude                         # in the workspace terminal; its status shows in the sidebar
 ```
 
@@ -94,6 +94,11 @@ max_budget_usd = 5
 # default_permission_mode = "acceptEdits"   # unset: que.toml or Claude Code decides
 allow_bypass_permissions = false
 protected_branches = ["main", "master", "release"]
+start_prompt = "" # empty: Claude starts on the brief itself
+# instructions_file = "~/.config/que/instructions.md"   # unset: no instructions
+summaries = true # sidebar titles summarised in the background
+summary_model = "haiku"
+summary_interval_minutes = 5
 
 [quiet_hours]
 enabled = true
@@ -145,50 +150,50 @@ Generated from `que --help`; options and arguments are in [docs/cli.md](docs/cli
 
 <!-- generated:cli-table -->
 
-| Command                                     | What it does                                                                           |
-| ------------------------------------------- | -------------------------------------------------------------------------------------- |
-| `que daemon start [options]`                | start the daemon if it is not running                                                  |
-| `que daemon stop [options]`                 | kill all terminals and stop the daemon                                                 |
-| `que daemon status [options]`               | show whether the daemon is running                                                     |
-| `que daemon install [options]`              | install a launchd agent that keeps the daemon running                                  |
-| `que daemon uninstall [options]`            | remove the launchd agent                                                               |
-| `que term list [options]`                   | list terminals                                                                         |
-| `que term new [options]`                    | create a terminal running a login shell                                                |
-| `que term snapshot [options] <id>`          | print the terminal screen and scrollback                                               |
-| `que term kill [options] <id>`              | kill a terminal                                                                        |
-| `que term attach [options] <id>`            | attach this TTY to a terminal (Ctrl-] detaches)                                        |
-| `que project add [options] <path>`          | register a git repository                                                              |
-| `que project list [options]`                | list projects                                                                          |
-| `que work [options] <name>`                 | create a workspace (git worktree) and print its path                                   |
-| `que ws list [options]`                     | list workspaces                                                                        |
-| `que ws remove [options] <workspace>`       | remove a workspace: kill its terminals, run teardown, remove the worktree              |
-| `que ws diff [options] <workspace>`         | what a workspace changed against its base, committed and uncommitted, with its commits |
-| `que ws files [options] <workspace>`        | every file of a workspace's worktree, tracked and untracked, never ignored             |
-| `que ws pr [options] <workspace>`           | a workspace's pull request: its checks and its conversation                            |
-| `que ws terminal [options] <workspace>`     | print the id of the workspace's latest live terminal, opening one if needed            |
-| `que status [options]`                      | summary and per-workspace status                                                       |
-| `que attach [options] <workspace>`          | attach to the workspace's latest terminal, opening one if needed (Ctrl-] detaches)     |
-| `que open [options] <workspace>`            | open the workspace with `code -n`                                                      |
-| `que add [options] [brief]`                 | queue an overnight task (a brief run headless by claude in its own workspace)          |
-| `que task list [options]`                   | list tasks                                                                             |
-| `que task show [options] <id>`              | show one task                                                                          |
-| `que task stop [options] <id>`              | stop a task (kills its claude run)                                                     |
-| `que task remove [options] <id>`            | forget a task that is no longer live                                                   |
-| `que run [options]`                         | open the queue: run queued tasks until it is closed                                    |
-| `que queue close [options]`                 | stop starting queued tasks (running ones finish)                                       |
-| `que queue status [options]`                | show the queue                                                                         |
-| `que report [options]`                      | the morning report: what the queue did                                                 |
-| `que tickets list [options]`                | list the cached tickets (the default)                                                  |
-| `que tickets sync [options]`                | fetch the queue from the tracker now                                                   |
-| `que tickets start [options] <key>`         | make a workspace for a ticket, write it as a brief, and start claude on it             |
-| `que tickets open [options] <key>`          | open a ticket's page in the browser                                                    |
-| `que unlock [options] [minutes]`            | unlock detail during quiet hours for a while (default: quiet_hours.unlock_minutes)     |
-| `que lock [options]`                        | end an unlock early                                                                    |
-| `que quiet status [options]`                | whether quiet hours are on, until when, and any unlock                                 |
-| `que config get [options]`                  | print the config file path and the parsed config                                       |
-| `que config set [options] <assignments...>` | set keys (dotted, e.g. quiet_hours.default=19:00,07:00) and reload the daemon          |
-| `que hook [options]`                        | report a Claude Code hook event (stdin JSON) to the daemon; used by hooks.json         |
-| `que doctor [options]`                      | check the daemon, claude, gh, git, caffeinate, node, config, and the hooks wrapper     |
+| Command                                     | What it does                                                                                                                                                                               |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `que daemon start [options]`                | start the daemon if it is not running                                                                                                                                                      |
+| `que daemon stop [options]`                 | kill all terminals and stop the daemon                                                                                                                                                     |
+| `que daemon status [options]`               | show whether the daemon is running                                                                                                                                                         |
+| `que daemon install [options]`              | install a launchd agent that keeps the daemon running                                                                                                                                      |
+| `que daemon uninstall [options]`            | remove the launchd agent                                                                                                                                                                   |
+| `que term list [options]`                   | list terminals                                                                                                                                                                             |
+| `que term new [options]`                    | create a terminal running a login shell                                                                                                                                                    |
+| `que term snapshot [options] <id>`          | print the terminal screen and scrollback                                                                                                                                                   |
+| `que term kill [options] <id>`              | kill a terminal                                                                                                                                                                            |
+| `que term attach [options] <id>`            | attach this TTY to a terminal (Ctrl-] detaches)                                                                                                                                            |
+| `que project add [options] <path>`          | register a git repository                                                                                                                                                                  |
+| `que project list [options]`                | list projects                                                                                                                                                                              |
+| `que work [options] [brief]`                | create a workspace (git worktree) from a brief and print its path; the first line of the brief is its title, and its branch and folder get a random three-word name unless --name is given |
+| `que ws list [options]`                     | list workspaces                                                                                                                                                                            |
+| `que ws remove [options] <workspace>`       | remove a workspace: kill its terminals, run teardown, remove the worktree                                                                                                                  |
+| `que ws diff [options] <workspace>`         | what a workspace changed against its base, committed and uncommitted, with its commits                                                                                                     |
+| `que ws files [options] <workspace>`        | every file of a workspace's worktree, tracked and untracked, never ignored                                                                                                                 |
+| `que ws pr [options] <workspace>`           | a workspace's pull request: its checks and its conversation                                                                                                                                |
+| `que ws terminal [options] <workspace>`     | print the id of the workspace's latest live terminal, opening one if needed                                                                                                                |
+| `que status [options]`                      | summary and per-workspace status                                                                                                                                                           |
+| `que attach [options] <workspace>`          | attach to the workspace's latest terminal, opening one if needed (Ctrl-] detaches)                                                                                                         |
+| `que open [options] <workspace>`            | open the workspace with `code -n`                                                                                                                                                          |
+| `que add [options] [brief]`                 | queue an overnight task (a brief run headless by claude in its own workspace)                                                                                                              |
+| `que task list [options]`                   | list tasks                                                                                                                                                                                 |
+| `que task show [options] <id>`              | show one task                                                                                                                                                                              |
+| `que task stop [options] <id>`              | stop a task (kills its claude run)                                                                                                                                                         |
+| `que task remove [options] <id>`            | forget a task that is no longer live                                                                                                                                                       |
+| `que run [options]`                         | open the queue: run queued tasks until it is closed                                                                                                                                        |
+| `que queue close [options]`                 | stop starting queued tasks (running ones finish)                                                                                                                                           |
+| `que queue status [options]`                | show the queue                                                                                                                                                                             |
+| `que report [options]`                      | the morning report: what the queue did                                                                                                                                                     |
+| `que tickets list [options]`                | list the cached tickets (the default)                                                                                                                                                      |
+| `que tickets sync [options]`                | fetch the queue from the tracker now                                                                                                                                                       |
+| `que tickets start [options] <key>`         | make a workspace for a ticket, write it as a brief, and start claude on it                                                                                                                 |
+| `que tickets open [options] <key>`          | open a ticket's page in the browser                                                                                                                                                        |
+| `que unlock [options] [minutes]`            | unlock detail during quiet hours for a while (default: quiet_hours.unlock_minutes)                                                                                                         |
+| `que lock [options]`                        | end an unlock early                                                                                                                                                                        |
+| `que quiet status [options]`                | whether quiet hours are on, until when, and any unlock                                                                                                                                     |
+| `que config get [options]`                  | print the config file path and the parsed config                                                                                                                                           |
+| `que config set [options] <assignments...>` | set keys (dotted, e.g. quiet_hours.default=19:00,07:00) and reload the daemon                                                                                                              |
+| `que hook [options]`                        | report a Claude Code hook event (stdin JSON) to the daemon; used by hooks.json                                                                                                             |
+| `que doctor [options]`                      | check the daemon, claude, gh, git, caffeinate, node, config, and the hooks wrapper                                                                                                         |
 
 <!-- /generated -->
 

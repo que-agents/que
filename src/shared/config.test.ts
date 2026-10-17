@@ -1,3 +1,5 @@
+import os from 'node:os'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
   defaultJira,
@@ -6,6 +8,7 @@ import {
   parseConfigAssignment,
   parseRepoConfig,
   parseWorktreeInclude,
+  resolvePermissionMode,
   stringifyConfig
 } from './config'
 
@@ -34,7 +37,11 @@ describe('parseConfig', () => {
           unlockMinutes: 20
         },
         notifications: { chimeOnComplete: true, chimeOnNeedsInput: false, morningSummary: false },
-        jira: defaultJira()
+        jira: defaultJira(),
+        startPrompt: '',
+        summaries: true,
+        summaryModel: 'haiku',
+        summaryIntervalMinutes: 5
       }
     })
   })
@@ -51,6 +58,10 @@ max_budget_usd = 12.5
 default_permission_mode = "plan"
 allow_bypass_permissions = true
 protected_branches = ["main", "production"]
+start_prompt = "Read .que/brief.md and ask before editing."
+summaries = false
+summary_model = " sonnet "
+summary_interval_minutes = 15
 
 [repos.uploader]
 path = "/Users/dev/code/uploader"
@@ -81,7 +92,11 @@ path = "/Users/dev/code/api"
         protectedBranches: ['main', 'production'],
         quietHours: expect.objectContaining({ enabled: true }),
         notifications: expect.objectContaining({ chimeOnComplete: true }),
-        jira: defaultJira()
+        jira: defaultJira(),
+        startPrompt: 'Read .que/brief.md and ask before editing.',
+        summaries: false,
+        summaryModel: 'sonnet',
+        summaryIntervalMinutes: 15
       }
     })
   })
@@ -174,6 +189,7 @@ default_branch = "main"
 default_permission_mode = "yolo"
 allow_bypass_permissions = "yes"
 protected_branches = "main"
+start_prompt = 3
 `,
       env
     )
@@ -187,9 +203,92 @@ protected_branches = "main"
           message: 'must be one of default, acceptEdits, plan, bypassPermissions, dontAsk, auto'
         },
         { key: 'allow_bypass_permissions', message: 'must be true or false' },
-        { key: 'protected_branches', message: 'must be a list of strings' }
+        { key: 'protected_branches', message: 'must be a list of strings' },
+        { key: 'start_prompt', message: 'must be a string' }
       ]
     })
+  })
+
+  describe('instructions_file', () => {
+    it('reads an absolute path as is', () => {
+      const r = parseConfig('instructions_file = "/Users/dev/notes/delegation.md"', env)
+      expect(r).toMatchObject({
+        ok: true,
+        config: { instructionsFile: '/Users/dev/notes/delegation.md' }
+      })
+    })
+
+    it('expands a leading ~ to the home directory', () => {
+      const r = parseConfig('instructions_file = "~/.config/que/instructions.md"', env)
+      expect(r).toMatchObject({
+        ok: true,
+        config: { instructionsFile: join(os.homedir(), '.config/que/instructions.md') }
+      })
+    })
+
+    it('treats an empty string as unset', () => {
+      const r = parseConfig('instructions_file = ""', env)
+      expect(r.ok).toBe(true)
+      expect(r.ok && r.config.instructionsFile).toBeUndefined()
+    })
+
+    it('reports a value that is not a string by key', () => {
+      expect(parseConfig('instructions_file = 3', env)).toEqual({
+        ok: false,
+        errors: [{ key: 'instructions_file', message: 'must be a path' }]
+      })
+    })
+
+    it('round-trips through a `que config set` patch', () => {
+      const patch = parseConfigAssignment('instructions_file=~/notes/delegation.md')
+      expect(patch).toEqual({ instructions_file: '~/notes/delegation.md' })
+
+      const merged = mergeConfigPatch({ concurrency: 3 }, patch)
+      expect(parseConfig(stringifyConfig(merged), env)).toMatchObject({
+        ok: true,
+        config: { concurrency: 3, instructionsFile: join(os.homedir(), 'notes/delegation.md') }
+      })
+      const removed = mergeConfigPatch(merged, parseConfigAssignment('instructions_file=null'))
+      expect(removed).toEqual({ concurrency: 3 })
+    })
+  })
+
+  it('reads an empty or blank start_prompt as off, and round-trips it', () => {
+    for (const text of ['start_prompt = ""\n', 'start_prompt = "  "\n']) {
+      const r = parseConfig(text, env)
+      expect(r.ok && r.config.startPrompt).toBe('')
+    }
+
+    const set = parseConfig('start_prompt = "Read .que/brief.md first."\n', env)
+    expect(set.ok && set.config.startPrompt).toBe('Read .que/brief.md first.')
+    const again = parseConfig(stringifyConfig({ start_prompt: '' }), env)
+    expect(again.ok && again.config.startPrompt).toBe('')
+  })
+
+  it('reports bad sidebar-title summary settings by key', () => {
+    const bad = parseConfig(
+      'summaries = "yes"\nsummary_model = ""\nsummary_interval_minutes = 0.5\n',
+      env
+    )
+
+    expect(!bad.ok && bad.errors.map((e) => e.key)).toEqual([
+      'summaries',
+      'summary_model',
+      'summary_interval_minutes'
+    ])
+    const zero = parseConfig('summary_interval_minutes = 0\n', env)
+    expect(!zero.ok && zero.errors[0]).toEqual({
+      key: 'summary_interval_minutes',
+      message: 'must be a whole number from 1 to 1440'
+    })
+    // Past a day, the throttle's timer delay would overflow and fire at once.
+    const long = parseConfig('summary_interval_minutes = 1441\n', env)
+    expect(!long.ok && long.errors[0]).toEqual({
+      key: 'summary_interval_minutes',
+      message: 'must be a whole number from 1 to 1440'
+    })
+    const day = parseConfig('summary_interval_minutes = 1440\n', env)
+    expect(day.ok && day.config.summaryIntervalMinutes).toBe(1440)
   })
 
   it('reports a TOML syntax error without a key', () => {
@@ -235,6 +334,50 @@ allowed_tools = ["Bash(npm test)", "Edit"]
       ok: false,
       errors: [{ key: 'worktree_include', message: 'must be a list of strings' }]
     })
+  })
+})
+
+describe('resolvePermissionMode', () => {
+  const user = { defaultPermissionMode: undefined, allowBypassPermissions: false }
+
+  it('prefers que.toml, then the user default, then acceptEdits', () => {
+    expect(
+      resolvePermissionMode(
+        { permissionMode: 'plan' },
+        { ...user, defaultPermissionMode: 'default' }
+      ).mode
+    ).toBe('plan')
+    expect(resolvePermissionMode({}, { ...user, defaultPermissionMode: 'default' }).mode).toBe(
+      'default'
+    )
+    expect(resolvePermissionMode({}, user)).toEqual({ mode: 'acceptEdits', warning: null })
+  })
+
+  it('honours bypassPermissions only when the repo sets it and the user allows it', () => {
+    expect(
+      resolvePermissionMode(
+        { permissionMode: 'bypassPermissions' },
+        { ...user, allowBypassPermissions: true }
+      )
+    ).toEqual({ mode: 'bypassPermissions', warning: null })
+  })
+
+  it.each([
+    [
+      'the repo asks but the user has not allowed it',
+      { permissionMode: 'bypassPermissions' as const },
+      user
+    ],
+    [
+      'only the user default asks for it',
+      {},
+      { defaultPermissionMode: 'bypassPermissions' as const, allowBypassPermissions: true }
+    ]
+  ])('downgrades to acceptEdits with a warning when %s', (_, repo, config) => {
+    const r = resolvePermissionMode(repo, config)
+
+    expect(r.mode).toBe('acceptEdits')
+    expect(r.warning).toContain('allow_bypass_permissions')
   })
 })
 

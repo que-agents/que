@@ -46,26 +46,43 @@ export interface TestDaemon {
   close(opts?: { keepHome?: boolean }): Promise<void>
 }
 
-/** A test config with quiet hours off (QUIET_OFF) unless it sets its own [quiet_hours]. */
+/**
+ * Sidebar-title summaries default to on, which would run the fake claude in the
+ * background and replace every brief title while a test reads it. Test daemons
+ * turn them off unless a test's own config sets `summaries`.
+ */
+export const SUMMARIES_OFF = 'summaries = false\n'
+
+/**
+ * A test config with quiet hours off (QUIET_OFF) unless it sets its own [quiet_hours], and
+ * summaries off (SUMMARIES_OFF) unless it sets `summaries` (top-level keys go first, before any table).
+ */
 export function withQuietOff(config = ''): string {
-  return config.includes('[quiet_hours]') ? config : `${config}\n${QUIET_OFF}`
+  const summaries = /^summaries\s*=/m.test(config) ? '' : SUMMARIES_OFF
+  const quiet = config.includes('[quiet_hours]') ? config : `${config}\n${QUIET_OFF}`
+
+  return `${summaries}${quiet}`
 }
 
 export interface TestDaemonOptions {
   /** Called after daemon.shutdown's response is flushed. */
   onShutdown?: () => void
-  /** config.toml contents, written before the daemon starts (quiet hours off unless set). */
+  /** config.toml contents, written before the daemon starts (quiet hours and summaries off unless set). */
   config?: string
-  /** The clock quiet hours read (e.g. real time shifted to just before a boundary). */
+  /** The clock quiet hours and the summary throttle read (e.g. real time shifted ahead). */
   now?: () => number
   /** Quiet-hours re-evaluation interval. Default 200 ms (the daemon's is 15 s). */
   quietTickMs?: number
+  /** How long a summary call may run before it is stopped. Default the daemon's (60 s). */
+  summaryTimeoutMs?: number
   /** Status engine stall-check interval. Default 200 ms (the daemon's is 5 s). */
   statusTickMs?: number
   /** Reuse this QUE_HOME (from a daemon closed with keepHome) instead of a fresh one. */
   home?: string
   /** Directories put ahead of the fakes on the daemon's PATH (e.g. FAKE_WRAPPERS). */
   pathPrefix?: string[]
+  /** Draws the names of workspaces created without one (e.g. scripted, to force clashes). */
+  randomWorkspaceName?: () => string
 }
 
 export async function startTestDaemon(opts: TestDaemonOptions = {}): Promise<TestDaemon> {
@@ -89,7 +106,9 @@ export async function startTestDaemon(opts: TestDaemonOptions = {}): Promise<Tes
     statusTickMs: opts.statusTickMs ?? 200,
     queueTickMs: 100,
     quietTickMs: opts.quietTickMs ?? 200,
-    now: opts.now
+    now: opts.now,
+    summaryTimeoutMs: opts.summaryTimeoutMs,
+    randomWorkspaceName: opts.randomWorkspaceName
   })
 
   await server.listen(paths.socket)

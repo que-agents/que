@@ -72,6 +72,10 @@ const api: QueApi = {
     set: (p) => call('config.set', p),
     on: (event, cb) => subscribe(event, cb as (data: unknown) => void)
   },
+  instructions: {
+    get: () => call('instructions.get'),
+    set: (p) => call('instructions.set', p)
+  },
   workspace: {
     create: (p) => call('workspace.create', p),
     list: (p) => call('workspace.list', p),
@@ -79,6 +83,9 @@ const api: QueApi = {
     remove: (p) => call('workspace.remove', p),
     openTerminal: (p) => call('workspace.openTerminal', p),
     createPr: (p) => call('workspace.createPr', p),
+    start: (p) => call('workspace.start', p),
+    rename: (p) => call('workspace.rename', p),
+    canRenameBranch: (p) => call('workspace.canRenameBranch', p),
     diff: (p) => call('workspace.diff', p),
     prThread: (p) => call('workspace.prThread', p),
     files: (p) => call('workspace.files', p),
