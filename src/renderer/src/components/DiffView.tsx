@@ -1,6 +1,22 @@
-import { useEffect } from 'react'
+import { memo, useEffect, useMemo } from 'react'
 import { GLYPH, lineKind } from '../diff'
-import { useQue, useStore } from '../store'
+import { useQueSelector, useStore } from '../store'
+
+/** A patch's lines, one span each; rebuilt only when the patch text changes. */
+const PatchLines = memo(function PatchLines({ patch }: { patch: string }): React.JSX.Element {
+  const lines = useMemo(() => patch.replace(/\n$/, '').split('\n'), [patch])
+
+  return (
+    <>
+      {lines.map((line, i) => (
+        // patch lines are static and have no identity
+        <span key={i} className="line" data-kind={lineKind(line)}>
+          {line || ' '}
+        </span>
+      ))}
+    </>
+  )
+})
 
 /** One changed file's patch against the workspace's base, as a tab beside the terminals. Read-only. */
 export default function DiffView({
@@ -11,9 +27,9 @@ export default function DiffView({
   path: string
 }): React.JSX.Element {
   const store = useStore()
-  const { diffs, diffErrors } = useQue()
-  const diff = diffs[termKey] ?? null
-  const error = diffErrors[termKey] ?? null
+  const entry = useQueSelector((s) => s.diffs[termKey])
+  const diff = entry?.data ?? null
+  const error = entry?.error ?? null
   const file = diff?.files.find((f) => f.path === path)
 
   useEffect(() => {
@@ -43,17 +59,11 @@ export default function DiffView({
             </span>
           </header>
           <pre className="changes-patch diff-patch" data-testid="diff-patch">
-            {file.patch == null
-              ? 'Binary or too large to show.'
-              : file.patch
-                  .replace(/\n$/, '')
-                  .split('\n')
-                  .map((line, i) => (
-                    // patch lines are static and have no identity
-                    <span key={`${file.path}:${i}`} className="line" data-kind={lineKind(line)}>
-                      {line || ' '}
-                    </span>
-                  ))}
+            {file.patch == null ? (
+              'Binary or too large to show.'
+            ) : (
+              <PatchLines key={file.path} patch={file.patch} />
+            )}
           </pre>
         </>
       ) : (

@@ -1,5 +1,11 @@
-import { describe, expect, it } from 'vitest'
-import { decodeDiffBases, decodeLayout, decodeReview } from './persisted.decode'
+import { afterEach, describe, expect, it } from 'vitest'
+import {
+  decodeDiffBases,
+  decodeLayout,
+  decodeReview,
+  readStored,
+  writeStored
+} from './persisted.decode'
 
 describe('decodeReview', () => {
   it('reads back the review pane the store writes', () => {
@@ -72,5 +78,26 @@ describe('decodeLayout', () => {
     expect(decodeLayout(null)).toBeNull()
     expect(decodeLayout([])).toBeNull()
     expect(decodeLayout(42)).toBeNull()
+  })
+})
+
+describe('readStored and writeStored', () => {
+  afterEach(() => localStorage.clear())
+
+  it('reads back what was written, and the fallback once it is forgotten', () => {
+    writeStored('que.sidebarSort', 'activity')
+
+    expect(readStored('que.sidebarSort', (raw) => raw.toUpperCase(), 'NAME')).toBe('ACTIVITY')
+
+    writeStored('que.sidebarSort', null)
+
+    expect(localStorage.getItem('que.sidebarSort')).toBeNull()
+    expect(readStored('que.sidebarSort', (raw) => raw.toUpperCase(), 'NAME')).toBe('NAME')
+  })
+
+  it('falls back when what is stored does not decode', () => {
+    localStorage.setItem('que.review', '{not json')
+
+    expect(readStored('que.review', (raw) => JSON.parse(raw) as { open: boolean }, null)).toBeNull()
   })
 })

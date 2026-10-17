@@ -158,35 +158,26 @@ export function defaultExpanded(tree: DirNode): Set<string> {
 
 /**
  * The directories that hold a changed file now and held none before, at any depth: those to
- * open when a workspace's diff lands again. A folded chain is named by its deepest path, and
- * every directory inside a previous fold carries that fold's count. The root is never listed.
+ * open when a workspace's diff lands again. `previous` is the changed paths before; a folded
+ * chain is named by its deepest path. The root is never listed.
  */
-export function newlyChanged(previous: DirNode | null, next: DirNode): string[] {
-  const before = new Map<string, number>()
+export function newlyChanged(previous: Iterable<string>, next: DirNode): string[] {
+  // Every directory above a previously changed path held a change.
+  const held = new Set<string>()
 
-  const record = (dir: DirNode): void => {
-    const depth = dir.path === '' ? 0 : dir.path.split('/').length
+  for (const path of previous) {
+    const parts = path.split('/').filter(Boolean)
 
-    for (const d of dir.dirs) {
-      // Each directory of a folded chain (`a` and `a/b` for the row `a/b`) holds the same changes.
-      const parts = d.path.split('/')
-
-      for (let i = depth + 1; i <= parts.length; i++) {
-        before.set(parts.slice(0, i).join('/'), d.changed)
-      }
-
-      record(d)
-    }
+    for (let i = 1; i < parts.length; i++) held.add(parts.slice(0, i).join('/'))
   }
 
-  if (previous) record(previous)
   const opened: string[] = []
 
   const walk = (dir: DirNode): void => {
     for (const d of dir.dirs) {
       if (d.changed === 0) continue
 
-      if ((before.get(d.path) ?? 0) === 0) opened.push(d.path)
+      if (!held.has(d.path)) opened.push(d.path)
       walk(d)
     }
   }

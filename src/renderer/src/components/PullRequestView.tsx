@@ -1,7 +1,8 @@
 import { useEffect } from 'react'
 import type { PrCheck, PrThreadEntry, PullRequest, ReviewState } from '../../../preload/index.d'
 import { formatAge, formatSpan } from '../../../shared/format'
-import type { Tone } from '../format'
+import { prNumberOf, type Tone } from '../format'
+import { useNow } from '../useNow'
 import { splitFences } from '../pr-text'
 import { useQue, useStore } from '../store'
 import { ExternalLinkIcon } from './icons'
@@ -113,14 +114,14 @@ function Comment({
 /** A workspace's pull request: its header, CI checks and conversation. Read-only. */
 export default function PullRequestView({ termKey }: { termKey: string }): React.JSX.Element {
   const store = useStore()
-  const { workspaces, prThreads, prThreadErrors, connected } = useQue()
+  const { workspaces, prThreads, connected } = useQue()
   const ws = workspaces[termKey]
   const pr = ws?.pr ?? null
-  const thread = prThreads[termKey] ?? null
-  const error = prThreadErrors[termKey] ?? null
+  const thread = prThreads[termKey]?.data ?? null
+  const error = prThreads[termKey]?.error ?? null
   const url = pr?.url ?? ws?.prUrl ?? null
-  const number = pr?.number ?? (ws?.prUrl ? ws.prUrl.split('/').pop() : null)
-  const now = store.now()
+  const number = pr?.number ?? prNumberOf(ws?.prUrl) ?? null
+  const now = useNow()
 
   // On mount, unless opening the pane already fetched it; the store fetches again when
   // the pull request changes upstream.

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { makePullRequest, makeTask } from '@renderer/testing/fixtures'
-import { isLiveTask, newestFirst, prBadge, statusBadge, taskBadge } from './format'
+import { isLiveTask, newestFirst, prBadge, prNumberOf, statusBadge, taskBadge } from './format'
 
 describe('badges', () => {
   it('labels every workspace status with a tone', () => {
@@ -68,5 +68,13 @@ describe('prBadge', () => {
     [{ state: 'open' }, 'busy', 'PR #41: open']
   ] as const)('%j is %s: "%s"', (overrides, tone, title) => {
     expect(prBadge(makePullRequest(overrides))).toEqual({ label: '#41', tone, title })
+  })
+})
+
+describe('prNumberOf', () => {
+  it('reads the number off a pull request URL, and nothing without one', () => {
+    expect(prNumberOf('https://example.test/rquellh/que/pull/1432')).toBe('1432')
+    expect(prNumberOf(null)).toBeUndefined()
+    expect(prNumberOf(undefined)).toBeUndefined()
   })
 })

@@ -103,3 +103,8 @@ export function prBadge(pr: PullRequest) {
 
   return { label: `#${pr.number}`, tone, title: `PR #${pr.number}: ${parts.join(', ')}` }
 }
+
+/** A pull request's number from its URL (`…/pull/<n>`); undefined without a URL. */
+export function prNumberOf(prUrl: string | null | undefined): string | undefined {
+  return prUrl ? prUrl.split('/').pop() : undefined
+}

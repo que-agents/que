@@ -28,6 +28,7 @@ import {
   NO_SPLIT,
   type PaneLayout,
   parseLayout,
+  placeIn,
   RATIO_DEFAULT,
   reconcileLayout,
   diffId,
@@ -40,7 +41,7 @@ import { isLocked } from '../../daemon/quiet-hours'
 import { isLiveTask, latestTasks } from './format'
 import { chime, shouldChime } from './sound'
 import { errorCode, errorMessage } from '../../shared/errors.decode'
-import { decodeDiffBases, decodeReview } from './persisted.decode'
+import { decodeDiffBases, decodeReview, readStored, writeStored } from './persisted.decode'
 
 const DEFAULT_COLS = 80
 const DEFAULT_ROWS = 24
@@ -102,22 +103,21 @@ export function clampReviewWidth(w: number): number {
 function loadReview(): ReviewState {
   const fallback: ReviewState = { open: false, tab: 'changes', width: REVIEW_DEFAULT }
 
-  try {
-    const raw = localStorage.getItem(REVIEW_KEY)
+  return readStored(
+    REVIEW_KEY,
+    (raw) => {
+      const v = decodeReview(JSON.parse(raw))
 
-    if (!raw) return fallback
-    const v = decodeReview(JSON.parse(raw))
+      if (!v) return fallback
 
-    if (!v) return fallback
-
-    return {
-      open: v.open,
-      tab: REVIEW_TABS.find((t) => t === v.tab) ?? 'changes',
-      width: v.width === null ? REVIEW_DEFAULT : clampReviewWidth(v.width)
-    }
-  } catch {
-    return fallback
-  }
+      return {
+        open: v.open,
+        tab: REVIEW_TABS.find((t) => t === v.tab) ?? 'changes',
+        width: v.width === null ? REVIEW_DEFAULT : clampReviewWidth(v.width)
+      }
+    },
+    fallback
+  )
 }
 
 /** What a workspace's diff is narrowed to: the ref it compares against, and one commit. Null: the daemon's choice, every commit. */
@@ -131,30 +131,17 @@ const DIFF_BASES_KEY = 'que.diffBases'
 
 /** The remembered base per workspace id; anything unreadable is dropped. */
 function loadDiffBases(): Record<string, string> {
-  try {
-    const raw = localStorage.getItem(DIFF_BASES_KEY)
-
-    if (!raw) return {}
-
-    return decodeDiffBases(JSON.parse(raw))
-  } catch {
-    return {}
-  }
+  return readStored(DIFF_BASES_KEY, (raw) => decodeDiffBases(JSON.parse(raw)), {})
 }
 
 /** Remembers (or, for null, forgets) a workspace's base across launches. */
 function rememberDiffBase(id: string, base: string | null): void {
-  try {
-    const bases = loadDiffBases()
+  const bases = loadDiffBases()
 
-    if (base === null) delete bases[id]
-    else bases[id] = base
+  if (base === null) delete bases[id]
+  else bases[id] = base
 
-    if (Object.keys(bases).length > 0) localStorage.setItem(DIFF_BASES_KEY, JSON.stringify(bases))
-    else localStorage.removeItem(DIFF_BASES_KEY)
-  } catch {
-    // Nothing to remember into; the base still applies for this session.
-  }
+  writeStored(DIFF_BASES_KEY, Object.keys(bases).length > 0 ? JSON.stringify(bases) : null)
 }
 
 function initialDiffScopes(): Record<string, DiffScope> {
@@ -176,7 +163,35 @@ export type DialogState =
   | { kind: 'remove-workspace'; workspaceId: string }
   | { kind: 'start-ticket'; key: string; projects: Project[] }
 
-export interface QueState {
+/** A fetched value as it last landed, and why the last fetch failed (null: it did not). */
+export interface Resource<T> {
+  /** Absent until a fetch lands (and again after a failure drops it). */
+  data?: T
+  error: string | null
+}
+
+/** What the store fetches per key and keeps as a Resource. */
+interface Resources {
+  /** Per workspace: its pull request's conversation (null: no pull request). A failure keeps the last one. */
+  prThreads: PrThread | null
+  /** Per workspace: its diff against its base, in its scope. */
+  diffs: WorkspaceDiff
+  /** Per workspace: its worktree's files as listed. */
+  fileLists: WorkspaceFiles
+  /** Per fileKey(workspace, path): a file as read for its file tab; null when the path is gone. */
+  fileContents: WorkspaceFile | null
+}
+
+type ResourceName = keyof Resources
+
+type ResourceTables = { [K in ResourceName]: Record<string, Resource<Resources[K]>> }
+
+/** The fileContents key of one file of a workspace. */
+export function fileKey(key: string, path: string): string {
+  return `${key}\0${path}`
+}
+
+export interface QueState extends ResourceTables {
   loaded: boolean
   connected: boolean
   error: string | null
@@ -191,24 +206,8 @@ export interface QueState {
   view: View
   /** The pane layout per terminal key; a key without one has a single pane. */
   layouts: Record<string, PaneLayout>
-  /** Per workspace: its pull request's conversation as last fetched (null: no pull request). */
-  prThreads: Record<string, PrThread | null>
-  /** Per workspace: why the last conversation fetch failed, or null. */
-  prThreadErrors: Record<string, string | null>
-  /** Per workspace: its diff against its base as last fetched. */
-  diffs: Record<string, WorkspaceDiff>
-  /** Per workspace: why the last diff fetch failed, or null. */
-  diffErrors: Record<string, string | null>
   /** Per workspace: the base and commit its diff is narrowed to (none: the daemon's base, every commit). The base is remembered. */
   diffScopes: Record<string, DiffScope>
-  /** Per workspace: its worktree's files as last listed. */
-  fileLists: Record<string, WorkspaceFiles>
-  /** Per workspace: why the last listing failed, or null. */
-  fileListErrors: Record<string, string | null>
-  /** Per workspace, per path: a file as last read for its file tab; null when the path is gone. */
-  fileContents: Record<string, Record<string, WorkspaceFile | null>>
-  /** Per workspace, per path: why the last read failed, or null. */
-  fileErrors: Record<string, Record<string, string | null>>
   /** Per workspace: the Files tree's open directories, for the session; none until its files first load. */
   filesExpanded: Record<string, ReadonlySet<string>>
   /** The review pane: open or not, on which tab, how wide. Remembered. */
@@ -238,11 +237,7 @@ export interface StoreOptions {
 const SORT_KEY = 'que.sidebarSort'
 
 function loadSort(): SidebarSort {
-  try {
-    return localStorage.getItem(SORT_KEY) === 'activity' ? 'activity' : 'name'
-  } catch {
-    return 'name'
-  }
+  return readStored(SORT_KEY, (raw) => (raw === 'activity' ? 'activity' : 'name'), 'name')
 }
 
 function toTab(t: TermInfo, reattached: boolean): TermTab {
@@ -281,14 +276,10 @@ export class QueStore {
     view: { kind: 'terminals', key: SCRATCH },
     layouts: {},
     prThreads: {},
-    prThreadErrors: {},
     diffs: {},
-    diffErrors: {},
     diffScopes: initialDiffScopes(),
     fileLists: {},
-    fileListErrors: {},
     fileContents: {},
-    fileErrors: {},
     filesExpanded: {},
     review: loadReview(),
     dialog: null,
@@ -307,21 +298,15 @@ export class QueStore {
   /** Terminals being created by this store, which place them themselves. */
   private creating = 0
   private createdMeanwhile = new Set<string>()
-  /** Fetches in flight, so a pane and a list asking at once share one request. */
-  private diffLoads = new Map<string, Promise<void>>()
-  /** The latest diff fetch per workspace; an older one's answer is dropped. */
-  private diffSeq = new Map<string, number>()
-  private prThreadLoads = new Map<string, Promise<void>>()
-  private fileListLoads = new Map<string, Promise<void>>()
-  /** The latest listing per workspace; an older one's answer is dropped. */
-  private fileListSeq = new Map<string, number>()
+  /** Fetches in flight per resource and key, so a pane and a list asking at once share one request. */
+  private loads = new Map<string, Promise<void>>()
+  /** The latest fetch per resource and key, for those where an older answer is dropped. */
+  private loadSeq = new Map<string, number>()
   /** Workspaces whose worktree change is being followed, and those with another change waiting. */
   private following = new Set<string>()
   /** The workspace this store asked the daemon to watch, if any. */
   private watchedKey: string | null = null
   private followAgain = new Set<string>()
-  /** File reads in flight, keyed by workspace and path. */
-  private fileLoads = new Map<string, Promise<void>>()
 
   constructor(
     private api: QueApi,
@@ -359,6 +344,10 @@ export class QueStore {
   }
 
   private set(patch: Partial<QueState>): void {
+    const keys = Object.keys(patch) as Array<keyof QueState>
+
+    // Nothing changed (an empty patch, or every value the same): nothing to tell.
+    if (keys.every((k) => Object.is(patch[k], this.state[k]))) return
     this.state = { ...this.state, ...patch }
 
     if (patch.view) this.watchShown()
@@ -416,10 +405,10 @@ export class QueStore {
         config: s.config ?? config,
         tickets: tickets.tickets,
         ticketsSync: tickets.sync,
-        projects: mergeProjects(projects, s.projects),
+        projects: mergeById(projects, s.projects),
         workspaces: { ...byId(workspaces), ...s.workspaces },
         tasks: { ...byId(tasks), ...s.tasks },
-        terminals: mergeTabs(
+        terminals: mergeById(
           live.map((t) => toTab(t, true)),
           s.terminals
         )
@@ -445,7 +434,7 @@ export class QueStore {
       config.on('config.changed', (c) => this.set({ config: c })),
       tickets.on('tickets.synced', (r) => this.set({ tickets: r.tickets, ticketsSync: r.sync })),
       project.on('project.added', (p) =>
-        this.setWith((s) => ({ projects: mergeProjects(s.projects, [p]) }))
+        this.setWith((s) => ({ projects: mergeById(s.projects, [p]) }))
       ),
       project.on('project.removed', ({ id }) => this.setWith((s) => dropProject(s, id))),
       term.on('term.created', ({ id }) => {
@@ -468,7 +457,7 @@ export class QueStore {
         this.setWith((s) => ({
           workspaces: without(s.workspaces, id),
           diffScopes: without(s.diffScopes, id),
-          view: s.view.kind === 'terminals' && s.view.key === id ? scratchView() : s.view
+          view: viewWithout(s.view, [id])
         }))
       }),
       workspace.on('workspace.status', (e) => {
@@ -489,8 +478,8 @@ export class QueStore {
 
         if (prev !== e.status) this.maybeChime({ state: e.status, reason: e.reason, prev })
       }),
-      task.on('task.created', (t) => this.setWith((s) => ({ tasks: { ...s.tasks, [t.id]: t } }))),
-      task.on('task.updated', (t) => this.setWith((s) => ({ tasks: { ...s.tasks, [t.id]: t } }))),
+      task.on('task.created', (t) => this.upsertTask(t)),
+      task.on('task.updated', (t) => this.upsertTask(t)),
       task.on('task.status', (e) => {
         const prev = this.state.tasks[e.id]
 
@@ -509,7 +498,7 @@ export class QueStore {
         })
         // The status event carries no workspace, branch, or PR; re-read the task.
         void this.api.task.get({ id: e.id }).then(
-          (t) => this.setWith((s) => ({ tasks: { ...s.tasks, [t.id]: t } })),
+          (t) => this.upsertTask(t),
           () => {}
         )
       })
@@ -522,6 +511,10 @@ export class QueStore {
     const kind = shouldChime(event, this.state.quiet, this.state.config?.config.notifications)
 
     if (kind) chime(kind)
+  }
+
+  private upsertTask(t: Task): void {
+    this.setWith((s) => ({ tasks: { ...s.tasks, [t.id]: t } }))
   }
 
   private upsertWorkspace(ws: Workspace): void {
@@ -539,9 +532,11 @@ export class QueStore {
 
     if (changed && review.open && review.tab === 'pr' && this.currentKey() === ws.id) {
       void this.fetchPrThread(ws.id)
-    } else if (changed && ws.id in this.state.prThreads) {
+    } else if (changed && this.state.prThreads[ws.id]?.data !== undefined) {
       // Not on screen: forget the stale conversation so the next look fetches it.
-      this.setWith((s) => ({ prThreads: without(s.prThreads, ws.id) }))
+      this.setWith((s) => ({
+        prThreads: { ...s.prThreads, [ws.id]: { error: s.prThreads[ws.id]?.error ?? null } }
+      }))
     }
 
     if (!this.state.projects.some((p) => p.id === ws.projectId)) {
@@ -561,7 +556,7 @@ export class QueStore {
 
     if (!info) return null
     const tab = toTab(info, false)
-    this.setWith((s) => ({ terminals: mergeTabs(s.terminals, [tab]) }))
+    this.setWith((s) => ({ terminals: mergeById(s.terminals, [tab]) }))
 
     return tab
   }
@@ -582,8 +577,13 @@ export class QueStore {
     await this.newTerminal(key)
   }
 
-  private fail(error: string): void {
-    this.set({ error })
+  /** Runs an action; a failure goes to the error banner. */
+  private async guard(action: () => Promise<void>): Promise<void> {
+    try {
+      await action()
+    } catch (err) {
+      this.set({ error: errorMessage(err) })
+    }
   }
 
   // ---- actions --------------------------------------------------------------
@@ -605,12 +605,7 @@ export class QueStore {
   }
 
   setSort(sort: SidebarSort): void {
-    try {
-      localStorage.setItem(SORT_KEY, sort)
-    } catch {
-      // Nothing to remember into; the sort still applies for this session.
-    }
-
+    writeStored(SORT_KEY, sort)
     this.set({ sort })
   }
 
@@ -641,12 +636,7 @@ export class QueStore {
   private setReview(patch: Partial<ReviewState>): void {
     const review = { ...this.state.review, ...patch }
     this.set({ review })
-
-    try {
-      localStorage.setItem(REVIEW_KEY, JSON.stringify(review))
-    } catch {
-      // Nothing to remember into; the pane still applies for this session.
-    }
+    writeStored(REVIEW_KEY, JSON.stringify(review))
   }
 
   /** Opens the review pane on a tab and loads what it shows for the current workspace. */
@@ -744,13 +734,9 @@ export class QueStore {
       return
     }
 
-    const pane = l.split ? l.focused : 0
     this.setLayout(key, {
-      ...l,
-      views: [...l.views, id],
-      second: pane === 1 ? [...l.second, id] : l.second,
-      active: pane === 0 ? [id, l.active[1]] : [l.active[0], id],
-      focused: pane
+      ...placeIn(l, this.focusedPane(key), id, { append: true }),
+      views: [...l.views, id]
     })
   }
 
@@ -786,31 +772,75 @@ export class QueStore {
     else if (id) void this.closeTerminal(id)
   }
 
-  /** Fetches a workspace's pull request conversation; a failure (quiet hours too) is kept for the view. */
-  fetchPrThread(key: string, refresh = false): Promise<void> {
+  /**
+   * Fetches one key of a resource and keeps the answer, or why it failed: with `keepOnError` the
+   * last value stays beside the error, else it is dropped. With `latestOnly`, only the latest
+   * fetch per key lands, so a quick change of scope never shows a stale answer; the fetcher gets
+   * the check, for side effects of its own. `onData` adds to the patch that keeps a value.
+   */
+  private fetchInto<K extends ResourceName>(
+    name: K,
+    key: string,
+    fetcher: (current: () => boolean) => Promise<Resources[K]>,
+    opts: {
+      latestOnly: boolean
+      keepOnError: boolean
+      onData?: (s: QueState, data: Resources[K]) => Partial<QueState>
+    }
+  ): Promise<void> {
+    const slot = `${name}\0${key}`
+    const seq = (this.loadSeq.get(slot) ?? 0) + 1
+
+    if (opts.latestOnly) this.loadSeq.set(slot, seq)
+    const current = (): boolean => !opts.latestOnly || this.loadSeq.get(slot) === seq
+
     const load = (async () => {
       try {
-        const thread = await this.api.workspace.prThread(
-          refresh ? { id: key, refresh: true } : { id: key }
-        )
+        const data = await fetcher(current)
 
+        if (!current()) return
         this.setWith((s) => ({
-          prThreads: { ...s.prThreads, [key]: thread },
-          prThreadErrors: { ...s.prThreadErrors, [key]: null }
+          ...withEntry(s, name, key, { data, error: null }),
+          ...opts.onData?.(s, data)
         }))
       } catch (err) {
-        this.setWith((s) => ({ prThreadErrors: { ...s.prThreadErrors, [key]: errorMessage(err) } }))
+        if (!current()) return
+        const error = errorMessage(err)
+
+        this.setWith((s) =>
+          withEntry(s, name, key, opts.keepOnError ? { ...s[name][key], error } : { error })
+        )
       }
     })()
 
-    return this.track(this.prThreadLoads, key, load)
+    this.loads.set(slot, load)
+    void load.finally(() => {
+      if (this.loads.get(slot) === load) this.loads.delete(slot)
+    })
+
+    return load
+  }
+
+  /** Fetches one key of a resource unless it is loaded or on its way. */
+  private ensure(name: ResourceName, key: string, fetch: () => Promise<void>): Promise<void> {
+    if (this.state[name][key]?.data !== undefined) return Promise.resolve()
+
+    return this.loads.get(`${name}\0${key}`) ?? fetch()
+  }
+
+  /** Fetches a workspace's pull request conversation; a failure (quiet hours too) is kept for the view. */
+  fetchPrThread(key: string, refresh = false): Promise<void> {
+    return this.fetchInto(
+      'prThreads',
+      key,
+      () => this.api.workspace.prThread(refresh ? { id: key, refresh: true } : { id: key }),
+      { latestOnly: false, keepOnError: true }
+    )
   }
 
   /** Fetches the conversation unless it is loaded or on its way. */
   ensurePrThread(key: string): Promise<void> {
-    if (key in this.state.prThreads) return Promise.resolve()
-
-    return this.prThreadLoads.get(key) ?? this.fetchPrThread(key)
+    return this.ensure('prThreads', key, () => this.fetchPrThread(key))
   }
 
   /** The base and commit a workspace's diff is narrowed to. */
@@ -824,77 +854,38 @@ export class QueStore {
    * Only the latest fetch per workspace lands, so a quick change of scope never shows a stale answer.
    */
   fetchDiff(key: string): Promise<void> {
-    const seq = (this.diffSeq.get(key) ?? 0) + 1
-    this.diffSeq.set(key, seq)
-    const current = (): boolean => this.diffSeq.get(key) === seq
+    return this.fetchInto(
+      'diffs',
+      key,
+      async (current) => {
+        const scope = this.diffScope(key)
 
-    const load = (async () => {
-      const scope = this.diffScope(key)
+        try {
+          return await this.api.workspace.diff({
+            id: key,
+            base: scope.base ?? undefined,
+            commit: scope.commit ?? undefined
+          })
+        } catch (err) {
+          if (scope.base === null || !current()) throw err
+          let diff: WorkspaceDiff
 
-      try {
-        const diff = await this.api.workspace.diff({
-          id: key,
-          base: scope.base ?? undefined,
-          commit: scope.commit ?? undefined
-        })
-
-        if (current()) this.landDiff(key, diff)
-      } catch (err) {
-        if (!current()) return
-
-        if (scope.base !== null) {
           try {
-            const diff = await this.api.workspace.diff({ id: key })
+            diff = await this.api.workspace.diff({ id: key })
+          } catch {
+            throw err
+          }
 
-            if (!current()) return
+          if (current()) {
             rememberDiffBase(key, null)
             this.setWith((s) => ({ diffScopes: without(s.diffScopes, key) }))
-            this.landDiff(key, diff)
-
-            return
-          } catch {
-            if (!current()) return
           }
+
+          return diff
         }
-
-        this.setWith((s) => ({
-          diffs: without(s.diffs, key),
-          diffErrors: { ...s.diffErrors, [key]: errorMessage(err) }
-        }))
-      }
-    })()
-
-    return this.track(this.diffLoads, key, load)
-  }
-
-  /**
-   * Keeps a diff; once the Files tree has its open directories, any directory that now holds a
-   * changed file and held none before is opened, and the rest of the set stands.
-   */
-  private landDiff(key: string, diff: WorkspaceDiff): void {
-    this.setWith((s) => {
-      const expanded = s.filesExpanded[key]
-
-      const patch: Partial<QueState> = {
-        diffs: { ...s.diffs, [key]: diff },
-        diffErrors: { ...s.diffErrors, [key]: null }
-      }
-
-      if (expanded === undefined) return patch
-      const listed = s.fileLists[key]?.files ?? []
-
-      const tree = (d: WorkspaceDiff | undefined) =>
-        buildTree(listed, new Map((d?.files ?? []).map((f) => [f.path, f])))
-
-      const opened = newlyChanged(tree(s.diffs[key]), tree(diff))
-
-      if (opened.length === 0) return patch
-
-      return {
-        ...patch,
-        filesExpanded: { ...s.filesExpanded, [key]: new Set([...expanded, ...opened]) }
-      }
-    })
+      },
+      { latestOnly: true, keepOnError: false, onData: (s, diff) => openNewlyChanged(s, key, diff) }
+    )
   }
 
   /** Compares a workspace against another ref (null: the daemon's choice), over every commit; remembered per workspace. */
@@ -916,9 +907,7 @@ export class QueStore {
 
   /** Fetches the diff unless it is loaded or on its way. */
   ensureDiff(key: string): Promise<void> {
-    if (key in this.state.diffs) return Promise.resolve()
-
-    return this.diffLoads.get(key) ?? this.fetchDiff(key)
+    return this.ensure('diffs', key, () => this.fetchDiff(key))
   }
 
   // ---- the Files tab and file tabs -------------------------------------------
@@ -928,74 +917,38 @@ export class QueStore {
    * Only the latest listing per workspace lands.
    */
   fetchFiles(key: string): Promise<void> {
-    const seq = (this.fileListSeq.get(key) ?? 0) + 1
-    this.fileListSeq.set(key, seq)
-    const current = (): boolean => this.fileListSeq.get(key) === seq
-
-    const load = (async () => {
-      try {
-        const files = await this.api.workspace.files({ id: key })
-
-        if (!current()) return
-        this.setWith((s) => ({
-          fileLists: { ...s.fileLists, [key]: files },
-          fileListErrors: { ...s.fileListErrors, [key]: null }
-        }))
-      } catch (err) {
-        if (!current()) return
-        this.setWith((s) => ({
-          fileLists: without(s.fileLists, key),
-          fileListErrors: { ...s.fileListErrors, [key]: errorMessage(err) }
-        }))
-      }
-    })()
-
-    return this.track(this.fileListLoads, key, load)
+    return this.fetchInto('fileLists', key, () => this.api.workspace.files({ id: key }), {
+      latestOnly: true,
+      keepOnError: false
+    })
   }
 
   /** Lists the files unless they are listed or on their way. */
   ensureFiles(key: string): Promise<void> {
-    if (key in this.state.fileLists) return Promise.resolve()
-
-    return this.fileListLoads.get(key) ?? this.fetchFiles(key)
+    return this.ensure('fileLists', key, () => this.fetchFiles(key))
   }
 
   /** Reads one file for its tab; a path that is gone is kept as null, any other failure as an error. */
   fetchFile(key: string, path: string): Promise<void> {
-    const load = (async () => {
-      let file: WorkspaceFile | null
-      let error: string | null = null
-
-      try {
-        file = await this.api.workspace.readFile({ id: key, path })
-      } catch (err) {
-        file = null
-
-        // The daemon's not-found code: the path left the worktree.
-        if (errorCode(err) !== 'not_found') error = errorMessage(err)
-      }
-
-      this.setWith((s) => {
-        const contents = { ...(s.fileContents[key] ?? {}) }
-
-        if (error === null) contents[path] = file
-        else delete contents[path]
-
-        return {
-          fileContents: { ...s.fileContents, [key]: contents },
-          fileErrors: { ...s.fileErrors, [key]: { ...(s.fileErrors[key] ?? {}), [path]: error } }
+    return this.fetchInto(
+      'fileContents',
+      fileKey(key, path),
+      async () => {
+        try {
+          return await this.api.workspace.readFile({ id: key, path })
+        } catch (err) {
+          // The daemon's not-found code: the path left the worktree.
+          if (errorCode(err) === 'not_found') return null
+          throw err
         }
-      })
-    })()
-
-    return this.track(this.fileLoads, `${key}\0${path}`, load)
+      },
+      { latestOnly: false, keepOnError: false }
+    )
   }
 
   /** Reads the file unless it is read or on its way. */
   ensureFile(key: string, path: string): Promise<void> {
-    if (path in (this.state.fileContents[key] ?? {})) return Promise.resolve()
-
-    return this.fileLoads.get(`${key}\0${path}`) ?? this.fetchFile(key, path)
+    return this.ensure('fileContents', fileKey(key, path), () => this.fetchFile(key, path))
   }
 
   /** The Files header's Refresh: the listing, the diff, and every open file tab of the workspace. */
@@ -1019,19 +972,6 @@ export class QueStore {
     this.setWith((s) => ({ filesExpanded: { ...s.filesExpanded, [key]: expanded } }))
   }
 
-  private track(
-    loads: Map<string, Promise<void>>,
-    key: string,
-    load: Promise<void>
-  ): Promise<void> {
-    loads.set(key, load)
-    void load.finally(() => {
-      if (loads.get(key) === load) loads.delete(key)
-    })
-
-    return load
-  }
-
   showReport(): void {
     this.set({ view: { kind: 'report' } })
   }
@@ -1045,13 +985,11 @@ export class QueStore {
   }
 
   /** Syncs the tickets now; a failure goes to the error banner. */
-  async syncTickets(): Promise<void> {
-    try {
+  syncTickets(): Promise<void> {
+    return this.guard(async () => {
       const r = await this.api.tickets.sync()
       this.set({ tickets: r.tickets, ticketsSync: r.sync })
-    } catch (err) {
-      this.fail(errorMessage(err))
-    }
+    })
   }
 
   /**
@@ -1078,28 +1016,16 @@ export class QueStore {
   }
 
   /** The Start button: like startTicket, with a failure shown in the error banner. */
-  async beginTicket(key: string): Promise<void> {
-    try {
-      await this.startTicket(key)
-    } catch (err) {
-      this.fail(errorMessage(err))
-    }
+  beginTicket(key: string): Promise<void> {
+    return this.guard(() => this.startTicket(key))
   }
 
-  async unlock(): Promise<void> {
-    try {
-      this.set({ quiet: await this.api.quiet.unlock() })
-    } catch (err) {
-      this.fail(errorMessage(err))
-    }
+  unlock(): Promise<void> {
+    return this.guard(async () => this.set({ quiet: await this.api.quiet.unlock() }))
   }
 
-  async lock(): Promise<void> {
-    try {
-      this.set({ quiet: await this.api.quiet.lock() })
-    } catch (err) {
-      this.fail(errorMessage(err))
-    }
+  lock(): Promise<void> {
+    return this.guard(async () => this.set({ quiet: await this.api.quiet.lock() }))
   }
 
   fetchUnlocks(since?: string): Promise<QuietUnlock[]> {
@@ -1117,9 +1043,7 @@ export class QueStore {
   /** Selects a tab (a terminal or a view) within the pane that holds it, and focuses that pane. */
   selectTerminal(key: string, id: string): void {
     const l = this.layout(key)
-    const pane = l.second.includes(id) ? 1 : 0
-    const active: PaneLayout['active'] = pane === 0 ? [id, l.active[1]] : [l.active[0], id]
-    this.setLayout(key, { ...l, active, focused: pane })
+    this.setLayout(key, placeIn(l, l.second.includes(id) ? 1 : 0, id, { append: false }))
   }
 
   /** Focuses a pane (the second only when the key is split). */
@@ -1200,7 +1124,7 @@ export class QueStore {
       place(id)
       await this.addTerminal(id)
     } catch (err) {
-      this.fail(errorMessage(err))
+      this.set({ error: errorMessage(err) })
     } finally {
       this.creating--
 
@@ -1215,16 +1139,9 @@ export class QueStore {
 
   /** A new terminal in the focused pane. */
   async newTerminal(key: string): Promise<void> {
-    await this.openIn(key, (id) => {
-      const l = this.layout(key)
-      const pane = l.split ? l.focused : 0
-      this.setLayout(key, {
-        ...l,
-        second: pane === 1 ? [...l.second, id] : l.second,
-        active: pane === 0 ? [id, l.active[1]] : [l.active[0], id],
-        focused: pane
-      })
-    })
+    await this.openIn(key, (id) =>
+      this.setLayout(key, placeIn(this.layout(key), this.focusedPane(key), id, { append: true }))
+    )
   }
 
   /** Splits the key in two with a new terminal in the second pane (or adds one to it). */
@@ -1263,13 +1180,7 @@ export class QueStore {
 
   private setLayout(key: string, layout: PaneLayout): void {
     this.setWith((s) => ({ layouts: { ...s.layouts, [key]: layout } }))
-
-    try {
-      if (isRemembered(layout)) localStorage.setItem(LAYOUT_PREFIX + key, JSON.stringify(layout))
-      else localStorage.removeItem(LAYOUT_PREFIX + key)
-    } catch {
-      // Nothing to remember into; the layout still applies for this session.
-    }
+    writeStored(LAYOUT_PREFIX + key, isRemembered(layout) ? JSON.stringify(layout) : null)
   }
 
   /** Restores the remembered layouts and view tabs, dropping terminals that no longer exist. */
@@ -1331,8 +1242,8 @@ export class QueStore {
     return this.paneActive(key, this.focusedPane(key)) ?? this.paneActive(key, 0)
   }
 
-  async addProject(): Promise<void> {
-    try {
+  addProject(): Promise<void> {
+    return this.guard(async () => {
       const dir = await this.api.app.openFolder()
 
       if (!dir) return
@@ -1342,9 +1253,7 @@ export class QueStore {
           ? s.projects
           : [...s.projects, project]
       }))
-    } catch (err) {
-      this.fail(errorMessage(err))
-    }
+    })
   }
 
   /** Creates a workspace and shows it (which opens its first terminal). Throws for the dialog. */
@@ -1364,16 +1273,14 @@ export class QueStore {
     await this.api.workspace.remove({ id, deleteBranch })
     this.setWith((s) => ({
       workspaces: without(s.workspaces, id),
-      view: s.view.kind === 'terminals' && s.view.key === id ? scratchView() : s.view
+      view: viewWithout(s.view, [id])
     }))
   }
 
-  async openInEditor(path: string): Promise<void> {
-    try {
+  openInEditor(path: string): Promise<void> {
+    return this.guard(async () => {
       await this.api.app.openInEditor({ path })
-    } catch (err) {
-      this.fail(errorMessage(err))
-    }
+    })
   }
 
   async createPr(id: string, title: string): Promise<string> {
@@ -1392,17 +1299,59 @@ export class QueStore {
   }
 }
 
-/** Projects in creation order, without duplicates (the first copy wins). */
-function mergeProjects(a: readonly Project[], b: readonly Project[]): Project[] {
-  const seen = new Set(a.map((p) => p.id))
+/** The state's patch that keeps one key's entry of a resource. */
+function withEntry<K extends ResourceName>(
+  s: QueState,
+  name: K,
+  key: string,
+  entry: Resource<Resources[K]>
+): Partial<QueState> {
+  const patch: Partial<ResourceTables> = { [name]: { ...s[name], [key]: entry } }
 
-  return [...a, ...b.filter((p) => !seen.has(p.id))].sort((x, y) =>
+  return patch
+}
+
+/**
+ * Once the Files tree has its open directories, any directory that holds a changed file in the
+ * new diff and held none before is opened; the rest of the set stands.
+ */
+function openNewlyChanged(s: QueState, key: string, diff: WorkspaceDiff): Partial<QueState> {
+  const expanded = s.filesExpanded[key]
+
+  if (expanded === undefined) return {}
+
+  const tree = buildTree(
+    s.fileLists[key]?.data?.files ?? [],
+    new Map(diff.files.map((f) => [f.path, f]))
+  )
+
+  const opened = newlyChanged(
+    (s.diffs[key]?.data?.files ?? []).map((f) => f.path),
+    tree
+  )
+
+  if (opened.length === 0) return {}
+
+  return { filesExpanded: { ...s.filesExpanded, [key]: new Set([...expanded, ...opened]) } }
+}
+
+/** Both lists in creation order, without duplicates (the first list's copy wins). */
+function mergeById<T extends { id: string; createdAt: string }>(
+  a: readonly T[],
+  b: readonly T[]
+): T[] {
+  const seen = new Set(a.map((x) => x.id))
+
+  return [...a, ...b.filter((x) => !seen.has(x.id))].sort((x, y) =>
     x.createdAt.localeCompare(y.createdAt)
   )
 }
 
-function scratchView(): View {
-  return { kind: 'terminals', key: SCRATCH }
+/** The view, or the scratch terminals when it shows one of these workspaces. */
+function viewWithout(view: View, ids: readonly string[]): View {
+  return view.kind === 'terminals' && ids.includes(view.key)
+    ? { kind: 'terminals', key: SCRATCH }
+    : view
 }
 
 /** The state without a project and its workspaces; a view on one of them goes back to scratch. */
@@ -1416,17 +1365,8 @@ function dropProject(s: QueState, id: string): Partial<QueState> {
   return {
     projects: s.projects.filter((p) => p.id !== id),
     workspaces: Object.fromEntries(Object.entries(s.workspaces).filter(([k]) => !gone.has(k))),
-    view: s.view.kind === 'terminals' && gone.has(s.view.key) ? scratchView() : s.view
+    view: viewWithout(s.view, [...gone])
   }
-}
-
-/** Appends the tabs not already present, keeping creation order. */
-function mergeTabs(a: readonly TermTab[], b: readonly TermTab[]): TermTab[] {
-  const seen = new Set(a.map((t) => t.id))
-
-  return [...a, ...b.filter((t) => !seen.has(t.id))].sort((x, y) =>
-    x.createdAt.localeCompare(y.createdAt)
-  )
 }
 
 export const StoreContext = createContext<QueStore | null>(null)
@@ -1444,4 +1384,26 @@ export function useQue(): QueState {
   const store = useStore()
 
   return useSyncExternalStore(store.subscribe, store.getState)
+}
+
+/**
+ * One value of the store's state; re-renders only when it changes (by Object.is). The selector
+ * must return a value the state already holds (a field, an entry, a primitive), never a new
+ * object or array per call.
+ */
+export function useQueSelector<T>(select: (s: QueState) => T): T {
+  const store = useStore()
+
+  return useSyncExternalStore(store.subscribe, () => select(store.getState()))
+}
+
+/**
+ * The store, for a component that reads a key's tabs and panes through its pane methods
+ * (paneTabs, paneActiveId, activeTab, …): re-renders when the terminals or the key's layout change.
+ */
+export function usePanes(key: string): QueStore {
+  useQueSelector((s) => s.terminals)
+  useQueSelector((s) => s.layouts[key])
+
+  return useStore()
 }

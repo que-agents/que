@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react'
 import type { Task, Workspace } from '../../../preload/index.d'
 import { formatAge, formatCost, formatDuration, hhmm } from '../../../shared/format'
 import { ACTIVE_STATES } from '../../../shared/types'
 import { isLiveTask, newestFirst } from '../format'
 import { useQue, useStore } from '../store'
+import { useNow } from '../useNow'
 
 interface Row {
   id: string
@@ -31,16 +31,8 @@ function minutes(m: number): string {
 export default function QuietBoard(): React.JSX.Element {
   const store = useStore()
   const { quiet, tasks, workspaces, projects, terminals, connected } = useQue()
-  const [, tick] = useState(0)
-
   // Ages and elapsed times move on their own; events refresh everything else.
-  useEffect(() => {
-    const t = setInterval(() => tick((n) => n + 1), 30_000)
-
-    return () => clearInterval(t)
-  }, [])
-
-  const now = store.now()
+  const now = useNow()
   const since = quiet?.windowStart ? Date.parse(quiet.windowStart) : now
   const projectName = (id: string): string => projects.find((p) => p.id === id)?.name ?? ''
 

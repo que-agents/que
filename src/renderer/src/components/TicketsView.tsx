@@ -4,6 +4,7 @@ import { formatAge, hhmm } from '../../../shared/format'
 import { matches } from '../sidebar-order'
 import { useQue, useStore } from '../store'
 import { buildTicketTree, type TicketNode } from '../ticket-tree'
+import { useNow } from '../useNow'
 
 /** `synced 14:05` in local time, or `synced never`. */
 function syncedAt(iso: string | null): string {
@@ -45,6 +46,8 @@ function statusTone(t: Ticket): string {
 export default function TicketsView(): React.JSX.Element {
   const store = useStore()
   const { connected, tickets, ticketsSync, filter } = useQue()
+  // The rows' "updated … ago" ages move on their own; the rows re-render with this view.
+  useNow()
   const tree = buildTicketTree(tickets)
 
   const groups = tree.groups
