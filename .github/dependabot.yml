@@ -15,6 +15,11 @@ updates:
           - minor
           - patch
     open-pull-requests-limit: 5
+    # @types/node tracks the Node that Electron bundles (24 on Electron 44), not the newest Node;
+    # lift this when an Electron release bundles a newer major.
+    ignore:
+      - dependency-name: '@types/node'
+        update-types: ['version-update:semver-major']
 
   - package-ecosystem: github-actions
     directory: /
