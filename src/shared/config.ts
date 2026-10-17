@@ -18,6 +18,7 @@ import {
   type UserConfig,
   type Weekday
 } from './types'
+import { errorCode, errorMessage } from './errors.decode'
 
 export type { PermissionMode, RepoEntry, UserConfig } from './types'
 
@@ -90,7 +91,7 @@ function parseTable(text: string): ConfigResult<Record<string, unknown>> {
   try {
     return { ok: true, config: parseToml(text) as Record<string, unknown> }
   } catch (err) {
-    return { ok: false, errors: [{ key: '', message: (err as Error).message.split('\n')[0] }] }
+    return { ok: false, errors: [{ key: '', message: errorMessage(err).split('\n')[0] }] }
   }
 }
 
@@ -417,11 +418,11 @@ export function loadConfig(env: ConfigEnv, path: string = configPath()): ConfigR
   try {
     text = fs.readFileSync(path, 'utf8')
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+    if (errorCode(err) === 'ENOENT') {
       return { ok: true, config: defaultConfig(env) }
     }
 
-    return { ok: false, errors: [{ key: '', message: (err as Error).message }] }
+    return { ok: false, errors: [{ key: '', message: errorMessage(err) }] }
   }
 
   return parseConfig(text, env)
@@ -438,9 +439,9 @@ export function readRawConfig(path: string = configPath()): ConfigResult<Record<
   try {
     text = fs.readFileSync(path, 'utf8')
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return { ok: true, config: {} }
+    if (errorCode(err) === 'ENOENT') return { ok: true, config: {} }
 
-    return { ok: false, errors: [{ key: '', message: (err as Error).message }] }
+    return { ok: false, errors: [{ key: '', message: errorMessage(err) }] }
   }
 
   return parseTable(text)

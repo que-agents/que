@@ -39,7 +39,7 @@ import { buildTree, newlyChanged } from './files'
 import { isLocked } from '../../daemon/quiet-hours'
 import { isLiveTask, latestTasks } from './format'
 import { chime, shouldChime } from './sound'
-import { errorCode, errorMessage } from './errors.decode'
+import { errorCode, errorMessage } from '../../shared/errors.decode'
 import { decodeDiffBases, decodeReview } from './persisted.decode'
 
 const DEFAULT_COLS = 80

@@ -42,6 +42,7 @@ import { readWorkspaceFile, workspaceFiles } from './files'
 import { WorkspaceManager, workspaceTerminalEnv } from './workspaces'
 import { WorktreeWatcher } from './watcher'
 import { defaultCliScript, installWrapper, resolveCliRunner } from './wrapper'
+import { errorMessage } from '../shared/errors.decode'
 
 export interface ServerOptions {
   host: PtyHost
@@ -446,13 +447,13 @@ export class DaemonServer {
             cliScript: this.opts.cliScript ?? defaultCliScript()
           })
         } catch (err) {
-          this.log(`installing the hooks wrapper failed: ${(err as Error).message}`)
+          this.log(`installing the hooks wrapper failed: ${errorMessage(err)}`)
         }
 
         try {
           fs.writeFileSync(this.paths.systemPrompt, SYSTEM_PROMPT, { mode: 0o644 })
         } catch (err) {
-          this.log(`writing ${this.paths.systemPrompt} failed: ${(err as Error).message}`)
+          this.log(`writing ${this.paths.systemPrompt} failed: ${errorMessage(err)}`)
         }
 
         this.status.start()
@@ -465,7 +466,7 @@ export class DaemonServer {
         try {
           fs.chmodSync(socketPath, 0o600)
         } catch (err) {
-          this.log(`chmod socket failed: ${(err as Error).message}`)
+          this.log(`chmod socket failed: ${errorMessage(err)}`)
         }
 
         this.server = server
@@ -577,9 +578,7 @@ export class DaemonServer {
       }
     } catch (e) {
       const error =
-        e instanceof RpcError
-          ? err(e.code, e.message)
-          : err(ErrorCodes.Internal, e instanceof Error ? e.message : String(e))
+        e instanceof RpcError ? err(e.code, e.message) : err(ErrorCodes.Internal, errorMessage(e))
 
       if (!(e instanceof RpcError)) this.log(`${req.method} failed: ${error.message}`)
       conn.send({ id: req.id, error })

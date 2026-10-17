@@ -12,6 +12,7 @@ import { registerQuietCommands } from './quiet'
 import { registerTaskCommands } from './tasks'
 import { registerTicketCommands } from './tickets'
 import { registerWorkspaceCommands } from './workspaces'
+import { errorMessage } from '../shared/errors.decode'
 
 declare const __QUE_VERSION__: string
 
@@ -242,7 +243,7 @@ main().catch((err) => {
       ? `${err.message} (${err.code})`
       : err instanceof CliError
         ? err.message
-        : (err as Error).message
+        : errorMessage(err)
 
   console.error(`que: ${msg}`)
   process.exit(1)

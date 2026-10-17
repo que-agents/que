@@ -3,7 +3,7 @@ import type { PullRequest, Report, WorkspaceDigest } from '../../../preload/inde
 import { formatUnlocks } from '../../../daemon/quiet-hours'
 import { formatCost, formatDuration, hhmm } from '../../../shared/format'
 import { REPORT_GROUPS } from '../format'
-import { errorMessage } from '../errors.decode'
+import { errorMessage } from '../../../shared/errors.decode'
 import { useQue, useStore } from '../store'
 import { PrChip, StatusBadge, TaskBadge } from './StatusBadge'
 import UnlockStatus from './UnlockStatus'

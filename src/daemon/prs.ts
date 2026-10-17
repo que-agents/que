@@ -13,6 +13,7 @@ import { jsonPages, parsePrThread } from './pr-thread'
 import { decodeLineComments, decodePrView } from './pr-thread.decode'
 import type { Emit } from './status'
 import type { Store } from './store'
+import { errorMessage } from '../shared/errors.decode'
 
 const FIELDS = 'number,url,title,state,isDraft,reviewDecision,statusCheckRollup,mergedAt,updatedAt'
 
@@ -226,7 +227,7 @@ export class PrService {
         ghLineComments(pr.number, ws.path, this.abort.signal)
       ])
     } catch (err) {
-      throw ghFailed((err as Error).message)
+      throw ghFailed(errorMessage(err))
     }
 
     const thread = parsePrThread(
@@ -268,7 +269,7 @@ export class PrService {
 
       if (!this.failing.has(ws.id)) {
         this.failing.add(ws.id)
-        this.opts.log?.(`pr check failed for ${ws.id}: ${(err as Error).message}`)
+        this.opts.log?.(`pr check failed for ${ws.id}: ${errorMessage(err)}`)
       }
 
       return

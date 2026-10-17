@@ -9,6 +9,7 @@
 // a main worktree's `.git` is the gitdir itself.
 import fs from 'node:fs'
 import { isAbsolute, join, resolve } from 'node:path'
+import { errorMessage } from '../shared/errors.decode'
 
 /** Whether a path reported under the worktree is a change worth telling. */
 export function isWorktreeChange(rel: string): boolean {
@@ -86,7 +87,7 @@ export class WorktreeWatcher {
         gitdir = fs.realpathSync(pointer)
       }
     } catch (err) {
-      this.log(`watcher: cannot watch ${id} at ${worktreePath}: ${(err as Error).message}`)
+      this.log(`watcher: cannot watch ${id} at ${worktreePath}: ${errorMessage(err)}`)
 
       return
     }
@@ -146,7 +147,7 @@ export class WorktreeWatcher {
       })
       entry.watchers.push(w)
     } catch (err) {
-      this.log(`watcher: cannot watch ${dir} for ${id}: ${(err as Error).message}`)
+      this.log(`watcher: cannot watch ${dir} for ${id}: ${errorMessage(err)}`)
       this.unwatch(id)
     }
   }

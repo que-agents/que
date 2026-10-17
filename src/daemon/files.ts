@@ -5,7 +5,7 @@ import fs from 'node:fs'
 import { isAbsolute, join, sep } from 'node:path'
 import type { WorkspaceFile, WorkspaceFiles } from '../shared/protocol'
 import type { Workspace } from '../shared/types'
-import { errnoCode } from './errno.decode'
+import { errorCode } from '../shared/errors.decode'
 import { badRequest, notFound } from './errors'
 import { git } from './workspaces'
 
@@ -85,7 +85,7 @@ export async function readWorkspaceFile(ws: Workspace, path: string): Promise<Wo
     if (!real.startsWith(root + sep)) throw badRequest(`outside the worktree: ${rel}`)
     stat = await fs.promises.stat(real)
   } catch (err) {
-    if (isMissing(errnoCode(err))) throw notFound(`no such file: ${rel}`)
+    if (isMissing(errorCode(err))) throw notFound(`no such file: ${rel}`)
     throw err
   }
 

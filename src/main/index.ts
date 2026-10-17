@@ -13,6 +13,7 @@ import { decodeAbsolutePath } from './ipc.decode'
 import { installMenu } from './menu'
 import { createTray, type QueTray } from './tray'
 import { checkForUpdate } from './update-check'
+import { errorCode, errorMessage } from '../shared/errors.decode'
 
 // The daemon owns every terminal and workspace. This process only proxies the
 // allowed calls and their events between the renderer and the daemon;
@@ -354,9 +355,7 @@ function registerIpc(): void {
         return { ok: true, result: await c.request(method, params) }
       } catch (err) {
         // Errors thrown across ipc lose their fields; return them as data.
-        const e = err as { code?: string; message?: string }
-
-        return { ok: false, error: { code: e.code ?? 'error', message: e.message ?? String(err) } }
+        return { ok: false, error: { code: errorCode(err) ?? 'error', message: errorMessage(err) } }
       }
     }
   )

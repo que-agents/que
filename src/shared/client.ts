@@ -19,6 +19,7 @@ import {
   type ResultOf,
   type ServerMessage
 } from './protocol'
+import { errorCode } from './errors.decode'
 
 export class DaemonError extends Error {
   constructor(
@@ -178,7 +179,7 @@ export class DaemonClient {
 
       return first
     } catch (err) {
-      const code = (err as NodeJS.ErrnoException).code
+      const code = errorCode(err)
 
       if (code === 'ECONNREFUSED' && fs.existsSync(paths.socket)) {
         log(`removing stale socket ${paths.socket}`)

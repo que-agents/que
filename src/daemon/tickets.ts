@@ -29,6 +29,7 @@ import {
 } from './tickets.decode'
 import { shQuote } from './wrapper'
 import { git } from './workspaces'
+import { errorCode, errorMessage } from '../shared/errors.decode'
 
 const SEARCH_FIELDS = 'key,summary,status,priority,issuetype,assignee,labels'
 const VIEW_FIELDS = 'summary,description,status,priority,issuetype,labels'
@@ -104,7 +105,7 @@ function acli(args: string[], signal?: AbortSignal): Promise<string> {
       },
       (err, stdout, stderr) => {
         if (err) {
-          if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+          if (errorCode(err) === 'ENOENT') {
             return reject(new Error('acli is not installed or not on PATH'))
           }
 
@@ -255,7 +256,7 @@ export class TicketService {
       issues = decoded
     } catch (err) {
       if (this.stopped) return
-      const message = (err as Error).message
+      const message = errorMessage(err)
       store.setKv(KV_ERROR, message)
       this.site = ''
 
@@ -303,8 +304,7 @@ export class TicketService {
       const out = await acli(['jira', 'auth', 'status'], this.abort.signal)
       this.site = /^\s*Site:\s*(\S+)/m.exec(out)?.[1] ?? ''
     } catch (err) {
-      if (!this.stopped)
-        this.opts.log?.(`reading the tracker site failed: ${(err as Error).message}`)
+      if (!this.stopped) this.opts.log?.(`reading the tracker site failed: ${errorMessage(err)}`)
     }
 
     return this.site
@@ -370,7 +370,7 @@ export class TicketService {
           }
         } catch (err) {
           if (!this.stopped) {
-            this.opts.log?.(`looking up the parent of ${t.key} failed: ${(err as Error).message}`)
+            this.opts.log?.(`looking up the parent of ${t.key} failed: ${errorMessage(err)}`)
           }
         }
       }
@@ -435,7 +435,7 @@ export class TicketService {
     try {
       description = adfToText((await view(ticket.key, VIEW_FIELDS))?.description ?? null)
     } catch (err) {
-      this.opts.log?.(`fetching ${ticket.key} failed: ${(err as Error).message}`)
+      this.opts.log?.(`fetching ${ticket.key} failed: ${errorMessage(err)}`)
     }
 
     let parent: Parameters<typeof renderBrief>[2]
@@ -457,7 +457,7 @@ export class TicketService {
           description: adfToText(f?.description ?? null)
         }
       } catch (err) {
-        this.opts.log?.(`fetching ${ticket.parentKey} failed: ${(err as Error).message}`)
+        this.opts.log?.(`fetching ${ticket.parentKey} failed: ${errorMessage(err)}`)
         parent = { ...base, description: '(could not be fetched)' }
       }
     }

@@ -5,6 +5,7 @@ import { formatCountdown, hhmm } from '../shared/format'
 import { combineConfigPatches, describeQuietHours, parseConfigAssignment } from '../shared/config'
 import type { ConfigPatch, QuietState } from '../shared/types'
 import { CliError, withClient } from './common'
+import { errorMessage } from '../shared/errors.decode'
 
 /** One line about quiet hours, for `que quiet status` and `que status`. */
 export function describeQuietState(q: QuietState, now = Date.now()): string {
@@ -116,7 +117,7 @@ export function registerQuietCommands(program: Command): void {
           try {
             patch = combineConfigPatches(patch, parseConfigAssignment(a))
           } catch (err) {
-            throw new CliError((err as Error).message)
+            throw new CliError(errorMessage(err))
           }
         }
 

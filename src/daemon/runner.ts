@@ -23,6 +23,7 @@ import type { TaskEvent } from './task-machine'
 import type { Store } from './store'
 import type { WorkspaceManager } from './workspaces'
 import { findOnPath } from './wrapper'
+import { errorCode, errorMessage } from '../shared/errors.decode'
 
 // ---- prompts (pure) ------------------------------------------------------------
 
@@ -156,7 +157,7 @@ function pidAlive(pid: number): boolean {
 
     return true
   } catch (err) {
-    return (err as NodeJS.ErrnoException).code === 'EPERM'
+    return errorCode(err) === 'EPERM'
   }
 }
 
@@ -225,7 +226,7 @@ export class TaskRunner {
       fs.mkdirSync(this.o.paths.taskLogsDir, { recursive: true, mode: 0o700 })
       fs.appendFileSync(this.logPath(id), `${lines.map((l) => `[que] ${l}`).join('\n')}\n`)
     } catch (err) {
-      this.o.log(`task ${id}: writing the log failed: ${(err as Error).message}`)
+      this.o.log(`task ${id}: writing the log failed: ${errorMessage(err)}`)
     }
   }
 
