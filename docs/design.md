@@ -11,16 +11,16 @@ them; nothing sets a colour, font, or radius inline.
 
 ## Surfaces
 
-| Token             | Value     | Use                                                    |
-| ----------------- | --------- | ------------------------------------------------------ |
-| `--bg-side`       | `#111111` | The sidebar.                                           |
-| `--bg`            | `#181818` | The main area, the terminal, the quiet board, windows. |
-| `--bg-input`      | `#0e0e0e` | Text fields.                                           |
-| `--bg-raised`     | `#202020` | Buttons, menus, dialogs, banners.                      |
-| `--bg-hover`      | `#262626` | Hover on rows, buttons, menu items.                    |
-| `--bg-active`     | `#2c2c2c` | The selected row; scrollbar thumbs.                    |
-| `--border`        | `#272727` | Hairlines and dashed guides.                           |
-| `--border-strong` | `#363636` | Menus, dialogs, hovered buttons.                       |
+| Token             | Value     | Use                                            |
+| ----------------- | --------- | ---------------------------------------------- |
+| `--bg-side`       | `#111111` | The sidebar, the review pane, the quiet board. |
+| `--bg`            | `#181818` | The main area, the terminal, windows.          |
+| `--bg-input`      | `#0e0e0e` | Text fields.                                   |
+| `--bg-raised`     | `#202020` | Buttons, menus, dialogs, banners.              |
+| `--bg-hover`      | `#262626` | Hover on rows, buttons, menu items.            |
+| `--bg-active`     | `#2c2c2c` | The selected row; scrollbar thumbs.            |
+| `--border`        | `#272727` | Hairlines and dashed guides.                   |
+| `--border-strong` | `#363636` | Menus, dialogs, hovered buttons.               |
 
 Surfaces step up by one token per layer: the sidebar is darker than the main
 area, raised things (menus, dialogs) sit one step above it. Regions are divided
@@ -62,12 +62,11 @@ The accent is a teal, apart in hue from both the done green and the working
 blue, and it is used sparingly, so it keeps meaning "this is the thing" (the
 active tab, a link, the cursor, an unlock while it runs). It is the same colour
 in the mark (the icon's dot), the UI and the quiet board. Status is a tone,
-never the accent: on the board, needs input and paused take `--tone-attention`,
-as they do in the sidebar. A status
+never the accent. A status
 badge (`.status.tone-*`) is a 5px dot and a mono word, tinted at 12% with a
 32% border of its tone. It never fills with colour: at a glance the dot tells
 the story, and a wall of filled pills is exactly the noise que exists to
-remove. The quiet board uses the same tones as plain text.
+remove. The quiet board uses the same tones on a dot or a word, never a badge.
 
 ## Shapes
 
@@ -132,6 +131,25 @@ remove. The quiet board uses the same tones as plain text.
   toggle, all icon buttons. The title truncates with an ellipsis before the buttons
   give way. The pull request chip is `PR #n · state`; failing
   checks and a requested change are its tone, and its tooltip spells them out.
+
+## Quiet board
+
+The quiet board is the only window during quiet hours, and its one question is
+"running and not stuck?". It answers from across the room without pulling you
+in, so nothing on it may read as a message or a call to action: no sentences,
+no large type, no filled badges, no emoji. It is a dim instrument panel on
+`--bg-side` with the four corner points (3px, `--fg-faint`): a 24px strip with
+the q mark at 18px (`--fg-muted`, its dot the board's one use of the accent),
+the `[ QUIET HOURS ]` label and the clock in mono `--fg-muted` with `· until
+HH:MM` faint; one faint mono count line (`.count-line`) that lists only the
+non-zero counts, where only `stuck` takes a tone (`--tone-bad`) and `running`
+reads `--fg-muted`; 30px dot rows (`.dot-row`) one notch dimmer than the
+sidebar, the name in `--fg-secondary` and everything else in mono
+`--fg-faint`; and a footer with `detail unlocks at HH:MM · unlocks are logged`
+and a ghost Unlock (transparent, a `--border-strong` hairline, `--fg-muted`),
+the only control.
+Needs input is not a night state: it reads `waiting`, faint, with a neutral
+dot, and the locked tray title leaves its count out (`● 3 ✕ 0`).
 
 ## Adding something
 

@@ -184,3 +184,25 @@ export function UnlockIcon(): React.JSX.Element {
     </svg>
   )
 }
+
+/**
+ * que's mark: a ring with a stem down its right side from the equator, and a
+ * dot in the accent. The numbers are the app icon's own (scripts/make-icon.mjs,
+ * a 1024 canvas), the viewBox cropped square around the glyph, drawn at 18px.
+ */
+export function QMarkIcon(): React.JSX.Element {
+  return (
+    <svg
+      {...base}
+      width={18}
+      height={18}
+      viewBox="287 290 514 514"
+      strokeWidth={64}
+      aria-hidden="true"
+    >
+      <circle cx="482" cy="472" r="150" />
+      <path d="M632 472V772" />
+      <circle cx="742" cy="742" r="46" fill="var(--accent)" stroke="none" />
+    </svg>
+  )
+}

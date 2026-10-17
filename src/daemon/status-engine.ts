@@ -218,17 +218,18 @@ export function traySummary(
 
 /**
  * The menu-bar title with quiet hours folded in: while an unlock runs it
- * leads with the countdown (`🔓 14:32 · ● 3 ▸ 1 ✕ 0`), otherwise it is the
- * plain counts.
+ * leads with the countdown (`🔓 14:32 · ● 3 ▸ 1 ✕ 0`); while quiet hours are
+ * locked it drops the needs-input count (`● 3 ✕ 0`), since needs input is not
+ * a night state; otherwise it is the plain counts.
  */
 export function quietTrayTitle(
   s: StatusSummary,
   quiet: { inQuietHours: boolean; unlockedUntil: string | null } | null,
   now: number
 ): string {
-  const base = trayTitle(s)
+  if (!quiet?.inQuietHours) return trayTitle(s)
 
-  if (!quiet?.inQuietHours || !quiet.unlockedUntil) return base
+  if (!quiet.unlockedUntil) return `● ${s.working} ✕ ${s.stuck}`
 
-  return `🔓 ${formatMinSec(Date.parse(quiet.unlockedUntil) - now)} · ${base}`
+  return `🔓 ${formatMinSec(Date.parse(quiet.unlockedUntil) - now)} · ${trayTitle(s)}`
 }

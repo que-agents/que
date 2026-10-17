@@ -290,10 +290,13 @@ describe('quietTrayTitle', () => {
     )
   })
 
-  it('is the plain counts while quiet and locked, and in work hours', () => {
+  it('drops the needs-input count while quiet and locked', () => {
     expect(quietTrayTitle(summary, { inQuietHours: true, unlockedUntil: null }, now)).toBe(
-      '● 3 ▸ 1 ✕ 0'
+      '● 3 ✕ 0'
     )
+  })
+
+  it('is the plain counts in work hours', () => {
     expect(quietTrayTitle(summary, { inQuietHours: false, unlockedUntil: null }, now)).toBe(
       '● 3 ▸ 1 ✕ 0'
     )

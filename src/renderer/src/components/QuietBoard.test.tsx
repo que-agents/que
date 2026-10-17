@@ -8,6 +8,7 @@ import {
   makeQuietState,
   makeTask,
   makeTermInfo,
+  makeUserConfig,
   makeWorkspace
 } from '@renderer/testing/fixtures'
 import App from '../App'
@@ -29,16 +30,40 @@ const ago = (minutes: number): string => new Date(now - minutes * 60_000).toISOS
 
 const uploader = makeProject()
 
+const dotfiles = makeProject({
+  id: 'prj_01hzw9d3f5kt',
+  name: 'dotfiles',
+  path: '/Users/dev/dotfiles'
+})
+
 const retry = makeWorkspace({
   id: 'ws_01hzx3k9c2qf',
   name: 'app-1432-retry-logic',
-  status: 'working'
+  status: 'working',
+  lastActivityAt: ago(1)
 })
 
 const auth = makeWorkspace({
   id: 'ws_01hzx5t6y2wa',
   name: 'app-1451-token-refresh',
-  status: 'needs_input'
+  status: 'needs_input',
+  statusAt: ago(34),
+  lastActivityAt: ago(34)
+})
+
+const resume = makeWorkspace({
+  id: 'ws_01hzx6r8s1uv',
+  name: 'app-1460-upload-resume',
+  status: 'stuck',
+  lastActivityAt: ago(50)
+})
+
+const dotfilesMain = makeWorkspace({
+  id: 'ws_01hzx8w2x4yz',
+  projectId: dotfiles.id,
+  name: 'main',
+  status: 'idle',
+  lastActivityAt: ago(180)
 })
 
 const running = makeTask({
@@ -46,10 +71,11 @@ const running = makeTask({
   title: 'Add retry logic to the uploader',
   workspaceId: retry.id,
   state: 'running',
-  startedAt: ago(42),
+  startedAt: ago(67),
   lastActivityAt: ago(2),
   turns: 14,
   costUsd: 1.82,
+  createdAt: ago(70),
   updatedAt: ago(2)
 })
 
@@ -60,6 +86,8 @@ const paused = makeTask({
   state: 'paused',
   reason: 'rate_limit',
   pausedUntil: new Date(2026, 9, 14, 3, 0).toISOString(),
+  lastActivityAt: ago(31),
+  createdAt: ago(60),
   updatedAt: ago(30)
 })
 
@@ -72,124 +100,132 @@ const stuck = makeTask({
   updatedAt: ago(60)
 })
 
+const queued = makeTask({ id: 'tsk_01hzy5p8q9vw', title: 'Bump the SDK', state: 'queued' })
 const doneTonight = makeTask({ id: 'tsk_01hzy3k2l6rs', state: 'done', updatedAt: ago(90) })
 const doneYesterday = makeTask({ id: 'tsk_01hzy4m5n7tu', state: 'done', updatedAt: ago(26 * 60) })
 const shell = makeTermInfo({ name: retry.name, workspaceId: retry.id, createdAt: ago(75) })
+const dotShell = makeTermInfo({ name: 'main', workspaceId: dotfilesMain.id, createdAt: ago(200) })
 
 function seed(): void {
   fakeBridge.seedProject(uploader)
-  fakeBridge.seedWorkspace(retry)
-  fakeBridge.seedWorkspace(auth)
+  fakeBridge.seedProject(dotfiles)
 
-  for (const t of [running, paused, stuck, doneTonight, doneYesterday]) fakeBridge.seedTask(t)
+  for (const w of [retry, auth, resume, dotfilesMain]) fakeBridge.seedWorkspace(w)
+
+  for (const t of [running, paused, stuck, queued, doneTonight, doneYesterday])
+    fakeBridge.seedTask(t)
   fakeBridge.seedTerminal(shell)
+  fakeBridge.seedTerminal(dotShell)
   fakeBridge.setQuietState(quiet)
+}
+
+/** Each row's words, in order. */
+function rowTexts(): (string | null)[] {
+  return screen.queryAllByTestId(/^quiet-board-row-/).map((r) => r.textContent)
 }
 
 describe('QuietBoard', () => {
   describe('rendering', () => {
-    it('answers "running and not stuck?" with counts since the window started', async () => {
+    it('shows the strip: the quiet hours label, the clock and until when', async () => {
       seed()
 
       render(<App board now={clock} />)
 
-      const header = await screen.findByTestId('quiet-board-header')
-      expect(header).toHaveTextContent(/^que · quiet hours · 02:00 · detail unlocks at 07:00$/)
+      expect(await screen.findByTestId('quiet-board-header')).toHaveTextContent(
+        /^Quiet hours 02:00 · until 07:00$/
+      )
+    })
+
+    it('counts tonight in one line, in order, with the zeros left out', async () => {
+      seed()
+
+      render(<App board now={clock} />)
+
       await waitFor(() => {
         expect(screen.getByTestId('quiet-board-counts')).toHaveTextContent(
-          '1 running · 1 paused (limit resets 03:00) · 1 stuck · 1 done'
+          /^2 stuck · 1 running · 1 waiting · 1 paused \(limit resets 03:00\) · 1 done · 1 idle$/
         )
       })
-      expect(screen.getByTestId('quiet-board-counts')).toHaveTextContent(
-        '2 workspaces · 1 working · 1 need input · 0 stuck'
-      )
     })
 
-    it('shows a row per live task and per workspace that is working, waiting, stuck or has a live terminal, and nothing else to act on', async () => {
+    it('tones only the stuck count, mutes running, and leaves the rest faint', async () => {
       seed()
 
       render(<App board now={clock} />)
 
-      const row = await screen.findByTestId(`quiet-board-row-${running.id}`)
-      expect(
-        within(row)
-          .getAllByRole('cell')
-          .map((c) => c.textContent)
-      ).toEqual([
-        'Add retry logic to the uploader',
-        'uploader',
-        'running',
-        '-',
-        '42m 00s',
-        '2m ago',
-        '14',
-        '$1.82'
-      ])
-      expect(screen.getByTestId(`quiet-board-row-${paused.id}`)).toHaveAttribute(
-        'data-state',
-        'paused'
-      )
-      const ws = screen.getByTestId(`quiet-board-row-${retry.id}`)
-      expect(
-        within(ws)
-          .getAllByRole('cell')
-          .map((c) => c.textContent)
-      ).toEqual(['app-1432-retry-logic', 'uploader', 'working', '-', '1h 15m', '-', '-', '-'])
-      expect(screen.getByTestId(`quiet-board-row-${auth.id}`)).toBeInTheDocument()
-      expect(screen.queryByTestId(`quiet-board-row-${stuck.id}`)).not.toBeInTheDocument()
-      expect(screen.getAllByRole('button')).toEqual([screen.getByTestId('quiet-board-unlock')])
-      expect(screen.queryByRole('link')).not.toBeInTheDocument()
-      expect(screen.queryByRole('tab')).not.toBeInTheDocument()
-      expect(await window.que.term.list()).toHaveLength(1) // the board never opens a terminal
+      const counts = await screen.findByTestId('quiet-board-counts')
+      await waitFor(() => {
+        expect(within(counts).getByText('2 stuck')).toHaveClass('tone-bad')
+      })
+      expect(within(counts).getByText('1 running')).toHaveClass('muted')
+      expect(within(counts).getByText('1 waiting')).not.toHaveAttribute('class')
+      expect(within(counts).getByText('1 done')).not.toHaveAttribute('class')
     })
-  })
 
-  describe('workspaces without a terminal', () => {
-    it('lists a waiting workspace first, with since when it needs input', async () => {
+    it('lists stuck, live tasks newest first, working, waiting, then the rest, each with its state and last activity', async () => {
       seed()
-      fakeBridge.seedWorkspace({ ...auth, statusAt: new Date(2026, 9, 14, 1, 30).toISOString() })
 
       render(<App board now={clock} />)
 
-      const first = (await screen.findAllByTestId(/^quiet-board-row-/))[0]
-      expect(first).toHaveAttribute('data-testid', `quiet-board-row-${auth.id}`)
-      expect(
-        within(first)
-          .getAllByRole('cell')
-          .map((c) => c.textContent)
-      ).toEqual([
-        'app-1451-token-refresh',
-        'uploader',
-        'needs input · since 01:30',
-        '-',
-        '-',
-        '-',
-        '-',
-        '-'
-      ])
+      await waitFor(() => {
+        expect(rowTexts()).toEqual([
+          'app-1460-upload-resume uploader stuck 50m ago',
+          'Document the upload limits uploader paused 31m ago',
+          'Add retry logic to the uploader uploader running · 1h 07m 2m ago',
+          'app-1432-retry-logic uploader working 1m ago',
+          'app-1451-token-refresh uploader waiting 34m ago',
+          'main dotfiles idle 3h ago'
+        ])
+      })
     })
-  })
 
-  describe('pull requests', () => {
-    it('shows the PR state, marked when checks fail, and a dash without one', async () => {
+    it('reads needs input as a plain waiting, with a neutral dot and no tone on the word', async () => {
+      seed()
+
+      render(<App board now={clock} />)
+
+      const row = await screen.findByTestId(`quiet-board-row-${auth.id}`)
+      expect(row).toHaveAttribute('data-state', 'needs_input')
+      expect(row).toHaveClass('tone-neutral')
+      expect(within(row).getByText('waiting')).not.toHaveClass('tone-bad')
+      expect(within(row).queryByText(/needs input|since/)).not.toBeInTheDocument()
+      expect(
+        within(screen.getByTestId(`quiet-board-row-${resume.id}`)).getByText('stuck')
+      ).toHaveClass('tone-bad')
+    })
+
+    it('carries no PR, turns or cost, and nothing to act on but Unlock', async () => {
       seed()
       fakeBridge.setWorkspacePr(retry.id, makePullRequest({ state: 'open', checks: 'failing' }))
 
       render(<App board now={clock} />)
 
-      const ws = await screen.findByTestId(`quiet-board-row-${retry.id}`)
-      await waitFor(() => {
-        expect(within(ws).getAllByRole('cell')[3]).toHaveTextContent('open ✕')
-      })
-      fakeBridge.setWorkspacePr(retry.id, null)
-      await waitFor(() => {
-        expect(within(ws).getAllByRole('cell')[3]).toHaveTextContent(/^-$/)
-      })
+      const row = await screen.findByTestId(`quiet-board-row-${running.id}`)
+      expect(row).not.toHaveTextContent(/\$|14|open|✕/)
+      expect(screen.getByTestId(`quiet-board-row-${retry.id}`)).not.toHaveTextContent(/open|✕/)
+      expect(screen.queryByTestId(`quiet-board-row-${stuck.id}`)).not.toBeInTheDocument()
+      expect(screen.queryByTestId(`quiet-board-row-${queued.id}`)).not.toBeInTheDocument()
+      expect(screen.getAllByRole('button')).toEqual([screen.getByTestId('quiet-board-unlock')])
+      expect(screen.queryByRole('link')).not.toBeInTheDocument()
+      expect(screen.queryByRole('tab')).not.toBeInTheDocument()
+      expect(await window.que.term.list()).toHaveLength(2) // the board never opens a terminal
+    })
+
+    it('says when detail unlocks, and offers the configured unlock as its one ghost button', async () => {
+      seed()
+
+      render(<App board now={clock} />)
+
+      expect(
+        await screen.findByText('detail unlocks at 07:00 · unlocks are logged')
+      ).toBeInTheDocument()
+      const unlock = screen.getByRole('button', { name: 'Unlock 20 min' })
+      expect(unlock).toHaveClass('ghost')
     })
   })
 
   describe('status updates', () => {
-    it('moves a task between counts as the daemon reports it', async () => {
+    it('moves a task between counts and off the rows as the daemon reports it', async () => {
       seed()
       render(<App board now={clock} />)
       await screen.findByTestId(`quiet-board-row-${running.id}`)
@@ -198,7 +234,7 @@ describe('QuietBoard', () => {
 
       await waitFor(() => {
         expect(screen.getByTestId('quiet-board-counts')).toHaveTextContent(
-          '0 running · 1 paused (limit resets 03:00) · 1 stuck · 2 done'
+          /^2 stuck · 1 running · 1 waiting · 1 paused \(limit resets 03:00\) · 2 done · 1 idle$/
         )
       })
       expect(screen.queryByTestId(`quiet-board-row-${running.id}`)).not.toBeInTheDocument()
@@ -220,15 +256,44 @@ describe('QuietBoard', () => {
   })
 
   describe('empty state', () => {
-    it('says nothing is running', async () => {
+    it('says nothing is running, in the count line and the rows', async () => {
       fakeBridge.setQuietState(quiet)
 
       render(<App board now={clock} />)
 
-      expect(await screen.findByTestId('quiet-board-empty')).toHaveTextContent('Nothing running.')
-      expect(screen.getByTestId('quiet-board-counts')).toHaveTextContent(
-        '0 running · 0 paused · 0 stuck · 0 done'
-      )
+      expect(await screen.findByTestId('quiet-board-empty')).toHaveTextContent(/^nothing running$/)
+      expect(screen.getByTestId('quiet-board-counts')).toHaveTextContent(/^nothing running$/)
+    })
+
+    it('adds what is queued for tonight and when the morning summary arrives', async () => {
+      fakeBridge.seedTask(queued)
+      fakeBridge.seedTask(makeTask({ id: 'tsk_01hzy6r1s2xy', state: 'queued' }))
+      fakeBridge.setConfig({
+        notifications: { chimeOnComplete: true, chimeOnNeedsInput: false, morningSummary: true }
+      })
+      fakeBridge.setQuietState(quiet)
+
+      render(<App board now={clock} />)
+
+      await waitFor(() => {
+        expect(screen.getByTestId('quiet-board-empty')).toHaveTextContent(
+          /^nothing running · 2 queued for tonight · summary at 07:00$/
+        )
+      })
+    })
+
+    it('leaves the summary out while the morning summary is off', async () => {
+      fakeBridge.seedTask(queued)
+      fakeBridge.setConfig(makeUserConfig())
+      fakeBridge.setQuietState(quiet)
+
+      render(<App board now={clock} />)
+
+      await waitFor(() => {
+        expect(screen.getByTestId('quiet-board-empty')).toHaveTextContent(
+          /^nothing running · 1 queued for tonight$/
+        )
+      })
     })
   })
 })
