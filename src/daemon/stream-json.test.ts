@@ -14,7 +14,9 @@ describe('StreamParser', () => {
     expect(p.push(`${line.slice(17)}\n{"type":"assi`)).toEqual([
       { kind: 'init', sessionId: SESSION }
     ])
-    expect(p.pending).toBe('{"type":"assi')
+    expect(p.push('stant","message":{"content":[{"type":"text","text":"done"}]}}\n')).toEqual([
+      { kind: 'assistant', text: 'done' }
+    ])
   })
 
   it('decodes multi-byte UTF-8 split across byte chunks', () => {
@@ -50,6 +52,7 @@ describe('StreamParser', () => {
     p.push(JSON.stringify(makeStreamResult()))
 
     expect(p.flush()).toMatchObject([{ kind: 'result', subtype: 'success', turns: 9 }])
-    expect(p.pending).toBe('')
+    expect(p.flush()).toEqual([])
+    expect(p.skipped).toBe(0)
   })
 })
