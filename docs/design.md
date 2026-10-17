@@ -2,7 +2,7 @@
 
 que is a tool you look at all day and glance at all night, so it is drawn like a
 technical drawing: black and dark grey surfaces, hairline borders, dashed guide
-lines between regions, small mono labels in brackets, and one warm accent.
+lines between regions, small mono labels in brackets, and one cool accent.
 Nothing shouts, and nothing is tinted: the greys are neutral. Status is a dot and
 a word, not a coloured block.
 
@@ -46,20 +46,24 @@ so the DOM keeps the plain word.
 
 ## Accent and tones
 
-| Token              | Value     | Use                                                                        |
-| ------------------ | --------- | -------------------------------------------------------------------------- |
-| `--accent`         | `#c26157` | Links, the active tab's underline, focus rings, the terminal cursor.       |
-| `--accent-2`       | `#ffb162` | Quiet-hours state: the unlock countdown, paused, needs input on the board. |
-| `--inverse`        | `#e6e6e6` | The one primary button on a screen, light on dark.                         |
-| `--tone-busy`      | `#4f8cf5` | working, running, preparing.                                               |
-| `--tone-attention` | `#f99c00` | needs input, paused.                                                       |
-| `--tone-bad`       | `#fb2c36` | stuck, failed, exited badly; the danger button.                            |
-| `--tone-good`      | `#34c26b` | done, idle after work.                                                     |
-| `--tone-neutral`   | `#7a7a7a` | idle, queued.                                                              |
-| `--tone-muted`     | `#5a5a5a` | stopped, exited.                                                           |
+| Token              | Value     | Use                                                                               |
+| ------------------ | --------- | --------------------------------------------------------------------------------- |
+| `--accent`         | `#3fcdb4` | Links, the active tab's underline, focus rings, the cursor, the unlock countdown. |
+| `--accent-hover`   | `#6adcc7` | The accent under the pointer.                                                     |
+| `--inverse`        | `#e6e6e6` | The one primary button on a screen, light on dark.                                |
+| `--tone-busy`      | `#4f8cf5` | working, running, preparing.                                                      |
+| `--tone-attention` | `#f99c00` | needs input, paused.                                                              |
+| `--tone-bad`       | `#fb2c36` | stuck, failed, exited badly; the danger button.                                   |
+| `--tone-good`      | `#34c26b` | done, idle after work.                                                            |
+| `--tone-neutral`   | `#7a7a7a` | idle, queued.                                                                     |
+| `--tone-muted`     | `#5a5a5a` | stopped, exited.                                                                  |
 
-The accent is the only warm colour and it is used sparingly, so it keeps
-meaning "this is the thing" (the active tab, a link, the cursor). A status
+The accent is a teal, apart in hue from both the done green and the working
+blue, and it is used sparingly, so it keeps meaning "this is the thing" (the
+active tab, a link, the cursor, an unlock while it runs). It is the same colour
+in the mark (the icon's dot), the UI and the quiet board. Status is a tone,
+never the accent: on the board, needs input and paused take `--tone-attention`,
+as they do in the sidebar. A status
 badge (`.status.tone-*`) is a 5px dot and a mono word, tinted at 12% with a
 32% border of its tone. It never fills with colour: at a glance the dot tells
 the story, and a wall of filled pills is exactly the noise que exists to

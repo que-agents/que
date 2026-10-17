@@ -60,7 +60,7 @@ describe('quiet mode in the main window', () => {
 
       expect(await screen.findByRole('tab')).toBeInTheDocument()
       expect(screen.getByTestId('topbar-unlock-countdown')).toHaveTextContent(
-        '🔓 unlocked · 14:32 left'
+        'unlocked · 14:32 left'
       )
       expect(screen.getByRole('button', { name: 'Lock now' })).toBeEnabled()
     })

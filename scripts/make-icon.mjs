@@ -24,7 +24,7 @@ const RADIUS = 185
 const BG_TOP = [0x2a, 0x2d, 0x34]
 const BG_BOTTOM = [0x16, 0x18, 0x1d]
 const INK = [0xe8, 0xea, 0xee]
-const ACCENT = [0x5c, 0xd6, 0x8f]
+const ACCENT = [0x3f, 0xcd, 0xb4]
 
 /** Distance to a rounded square centred at c (negative inside). */
 function roundedSquare(x, y, c, half, r) {
@@ -61,17 +61,18 @@ for (let y = 0; y < SIZE; y++) {
   for (let x = 0; x < SIZE; x++) {
     const body = coverage(roundedSquare(x + 0.5, y + 0.5, c, BODY / 2, RADIUS))
     let rgb = mix(BG_TOP, BG_BOTTOM, (y - (c - BODY / 2)) / BODY)
-    // The "q": a ring and a stem down its right side, slightly left of centre.
+    // The "q": a ring and a stem down its right side from the centre line (no
+    // nub above the bowl), slightly left of centre.
     const qx = c - 30
     const qy = c - 40
 
     const glyph = Math.max(
       coverage(ring(x + 0.5, y + 0.5, qx, qy, 150, 64)),
-      coverage(stem(x + 0.5, y + 0.5, qx + 150, qy - 120, qy + 300, 64))
+      coverage(stem(x + 0.5, y + 0.5, qx + 150, qy, qy + 300, 64))
     )
 
     rgb = mix(rgb, INK, glyph)
-    // A small status dot: the one thing quiet mode shows.
+    // A small status dot in the app's accent: the one thing quiet mode shows.
     const dot = coverage(Math.hypot(x + 0.5 - (c + 230), y + 0.5 - (c + 230)) - 46)
     rgb = mix(rgb, ACCENT, dot)
     const o = y * stride + 1 + x * 4

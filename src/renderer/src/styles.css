@@ -23,9 +23,8 @@
   --fg-faint: #6f6f6f;
 
   /* accents */
-  --accent: #c26157;
-  --accent-hover: #d9786d;
-  --accent-2: #ffb162;
+  --accent: #3fcdb4;
+  --accent-hover: #6adcc7;
   --inverse: #e6e6e6;
   --inverse-fg: #111111;
 
@@ -1041,7 +1040,7 @@ body.resizing {
   align-items: center;
   gap: 8px;
   font: 11px var(--mono);
-  color: var(--accent-2);
+  color: var(--accent);
   white-space: nowrap;
 }
 
@@ -1116,7 +1115,7 @@ body.resizing {
 
 .quiet-board .state-needs_input,
 .quiet-board .state-paused {
-  color: var(--accent-2);
+  color: var(--tone-attention);
 }
 
 .quiet-board-footer {

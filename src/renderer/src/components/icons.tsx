@@ -174,3 +174,13 @@ export function FileIcon(): React.JSX.Element {
     </svg>
   )
 }
+
+/** An open padlock, its shackle lifted off the right side: unlocked during quiet hours. */
+export function UnlockIcon(): React.JSX.Element {
+  return (
+    <svg {...base} aria-hidden="true">
+      <rect x="3" y="7.25" width="10" height="6.5" rx="1" />
+      <path d="M5.25 7.25V5a2.75 2.75 0 0 1 5.4-.75" />
+    </svg>
+  )
+}

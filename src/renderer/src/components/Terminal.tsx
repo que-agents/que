@@ -42,7 +42,7 @@ export default function Terminal({ id, focused = true }: Props): React.JSX.Eleme
       theme: {
         background: '#181818',
         foreground: '#eeeeee',
-        cursor: '#c26157',
+        cursor: '#3fcdb4',
         cursorAccent: '#181818',
         selectionBackground: '#363636'
       }

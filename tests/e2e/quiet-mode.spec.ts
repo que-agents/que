@@ -86,7 +86,7 @@ test('quiet hours show only the board; an unlock brings detail back until it run
     const main = await findWindow(launched.app, false)
     const topbar = new TopBarPage(main)
     await expect.poll(() => windowStates(launched.app)).toEqual([{ board: false, visible: true }])
-    await expect(topbar.unlockCountdown).toHaveText(/^🔓 unlocked · 0:0\d left$/)
+    await expect(topbar.unlockCountdown).toHaveText(/^unlocked · 0:0\d left$/)
     await expect(topbar.lockButton).toBeVisible()
   })
 
