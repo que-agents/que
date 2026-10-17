@@ -68,6 +68,24 @@ export function clampRatio(r: number): number {
   return Math.round(Math.min(RATIO_MAX, Math.max(RATIO_MIN, n)) * 1000) / 1000
 }
 
+/**
+ * The layout with a tab selected in a pane, and that pane focused. With `append`, the id is a new
+ * tab: added to the second pane's list when it goes there (the first pane holds every other tab).
+ */
+export function placeIn(
+  l: PaneLayout,
+  pane: 0 | 1,
+  id: string,
+  opts: { append: boolean }
+): PaneLayout {
+  return {
+    ...l,
+    second: opts.append && pane === 1 ? [...l.second, id] : l.second,
+    active: pane === 0 ? [id, l.active[1]] : [l.active[0], id],
+    focused: pane
+  }
+}
+
 /** Whether a layout differs from a single pane with no view tabs (and so is worth remembering). */
 export function isRemembered(l: PaneLayout): boolean {
   return Boolean(l.split) || l.views.length > 0

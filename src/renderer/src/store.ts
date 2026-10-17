@@ -28,6 +28,7 @@ import {
   NO_SPLIT,
   type PaneLayout,
   parseLayout,
+  placeIn,
   RATIO_DEFAULT,
   reconcileLayout,
   diffId,
@@ -716,13 +717,9 @@ export class QueStore {
       return
     }
 
-    const pane = l.split ? l.focused : 0
     this.setLayout(key, {
-      ...l,
-      views: [...l.views, id],
-      second: pane === 1 ? [...l.second, id] : l.second,
-      active: pane === 0 ? [id, l.active[1]] : [l.active[0], id],
-      focused: pane
+      ...placeIn(l, this.focusedPane(key), id, { append: true }),
+      views: [...l.views, id]
     })
   }
 
@@ -1089,9 +1086,7 @@ export class QueStore {
   /** Selects a tab (a terminal or a view) within the pane that holds it, and focuses that pane. */
   selectTerminal(key: string, id: string): void {
     const l = this.layout(key)
-    const pane = l.second.includes(id) ? 1 : 0
-    const active: PaneLayout['active'] = pane === 0 ? [id, l.active[1]] : [l.active[0], id]
-    this.setLayout(key, { ...l, active, focused: pane })
+    this.setLayout(key, placeIn(l, l.second.includes(id) ? 1 : 0, id, { append: false }))
   }
 
   /** Focuses a pane (the second only when the key is split). */
@@ -1187,16 +1182,9 @@ export class QueStore {
 
   /** A new terminal in the focused pane. */
   async newTerminal(key: string): Promise<void> {
-    await this.openIn(key, (id) => {
-      const l = this.layout(key)
-      const pane = l.split ? l.focused : 0
-      this.setLayout(key, {
-        ...l,
-        second: pane === 1 ? [...l.second, id] : l.second,
-        active: pane === 0 ? [id, l.active[1]] : [l.active[0], id],
-        focused: pane
-      })
-    })
+    await this.openIn(key, (id) =>
+      this.setLayout(key, placeIn(this.layout(key), this.focusedPane(key), id, { append: true }))
+    )
   }
 
   /** Splits the key in two with a new terminal in the second pane (or adds one to it). */
