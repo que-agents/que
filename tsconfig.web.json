@@ -31,6 +31,7 @@
     "src/shared/json.decode.ts",
     "src/shared/protocol.ts",
     "src/shared/slug.ts",
-    "src/shared/types.ts"
+    "src/shared/types.ts",
+    "src/testing/entities.ts"
   ]
 }
