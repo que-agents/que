@@ -28,13 +28,10 @@ import { delay, pidAlive } from '../shared/process'
 
 // ---- prompts (pure) ------------------------------------------------------------
 
-const DEFINITION_OF_DONE = `Definition of done:
-- Work only inside this worktree (the current directory); do not touch anything outside it.
-- {test}
-- Commit your work with a clear message. Do not push.
-- End with a short summary of what you changed and why, suitable for a pull request description.`
-
-/** The system prompt appended to every headless run (written to <QUE_HOME>/system.md). */
+/**
+ * The system prompt appended to every headless run (written to <QUE_HOME>/system.md).
+ * It holds the definition of done; a brief adds only the repo's own test command.
+ */
 export const SYSTEM_PROMPT = `You are running unattended as a que overnight task. Nobody is watching this session.
 
 - Work only inside the current git worktree; never modify files outside it.
@@ -44,19 +41,16 @@ export const SYSTEM_PROMPT = `You are running unattended as a que overnight task
 - You cannot ask questions. If you are blocked, explain why in your final message and stop.
 `
 
-/** The brief, then the repo's instructions, then the fixed definition of done. */
+/** The brief, then the repo's instructions, then the repo's test command, when it has one. */
 export function buildPrompt(
   task: Pick<Task, 'brief'>,
   repo: Pick<RepoConfig, 'instructions' | 'test'>
 ): string {
-  const test = repo.test
-    ? `Run the test command \`${repo.test}\` and make it pass.`
-    : 'Run the repository tests if it has any, and make them pass.'
-
   const parts = [task.brief.trim()]
 
   if (repo.instructions?.trim()) parts.push(repo.instructions.trim())
-  parts.push(DEFINITION_OF_DONE.replace('{test}', test))
+
+  if (repo.test) parts.push(`Run the test command \`${repo.test}\` and make it pass.`)
 
   return parts.join('\n\n')
 }
