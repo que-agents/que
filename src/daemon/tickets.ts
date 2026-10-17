@@ -14,7 +14,7 @@ import type {
   TicketsStartResult,
   WorkspaceCreateParams
 } from '../shared/protocol'
-import { slugify, workspaceSlug } from '../shared/slug'
+import { cappedSlug, workspaceSlug } from '../shared/slug'
 import type { Project, Ticket, Workspace } from '../shared/types'
 import { adfToText } from './adf-text'
 import { RpcError } from './errors'
@@ -84,11 +84,7 @@ export function renderBrief(
 export function workspaceNameFor(ticket: Ticket): string {
   const key = ticket.key.toLowerCase()
 
-  const capped = slugify(`${key}-${ticket.summary}`)
-    .slice(0, 64)
-    .replace(/[-._]+$/, '')
-
-  return workspaceSlug(capped) ?? key
+  return workspaceSlug(cappedSlug(`${key}-${ticket.summary}`, 64)) ?? key
 }
 
 async function acli(args: string[], signal?: AbortSignal): Promise<string> {

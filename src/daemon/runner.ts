@@ -14,7 +14,7 @@ import {
   type UserConfig
 } from '../shared/config'
 import type { QuePaths } from '../shared/paths'
-import { slugify, WORKSPACE_NAME_RE } from '../shared/slug'
+import { cappedSlug, WORKSPACE_NAME_RE } from '../shared/slug'
 import type { Project, Task, Workspace } from '../shared/types'
 import { RpcError } from './errors'
 import { finishTask } from './finisher'
@@ -134,10 +134,7 @@ export function buildClaudeArgs(o: ClaudeArgsOptions): string[] {
 
 /** A workspace name from a task title: its slug, shortened, or `task-<id>`. */
 export function taskWorkspaceName(title: string, taskId: string): string {
-  const slug = slugify(title)
-    .replace(/^[^a-z0-9]+/, '')
-    .slice(0, 48)
-    .replace(/[^a-z0-9]+$/, '')
+  const slug = cappedSlug(title, 48)
 
   return WORKSPACE_NAME_RE.test(slug) ? slug : `task-${taskId.replace(/^tsk_/, '').slice(0, 8)}`
 }
