@@ -33,6 +33,7 @@ export function planCliInstall(input: PlanInput): CliInstallPlan {
   const link = join(dir, 'que')
   const existing = input.existing(link)
   const action = existing === 'none' ? 'create' : existing === 'file' ? 'refuse' : 'replace'
+
   return {
     link,
     dir,
@@ -42,15 +43,18 @@ export function planCliInstall(input: PlanInput): CliInstallPlan {
 }
 
 /** What the result dialog says. */
-export function describeCliInstall(plan: CliInstallPlan): { message: string; detail: string } {
+export function describeCliInstall(plan: CliInstallPlan) {
   if (plan.action === 'refuse') {
     return {
       message: `${plan.link} already exists`,
       detail: `It is not a link que made, so it was left alone. Remove it and try again.`
     }
   }
+
   const message = `Installed 'que' at ${plan.link}`
+
   if (!plan.pathHint) return { message, detail: 'Open a new terminal and run `que doctor`.' }
+
   return {
     message,
     detail: `${plan.dir} is not writable system-wide, so que went into your home folder. If your shell does not already look there, add this line to ~/.zshrc and open a new terminal:\n\n${plan.pathHint}`
@@ -59,18 +63,22 @@ export function describeCliInstall(plan: CliInstallPlan): { message: string; det
 
 function existingAt(link: string, target: string): Existing {
   let st: fs.Stats
+
   try {
     st = fs.lstatSync(link)
   } catch {
     return 'none'
   }
+
   if (!st.isSymbolicLink()) return 'file'
+
   return fs.readlinkSync(link) === target ? 'our-link' : 'other-link'
 }
 
 function writable(dir: string): boolean {
   try {
     fs.accessSync(dir, fs.constants.W_OK)
+
     return fs.statSync(dir).isDirectory()
   } catch {
     return false
@@ -84,9 +92,12 @@ export function installCli(launcher: string, home: string): CliInstallPlan {
     systemBinWritable: writable(SYSTEM_BIN),
     existing: (link) => existingAt(link, launcher)
   })
+
   if (plan.action === 'refuse') return plan
   fs.mkdirSync(plan.dir, { recursive: true })
+
   if (plan.action === 'replace') fs.rmSync(plan.link, { force: true })
   fs.symlinkSync(launcher, plan.link)
+
   return plan
 }

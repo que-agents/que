@@ -1,12 +1,13 @@
 // Runs the status engine for every workspace: feeds it hook events, terminal
 // exits, a clock tick, and `claude agents --json`; persists transitions and
 // emits workspace.status.
-import { execFile } from 'node:child_process'
 import fs from 'node:fs'
 import type { UserConfig } from '../shared/config'
+import { run } from '../shared/exec'
 import type { Events, HookEvent } from '../shared/protocol'
 import type { Workspace, WorkspaceStatus } from '../shared/types'
 import { type AgentEntry, reduce, type StatusInput, type StatusState } from './status-engine'
+import { decodeAgents } from './status.decode'
 import type { Store } from './store'
 
 export type Emit = <E extends keyof Events>(event: E, data: Events[E]) => void
@@ -40,6 +41,7 @@ function fromRow(w: Workspace): Tracked {
 }
 
 export class StatusService {
+  /** Every unarchived workspace's state, from start(); archiving forgets one. */
   private states = new Map<string, Tracked>()
   private tickTimer: NodeJS.Timeout | null = null
   private pollTimer: NodeJS.Timeout | null = null
@@ -55,6 +57,11 @@ export class StatusService {
 
   start(): void {
     this.stopped = false
+
+    for (const w of this.opts.store.listWorkspaces()) {
+      if (!this.states.has(w.id)) this.states.set(w.id, fromRow(w))
+    }
+
     this.tickTimer = setInterval(() => this.tick(), this.opts.tickMs ?? 5_000)
     this.tickTimer.unref()
     this.schedulePoll()
@@ -63,7 +70,9 @@ export class StatusService {
   stop(): void {
     this.stopped = true
     this.closed = true
+
     if (this.tickTimer) clearInterval(this.tickTimer)
+
     if (this.pollTimer) clearTimeout(this.pollTimer)
     this.tickTimer = null
     this.pollTimer = null
@@ -72,11 +81,14 @@ export class StatusService {
   private state(id: string): Tracked | undefined {
     if (this.closed) return undefined
     const known = this.states.get(id)
+
     if (known) return known
     const row = this.opts.store.getWorkspace(id)
+
     if (!row || row.archivedAt) return undefined
     const s = fromRow(row)
     this.states.set(id, s)
+
     return s
   }
 
@@ -92,6 +104,7 @@ export class StatusService {
     onlyFrom?: WorkspaceStatus
   ): void {
     const prev = this.state(id)
+
     if (!prev || (onlyFrom && prev.status !== onlyFrom)) return
     const now = this.now()
     this.commit(id, prev, { ...prev, status, reason, statusAt: now })
@@ -100,6 +113,7 @@ export class StatusService {
   /** Feeds one input to the engine for a workspace. */
   apply(id: string, input: StatusInput): void {
     const prev = this.state(id)
+
     if (!prev) return
     const stallTimeoutMs = this.opts.config().stallTimeoutMinutes * 60_000
     const next = reduce(prev, input, this.now(), { stallTimeoutMs })
@@ -109,18 +123,19 @@ export class StatusService {
   /** A hook event from `que hook`: stored, then fed to the engine. */
   hook(id: string, payload: HookEvent): void {
     const prev = this.state(id)
+
     if (!prev) return
-    const event = String(payload.hook_event_name ?? '')
+    const event = payload.hook_event_name
     this.opts.store.insertHookEvent(
       id,
-      payload.session_id ?? null,
+      payload.session_id,
       event,
       payload,
       new Date(this.now()).toISOString()
     )
-    if (!payload.agent_id && typeof payload.transcript_path === 'string') {
-      prev.transcriptPath = payload.transcript_path
-    }
+
+    if (!payload.agent_id) prev.transcriptPath = payload.transcript_path
+
     this.apply(id, { kind: 'hook', event, payload })
   }
 
@@ -137,6 +152,7 @@ export class StatusService {
     this.states.set(id, next)
     const statusChanged = prev.status !== next.status || prev.reason !== next.reason
     const sessionChanged = prev.sessionId !== next.sessionId
+
     if (!statusChanged && !sessionChanged && prev.lastActivityAt === next.lastActivityAt) return
     this.opts.store.updateStatus(id, {
       status: next.status,
@@ -145,6 +161,7 @@ export class StatusService {
       lastActivityAt: iso(next.lastActivityAt),
       sessionId: next.sessionId
     })
+
     if (statusChanged) {
       this.opts.store.insertStatusLog(
         id,
@@ -158,32 +175,37 @@ export class StatusService {
       this.opts.emit('workspace.status', {
         id,
         status: next.status,
-        ...(next.reason ? { reason: next.reason } : {}),
+        reason: next.reason || undefined,
         at: new Date(next.statusAt).toISOString()
       })
     }
+
     if (sessionChanged) {
       const ws = this.opts.store.getWorkspace(id)
+
       if (ws) this.opts.emit('workspace.updated', ws)
     }
   }
 
   /** Stall check; a transcript written since the last hook counts as activity. */
   tick(): void {
-    for (const ws of this.opts.store.listWorkspaces()) {
-      const s = this.state(ws.id)
-      if (s?.status !== 'working') continue
+    if (this.closed) return
+    const working = [...this.states].filter(([, s]) => s.status === 'working')
+
+    for (const [id, s] of working) {
       if (s.transcriptPath) {
         try {
           const mtime = fs.statSync(s.transcriptPath).mtimeMs
+
           if (s.lastActivityAt === null || mtime > s.lastActivityAt) {
-            this.commit(ws.id, s, { ...s, lastActivityAt: Math.floor(mtime) })
+            this.commit(id, s, { ...s, lastActivityAt: Math.floor(mtime) })
           }
         } catch {
           // No transcript (yet); the hook timestamps are all there is.
         }
       }
-      this.apply(ws.id, { kind: 'tick' })
+
+      this.apply(id, { kind: 'tick' })
     }
   }
 
@@ -200,12 +222,16 @@ export class StatusService {
   async pollAgents(): Promise<void> {
     if (this.polling) return
     this.polling = true
+
     try {
       const entries = await listAgents()
+
       if (this.stopped) return
       const byPath = new Map(this.opts.store.listWorkspaces().map((w) => [w.path, w.id]))
+
       for (const entry of entries) {
         const id = entry.cwd ? byPath.get(entry.cwd) : undefined
+
         if (id) this.apply(id, { kind: 'agents_json', entry })
       }
     } finally {
@@ -215,24 +241,14 @@ export class StatusService {
 }
 
 /** Runs `claude agents --json`; a missing binary or bad output is no agents. */
-function listAgents(): Promise<AgentEntry[]> {
-  return new Promise((resolve) => {
-    execFile(
-      'claude',
-      ['agents', '--json'],
-      { encoding: 'utf8', timeout: 5_000 },
-      (err, stdout) => {
-        if (err) return resolve([])
-        try {
-          const parsed = JSON.parse(stdout) as unknown
-          const list = Array.isArray(parsed)
-            ? parsed
-            : ((parsed as { agents?: unknown }).agents ?? [])
-          resolve(Array.isArray(list) ? (list as AgentEntry[]) : [])
-        } catch {
-          resolve([])
-        }
-      }
-    ).stdin?.end()
-  })
+async function listAgents(): Promise<AgentEntry[]> {
+  const r = await run('claude', ['agents', '--json'], { timeoutMs: 5_000 })
+
+  if (!r.ok) return []
+
+  try {
+    return decodeAgents(JSON.parse(r.stdout)) ?? []
+  } catch {
+    return []
+  }
 }

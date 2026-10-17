@@ -5,15 +5,16 @@
 import fs from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { DaemonClient } from '@shared/client'
 import type { Events } from '@shared/protocol'
 import type { Workspace } from '@shared/types'
 import { runCli, runCliWith } from '../../src/testing/cli'
 import { FAKE_WRAPPERS, FAKES_BIN, readFakeLog, readWrapperLog } from '../../src/testing/fakes'
 import {
+  recordEvents,
   startTestDaemon,
   type TestDaemon,
-  type TestDaemonOptions
+  type TestDaemonOptions,
+  waitForStatus
 } from '../../src/testing/daemon-harness'
 import { makeHookEvent } from '../../src/testing/fixtures'
 import { makeTempRepo } from '../../src/testing/temp-repo'
@@ -25,38 +26,32 @@ afterEach(async () => {
   daemon = undefined
 })
 
-function record<E extends keyof Events>(c: DaemonClient, event: E): Events[E][] {
-  const seen: Events[E][] = []
-  c.on(event, (data) => seen.push(data))
-  return seen
-}
-
 /** A daemon plus one idle workspace in a fresh repo. */
 async function idleWorkspace(
   opts: TestDaemonOptions = {}
 ): Promise<{ d: TestDaemon; ws: Workspace; statuses: Events['workspace.status'][] }> {
   const d = await startTestDaemon(opts)
   daemon = d
-  const statuses = record(d.client, 'workspace.status')
+  const statuses = recordEvents(d.client, 'workspace.status')
   const project = await d.client.request('project.add', { path: makeTempRepo(d.home) })
+
   const ws = await d.client.request('workspace.create', {
     projectId: project.id,
     name: 'app-1432-retry-logic'
   })
-  await expect
-    .poll(async () => (await d.client.request('workspace.get', { id: ws.id })).status, {
-      timeout: 10_000
-    })
-    .toBe('idle')
+
+  await waitForStatus(d, ws.id, 'idle')
+
   return { d, ws, statuses }
 }
 
 const statusesOf = (all: Events['workspace.status'][], id: string) =>
-  all.filter((s) => s.id === id).map((s) => s.status)
+  all.flatMap((s) => (s.id === id ? [s.status] : []))
 
 describe('hook delivery', () => {
   it('reports claude in a workspace terminal through the wrapper: idle → working → needs input', async () => {
     const { d, ws, statuses } = await idleWorkspace()
+
     const { id } = await d.client.request('workspace.openTerminal', {
       id: ws.id,
       cols: 100,
@@ -74,10 +69,12 @@ describe('hook delivery', () => {
     await expect
       .poll(() => statusesOf(statuses, ws.id), { timeout: 15_000 })
       .toEqual(['preparing', 'idle', 'working', 'needs_input'])
+
     // The Notification hook fires before the prompt is printed, so the status
     // can change before the mirror has the line: wait for the screen too.
     const screen = async (): Promise<string> =>
       (await d.client.request('term.snapshot', { id })).text
+
     await expect
       .poll(screen, { timeout: 10_000 })
       .toContain('Claude needs your permission to use Bash')
@@ -90,6 +87,7 @@ describe('hook delivery', () => {
     // its own directory and hands the command back to que's. The session must
     // start once, with hooks, rather than the two wrappers looping.
     const { d, ws } = await idleWorkspace({ pathPrefix: [FAKE_WRAPPERS] })
+
     const { id } = await d.client.request('workspace.openTerminal', {
       id: ws.id,
       cols: 100,
@@ -121,13 +119,16 @@ describe('hook delivery', () => {
     // The user default is plan; the repo's que.toml says acceptEdits, which wins.
     const d = await startTestDaemon({ config: 'default_permission_mode = "plan"\n' })
     daemon = d
+
     const project = await d.client.request('project.add', {
       path: makeTempRepo(d.home, { queToml: 'setup = "true"\npermission_mode = "acceptEdits"\n' })
     })
+
     const ws = await d.client.request('workspace.create', {
       projectId: project.id,
       name: 'app-1488-delegation-rules'
     })
+
     const instructions = join(d.home, 'instructions', 'delegation.md')
     fs.mkdirSync(join(d.home, 'instructions'))
     fs.writeFileSync(instructions, 'Delegate broad searches to a smaller model.\n')
@@ -139,6 +140,7 @@ describe('hook delivery', () => {
       cols: 100,
       rows: 30
     })
+
     await d.client.request('term.write', { id, data: 'claude\r' })
 
     await expect.poll(() => readFakeLog(d.claudeLog).length, { timeout: 20_000 }).toBe(1)
@@ -154,6 +156,7 @@ describe('hook delivery', () => {
 
   it('accepts hook JSON from `que hook` on stdin, printing nothing', async () => {
     const { d, ws } = await idleWorkspace()
+
     const payload = makeHookEvent('UserPromptSubmit', {
       session_id: '7d0c5b2a-0000-4000-8000-3e4f5a6b7c8d',
       cwd: ws.path,
@@ -224,6 +227,7 @@ describe('status engine wiring', () => {
 
   it('has exited once the last workspace terminal exits', async () => {
     const { d, ws } = await idleWorkspace()
+
     const { id } = await d.client.request('workspace.openTerminal', {
       id: ws.id,
       cols: 80,

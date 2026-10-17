@@ -7,6 +7,7 @@ import {
   encode,
   type EventName,
   type Events,
+  type Methods,
   type PingResult,
   type Request,
   type ResponseError
@@ -23,15 +24,15 @@ import {
   stringifyConfig,
   type UserConfig
 } from '../shared/config'
+import { decodeHookEvent } from '../shared/hook.decode'
 import { ensureDirs, quePaths, type QuePaths } from '../shared/paths'
 import type {
   ConfigGetResult,
-  HookEvent,
   InstructionsGetResult,
   TaskAddParams,
   TermCreateParams
 } from '../shared/protocol'
-import type { TaskSource, TaskState, Workspace } from '../shared/types'
+import { ACTIVE_STATES, type TaskSource, type TaskState, type Workspace } from '../shared/types'
 import { conflict, RpcError } from './errors'
 import { finishTask, isProtectedBranch } from './finisher'
 import type { HostedTerminal, PtyHost, TermExtra } from './pty-host'
@@ -45,9 +46,15 @@ import { TicketService } from './tickets'
 import { Store } from './store'
 import { workspaceDiff } from './diff'
 import { readWorkspaceFile, workspaceFiles } from './files'
-import { sessionEnv, WorkspaceManager, workspaceTerminalEnv } from './workspaces'
+import {
+  sessionEnv,
+  WorkspaceManager,
+  workspaceTerminalEnv,
+  type WorkspaceTerminalEnv
+} from './workspaces'
 import { WorktreeWatcher } from './watcher'
 import { defaultCliScript, installWrapper, resolveCliRunner, startCommand } from './wrapper'
+import { errorCode, errorMessage } from '../shared/errors.decode'
 
 export interface ServerOptions {
   host: PtyHost
@@ -64,8 +71,6 @@ export interface ServerOptions {
   statusTickMs?: number
   /** Task queue stall / pause tick. Default 5 s. */
   queueTickMs?: number
-  /** Task dispatcher interval. Default 1 s. */
-  dispatchMs?: number
   /** Quiet-hours re-evaluation interval. Default 15 s. */
   quietTickMs?: number
   /** The clock quiet hours and the summary throttle read. Default Date.now. */
@@ -114,6 +119,9 @@ class Connection {
   }
 }
 
+/** How long a read of the user config trusts the last stat of its file. */
+const CONFIG_RECHECK_MS = 1_000
+
 export class DaemonServer {
   private server: net.Server | null = null
   private conns = new Set<Connection>()
@@ -132,9 +140,10 @@ export class DaemonServer {
   readonly tasks: TaskQueue
   readonly quiet: QuietService
   readonly summaries: Summarizer
-  /** The last good user config and the file stamp it was read at. */
+  /** The last good user config, the file stamp it was read at, and when the file was last statted. */
   private config: UserConfig
   private configStamp = ''
+  private configCheckedAt = Number.NEGATIVE_INFINITY
   /** Watches the worktrees of workspaces with an attached terminal (workspace.changed). */
   readonly watcher = new WorktreeWatcher((id) => this.broadcast('workspace.changed', { id }), {
     log: (m) => this.log(m)
@@ -180,8 +189,10 @@ export class DaemonServer {
       workspaces: this.workspaces,
       emit: ((event, data) => {
         emit(event, data)
+
         if (event === 'task.status' && (data as { state: string }).state === 'done') {
           const wsId = this.store.getTask((data as { id: string }).id)?.workspaceId
+
           if (wsId) void this.prs.refresh(wsId)
         }
       }) as DaemonServer['broadcast'],
@@ -189,12 +200,10 @@ export class DaemonServer {
       killTerminals: (id) => this.killWorkspaceTerminals(id),
       socket: () => this.socketPath,
       log: (m) => this.log(m),
-      tickMs: opts.queueTickMs,
-      dispatchMs: opts.dispatchMs
+      tickMs: opts.queueTickMs
     })
     this.prs = new PrService({
       store: this.store,
-      listWorkspaces: () => this.store.listWorkspaces(),
       projectOf: (ws) => this.workspaces.project(ws.projectId),
       emit,
       config: () => this.configOrDefault(),
@@ -208,20 +217,9 @@ export class DaemonServer {
       home: this.paths.home,
       projects: () => this.workspaces.listProjects(),
       createWorkspace: (p) => this.workspaces.create(p),
-      openTerminal: async (workspaceId) => {
-        const ws = this.workspaces.get(workspaceId)
-        const t = this.createTerminal(
-          { cwd: ws.path, cols: 120, rows: 30, name: ws.name },
-          { workspaceId: ws.id, env: this.terminalEnv(ws) }
-        )
-        return { id: t.id }
-      },
+      openTerminal: async (workspaceId) => this.openWorkspaceTerminal(workspaceId, 120, 30),
       createSession: async (cwd) => ({ id: this.createTerminal({ cwd, cols: 120, rows: 30 }).id }),
-      writeTerminal: (id, data) => {
-        const t = opts.host.get(id)
-        if (!t) throw new RpcError(ErrorCodes.NotFound, `no terminal ${id}`)
-        t.write(data)
-      },
+      writeTerminal: (id, data) => this.requireTerm(id).write(data),
       learnProject: async (projectKey, projectName) => {
         this.setConfig({ jira: { projects: { [projectKey]: projectName } } }, false)
       }
@@ -243,7 +241,9 @@ export class DaemonServer {
       host.onData((id, data) => {
         for (const c of this.conns) {
           const sub = c.subs.get(id)
+
           if (!sub) continue
+
           if (sub.pending) sub.pending.push(data)
           else c.sendEvent('term.data', { id, data })
         }
@@ -252,44 +252,59 @@ export class DaemonServer {
         this.log(`term ${id} exited code=${info.exitCode} signal=${info.signal ?? ''}`)
         this.broadcast('term.exit', { id, exitCode: info.exitCode, signal: info.signal })
         const wsId = this.termWorkspace.get(id)
+
         if (wsId) {
           this.termWorkspace.delete(id)
           const live = host.list().some((t) => t.alive && t.workspaceId === wsId)
+
           if (!live) this.status.apply(wsId, { kind: 'terminal_exit' })
         }
+
         this.syncWatches()
       })
     )
   }
 
   /**
-   * The user config, re-read whenever the file changes (so every reader sees
-   * an edit at once). An invalid file keeps the last good config.
+   * The user config, re-read when the file changes. The file is statted at most
+   * once a second (hooks, stream messages and every tick read the config), so a
+   * hand edit is seen within a second; config.set rereads at once. An invalid
+   * file keeps the last good config.
    */
   private configOrDefault(): UserConfig {
+    const now = performance.now()
+
+    if (now - this.configCheckedAt < CONFIG_RECHECK_MS) return this.config
+
+    this.configCheckedAt = now
     const path = configPath()
     let stamp = `${path}:missing`
+
     try {
       const st = fs.statSync(path)
       stamp = `${path}:${st.mtimeMs}:${st.size}`
     } catch {
       // No file: the defaults.
     }
+
     if (stamp !== this.configStamp) {
       this.configStamp = stamp
       const r = loadConfig({ queHome: this.paths.home }, path)
+
       if (r.ok) this.config = r.config
       else
         this.log(
           `config ${path} is invalid; keeping the last good one: ${formatConfigErrors(r.errors)}`
         )
     }
+
     return this.config
   }
 
   private getConfig(): ConfigGetResult {
     const path = configPath()
     const raw = readRawConfig(path)
+
     return { path, config: this.configOrDefault(), raw: raw.ok ? raw.config : {} }
   }
 
@@ -298,40 +313,69 @@ export class DaemonServer {
     if (typeof patch !== 'object' || patch === null || Array.isArray(patch)) {
       throw new RpcError(ErrorCodes.BadRequest, 'patch must be an object')
     }
+
     const path = configPath()
     const raw = readRawConfig(path)
+
     if (!raw.ok) {
       throw new RpcError(ErrorCodes.BadRequest, `${path}: ${formatConfigErrors(raw.errors)}`)
     }
+
     const merged = mergeConfigPatch(raw.config, patch as Record<string, unknown>)
     // smol-toml writes the table back without the file's comments.
     const text = stringifyConfig(merged)
     const parsed = parseConfig(text, { queHome: this.paths.home })
+
     if (!parsed.ok) {
       throw new RpcError(
         ErrorCodes.BadRequest,
         `invalid config: ${formatConfigErrors(parsed.errors)}`
       )
     }
+
     fs.mkdirSync(dirname(path), { recursive: true })
     const tmp = `${path}.${process.pid}.tmp`
     fs.writeFileSync(tmp, text.endsWith('\n') ? text : `${text}\n`)
     fs.renameSync(tmp, path)
     this.configStamp = ''
+    this.configCheckedAt = Number.NEGATIVE_INFINITY
     this.configOrDefault()
     this.log(`config ${path} updated${applyTonight ? ' (apply tonight)' : ''}`)
     this.quiet.configChanged(applyTonight)
     this.tasks.kick()
     const result = this.getConfig()
     this.broadcast('config.changed', result)
+
     return result
   }
 
   private createTerminal(params: TermCreateParams, extra?: TermExtra): HostedTerminal {
     const t = this.opts.host.create(params, extra)
+
     if (extra?.workspaceId) this.termWorkspace.set(t.id, extra.workspaceId)
     this.log(`term ${t.id} created pid=${t.proc.pid} cwd=${t.cwd}`)
     this.broadcast('term.created', { id: t.id })
+
+    return t
+  }
+
+  /** A shell in the workspace's worktree, carrying its que environment. */
+  private openWorkspaceTerminal(id: string, cols: number, rows: number): { id: string } {
+    const ws = this.workspaces.get(id)
+
+    const t = this.createTerminal(
+      { cwd: ws.path, cols, rows, name: ws.name },
+      { workspaceId: ws.id, env: this.terminalEnv(ws) }
+    )
+
+    return { id: t.id }
+  }
+
+  private requireTerm(id: string): HostedTerminal {
+    const t = this.opts.host.get(id)
+
+    if (!t) throw new RpcError(ErrorCodes.NotFound, `no terminal ${id}`)
+
     return t
   }
 
@@ -341,30 +385,37 @@ export class DaemonServer {
    */
   private startWorkspace(id: string, cols = 120, rows = 30): { terminalId: string } {
     const ws = this.workspaces.get(id)
+
     const first =
       this.opts.host.list().find((t) => t.alive && t.workspaceId === ws.id) ??
       this.createTerminal(
         { cwd: ws.path, cols, rows, name: ws.name },
         { workspaceId: ws.id, env: this.terminalEnv(ws) }
       )
+
     const command = startCommand(
       this.configOrDefault().startPrompt,
       ws.brief ? join(ws.path, '.que', 'brief.md') : null
     )
+
     void this.workspaces.whenReady(ws.id).then(() => {
       const t = this.opts.host.get(first.id)
+
       if (t?.alive) t.write(command)
       else this.log(`workspace ${ws.id}: terminal ${first.id} is gone; claude not started`)
     })
+
     return { terminalId: first.id }
   }
 
   private killTerminal(id: string): boolean {
     if (!this.opts.host.kill(id)) return false
     this.log(`term ${id} killed`)
+
     for (const c of this.conns) c.subs.delete(id)
     this.syncWatches()
     this.broadcast('term.killed', { id })
+
     return true
   }
 
@@ -372,45 +423,52 @@ export class DaemonServer {
    * A workspace terminal's environment, with the instructions file and the
    * permission mode from the current config and the project's que.toml.
    */
-  private terminalEnv(ws: Workspace): Record<string, string> {
+  private terminalEnv(ws: Workspace): WorkspaceTerminalEnv {
     const repo = loadRepoConfig(this.workspaces.project(ws.projectId).path)
+
     if (!repo.ok) this.log(`que.toml for ${ws.name} is invalid: ${formatConfigErrors(repo.errors)}`)
     const session = sessionEnv(this.configOrDefault(), repo.ok ? repo.config : {})
+
     return workspaceTerminalEnv(ws, this.paths, this.socketPath, session)
   }
 
   private getInstructions(): InstructionsGetResult {
     const path = this.configOrDefault().instructionsFile
+
     if (!path) return { exists: false, content: '' }
+
     try {
       return { path, exists: true, content: fs.readFileSync(path, 'utf8') }
     } catch (err) {
-      if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
-        return { path, exists: false, content: '' }
-      }
-      throw new RpcError(ErrorCodes.BadRequest, `${path}: ${(err as Error).message}`)
+      if (errorCode(err) === 'ENOENT') return { path, exists: false, content: '' }
+
+      throw new RpcError(ErrorCodes.BadRequest, `${path}: ${errorMessage(err)}`)
     }
   }
 
   private setInstructions(content: string): InstructionsGetResult {
     const path = this.configOrDefault().instructionsFile
+
     if (!path) {
       throw new RpcError(
         ErrorCodes.NotConfigured,
         'no instructions file: set instructions_file in the que config first'
       )
     }
+
     fs.mkdirSync(dirname(path), { recursive: true })
     const tmp = `${path}.${process.pid}.tmp`
     fs.writeFileSync(tmp, content)
     fs.renameSync(tmp, path)
     this.log(`instructions ${path} updated`)
+
     return this.getInstructions()
   }
 
   /** Kills every terminal of a workspace; returns how many were still alive. */
   private killWorkspaceTerminals(workspaceId: string): number {
     let alive = 0
+
     for (const t of this.opts.host.list()) {
       if (t.workspaceId === workspaceId) {
         if (t.alive) alive += 1
@@ -418,6 +476,7 @@ export class DaemonServer {
         this.killTerminal(t.id)
       }
     }
+
     return alive
   }
 
@@ -432,19 +491,22 @@ export class DaemonServer {
   private async createPr(id: string, rawTitle: string): Promise<{ prUrl: string }> {
     const ws = this.workspaces.get(id)
     const title = rawTitle.trim()
+
     if (!title) throw new RpcError(ErrorCodes.BadRequest, 'title is required')
     const project = this.workspaces.project(ws.projectId)
     const { protectedBranches } = this.configOrDefault()
+
     if (isProtectedBranch(ws.branch, project.defaultBranch, protectedBranches)) {
       throw conflict(`refusing to open a pull request from protected branch ${ws.branch}`)
     }
-    const busy = this.tasks
-      .list()
-      .some((t) => t.workspaceId === id && ['preparing', 'running', 'finishing'].includes(t.state))
+
+    const busy = this.tasks.list().some((t) => t.workspaceId === id && ACTIVE_STATES.has(t.state))
+
     if (busy) throw conflict(`a task is running in workspace ${ws.name}`)
 
     const lines: string[] = []
     fs.mkdirSync(this.paths.workspaceLogsDir, { recursive: true, mode: 0o700 })
+
     const result = await finishTask({
       task: { title, resultText: null },
       workspace: ws,
@@ -456,17 +518,22 @@ export class DaemonServer {
         this.log(`workspace ${ws.id} ${line}`)
       }
     })
+
     if (!result.ok) {
       const detail = lines.at(-1) ?? `${result.step} failed`
+
       if (result.step === 'protected_branch') throw conflict(detail)
       throw new RpcError(ErrorCodes.Internal, detail)
     }
+
     if (!result.prUrl) {
       throw conflict(`${ws.branch} has no commits ahead of its base; nothing to open a PR for`)
     }
+
     this.store.setWorkspacePrUrl(ws.id, result.prUrl)
     this.broadcast('workspace.updated', this.workspaces.get(ws.id))
     void this.prs.refresh(ws.id)
+
     return { prUrl: result.prUrl }
   }
 
@@ -483,10 +550,12 @@ export class DaemonServer {
           this.syncWatches()
         })
       })
+
       server.once('error', reject)
       server.listen(socketPath, () => {
         server.off('error', reject)
         this.socketPath = socketPath
+
         try {
           installWrapper({
             paths: this.paths,
@@ -494,24 +563,28 @@ export class DaemonServer {
             cliScript: this.opts.cliScript ?? defaultCliScript()
           })
         } catch (err) {
-          this.log(`installing the hooks wrapper failed: ${(err as Error).message}`)
+          this.log(`installing the hooks wrapper failed: ${errorMessage(err)}`)
         }
+
         try {
           fs.writeFileSync(this.paths.systemPrompt, SYSTEM_PROMPT, { mode: 0o644 })
         } catch (err) {
-          this.log(`writing ${this.paths.systemPrompt} failed: ${(err as Error).message}`)
+          this.log(`writing ${this.paths.systemPrompt} failed: ${errorMessage(err)}`)
         }
+
         this.status.start()
         this.tasks.start()
         this.quiet.start()
         this.prs.start()
         this.tickets.start()
         server.on('error', (err) => this.log(`server error: ${err.message}`))
+
         try {
           fs.chmodSync(socketPath, 0o600)
         } catch (err) {
-          this.log(`chmod socket failed: ${(err as Error).message}`)
+          this.log(`chmod socket failed: ${errorMessage(err)}`)
         }
+
         this.server = server
         resolve()
       })
@@ -525,6 +598,7 @@ export class DaemonServer {
   async close(): Promise<void> {
     for (const u of this.unsubs) u()
     this.unsubs = []
+
     if (!this.closed) {
       this.closed = true
       this.quiet.stop()
@@ -539,11 +613,14 @@ export class DaemonServer {
       this.workspaces.close()
       this.store.close()
     }
+
     for (const c of this.conns) c.socket.destroy()
     this.conns.clear()
     const server = this.server
     this.server = null
+
     if (!server) return Promise.resolve()
+
     return new Promise((resolve) => server.close(() => resolve()))
   }
 
@@ -554,22 +631,30 @@ export class DaemonServer {
   private syncWatches(): void {
     if (this.closed) {
       this.watcher.close()
+
       return
     }
-    const wanted = new Map<string, string>()
+
+    const ids = new Set<string>()
+
     for (const c of this.conns) {
-      for (const id of c.watches) {
-        if (wanted.has(id)) continue
-        const ws = this.store.getWorkspace(id)
-        if (ws && !ws.archivedAt) wanted.set(ws.id, ws.path)
-      }
+      for (const id of c.watches) ids.add(id)
+
       for (const termId of c.subs.keys()) {
         const t = this.opts.host.get(termId)
-        if (!t?.alive || !t.workspaceId || wanted.has(t.workspaceId)) continue
-        const ws = this.store.getWorkspace(t.workspaceId)
-        if (ws && !ws.archivedAt) wanted.set(ws.id, ws.path)
+
+        if (t?.alive && t.workspaceId) ids.add(t.workspaceId)
       }
     }
+
+    const wanted = new Map<string, string>()
+
+    for (const id of ids) {
+      const ws = this.store.getWorkspace(id)
+
+      if (ws && !ws.archivedAt) wanted.set(ws.id, ws.path)
+    }
+
     this.watcher.sync(wanted)
   }
 
@@ -578,23 +663,31 @@ export class DaemonServer {
       this.prs?.forget((data as Events['workspace.removed']).id)
       this.syncWatches()
     }
+
     for (const c of this.conns) c.sendEvent(event, data)
   }
 
   async dispatch(conn: Connection, req: Request): Promise<void> {
     if (typeof req !== 'object' || req === null || typeof req.id !== 'number') {
       this.log('dropping request without numeric id')
+
       return
     }
+
     if (typeof req.method !== 'string') {
       conn.send({ id: req.id, error: err(ErrorCodes.BadRequest, 'method must be a string') })
+
       return
     }
+
     const after: Array<() => void> = []
+
     try {
       const result = await this.handle(conn, req.method, req.params ?? {}, (fn) => after.push(fn))
       conn.send({ id: req.id, result })
+
       for (const fn of after) fn()
+
       if (req.method === 'daemon.shutdown') {
         // Let the response reach the client before tearing everything down.
         conn.socket.end(() => this.opts.onShutdown?.())
@@ -602,9 +695,8 @@ export class DaemonServer {
       }
     } catch (e) {
       const error =
-        e instanceof RpcError
-          ? err(e.code, e.message)
-          : err(ErrorCodes.Internal, e instanceof Error ? e.message : String(e))
+        e instanceof RpcError ? err(e.code, e.message) : err(ErrorCodes.Internal, errorMessage(e))
+
       if (!(e instanceof RpcError)) this.log(`${req.method} failed: ${error.message}`)
       conn.send({ id: req.id, error })
     }
@@ -615,10 +707,11 @@ export class DaemonServer {
     method: string,
     p: Record<string, unknown>,
     afterSend: AfterSend
-  ): Promise<unknown> {
+  ): Promise<Methods[keyof Methods]['result']> {
     const { host } = this.opts
     // Quiet hours: detail is refused here, so every client gets the same answer.
     this.quiet.check(method)
+
     switch (method) {
       case 'daemon.ping': {
         const r: PingResult = {
@@ -628,8 +721,10 @@ export class DaemonServer {
           nodeVersion: process.version,
           path: process.env.PATH ?? ''
         }
+
         return r
       }
+
       case 'daemon.shutdown':
         return { ok: true }
       case 'term.create': {
@@ -641,28 +736,34 @@ export class DaemonServer {
           file: optString(p, 'file'),
           args: optStringArray(p, 'args')
         })
+
         return { id: t.id }
       }
+
       case 'term.list': {
         const workspaceId = optString(p, 'workspaceId')
+
         return host
           .list()
           .filter((t) => !workspaceId || t.workspaceId === workspaceId)
           .map((t) => t.info())
       }
+
       case 'term.attach': {
-        const t = term(host, p)
+        const t = this.requireTerm(str(p, 'id'))
         const cols = num(p, 'cols')
         const rows = num(p, 'rows')
         // Buffer live output from this instant; the snapshot below covers
         // everything before it, so nothing is lost or duplicated.
         const sub: Subscription = { pending: [] }
         conn.subs.set(t.id, sub)
+
         try {
           t.resize(cols, rows)
           const snapshot = await t.serializeNow()
           afterSend(() => flushPending(conn, t.id, sub))
           this.syncWatches()
+
           return { snapshot, cols: t.cols, rows: t.rows }
         } catch (e) {
           if (conn.subs.get(t.id) === sub) conn.subs.delete(t.id)
@@ -670,40 +771,55 @@ export class DaemonServer {
           throw e
         }
       }
+
       case 'term.detach': {
         conn.subs.delete(str(p, 'id'))
         this.syncWatches()
+
         return { ok: true }
       }
+
       case 'term.write': {
-        term(host, p).write(str(p, 'data'))
+        this.requireTerm(str(p, 'id')).write(str(p, 'data'))
+
         return { ok: true }
       }
+
       case 'term.resize': {
-        term(host, p).resize(num(p, 'cols'), num(p, 'rows'))
+        this.requireTerm(str(p, 'id')).resize(num(p, 'cols'), num(p, 'rows'))
+
         return { ok: true }
       }
+
       case 'term.kill': {
         const id = str(p, 'id')
+
         if (!this.killTerminal(id)) throw new RpcError(ErrorCodes.NotFound, `no terminal ${id}`)
+
         return { ok: true }
       }
+
       case 'term.snapshot':
-        return term(host, p).snapshot()
+        return this.requireTerm(str(p, 'id')).snapshot()
       case 'project.add': {
         const before = new Set(this.workspaces.listProjects().map((x) => x.id))
+
         const project = await this.workspaces.addProject({
           path: str(p, 'path'),
           name: optString(p, 'name')
         })
+
         if (!before.has(project.id)) this.broadcast('project.added', project)
+
         return project
       }
+
       case 'project.list':
         return this.workspaces.listProjects()
       case 'project.remove':
         await this.workspaces.removeProject(str(p, 'id'), optBool(p, 'force'))
         this.broadcast('project.removed', { id: str(p, 'id') })
+
         return { ok: true }
       case 'workspace.create':
         return this.workspaces.create({
@@ -732,29 +848,29 @@ export class DaemonServer {
         this.tasks.stopWorkspace(str(p, 'id'))
         await this.workspaces.remove({ id: str(p, 'id'), deleteBranch: optBool(p, 'deleteBranch') })
         this.syncWatches()
+
         return { ok: true }
-      case 'workspace.openTerminal': {
-        const ws = this.workspaces.get(str(p, 'id'))
-        const t = this.createTerminal(
-          { cwd: ws.path, cols: num(p, 'cols'), rows: num(p, 'rows'), name: ws.name },
-          { workspaceId: ws.id, env: this.terminalEnv(ws) }
-        )
-        return { id: t.id }
-      }
+      case 'workspace.openTerminal':
+        return this.openWorkspaceTerminal(str(p, 'id'), num(p, 'cols'), num(p, 'rows'))
+
       case 'workspace.diff': {
         const ws = this.workspaces.get(str(p, 'id'))
+
         return workspaceDiff(ws, this.workspaces.project(ws.projectId), Date.now, {
           base: optString(p, 'base'),
           commit: optString(p, 'commit')
         })
       }
+
       case 'workspace.watch':
         conn.watches.add(this.workspaces.get(str(p, 'id')).id)
         this.syncWatches()
+
         return { ok: true }
       case 'workspace.unwatch':
         conn.watches.delete(str(p, 'id'))
         this.syncWatches()
+
         return { ok: true }
       case 'workspace.files':
         return workspaceFiles(this.workspaces.get(str(p, 'id')), Date.now)
@@ -762,23 +878,29 @@ export class DaemonServer {
         return readWorkspaceFile(this.workspaces.get(str(p, 'id')), str(p, 'path'))
       case 'workspace.prThread': {
         const ws = this.workspaces.get(str(p, 'id'))
+
         return this.prs.thread(ws.id, optBool(p, 'refresh') === true)
       }
+
       case 'workspace.createPr':
         return this.createPr(str(p, 'id'), str(p, 'title'))
       case 'hook.event': {
         const ws = this.workspaces.get(str(p, 'workspaceId'))
-        const payload = p.payload
-        if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
-          throw new RpcError(ErrorCodes.BadRequest, 'payload must be an object')
-        }
-        this.status.hook(ws.id, payload as HookEvent)
-        const hook = payload as HookEvent
-        if (hook.hook_event_name === 'Stop' && !hook.agent_id) this.summaries.stopped(ws.id)
+        const payload = decodeHookEvent(p.payload)
+
+        if (!payload) throw new RpcError(ErrorCodes.BadRequest, 'payload must be a hook event')
+
+        this.status.hook(ws.id, payload)
+
+        if (payload.hook_event_name === 'Stop' && !payload.agent_id) this.summaries.stopped(ws.id)
+
         const taskId = optString(p, 'taskId')
-        if (taskId) this.tasks.hook(taskId, payload as HookEvent)
+
+        if (taskId) this.tasks.hook(taskId, payload)
+
         return { ok: true }
       }
+
       case 'task.add': {
         const params: TaskAddParams = {
           projectId: optString(p, 'projectId'),
@@ -790,8 +912,10 @@ export class DaemonServer {
           maxTurns: optNumber(p, 'maxTurns'),
           maxBudgetUsd: optNumber(p, 'maxBudgetUsd')
         }
+
         return this.tasks.add(params)
       }
+
       case 'task.list':
         return this.tasks.list({ state: optString(p, 'state') as TaskState | undefined })
       case 'task.get':
@@ -800,6 +924,7 @@ export class DaemonServer {
         return this.tasks.stop(str(p, 'id'))
       case 'task.remove':
         this.tasks.remove(str(p, 'id'))
+
         return { ok: true }
       case 'queue.open':
         return this.tasks.open(optNumber(p, 'concurrency'))
@@ -848,6 +973,7 @@ function flushPending(conn: Connection, id: string, sub: Subscription): void {
   if (conn.subs.get(id) !== sub || !sub.pending) return
   const pending = sub.pending
   sub.pending = null
+
   if (pending.length > 0) conn.sendEvent('term.data', { id, data: pending.join('') })
 }
 
@@ -857,50 +983,65 @@ function err(code: string, message: string): ResponseError {
 
 function str(p: Record<string, unknown>, key: string): string {
   const v = p[key]
+
   if (typeof v !== 'string') throw new RpcError(ErrorCodes.BadRequest, `${key} must be a string`)
+
   return v
+}
+
+/** A reader that also takes an absent (undefined or null) parameter as undefined. */
+function opt<T>(
+  p: Record<string, unknown>,
+  key: string,
+  read: (p: Record<string, unknown>, key: string) => T
+): T | undefined {
+  return p[key] === undefined || p[key] === null ? undefined : read(p, key)
 }
 
 function optString(p: Record<string, unknown>, key: string): string | undefined {
-  return p[key] === undefined || p[key] === null ? undefined : str(p, key)
+  return opt(p, key, str)
 }
 
 function optStringArray(p: Record<string, unknown>, key: string): string[] | undefined {
-  const v = p[key]
-  if (v === undefined || v === null) return undefined
-  if (!Array.isArray(v) || !v.every((x) => typeof x === 'string')) {
-    throw new RpcError(ErrorCodes.BadRequest, `${key} must be an array of strings`)
-  }
-  return v
+  return opt(p, key, (q, k) => {
+    const v = q[k]
+
+    if (!Array.isArray(v) || !v.every((x) => typeof x === 'string')) {
+      throw new RpcError(ErrorCodes.BadRequest, `${k} must be an array of strings`)
+    }
+
+    return v
+  })
 }
 
 function optBool(p: Record<string, unknown>, key: string): boolean | undefined {
-  const v = p[key]
-  if (v === undefined || v === null) return undefined
-  if (typeof v !== 'boolean') throw new RpcError(ErrorCodes.BadRequest, `${key} must be a boolean`)
-  return v
+  return opt(p, key, (q, k) => {
+    const v = q[k]
+
+    if (typeof v !== 'boolean') throw new RpcError(ErrorCodes.BadRequest, `${k} must be a boolean`)
+
+    return v
+  })
 }
 
 function optNumber(p: Record<string, unknown>, key: string): number | undefined {
-  const v = p[key]
-  if (v === undefined || v === null) return undefined
-  if (typeof v !== 'number' || !Number.isFinite(v)) {
-    throw new RpcError(ErrorCodes.BadRequest, `${key} must be a number`)
-  }
-  return v
+  return opt(p, key, (q, k) => {
+    const v = q[k]
+
+    if (typeof v !== 'number' || !Number.isFinite(v)) {
+      throw new RpcError(ErrorCodes.BadRequest, `${k} must be a number`)
+    }
+
+    return v
+  })
 }
 
 function num(p: Record<string, unknown>, key: string): number {
   const v = p[key]
+
   if (typeof v !== 'number' || !Number.isFinite(v) || v < 1) {
     throw new RpcError(ErrorCodes.BadRequest, `${key} must be a positive number`)
   }
-  return v
-}
 
-function term(host: PtyHost, p: Record<string, unknown>) {
-  const id = str(p, 'id')
-  const t = host.get(id)
-  if (!t) throw new RpcError(ErrorCodes.NotFound, `no terminal ${id}`)
-  return t
+  return v
 }

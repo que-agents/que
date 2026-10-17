@@ -214,11 +214,13 @@ describe('App', () => {
 
     it('shows the workspace pull request in the top bar', async () => {
       const user = userEvent.setup()
+
       const retry = makeWorkspace({
         id: 'ws_01hzx3k9c2qf',
         name: 'app-1432-retry-logic',
         pr: makePullRequest({ state: 'draft' })
       })
+
       fakeBridge.seedProject(makeProject())
       fakeBridge.seedWorkspace(retry)
       render(<App />)
@@ -244,6 +246,7 @@ describe('App', () => {
       await waitFor(() => {
         expect(screen.getByRole('button', { name: 'Open in editor' })).toBeDisabled()
       })
+
       for (const name of [
         'Review pane',
         'Refresh',
@@ -255,6 +258,7 @@ describe('App', () => {
       ]) {
         expect(screen.getByRole('button', { name })).toBeDisabled()
       }
+
       expect(screen.getByRole('button', { name: 'New workspace in uploader' })).toBeDisabled()
 
       await user.click(screen.getByRole('tab', { name: 'Pull request' }))

@@ -61,9 +61,7 @@ export class HostedTerminal {
     this.serializer = new SerializeAddon()
     // The serialize addon is typed against the browser Terminal; the headless
     // terminal implements the same public surface it uses.
-    this.mirror.loadAddon(
-      this.serializer as unknown as Parameters<HeadlessTerminal['loadAddon']>[0]
-    )
+    this.mirror.loadAddon(this.serializer)
 
     this.proc = pty.spawn(file, args, {
       name: 'xterm-256color',
@@ -89,12 +87,16 @@ export class HostedTerminal {
   resize(cols: number, rows: number): void {
     cols = Math.floor(cols)
     rows = Math.floor(rows)
+
     if (!(cols >= 1 && rows >= 1)) return
+
     if (cols === this.cols && rows === this.rows) return
     this.cols = cols
     this.rows = rows
     this.mirror.resize(cols, rows)
+
     if (!this.alive) return
+
     try {
       this.proc.resize(cols, rows)
     } catch {
@@ -128,10 +130,13 @@ export class HostedTerminal {
   private text(): string {
     const buf = this.mirror.buffer.active
     const lines: string[] = []
+
     for (let i = 0; i < buf.length; i++) {
       lines.push(buf.getLine(i)?.translateToString(true) ?? '')
     }
+
     while (lines.length > 0 && lines[lines.length - 1] === '') lines.pop()
+
     return lines.join('\n')
   }
 
@@ -143,6 +148,7 @@ export class HostedTerminal {
         // Already gone.
       }
     }
+
     this.alive = false
   }
 
@@ -161,7 +167,7 @@ export class HostedTerminal {
       pid: this.proc.pid,
       alive: this.alive,
       createdAt: this.createdAt,
-      ...(this.workspaceId ? { workspaceId: this.workspaceId } : {})
+      workspaceId: this.workspaceId || undefined
     }
   }
 }
@@ -171,10 +177,12 @@ export function spawnEnv(): Record<string, string> {
   const env = cleanSpawnEnv(process.env)
   env.TERM = 'xterm-256color'
   env.COLORTERM = 'truecolor'
+
   return env
 }
 
 type DataListener = (id: string, data: string) => void
+
 type ExitListener = (id: string, info: ExitInfo) => void
 
 /** Owns every terminal in the daemon; terminals outlive client connections. */
@@ -185,6 +193,7 @@ export class PtyHost {
 
   create(opts: TermCreateParams, extra?: TermExtra): HostedTerminal {
     let id = ''
+
     const t = new HostedTerminal(
       opts,
       (data) => {
@@ -195,8 +204,10 @@ export class PtyHost {
       },
       extra
     )
+
     id = t.id
     this.terms.set(id, t)
+
     return t
   }
 
@@ -211,9 +222,11 @@ export class PtyHost {
   /** Kills the process and forgets the terminal. Returns false if unknown. */
   kill(id: string): boolean {
     const t = this.terms.get(id)
+
     if (!t) return false
     this.terms.delete(id)
     t.dispose()
+
     return true
   }
 
@@ -223,11 +236,13 @@ export class PtyHost {
 
   onData(l: DataListener): () => void {
     this.dataListeners.add(l)
+
     return () => this.dataListeners.delete(l)
   }
 
   onExit(l: ExitListener): () => void {
     this.exitListeners.add(l)
+
     return () => this.exitListeners.delete(l)
   }
 }

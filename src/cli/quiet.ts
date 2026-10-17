@@ -1,41 +1,36 @@
 // Quiet hours and config: `que unlock`, `que lock`, `que quiet status`,
 // `que config get|set`.
 import type { Command } from 'commander'
-import { formatCountdown, hhmm } from '../daemon/quiet-hours'
-import { describeQuietHours, parseConfigAssignment } from '../shared/config'
-import type { QuietState } from '../shared/types'
-import { CliError, withClient } from './common'
+import { formatCountdown, hhmm } from '../shared/format'
+import { combineConfigPatches, describeQuietHours, parseConfigAssignment } from '../shared/config'
+import type { ConfigPatch, QuietState } from '../shared/types'
+import { CliError, printJson, withClient } from './common'
+import { errorMessage } from '../shared/errors.decode'
 
 /** One line about quiet hours, for `que quiet status` and `que status`. */
 export function describeQuietState(q: QuietState, now = Date.now()): string {
   if (!q.enabled) return 'quiet hours off'
+
   if (!q.inQuietHours) {
     return q.nextBoundary
       ? `work hours · quiet hours start ${hhmm(Date.parse(q.nextBoundary))}`
       : 'work hours'
   }
+
   const until = q.windowEnd ? hhmm(Date.parse(q.windowEnd)) : '?'
+
   if (q.unlockedUntil) {
     return `quiet hours until ${until} · unlocked, ${formatCountdown(Date.parse(q.unlockedUntil) - now)} left`
   }
-  return `quiet hours until ${until}`
-}
 
-/** Combines two patches, keeping `null` (a removal) as a value. */
-function combine(a: Record<string, unknown>, b: Record<string, unknown>): Record<string, unknown> {
-  const out = { ...a }
-  for (const [k, v] of Object.entries(b)) {
-    const prev = out[k]
-    const table = (x: unknown): x is Record<string, unknown> =>
-      typeof x === 'object' && x !== null && !Array.isArray(x)
-    out[k] = table(prev) && table(v) ? combine(prev, v) : v
-  }
-  return out
+  return `quiet hours until ${until}`
 }
 
 function positiveMinutes(value: string): number {
   const n = Number(value)
+
   if (!Number.isFinite(n) || n <= 0) throw new CliError('minutes must be a positive number')
+
   return n
 }
 
@@ -50,10 +45,11 @@ export function registerQuietCommands(program: Command): void {
     .action((minutes: string | undefined, opts: { why?: string; json?: boolean }) =>
       withClient(async (c) => {
         const q = await c.request('quiet.unlock', {
-          ...(minutes === undefined ? {} : { minutes: positiveMinutes(minutes) }),
-          ...(opts.why ? { why: opts.why } : {})
+          minutes: minutes === undefined ? undefined : positiveMinutes(minutes),
+          why: opts.why || undefined
         })
-        if (opts.json) console.log(JSON.stringify(q, null, 2))
+
+        if (opts.json) printJson(q)
         else if (!q.inQuietHours) console.log('not in quiet hours; nothing to unlock')
         else console.log(describeQuietState(q))
       })
@@ -66,7 +62,8 @@ export function registerQuietCommands(program: Command): void {
     .action((opts: { json?: boolean }) =>
       withClient(async (c) => {
         const q = await c.request('quiet.lock')
-        if (opts.json) console.log(JSON.stringify(q, null, 2))
+
+        if (opts.json) printJson(q)
         else console.log(describeQuietState(q))
       })
     )
@@ -79,7 +76,8 @@ export function registerQuietCommands(program: Command): void {
     .action((opts: { json?: boolean }) =>
       withClient(async (c) => {
         const q = await c.request('quiet.state')
-        if (opts.json) console.log(JSON.stringify(q, null, 2))
+
+        if (opts.json) printJson(q)
         else console.log(describeQuietState(q))
       })
     )
@@ -92,7 +90,8 @@ export function registerQuietCommands(program: Command): void {
     .action((opts: { json?: boolean }) =>
       withClient(async (c) => {
         const r = await c.request('config.get')
-        if (opts.json) return console.log(JSON.stringify(r, null, 2))
+
+        if (opts.json) return printJson(r)
         const cfg = r.config
         console.log(`config ${r.path}`)
         console.log(`quiet hours     ${describeQuietHours(cfg.quietHours)}`)
@@ -113,16 +112,19 @@ export function registerQuietCommands(program: Command): void {
     .option('--json', 'print the result as JSON')
     .action((assignments: string[], opts: { applyTonight?: boolean; json?: boolean }) =>
       withClient(async (c) => {
-        let patch: Record<string, unknown> = {}
+        let patch: ConfigPatch = {}
+
         for (const a of assignments) {
           try {
-            patch = combine(patch, parseConfigAssignment(a))
+            patch = combineConfigPatches(patch, parseConfigAssignment(a))
           } catch (err) {
-            throw new CliError((err as Error).message)
+            throw new CliError(errorMessage(err))
           }
         }
+
         const r = await c.request('config.set', { patch, applyTonight: opts.applyTonight === true })
-        if (opts.json) console.log(JSON.stringify(r, null, 2))
+
+        if (opts.json) printJson(r)
         else console.log(`updated ${r.path}`)
       })
     )

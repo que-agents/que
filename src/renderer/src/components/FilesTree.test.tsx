@@ -15,12 +15,14 @@ import { QueStore, StoreContext } from '../store'
 import FilesTree from './FilesTree'
 
 const retry = makeWorkspace({ id: 'ws_01hzx3k9c2qf', name: 'app-1432-retry-logic' })
+
 const retryTs = makeDiffFile({
   path: 'src/upload/retry.ts',
   dirty: true,
   patch:
     'diff --git a/src/upload/retry.ts b/src/upload/retry.ts\n--- a/src/upload/retry.ts\n+++ b/src/upload/retry.ts\n@@ -1 +1 @@\n-const retries = 1\n+const retries = 3\n'
 })
+
 const readme = makeDiffFile({ path: 'README.md', status: 'added', additions: 1, deletions: 0 })
 const old = makeDiffFile({ path: 'src/upload/old.ts', status: 'deleted', additions: 0 })
 
@@ -49,13 +51,16 @@ async function openFiles(user: ReturnType<typeof userEvent.setup>): Promise<stri
   await user.click(screen.getByTestId('topbar-review'))
   await user.click(screen.getByTestId('review-tab-files'))
   await screen.findByTestId('files-row-8')
+
   return pane.dataset.activeTerm as string
 }
 
 /** The tree's row for a path. */
 function row(path: string): HTMLElement {
   const found = screen.getAllByRole('treeitem').find((r) => r.dataset.path === path)
+
   if (!found) throw new Error(`no row for ${path}`)
+
   return found
 }
 
@@ -239,6 +244,7 @@ describe('FilesTree', () => {
       const tree = screen.getByRole('tree', { name: 'Files' })
       expect(tree).toHaveAttribute('data-testid', 'files-tree')
       tree.focus()
+
       const cursor = (): string | undefined =>
         screen.getAllByRole('treeitem').find((r) => r.getAttribute('aria-selected') === 'true')
           ?.dataset.path

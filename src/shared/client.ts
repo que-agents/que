@@ -7,6 +7,7 @@ import os from 'node:os'
 import { cleanSpawnEnv } from './env'
 import { daemonScriptFrom, runtimeFrom } from './packaged'
 import { ensureDirs, quePaths, type QuePaths } from './paths'
+import { delay } from './process'
 import {
   MessageDecoder,
   encode,
@@ -19,6 +20,7 @@ import {
   type ResultOf,
   type ServerMessage
 } from './protocol'
+import { errorCode } from './errors.decode'
 
 export class DaemonError extends Error {
   constructor(
@@ -41,8 +43,14 @@ export interface StartOptions {
   log?: (msg: string) => void
 }
 
-type Pending = { resolve: (v: unknown) => void; reject: (e: Error) => void }
-type Handler = (data: never) => void
+/** A reply's result is trusted to match its method: the daemon is this codebase's own server. */
+type AnyResult = ResultOf<MethodName>
+
+type Pending = { resolve: (v: AnyResult) => void; reject: (e: Error) => void }
+
+type AnyEvent = Events[EventName]
+
+type Handler = (data: AnyEvent) => void
 
 export class DaemonClient {
   private socket: net.Socket | null = null
@@ -56,10 +64,12 @@ export class DaemonClient {
   connect(): Promise<void> {
     return new Promise((resolve, reject) => {
       const socket = net.connect(this.socketPath)
+
       const onError = (err: Error): void => {
         socket.destroy()
         reject(err)
       }
+
       socket.once('error', onError)
       socket.once('connect', () => {
         socket.off('error', onError)
@@ -82,8 +92,10 @@ export class DaemonClient {
     socket.on('close', () => {
       this.socket = null
       const err = new DaemonError('disconnected', 'daemon connection closed')
+
       for (const p of this.pending.values()) p.reject(err)
       this.pending.clear()
+
       for (const h of this.closeHandlers) h()
     })
   }
@@ -91,17 +103,22 @@ export class DaemonClient {
   private receive(msg: ServerMessage): void {
     if (isEvent(msg)) {
       const set = this.handlers.get(msg.event)
-      if (set) for (const h of set) (h as (d: unknown) => void)(msg.data)
+
+      if (set) for (const h of set) h(msg.data as AnyEvent)
+
       return
     }
+
     const p = this.pending.get(msg.id)
+
     if (!p) return
     this.pending.delete(msg.id)
+
     if ('error' in msg) {
       const e = msg.error as ResponseError
       p.reject(new DaemonError(e.code, e.message))
     } else {
-      p.resolve(msg.result)
+      p.resolve(msg.result as AnyResult)
     }
   }
 
@@ -111,28 +128,35 @@ export class DaemonClient {
 
   request<M extends MethodName>(method: M, params?: ParamsOf<M>): Promise<ResultOf<M>> {
     const socket = this.socket
+
     if (!socket || socket.destroyed) {
       return Promise.reject(new DaemonError('disconnected', 'not connected to daemon'))
     }
+
     const id = this.nextId++
+
     return new Promise((resolve, reject) => {
-      this.pending.set(id, { resolve: resolve as (v: unknown) => void, reject })
+      this.pending.set(id, { resolve: resolve as Pending['resolve'], reject })
       socket.write(encode({ id, method, params }))
     })
   }
 
   on<E extends EventName>(event: E, handler: (data: Events[E]) => void): () => void {
     let set = this.handlers.get(event)
+
     if (!set) {
       set = new Set()
       this.handlers.set(event, set)
     }
+
     set.add(handler as Handler)
+
     return () => set.delete(handler as Handler)
   }
 
   onClose(handler: () => void): () => void {
     this.closeHandlers.add(handler)
+
     return () => this.closeHandlers.delete(handler)
   }
 
@@ -150,11 +174,14 @@ export class DaemonClient {
     const paths = ensureDirs(opts.paths ?? quePaths())
     const log = opts.log ?? (() => {})
     const first = new DaemonClient(paths.socket)
+
     try {
       await first.connect()
+
       return first
     } catch (err) {
-      const code = (err as NodeJS.ErrnoException).code
+      const code = errorCode(err)
+
       if (code === 'ECONNREFUSED' && fs.existsSync(paths.socket)) {
         log(`removing stale socket ${paths.socket}`)
         fs.rmSync(paths.socket, { force: true })
@@ -167,30 +194,36 @@ export class DaemonClient {
     log('started daemon, waiting for ping')
 
     const deadline = Date.now() + (opts.timeoutMs ?? 5000)
-    let lastErr: unknown = null
+    let lastErr = 'no attempt'
+
     while (Date.now() < deadline) {
       const c = new DaemonClient(paths.socket)
+
       try {
         await c.connect()
         await withTimeout(c.request('daemon.ping'), 1000)
+
         return c
       } catch (err) {
-        lastErr = err
+        lastErr = String(err)
         c.close()
         await delay(100)
       }
     }
+
     throw new DaemonError(
       'start_timeout',
-      `daemon did not answer within ${opts.timeoutMs ?? 5000} ms (see ${paths.daemonLog}): ${String(lastErr)}`
+      `daemon did not answer within ${opts.timeoutMs ?? 5000} ms (see ${paths.daemonLog}): ${lastErr}`
     )
   }
 
   /** Connects only if a daemon is already running; resolves null otherwise. */
   static async tryConnect(paths: QuePaths = quePaths()): Promise<DaemonClient | null> {
     const c = new DaemonClient(paths.socket)
+
     try {
       await c.connect()
+
       return c
     } catch {
       return null
@@ -205,7 +238,13 @@ export class DaemonClient {
  * binary of the `electron` dev dependency (CLI and scripts under plain Node).
  */
 export function resolveRuntime(): string {
-  return runtimeFrom(__dirname, process) ?? (require('electron') as unknown as string)
+  const bundled = runtimeFrom(__dirname, process)
+
+  if (bundled !== undefined && bundled !== null) return bundled
+  // nosemgrep: que-no-electron-outside-main -- dev-only lookup of the Electron binary path, not an API import
+  const electronBinary: string = require('electron')
+
+  return electronBinary
 }
 
 /** que.app/Contents/Resources/daemon/index.js when packaged, else out/daemon/index.js. */
@@ -216,12 +255,14 @@ export function resolveDaemonScript(): string {
 function startDaemon(paths: QuePaths, opts: StartOptions): void {
   const runtime = opts.runtime ?? resolveRuntime()
   const script = opts.daemonScript ?? resolveDaemonScript()
+
   if (!fs.existsSync(script)) {
     throw new DaemonError(
       'no_daemon_script',
       `daemon script not found at ${script}; run npm run build:node`
     )
   }
+
   // The daemon starts clean (shared/env.ts): nothing of the shell or agent
   // session that launched it reaches the terminals it will open.
   const env = cleanSpawnEnv(process.env)
@@ -230,6 +271,7 @@ function startDaemon(paths: QuePaths, opts: StartOptions): void {
   env.QUE_HOME = paths.home
 
   const logFd = fs.openSync(paths.daemonLog, 'a')
+
   try {
     const child = spawn(runtime, [script], {
       detached: true,
@@ -237,14 +279,11 @@ function startDaemon(paths: QuePaths, opts: StartOptions): void {
       env,
       cwd: os.homedir()
     })
+
     child.unref()
   } finally {
     fs.closeSync(logFd)
   }
-}
-
-function delay(ms: number): Promise<void> {
-  return new Promise((r) => setTimeout(r, ms))
 }
 
 function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {

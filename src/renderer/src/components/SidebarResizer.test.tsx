@@ -6,6 +6,7 @@ import { makeProject } from '@renderer/testing/fixtures'
 import App from '../App'
 
 const separator = (): HTMLElement => screen.getByRole('separator', { name: 'Resize sidebar' })
+
 const appWidth = (): string =>
   screen.getByTestId('app-shell').style.getPropertyValue('--sidebar-width')
 

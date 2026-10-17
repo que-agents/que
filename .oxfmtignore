@@ -1,0 +1,7 @@
+out
+test-results
+release
+.private
+tools/oxlint/anti-slop
+node_modules
+*.tsbuildinfo

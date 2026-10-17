@@ -4,6 +4,7 @@ import { resolve } from 'node:path'
 
 export const REPO_ROOT = resolve(__dirname, '../..')
 export const FAKES_BIN = resolve(REPO_ROOT, 'tests/fakes/bin')
+
 /** Another tool's claude wrapper (tests/fakes/wrappers/claude), for PATH ahead of the fakes. */
 export const FAKE_WRAPPERS = resolve(REPO_ROOT, 'tests/fakes/wrappers')
 
@@ -21,6 +22,7 @@ export interface FakeCall {
 /** Reads QUE_FAKE_CLAUDE_LOG / QUE_FAKE_GH_LOG / QUE_FAKE_CODE_LOG back; [] if nothing ran. */
 export function readFakeLog(path: string): FakeCall[] {
   if (!fs.existsSync(path)) return []
+
   return fs
     .readFileSync(path, 'utf8')
     .split('\n')
@@ -37,12 +39,14 @@ export interface WrapperRun {
 /** Reads QUE_FAKE_WRAPPER_LOG back; [] if the wrapper never ran. */
 export function readWrapperLog(path: string): WrapperRun[] {
   if (!fs.existsSync(path)) return []
+
   return fs
     .readFileSync(path, 'utf8')
     .split('\n')
     .filter((line) => line.length > 0)
     .map((line) => {
       const [pid, args = ''] = line.split('\t')
+
       return { pid: Number(pid), args }
     })
 }
@@ -71,6 +75,7 @@ export interface FakePr {
 /** Reads the fake gh's pull requests, keyed by head branch; {} when there are none. */
 export function readFakePullRequests(file: string): Record<string, FakePr> {
   if (!fs.existsSync(file)) return {}
+
   return JSON.parse(fs.readFileSync(file, 'utf8')) as Record<string, FakePr>
 }
 
@@ -112,6 +117,7 @@ export function fakeCheckRun(p: {
 }): Record<string, unknown> {
   const status = p.status ?? 'COMPLETED'
   const completed = status === 'COMPLETED'
+
   return {
     __typename: 'CheckRun',
     name: p.name,
@@ -147,6 +153,7 @@ export function fakeComment(p: {
   url?: string
 }): Record<string, unknown> {
   const id = nextFakeGhId()
+
   return {
     id: `IC_${id}`,
     author: { login: p.author },
@@ -164,6 +171,7 @@ export function fakeReview(p: {
   submittedAt?: string
 }): Record<string, unknown> {
   const id = nextFakeGhId()
+
   return {
     id: `PRR_${id}`,
     author: { login: p.author },
@@ -184,6 +192,7 @@ export function fakeLineComment(p: {
   createdAt?: string
 }): Record<string, unknown> {
   const id = nextFakeGhId()
+
   return {
     id,
     user: { login: p.author },
@@ -233,6 +242,7 @@ export function makeFakeIssue(
 ): FakeIssue {
   const { fields, ...top } = overrides
   const key = top.key ?? 'APP-1432'
+
   return {
     key,
     id: '10432',
@@ -322,6 +332,7 @@ export function makeFakeEpic(
 /** The `parent` field a child carries, pointing at `issue`. */
 export function fakeParentOf(issue: FakeIssue): NonNullable<FakeIssue['fields']['parent']> {
   const { summary, status, priority, issuetype } = issue.fields
+
   return {
     key: issue.key,
     id: issue.id,

@@ -1,0 +1,33 @@
+name: Semgrep
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: semgrep-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  semgrep:
+    name: Semgrep
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    container:
+      image: semgrep/semgrep
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      # Readable @vN action tags are deliberate (Dependabot keeps them current), so the mutable-tag rule is excluded.
+      # Only WARNING and ERROR fail the job; INFO findings are ignored.
+      - run: >
+          semgrep scan --config p/default --config p/typescript --config p/react --config p/secrets
+          --config p/nodejs --config p/github-actions --config .semgrep/que.yml
+          --exclude-rule yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
+          --severity WARNING --severity ERROR --error --metrics=off

@@ -10,7 +10,8 @@ import {
   parseNumstat,
   parsePorcelainPaths,
   parseRenamePath,
-  parseRefs
+  parseRefs,
+  splitPatches
 } from './diff'
 
 describe('parseRenamePath', () => {
@@ -133,6 +134,7 @@ describe('parseRefs', () => {
       'refs/remotes/origin/release',
       ''
     ].join('\n')
+
     expect(parseRefs(out)).toEqual([
       'main',
       'app-1432-retry-logic',
@@ -175,5 +177,36 @@ describe('orderBases', () => {
 
     expect(bases).toHaveLength(MAX_BASES)
     expect(bases.slice(0, 2)).toEqual(['main', 'feature-0'])
+  })
+})
+
+describe('splitPatches', () => {
+  it('cuts the output at each file header and trims each patch', () => {
+    const out = [
+      'diff --git a/src/upload.ts b/src/upload.ts',
+      'index 1111111..2222222 100644',
+      '--- a/src/upload.ts',
+      '+++ b/src/upload.ts',
+      '@@ -1 +1 @@',
+      '-export const retries = 1',
+      '+export const retries = 3',
+      'diff --git a/docs/retry.md b/docs/retry.md',
+      'new file mode 100644',
+      '--- /dev/null',
+      '+++ b/docs/retry.md',
+      '@@ -0,0 +1 @@',
+      '+Retries back off.',
+      ''
+    ].join('\n')
+
+    const patches = splitPatches(out)
+
+    expect(patches).toHaveLength(2)
+    expect(patches[0]).toMatch(/^diff --git a\/src\/upload\.ts .*\+export const retries = 3$/s)
+    expect(patches[1]).toMatch(/^diff --git a\/docs\/retry\.md .*\+Retries back off\.$/s)
+  })
+
+  it('is empty when git printed no diff', () => {
+    expect(splitPatches('')).toEqual([])
   })
 })

@@ -9,14 +9,14 @@ import { expect, test } from '@playwright/test'
 import type { StatusJson } from '../../src/cli/workspaces'
 import type { TermInfo } from '../../src/shared/protocol'
 import type { Project, Workspace } from '../../src/shared/types'
+import { makeTempRepo } from '../../src/testing/temp-repo'
 import { AppShellPage } from './pages/AppShellPage'
 import { ChangesPage } from './pages/ChangesPage'
 import { SidebarPage } from './pages/SidebarPage'
 import { TerminalPage } from './pages/TerminalPage'
 import { TopBarPage } from './pages/TopBarPage'
-import { type LaunchedApp, launchApp, newQueHome } from './utils/app'
+import { type LaunchedApp, launchApp, newQueHome, tempDir } from './utils/app'
 import { queJson } from './utils/que'
-import { makeRepo } from './utils/repo'
 
 let launched: LaunchedApp
 
@@ -25,7 +25,7 @@ test.afterEach(async () => {
 })
 
 test('a workspace made in the sidebar runs claude, shows needs input, opens in the editor, and goes with its project', async () => {
-  const repo = makeRepo()
+  const repo = makeTempRepo(tempDir('que-e2e-repo-'))
   const queHome = newQueHome()
   let project: Project
   let workspace: Workspace
@@ -35,6 +35,7 @@ test('a workspace made in the sidebar runs claude, shows needs input, opens in t
   let topbar: TopBarPage
   let changes: ChangesPage
   let shell: AppShellPage
+
   const statusOf = () =>
     queJson<StatusJson>(queHome, 'status', '--json').workspaces.find((w) => w.id === workspace.id)
 
@@ -62,9 +63,11 @@ test('a workspace made in the sidebar runs claude, shows needs input, opens in t
     await sidebar.newWorkspaceStart.uncheck()
     await sidebar.newWorkspaceSubmit.click()
     await expect(sidebar.newWorkspaceDialog).toHaveCount(0)
+
     const created = queJson<Workspace[]>(queHome, 'ws', 'list', '--json').find(
       (w) => w.name === 'app-1432-retry-logic'
     )
+
     expect(created).toBeDefined()
     workspace = created as Workspace
     await expect(sidebar.workspace(workspace.id)).toBeVisible()

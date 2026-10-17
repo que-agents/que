@@ -14,6 +14,7 @@ afterEach(async () => {
 
 async function start(): Promise<TestDaemon> {
   daemon = await startTestDaemon()
+
   return daemon
 }
 

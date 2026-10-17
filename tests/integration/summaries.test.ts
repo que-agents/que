@@ -30,8 +30,10 @@ import { makeTempRepo } from '../../src/testing/temp-repo'
 
 const RETRY_BRIEF =
   'Add retry logic to the uploader\n\nRetry failed chunk uploads three times with exponential backoff.'
+
 const FENCE_BRIEF =
   'Document the release checklist\n\nWrite down the steps we follow to cut a release.'
+
 const FAKE_SUMMARY = 'Fake summary of the session'
 const opts = { timeout: 15_000 }
 
@@ -45,18 +47,22 @@ afterEach(async () => {
 /** A daemon with summaries on (test daemons default them off) unless `config` says otherwise. */
 async function start(o: TestDaemonOptions = {}): Promise<{ d: TestDaemon; projectId: string }> {
   const config = o.config ?? ''
+
   const d = await startTestDaemon({
     ...o,
     config: /^summaries\s*=/m.test(config) ? config : `summaries = true\n${config}`
   })
+
   daemon = d
   const project = await d.client.request('project.add', { path: makeTempRepo(d.home) })
+
   return { d, projectId: project.id }
 }
 
 function record<E extends keyof Events>(c: DaemonClient, event: E): Events[E][] {
   const seen: Events[E][] = []
   c.on(event, (data) => seen.push(data))
+
   return seen
 }
 
@@ -77,21 +83,26 @@ async function sendStop(d: TestDaemon, ws: Workspace, transcriptPath: string): P
     transcript_path: transcriptPath,
     stop_hook_active: false
   })
+
   const r = await runCliWith(
     { input: JSON.stringify(payload), env: { QUE_WORKSPACE_ID: ws.id, QUE_SOCKET: d.socket } },
     'hook'
   )
+
   expect(r).toEqual({ code: 0, stdout: '', stderr: '' })
 }
 
 /** A transcript whose last assistant entry is `text`. */
 function writeTranscript(d: TestDaemon, text: string): string {
   const path = join(d.home, 'session-transcript.jsonl')
+
   const lines = [
     { type: 'user', message: { role: 'user', content: 'Add retry logic to the uploader' } },
     { type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text }] } }
   ]
+
   fs.writeFileSync(path, `${lines.map((l) => JSON.stringify(l)).join('\n')}\n`)
+
   return path
 }
 
@@ -195,6 +206,7 @@ describe('sidebar title summaries', () => {
         id: ws.id,
         title: 'Uploader retries'
       })
+
       expect(renamed).toMatchObject({ title: 'Uploader retries', titleSource: 'user' })
       await sendStop(d, ws, writeTranscript(d, 'Retries are wired in.'))
       await fence(d, projectId)
@@ -207,10 +219,12 @@ describe('sidebar title summaries', () => {
   describe('unchanged input', () => {
     it('skips a Stop whose transcript has not moved on, and runs once it has', async () => {
       let ahead = 0
+
       const { d, projectId } = await start({
         config: 'summaries = false\n',
         now: () => Date.now() + ahead
       })
+
       const ws = await d.client.request('workspace.create', { projectId, brief: RETRY_BRIEF })
       await d.client.request('config.set', { patch: { summaries: true } })
       const transcript = writeTranscript(d, 'Backoff is in; the uploader retries each chunk.')
@@ -273,14 +287,18 @@ describe('sidebar title summaries', () => {
         .toBe(1)
 
       const r = await d.client.request('tickets.start', { key: 'APP-1432', projectId })
+
       if (r.kind !== 'workspace') throw new Error(`expected a workspace, got ${r.kind}`)
       expect(r.workspace.titleSource).toBe('user')
+
       // The started claude finishes its first turn: working, then idle on Stop.
       const idleAfterWork = () => {
         const seen = statuses.filter((s) => s.id === r.workspace.id).map((s) => s.status)
         const working = seen.indexOf('working')
+
         return working >= 0 && seen.lastIndexOf('idle') > working
       }
+
       await expect.poll(idleAfterWork, { timeout: 20_000 }).toBe(true)
       await fence(d, projectId)
 

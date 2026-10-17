@@ -24,8 +24,17 @@ npm run verify
 
 runs typecheck, lint, build, the Vitest suites, the smoke check, and the
 Playwright specs in that order and stops at the first failure. CI runs the
-same thing plus `npm run smoke:packaged`. If you changed a CLI command or a
+same steps split into five checks, one workflow each: Typecheck, Lint, Unit
+tests, E2E tests, and Packaged app (`npm run smoke:packaged`). Lint also fails
+if the generated docs are stale. If you changed a CLI command or a
 config default, run `npm run docs` and commit the regenerated `docs/` files.
+
+A Semgrep check also runs on every pull request (registry rules plus `.semgrep/que.yml`). To run the
+custom rules locally, install `semgrep` and run `semgrep scan --config .semgrep/que.yml --error .`.
+
+## Lint and format
+
+`npm run lint` runs oxlint (with the vendored rules in `tools/oxlint/`, see its README) and an oxfmt format check; `npm run format` writes the formatting. `npm ci` installs a pre-commit hook (husky and lint-staged) that lints and formats the staged files.
 
 ## Tests
 
@@ -42,6 +51,11 @@ never internal modules; a fresh temp `QUE_HOME` for every test; no sleeps, wait
 on a condition; inject the clock into anything time-dependent.
 `npm run test:flaky -- 10` runs the Vitest suites ten times when you suspect a
 flaky test.
+
+Two mechanical commits (the oxfmt reformat and the blank-line autofix) are
+listed in `.git-blame-ignore-revs`; run
+`git config blame.ignoreRevsFile .git-blame-ignore-revs` once so `git blame`
+skips them.
 
 ## Pull requests
 

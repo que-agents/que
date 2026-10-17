@@ -8,7 +8,7 @@ const alias = {
   '@renderer': resolve(__dirname, 'src/renderer/src')
 }
 
-// Dependencies are externalized for main and preload by default (electron-vite 5).
+// Dependencies are externalized for main and preload by default (`build.externalizeDeps`).
 export default defineConfig({
   main: { resolve: { alias } },
   preload: { resolve: { alias } },

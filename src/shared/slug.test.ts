@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { slugify, workspaceSlug } from './slug'
+import { cappedSlug, slugify, workspaceSlug } from './slug'
 
 describe('slugify', () => {
   it.each([
@@ -27,5 +27,14 @@ describe('workspaceSlug', () => {
     ['a'.repeat(65), 'longer than 64']
   ])('rejects %j (%s)', (input) => {
     expect(workspaceSlug(input)).toBeNull()
+  })
+})
+
+describe('cappedSlug', () => {
+  it('cuts the slug to the cap and trims it to a letter or digit at both ends', () => {
+    expect(cappedSlug('APP-1432 retry logic', 64)).toBe('app-1432-retry-logic')
+    expect(cappedSlug('APP-1432 retry logic', 9)).toBe('app-1432')
+    expect(cappedSlug('-- Fix the uploader.', 64)).toBe('fix-the-uploader')
+    expect(cappedSlug('✓ ✓', 64)).toBe('')
   })
 })

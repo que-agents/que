@@ -1,0 +1,37 @@
+name: Lint
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lint-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # Linting and the docs generators need no Electron binary or native rebuild.
+      - uses: ./.github/actions/setup
+        with:
+          scripts: 'false'
+
+      - run: npm run lint
+
+      # docs/ is generated from the CLI and config definitions; a stale copy fails here.
+      - name: Generated docs are current
+        run: |
+          npm run docs
+          git diff --exit-code -- docs/

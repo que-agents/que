@@ -19,6 +19,7 @@ const STEPS = [
 
 const summary = []
 let failed = null
+
 for (const [name, cmd, args] of STEPS) {
   console.log(`\n=== verify: ${name} (${[cmd, ...args].join(' ')})\n`)
   const started = Date.now()
@@ -29,14 +30,19 @@ for (const [name, cmd, args] of STEPS) {
   summary.push(
     `${ok ? 'PASS' : 'FAIL'}  ${name.padEnd(9)} ${secs.padStart(6)}s${ok ? '' : `  (exit ${code})`}`
   )
+
   if (!ok) {
     failed = name
     break
   }
 }
+
 for (const [name] of STEPS.slice(summary.length)) summary.push(`SKIP  ${name}`)
 
 console.log('\n=== verify summary')
+
 for (const line of summary) console.log(line)
+
 console.log(failed ? `verify: FAILED at ${failed}` : 'verify: all steps passed')
+
 process.exit(failed ? 1 : 0)

@@ -31,16 +31,19 @@ afterEach(async () => {
 })
 
 const opts = { timeout: 10_000 }
+
 const older = makeFakeIssue({
   key: 'APP-1100',
   fields: { summary: 'Older ticket', updated: '2026-10-01T09:00:00.000+0000' }
 })
+
 const newer = makeFakeIssue()
 const keys = async () => (await client.request('tickets.list', {})).tickets.map((t) => t.key)
 const syncError = async () => (await client.request('tickets.list', {})).sync.error
 
 async function addProject() {
   const repo = makeTempRepo(daemon.home)
+
   return client.request('project.add', { path: repo })
 }
 
@@ -118,11 +121,13 @@ describe('syncing the queue', () => {
 describe('the fake acli', () => {
   it('refuses a search field the real CLI refuses, and keeps only the requested ones', () => {
     writeFakeTickets(daemon.acliTickets, [newer])
+
     const run = (fields: string) =>
       spawnSync('acli', ['jira', 'workitem', 'search', '--json', '--fields', fields], {
         encoding: 'utf8',
         env: process.env
       })
+
     const refused = run('key,project,summary,updated')
     expect(refused.status).toBe(1)
     expect(refused.stderr.trim()).toBe("✗ Error: fields 'project, updated' are not allowed")
@@ -146,8 +151,7 @@ describe('starting a ticket', () => {
       projectId: null
     })
     const r = await client.request('tickets.start', { key: 'APP-1432' })
-    expect(r.kind).toBe('needs_project')
-    if (r.kind === 'needs_project') expect(r.projects.map((p) => p.id)).toEqual([project.id])
+    expect(r).toMatchObject({ kind: 'needs_project', projects: [{ id: project.id }] })
     expect(await client.request('workspace.list', {})).toEqual([])
   })
 
@@ -159,6 +163,7 @@ describe('starting a ticket', () => {
     const project = await addProject()
     const r = await client.request('tickets.start', { key: 'APP-1432', projectId: project.id })
     expect(r.kind).toBe('workspace')
+
     if (r.kind !== 'workspace') return
     const ws = r.workspace
     expect(ws).toMatchObject({
@@ -206,6 +211,7 @@ describe('starting a ticket', () => {
   it('writes the brief under the home for a loose session', async () => {
     const r = await client.request('tickets.start', { key: 'APP-1432', session: true })
     expect(r.kind).toBe('session')
+
     if (r.kind !== 'session') return
     expect(r.terminalId).toMatch(/\S/)
     const file = join(daemon.home, 'tickets', 'APP-1432.md')
@@ -216,10 +222,13 @@ describe('starting a ticket', () => {
 
 describe('epics and parents', () => {
   const epic = makeFakeEpic()
+
   const child = (key: string, summary: string) =>
     makeFakeIssue({ key, fields: { summary, parent: fakeParentOf(epic) } })
+
   const views = () =>
     readFakeLog(daemon.acliLog).filter((c) => c.argv[1] === 'workitem' && c.argv[2] === 'view')
+
   const list = async () => (await client.request('tickets.list', {})).tickets
   const find = async (key: string) => (await list()).find((t) => t.key === key)
 
@@ -313,6 +322,7 @@ describe('epics and parents', () => {
     await expect.poll(async () => (await find('APP-1401'))?.parentKey, opts).toBe('APP-1400')
     const project = await addProject()
     const r = await client.request('tickets.start', { key: 'APP-1401', projectId: project.id })
+
     if (r.kind !== 'workspace') throw new Error(`unexpected ${r.kind}`)
     const brief = fs.readFileSync(join(r.workspace.path, '.que', 'ticket.md'), 'utf8')
     expect(brief).toContain('## Epic APP-1400: Uploader reliability')

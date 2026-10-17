@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
-import { formatCountdown } from '../../../daemon/quiet-hours'
+import { formatCountdown } from '../../../shared/format'
 import { useQue, useStore } from '../store'
+import { UnlockIcon } from './icons'
 
-/** `🔓 unlocked · 14:32 left` and Lock now, while an unlock runs. */
+/** An open lock, `unlocked · 14:32 left`, and Lock now, while an unlock runs. */
 export default function UnlockStatus(): React.JSX.Element | null {
   const store = useStore()
   const { quiet, connected } = useQue()
@@ -12,14 +13,17 @@ export default function UnlockStatus(): React.JSX.Element | null {
   useEffect(() => {
     if (until === null) return
     const t = setInterval(() => tick((n) => n + 1), 1000)
+
     return () => clearInterval(t)
   }, [until])
 
   if (until === null) return null
+
   return (
     <div className="unlock-status" role="status">
+      <UnlockIcon />
       <span data-testid="topbar-unlock-countdown">
-        🔓 unlocked · {formatCountdown(until - store.now())} left
+        unlocked · {formatCountdown(until - store.now())} left
       </span>
       <button
         type="button"

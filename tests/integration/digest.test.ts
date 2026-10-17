@@ -5,7 +5,7 @@
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { Workspace } from '@shared/types'
-import { startTestDaemon, type TestDaemon } from '../../src/testing/daemon-harness'
+import { startTestDaemon, type TestDaemon, waitForStatus } from '../../src/testing/daemon-harness'
 import { makeHookEvent } from '../../src/testing/fixtures'
 import { gitIn, makeTempRepo } from '../../src/testing/temp-repo'
 import { writeFileSync } from 'node:fs'
@@ -19,11 +19,8 @@ afterEach(async () => {
 
 async function idleWorkspace(d: TestDaemon, projectId: string, name: string): Promise<Workspace> {
   const ws = await d.client.request('workspace.create', { projectId, name })
-  await expect
-    .poll(async () => (await d.client.request('workspace.get', { id: ws.id })).status, {
-      timeout: 10_000
-    })
-    .toBe('idle')
+  await waitForStatus(d, ws.id, 'idle')
+
   return ws
 }
 
@@ -42,6 +39,7 @@ async function setup(): Promise<{
   // Creation is behind us; the window opens after it.
   await d.client.request('workspace.list')
   const since = new Date().toISOString()
+
   return { d, projectId: project.id, busy, untouched, since }
 }
 

@@ -12,6 +12,7 @@ export function PrChip({
   label?: string
 }): React.JSX.Element {
   const badge = prBadge(pr)
+
   return (
     <a
       className={`status pr-chip tone-${badge.tone}`}
@@ -39,6 +40,7 @@ export function StatusBadge({
   testId?: string
 }): React.JSX.Element {
   const { label, tone } = statusBadge(status)
+
   return (
     <span
       className={`status tone-${tone}`}
@@ -59,6 +61,7 @@ export function TaskBadge({
   testId?: string
 }): React.JSX.Element {
   const { label, tone } = taskBadge(state)
+
   return (
     <span className={`status tone-${tone}`} data-testid={testId} data-status={state}>
       {label}

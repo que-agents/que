@@ -174,10 +174,12 @@ function pick<T>(list: readonly T[], rng: () => number): T {
 /** `adjective-adjective-noun`, two different adjectives; `rng` returns [0, 1). */
 export function randomWorkspaceName(rng: () => number = Math.random): string {
   const first = pick(ADJECTIVES, rng)
+
   const second = pick(
     ADJECTIVES.filter((a) => a !== first),
     rng
   )
+
   return `${first}-${second}-${pick(NOUNS, rng)}`
 }
 

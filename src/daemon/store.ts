@@ -2,13 +2,17 @@
 // small typed layer over prepared statements; migrations are numbered and
 // recorded in the `migrations` table.
 import { randomBytes } from 'node:crypto'
-import { DatabaseSync } from 'node:sqlite'
+import {
+  DatabaseSync,
+  type SQLInputValue,
+  type StatementResultingChanges,
+  type StatementSync
+} from 'node:sqlite'
 import type {
   Project,
   PullRequest,
   QuietUnlock,
   Task,
-  TaskSource,
   TaskState,
   Ticket,
   TitleSource,
@@ -141,7 +145,9 @@ const ID_ALPHABET = 'abcdefghijklmnopqrstuvwxyz234567'
 export function newId(prefix: 'prj_' | 'ws_' | 'tsk_'): string {
   const bytes = randomBytes(12)
   let out = prefix
+
   for (const b of bytes) out += ID_ALPHABET[b & 31]
+
   return out
 }
 
@@ -168,12 +174,15 @@ interface TicketRow {
 
 function ticketFromRow(r: TicketRow): Ticket {
   let labels: string[] = []
+
   try {
     const parsed = JSON.parse(r.labels_json) as unknown
+
     if (Array.isArray(parsed)) labels = parsed.filter((l): l is string => typeof l === 'string')
   } catch {
     // Unreadable labels are no labels.
   }
+
   return {
     parentKey: r.parent_key ?? null,
     level: r.level === 'epic' || r.level === 'subtask' ? r.level : 'standard',
@@ -224,37 +233,8 @@ interface WorkspaceRow {
   title_source: string | null
 }
 
-interface TaskRow {
-  id: string
-  project_id: string
-  workspace_id: string | null
-  title: string
-  brief: string
-  source: string
-  resume_session_id: string | null
-  state: string
-  reason: string | null
-  session_id: string | null
-  pid: number | null
-  attempts: number
-  cost_usd: number
-  turns: number
-  max_turns: number
-  max_budget_usd: number
-  permission_mode: string | null
-  branch: string | null
-  pr_url: string | null
-  result_text: string | null
-  last_activity_at: string | null
-  started_at: string | null
-  finished_at: string | null
-  paused_until: string | null
-  created_at: string
-  updated_at: string
-}
-
 /** Task field → column, in insert order. */
-const TASK_COLUMNS: Array<[keyof Task, keyof TaskRow]> = [
+const TASK_COLUMNS: Array<[keyof Task, string]> = [
   ['id', 'id'],
   ['projectId', 'project_id'],
   ['workspaceId', 'workspace_id'],
@@ -283,35 +263,20 @@ const TASK_COLUMNS: Array<[keyof Task, keyof TaskRow]> = [
   ['updatedAt', 'updated_at']
 ]
 
-function toTask(r: TaskRow): Task {
-  return {
-    id: r.id,
-    projectId: r.project_id,
-    workspaceId: r.workspace_id,
-    title: r.title,
-    brief: r.brief,
-    source: r.source as TaskSource,
-    resumeSessionId: r.resume_session_id,
-    state: r.state as TaskState,
-    reason: r.reason,
-    sessionId: r.session_id,
-    pid: r.pid,
-    attempts: r.attempts,
-    costUsd: r.cost_usd,
-    turns: r.turns,
-    maxTurns: r.max_turns,
-    maxBudgetUsd: r.max_budget_usd,
-    permissionMode: r.permission_mode,
-    branch: r.branch,
-    prUrl: r.pr_url,
-    resultText: r.result_text,
-    lastActivityAt: r.last_activity_at,
-    startedAt: r.started_at,
-    finishedAt: r.finished_at,
-    pausedUntil: r.paused_until,
-    createdAt: r.created_at,
-    updatedAt: r.updated_at
-  }
+const INSERT_TASK_SQL = `INSERT INTO tasks (${TASK_COLUMNS.map(([, c]) => c).join(', ')})
+  VALUES (${TASK_COLUMNS.map(() => '?').join(', ')})`
+
+const TASK_FIELDS_BUT_ID = TASK_COLUMNS.filter(([k]) => k !== 'id')
+
+const UPDATE_TASK_SQL = `UPDATE tasks SET ${TASK_FIELDS_BUT_ID.map(([, c]) => `${c} = ?`).join(', ')}
+  WHERE id = ?`
+
+/** Selects a tasks row as a Task: each column comes back under its field name, in column order. */
+const SELECT_TASK = `SELECT ${TASK_COLUMNS.map(([k, c]) => `${c} AS ${k}`).join(', ')} FROM tasks`
+
+/** node:sqlite rows have a null prototype; a Task is a plain object. */
+function toTask(r: Task): Task {
+  return { ...r }
 }
 
 export interface HookEventRow {
@@ -335,8 +300,10 @@ function toProject(r: ProjectRow): Project {
 
 function parsePr(json: string | null): PullRequest | null {
   if (!json) return null
+
   try {
     const v = JSON.parse(json) as unknown
+
     return v && typeof v === 'object' ? (v as PullRequest) : null
   } catch {
     return null
@@ -344,7 +311,7 @@ function parsePr(json: string | null): PullRequest | null {
 }
 
 function toWorkspace(r: WorkspaceRow): Workspace {
-  return {
+  const ws: Workspace = {
     id: r.id,
     projectId: r.project_id,
     name: r.name,
@@ -359,11 +326,16 @@ function toWorkspace(r: WorkspaceRow): Workspace {
     createdAt: r.created_at,
     archivedAt: r.archived_at,
     prUrl: r.pr_url ?? null,
-    pr: parsePr(r.pr_json),
-    ...(r.title ? { title: r.title } : {}),
-    ...(r.brief ? { brief: r.brief } : {}),
-    ...(r.title_source ? { titleSource: r.title_source as TitleSource } : {})
+    pr: parsePr(r.pr_json)
   }
+
+  if (r.title) ws.title = r.title
+
+  if (r.brief) ws.brief = r.brief
+
+  if (r.title_source) ws.titleSource = r.title_source as TitleSource
+
+  return ws
 }
 
 export interface StatusUpdate {
@@ -377,6 +349,8 @@ export interface StatusUpdate {
 export class Store {
   readonly db: DatabaseSync
 
+  private readonly statements = new Map<string, StatementSync>()
+
   constructor(path: string) {
     this.db = new DatabaseSync(path)
     this.db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 2000;')
@@ -387,172 +361,211 @@ export class Store {
     this.db.exec(
       'CREATE TABLE IF NOT EXISTS migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)'
     )
-    const row = this.db.prepare('SELECT MAX(version) AS v FROM migrations').get() as {
-      v: number | null
-    }
-    const current = row.v ?? 0
+
+    const current =
+      this.row<{ v: number | null }>('SELECT MAX(version) AS v FROM migrations')?.v ?? 0
+
     for (let i = current; i < MIGRATIONS.length; i++) {
-      this.db.exec('BEGIN')
-      try {
+      this.tx(() => {
         this.db.exec(MIGRATIONS[i])
-        this.db
-          .prepare('INSERT INTO migrations (version, applied_at) VALUES (?, ?)')
-          .run(i + 1, new Date().toISOString())
-        this.db.exec('COMMIT')
-      } catch (err) {
-        this.db.exec('ROLLBACK')
-        throw err
-      }
+        this.run(
+          'INSERT INTO migrations (version, applied_at) VALUES (?, ?)',
+          i + 1,
+          new Date().toISOString()
+        )
+      })
     }
   }
 
   close(): void {
+    this.statements.clear()
+
     if (this.db.isOpen) this.db.close()
   }
 
-  // ---- projects -------------------------------------------------------------
+  /** The compiled statement for this SQL, prepared once per connection. */
+  private statement(sql: string): StatementSync {
+    let stmt = this.statements.get(sql)
 
-  insertProject(p: Project): void {
-    this.db
-      .prepare(
-        'INSERT INTO projects (id, name, path, default_branch, created_at) VALUES (?, ?, ?, ?, ?)'
-      )
-      .run(p.id, p.name, p.path, p.defaultBranch, p.createdAt)
+    if (!stmt) {
+      stmt = this.db.prepare(sql)
+      this.statements.set(sql, stmt)
+    }
+
+    return stmt
   }
 
-  getProject(id: string): Project | undefined {
-    const r = this.db.prepare('SELECT * FROM projects WHERE id = ?').get(id)
-    return r ? toProject(r as unknown as ProjectRow) : undefined
+  /** Runs a write statement. */
+  private run(sql: string, ...params: SQLInputValue[]): StatementResultingChanges {
+    return this.statement(sql).run(...params)
   }
 
-  getProjectByPath(path: string): Project | undefined {
-    const r = this.db.prepare('SELECT * FROM projects WHERE path = ?').get(path)
-    return r ? toProject(r as unknown as ProjectRow) : undefined
-  }
-
-  listProjects(): Project[] {
-    return (
-      this.db
-        .prepare('SELECT * FROM projects ORDER BY created_at, id')
-        .all() as unknown as ProjectRow[]
-    ).map(toProject)
-  }
-
-  deleteProject(id: string): void {
+  /** Runs `fn` in one transaction, rolled back if it throws. */
+  private tx<T>(fn: () => T): T {
     this.db.exec('BEGIN')
+
     try {
-      this.db
-        .prepare(
-          'DELETE FROM hook_events WHERE workspace_id IN (SELECT id FROM workspaces WHERE project_id = ?)'
-        )
-        .run(id)
-      this.db.prepare('DELETE FROM workspaces WHERE project_id = ?').run(id)
-      this.db.prepare('DELETE FROM projects WHERE id = ?').run(id)
+      const out = fn()
+
       this.db.exec('COMMIT')
+
+      return out
     } catch (err) {
       this.db.exec('ROLLBACK')
       throw err
     }
   }
 
+  // ---- projects -------------------------------------------------------------
+
+  insertProject(p: Project): void {
+    this.run(
+      'INSERT INTO projects (id, name, path, default_branch, created_at) VALUES (?, ?, ?, ?, ?)',
+      p.id,
+      p.name,
+      p.path,
+      p.defaultBranch,
+      p.createdAt
+    )
+  }
+
+  /**
+   * Rows from a SELECT, typed by the caller. node:sqlite returns untyped records;
+   * the SELECT fixes the columns, so the row type is asserted once, here.
+   */
+  private rows<Row>(sql: string, ...params: SQLInputValue[]): Row[] {
+    return this.statement(sql).all(...params) as Row[]
+  }
+
+  /** The first row of a SELECT, typed by the caller (see rows). */
+  private row<Row>(sql: string, ...params: SQLInputValue[]): Row | undefined {
+    return this.statement(sql).get(...params) as Row | undefined
+  }
+
+  getProject(id: string): Project | undefined {
+    const r = this.row<ProjectRow>('SELECT * FROM projects WHERE id = ?', id)
+
+    return r ? toProject(r) : undefined
+  }
+
+  getProjectByPath(path: string): Project | undefined {
+    const r = this.row<ProjectRow>('SELECT * FROM projects WHERE path = ?', path)
+
+    return r ? toProject(r) : undefined
+  }
+
+  listProjects(): Project[] {
+    return this.rows<ProjectRow>('SELECT * FROM projects ORDER BY created_at, id').map(toProject)
+  }
+
+  deleteProject(id: string): void {
+    this.tx(() => {
+      this.run(
+        'DELETE FROM hook_events WHERE workspace_id IN (SELECT id FROM workspaces WHERE project_id = ?)',
+        id
+      )
+      this.run('DELETE FROM workspaces WHERE project_id = ?', id)
+      this.run('DELETE FROM projects WHERE id = ?', id)
+    })
+  }
+
   // ---- workspaces -----------------------------------------------------------
 
   insertWorkspace(w: Workspace): void {
-    this.db
-      .prepare(
-        `INSERT INTO workspaces (id, project_id, name, branch, path, base_ref, status, status_reason,
+    this.run(
+      `INSERT INTO workspaces (id, project_id, name, branch, path, base_ref, status, status_reason,
            status_at, last_activity_at, session_id, created_at, archived_at, pr_url, pr_json,
            title, brief, title_source)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-      )
-      .run(
-        w.id,
-        w.projectId,
-        w.name,
-        w.branch,
-        w.path,
-        w.baseRef,
-        w.status,
-        w.statusReason,
-        w.statusAt,
-        w.lastActivityAt,
-        w.sessionId,
-        w.createdAt,
-        w.archivedAt,
-        w.prUrl,
-        w.pr ? JSON.stringify(w.pr) : null,
-        w.title ?? null,
-        w.brief ?? null,
-        w.titleSource ?? null
-      )
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      w.id,
+      w.projectId,
+      w.name,
+      w.branch,
+      w.path,
+      w.baseRef,
+      w.status,
+      w.statusReason,
+      w.statusAt,
+      w.lastActivityAt,
+      w.sessionId,
+      w.createdAt,
+      w.archivedAt,
+      w.prUrl,
+      w.pr ? JSON.stringify(w.pr) : null,
+      w.title ?? null,
+      w.brief ?? null,
+      w.titleSource ?? null
+    )
   }
 
   setWorkspaceTitle(id: string, title: string, source: TitleSource): void {
-    this.db
-      .prepare('UPDATE workspaces SET title = ?, title_source = ? WHERE id = ?')
-      .run(title, source, id)
+    this.run('UPDATE workspaces SET title = ?, title_source = ? WHERE id = ?', title, source, id)
   }
 
   setWorkspaceBranch(id: string, branch: string): void {
-    this.db.prepare('UPDATE workspaces SET branch = ? WHERE id = ?').run(branch, id)
+    this.run('UPDATE workspaces SET branch = ? WHERE id = ?', branch, id)
   }
 
   getWorkspace(id: string): Workspace | undefined {
-    const r = this.db.prepare('SELECT * FROM workspaces WHERE id = ?').get(id)
-    return r ? toWorkspace(r as unknown as WorkspaceRow) : undefined
+    const r = this.row<WorkspaceRow>('SELECT * FROM workspaces WHERE id = ?', id)
+
+    return r ? toWorkspace(r) : undefined
   }
 
   /** Any workspace (archived included) holding this name or path in the project. */
   findWorkspaceConflicts(projectId: string, name: string, path: string): Workspace[] {
-    return (
-      this.db
-        .prepare('SELECT * FROM workspaces WHERE (project_id = ? AND name = ?) OR path = ?')
-        .all(projectId, name, path) as unknown as WorkspaceRow[]
+    return this.rows<WorkspaceRow>(
+      'SELECT * FROM workspaces WHERE (project_id = ? AND name = ?) OR path = ?',
+      projectId,
+      name,
+      path
     ).map(toWorkspace)
   }
 
   /** Unarchived workspaces, oldest first. */
   listWorkspaces(projectId?: string): Workspace[] {
     const rows = projectId
-      ? this.db
-          .prepare(
-            'SELECT * FROM workspaces WHERE archived_at IS NULL AND project_id = ? ORDER BY created_at, id'
-          )
-          .all(projectId)
-      : this.db
-          .prepare('SELECT * FROM workspaces WHERE archived_at IS NULL ORDER BY created_at, id')
-          .all()
-    return (rows as unknown as WorkspaceRow[]).map(toWorkspace)
+      ? this.rows<WorkspaceRow>(
+          'SELECT * FROM workspaces WHERE archived_at IS NULL AND project_id = ? ORDER BY created_at, id',
+          projectId
+        )
+      : this.rows<WorkspaceRow>(
+          'SELECT * FROM workspaces WHERE archived_at IS NULL ORDER BY created_at, id'
+        )
+
+    return rows.map(toWorkspace)
   }
 
   updateStatus(id: string, u: StatusUpdate): void {
-    this.db
-      .prepare(
-        `UPDATE workspaces SET status = ?, status_reason = ?, status_at = ?, last_activity_at = ?,
-           session_id = ? WHERE id = ?`
-      )
-      .run(u.status, u.reason, u.at, u.lastActivityAt, u.sessionId, id)
+    this.run(
+      `UPDATE workspaces SET status = ?, status_reason = ?, status_at = ?, last_activity_at = ?,
+           session_id = ? WHERE id = ?`,
+      u.status,
+      u.reason,
+      u.at,
+      u.lastActivityAt,
+      u.sessionId,
+      id
+    )
   }
 
   setWorkspacePrUrl(id: string, prUrl: string): void {
-    this.db.prepare('UPDATE workspaces SET pr_url = ? WHERE id = ?').run(prUrl, id)
+    this.run('UPDATE workspaces SET pr_url = ? WHERE id = ?', prUrl, id)
   }
 
   setWorkspacePr(id: string, pr: PullRequest | null): void {
-    this.db
-      .prepare('UPDATE workspaces SET pr_json = ? WHERE id = ?')
-      .run(pr ? JSON.stringify(pr) : null, id)
+    this.run('UPDATE workspaces SET pr_json = ? WHERE id = ?', pr ? JSON.stringify(pr) : null, id)
   }
 
   archiveWorkspace(id: string, at: string): void {
-    this.db.prepare('UPDATE workspaces SET archived_at = ? WHERE id = ?').run(at, id)
+    this.run('UPDATE workspaces SET archived_at = ? WHERE id = ?', at, id)
   }
 
   /** Hard-deletes an archived row so its name and path can be reused. */
   deleteWorkspace(id: string): void {
-    this.db.prepare('DELETE FROM hook_events WHERE workspace_id = ?').run(id)
-    this.db.prepare('DELETE FROM workspace_status_log WHERE workspace_id = ?').run(id)
-    this.db.prepare('DELETE FROM workspaces WHERE id = ?').run(id)
+    this.run('DELETE FROM hook_events WHERE workspace_id = ?', id)
+    this.run('DELETE FROM workspace_status_log WHERE workspace_id = ?', id)
+    this.run('DELETE FROM workspaces WHERE id = ?', id)
   }
 
   // ---- status log -----------------------------------------------------------
@@ -564,26 +577,30 @@ export class Store {
     reason: string | null,
     at: string
   ): void {
-    this.db
-      .prepare(
-        'INSERT INTO workspace_status_log (workspace_id, status, reason, at) VALUES (?, ?, ?, ?)'
-      )
-      .run(workspaceId, status, reason, at)
+    this.run(
+      'INSERT INTO workspace_status_log (workspace_id, status, reason, at) VALUES (?, ?, ?, ?)',
+      workspaceId,
+      status,
+      reason,
+      at
+    )
     const cutoff = new Date(Date.parse(at) - STATUS_LOG_RETENTION_MS).toISOString()
-    this.db.prepare('DELETE FROM workspace_status_log WHERE at < ?').run(cutoff)
+    this.run('DELETE FROM workspace_status_log WHERE at < ?', cutoff)
   }
 
   /** Every change at or after `since`, plus the last one before it, oldest first. */
   listStatusLog(workspaceId: string, since: string): StatusLogRow[] {
-    return this.db
-      .prepare(
-        `SELECT status, reason, at FROM workspace_status_log
-           WHERE workspace_id = ? AND (at >= ? OR id = (
-             SELECT id FROM workspace_status_log WHERE workspace_id = ? AND at < ?
-               ORDER BY at DESC, id DESC LIMIT 1))
-           ORDER BY at, id`
-      )
-      .all(workspaceId, since, workspaceId, since) as unknown as StatusLogRow[]
+    return this.rows<StatusLogRow>(
+      `SELECT status, reason, at FROM workspace_status_log
+         WHERE workspace_id = ? AND (at >= ? OR id = (
+           SELECT id FROM workspace_status_log WHERE workspace_id = ? AND at < ?
+             ORDER BY at DESC, id DESC LIMIT 1))
+         ORDER BY at, id`,
+      workspaceId,
+      since,
+      workspaceId,
+      since
+    )
   }
 
   // ---- hook events ----------------------------------------------------------
@@ -596,32 +613,34 @@ export class Store {
     payload: unknown,
     receivedAt: string
   ): void {
-    this.db
-      .prepare(
-        'INSERT INTO hook_events (workspace_id, session_id, event, payload, received_at) VALUES (?, ?, ?, ?, ?)'
-      )
-      .run(workspaceId, sessionId, event, JSON.stringify(payload), receivedAt)
-    this.db
-      .prepare(
-        `DELETE FROM hook_events WHERE workspace_id = ? AND id NOT IN
-           (SELECT id FROM hook_events WHERE workspace_id = ? ORDER BY id DESC LIMIT ?)`
-      )
-      .run(workspaceId, workspaceId, HOOK_EVENTS_PER_WORKSPACE)
+    this.run(
+      'INSERT INTO hook_events (workspace_id, session_id, event, payload, received_at) VALUES (?, ?, ?, ?, ?)',
+      workspaceId,
+      sessionId,
+      event,
+      JSON.stringify(payload),
+      receivedAt
+    )
+    // Everything at or below the first id past the newest 500 goes; with 500 or fewer rows
+    // the subquery is NULL and nothing does. Both sides walk the (workspace_id, id) index.
+    this.run(
+      `DELETE FROM hook_events WHERE workspace_id = ? AND id <=
+         (SELECT id FROM hook_events WHERE workspace_id = ? ORDER BY id DESC LIMIT 1 OFFSET ?)`,
+      workspaceId,
+      workspaceId,
+      HOOK_EVENTS_PER_WORKSPACE
+    )
   }
 
   listHookEvents(workspaceId: string): HookEventRow[] {
-    return (
-      this.db
-        .prepare('SELECT * FROM hook_events WHERE workspace_id = ? ORDER BY id')
-        .all(workspaceId) as unknown as Array<{
-        id: number
-        workspace_id: string
-        session_id: string | null
-        event: string
-        payload: string
-        received_at: string
-      }>
-    ).map((r) => ({
+    return this.rows<{
+      id: number
+      workspace_id: string
+      session_id: string | null
+      event: string
+      payload: string
+      received_at: string
+    }>('SELECT * FROM hook_events WHERE workspace_id = ? ORDER BY id', workspaceId).map((r) => ({
       id: r.id,
       workspaceId: r.workspace_id,
       sessionId: r.session_id,
@@ -634,77 +653,70 @@ export class Store {
   // ---- tasks ----------------------------------------------------------------
 
   insertTask(t: Task): void {
-    const cols = TASK_COLUMNS.map(([, c]) => c)
-    this.db
-      .prepare(`INSERT INTO tasks (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`)
-      .run(...TASK_COLUMNS.map(([k]) => t[k]))
+    this.run(INSERT_TASK_SQL, ...TASK_COLUMNS.map(([k]) => t[k]))
   }
 
   /** Writes every field of the task (it must exist). */
   updateTask(t: Task): void {
-    const rest = TASK_COLUMNS.filter(([k]) => k !== 'id')
-    this.db
-      .prepare(`UPDATE tasks SET ${rest.map(([, c]) => `${c} = ?`).join(', ')} WHERE id = ?`)
-      .run(...rest.map(([k]) => t[k]), t.id)
+    this.run(UPDATE_TASK_SQL, ...TASK_FIELDS_BUT_ID.map(([k]) => t[k]), t.id)
   }
 
   getTask(id: string): Task | undefined {
-    const r = this.db.prepare('SELECT * FROM tasks WHERE id = ?').get(id)
-    return r ? toTask(r as unknown as TaskRow) : undefined
+    const r = this.row<Task>(`${SELECT_TASK} WHERE id = ?`, id)
+
+    return r ? toTask(r) : undefined
   }
 
   /** Oldest first (insertion order breaks ties within a millisecond). */
   listTasks(states?: readonly TaskState[]): Task[] {
     const rows =
       states && states.length > 0
-        ? this.db
-            .prepare(
-              `SELECT * FROM tasks WHERE state IN (${states.map(() => '?').join(', ')}) ORDER BY created_at, rowid`
-            )
-            .all(...states)
-        : this.db.prepare('SELECT * FROM tasks ORDER BY created_at, rowid').all()
-    return (rows as unknown as TaskRow[]).map(toTask)
+        ? this.rows<Task>(
+            `${SELECT_TASK} WHERE state IN (${states.map(() => '?').join(', ')}) ORDER BY created_at, rowid`,
+            ...states
+          )
+        : this.rows<Task>(`${SELECT_TASK} ORDER BY created_at, rowid`)
+
+    return rows.map(toTask)
   }
 
   deleteTask(id: string): void {
-    this.db.prepare('DELETE FROM tasks WHERE id = ?').run(id)
+    this.run('DELETE FROM tasks WHERE id = ?', id)
   }
 
   // ---- quiet unlocks ---------------------------------------------------------
 
   insertUnlock(u: { at: string; minutes: number; why: string | null; until: string }): number {
-    const r = this.db
-      .prepare('INSERT INTO quiet_unlocks (at, minutes, why, until) VALUES (?, ?, ?, ?)')
-      .run(u.at, u.minutes, u.why, u.until)
+    const r = this.run(
+      'INSERT INTO quiet_unlocks (at, minutes, why, until) VALUES (?, ?, ?, ?)',
+      u.at,
+      u.minutes,
+      u.why,
+      u.until
+    )
+
     return Number(r.lastInsertRowid)
   }
 
   endUnlock(id: number, endedAt: string): void {
-    this.db
-      .prepare('UPDATE quiet_unlocks SET ended_at = ? WHERE id = ? AND ended_at IS NULL')
-      .run(endedAt, id)
+    this.run('UPDATE quiet_unlocks SET ended_at = ? WHERE id = ? AND ended_at IS NULL', endedAt, id)
   }
 
   /** The unlock still open (not ended), if any. */
   openUnlock(): { id: number; at: string; why: string | null; until: string } | undefined {
-    const r = this.db
-      .prepare(
-        'SELECT id, at, why, until FROM quiet_unlocks WHERE ended_at IS NULL ORDER BY id DESC LIMIT 1'
-      )
-      .get() as { id: number; at: string; why: string | null; until: string } | undefined
-    return r
+    return this.row<{ id: number; at: string; why: string | null; until: string }>(
+      'SELECT id, at, why, until FROM quiet_unlocks WHERE ended_at IS NULL ORDER BY id DESC LIMIT 1'
+    )
   }
 
   /** Unlocks started at or after `since`, oldest first. */
   listUnlocks(since?: string): QuietUnlock[] {
-    const rows = (since
-      ? this.db.prepare('SELECT * FROM quiet_unlocks WHERE at >= ? ORDER BY id').all(since)
-      : this.db.prepare('SELECT * FROM quiet_unlocks ORDER BY id').all()) as unknown as Array<{
-      at: string
-      minutes: number
-      why: string | null
-      ended_at: string | null
-    }>
+    type UnlockRow = { at: string; minutes: number; why: string | null; ended_at: string | null }
+
+    const rows = since
+      ? this.rows<UnlockRow>('SELECT * FROM quiet_unlocks WHERE at >= ? ORDER BY id', since)
+      : this.rows<UnlockRow>('SELECT * FROM quiet_unlocks ORDER BY id')
+
     return rows.map((r) => ({ at: r.at, minutes: r.minutes, why: r.why, endedAt: r.ended_at }))
   }
 
@@ -712,7 +724,7 @@ export class Store {
 
   /** Inserts or updates tickets by key (position is the index in `tickets`), keeping the workspace and the parent check time each one has. */
   upsertTickets(tickets: Ticket[]): void {
-    const stmt = this.db.prepare(
+    const stmt = this.statement(
       `INSERT INTO tickets (key, summary, status, status_category, priority, type, assignee,
          project_key, project_name, url, labels_json, updated_at, synced_at, position,
          parent_key, level, assigned)
@@ -725,8 +737,8 @@ export class Store {
          synced_at = excluded.synced_at, position = excluded.position,
          parent_key = excluded.parent_key, level = excluded.level, assigned = excluded.assigned`
     )
-    this.db.exec('BEGIN')
-    try {
+
+    this.tx(() => {
       for (const [position, t] of tickets.entries()) {
         stmt.run(
           t.key,
@@ -748,41 +760,40 @@ export class Store {
           t.assigned ? 1 : 0
         )
       }
-      this.db.exec('COMMIT')
-    } catch (err) {
-      this.db.exec('ROLLBACK')
-      throw err
-    }
+    })
   }
 
   /** Every cached ticket, in the order of the last sync (a parent sits with its children). */
   listTickets(): Ticket[] {
-    const rows = this.db
-      .prepare('SELECT * FROM tickets ORDER BY position, assigned DESC, key')
-      .all() as unknown as TicketRow[]
-    return rows.map(ticketFromRow)
+    return this.rows<TicketRow>('SELECT * FROM tickets ORDER BY position, assigned DESC, key').map(
+      ticketFromRow
+    )
   }
 
   getTicket(key: string): Ticket | undefined {
-    const r = this.db.prepare('SELECT * FROM tickets WHERE key = ?').get(key) as unknown as
-      | TicketRow
-      | undefined
+    const r = this.row<TicketRow>('SELECT * FROM tickets WHERE key = ?', key)
+
     return r ? ticketFromRow(r) : undefined
   }
 
   /** When the ticket's parent was last looked up (null: never, or no such ticket). */
   getTicketParentCheckedAt(key: string): string | null {
-    const r = this.db.prepare('SELECT parent_checked_at FROM tickets WHERE key = ?').get(key) as
-      | { parent_checked_at: string | null }
-      | undefined
-    return r?.parent_checked_at ?? null
+    return (
+      this.row<{ parent_checked_at: string | null }>(
+        'SELECT parent_checked_at FROM tickets WHERE key = ?',
+        key
+      )?.parent_checked_at ?? null
+    )
   }
 
   /** Records a ticket's parent (null: none) and when it was looked up. */
   setTicketParent(key: string, parentKey: string | null, checkedAt: string): void {
-    this.db
-      .prepare('UPDATE tickets SET parent_key = ?, parent_checked_at = ? WHERE key = ?')
-      .run(parentKey, checkedAt, key)
+    this.run(
+      'UPDATE tickets SET parent_key = ?, parent_checked_at = ? WHERE key = ?',
+      parentKey,
+      checkedAt,
+      key
+    )
   }
 
   /**
@@ -792,39 +803,67 @@ export class Store {
    */
   deleteTicketsNotIn(keys: string[]): void {
     const keep = new Set(keys)
-    const del = this.db.prepare('DELETE FROM tickets WHERE key = ?')
-    const rows = this.db
-      .prepare('SELECT key FROM tickets WHERE workspace_id IS NULL AND assigned != 0')
-      .all() as unknown as Array<{ key: string }>
+    const del = this.statement('DELETE FROM tickets WHERE key = ?')
+
+    const rows = this.rows<{ key: string }>(
+      'SELECT key FROM tickets WHERE workspace_id IS NULL AND assigned != 0'
+    )
+
     for (const r of rows) if (!keep.has(r.key)) del.run(r.key)
-    this.db
-      .prepare(
-        `DELETE FROM tickets WHERE assigned = 0 AND workspace_id IS NULL
-           AND key NOT IN (SELECT parent_key FROM tickets WHERE parent_key IS NOT NULL)`
-      )
-      .run()
+    this.run(`DELETE FROM tickets WHERE assigned = 0 AND workspace_id IS NULL
+           AND key NOT IN (SELECT parent_key FROM tickets WHERE parent_key IS NOT NULL)`)
   }
 
   setTicketWorkspace(key: string, workspaceId: string | null): void {
-    this.db.prepare('UPDATE tickets SET workspace_id = ? WHERE key = ?').run(workspaceId, key)
+    this.run('UPDATE tickets SET workspace_id = ? WHERE key = ?', workspaceId, key)
   }
 
   // ---- kv -------------------------------------------------------------------
 
   getKv(key: string): string | undefined {
-    const r = this.db.prepare('SELECT value FROM kv WHERE key = ?').get(key) as
-      | { value: string }
-      | undefined
-    return r?.value
+    return this.row<{ value: string }>('SELECT value FROM kv WHERE key = ?', key)?.value
   }
 
   setKv(key: string, value: string | null): void {
-    if (value === null) this.db.prepare('DELETE FROM kv WHERE key = ?').run(key)
+    if (value === null) this.run('DELETE FROM kv WHERE key = ?', key)
     else
-      this.db
-        .prepare(
-          'INSERT INTO kv (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value'
-        )
-        .run(key, value)
+      this.run(
+        'INSERT INTO kv (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
+        key,
+        value
+      )
+  }
+
+  // ---- counts ---------------------------------------------------------------
+
+  /** How many tasks sit in each state (zero for a state with none). */
+  countTasksByState(): Record<TaskState, number> {
+    const counts: Record<TaskState, number> = {
+      queued: 0,
+      preparing: 0,
+      running: 0,
+      paused: 0,
+      finishing: 0,
+      done: 0,
+      stuck: 0,
+      failed: 0,
+      stopped: 0
+    }
+
+    for (const r of this.rows<{ state: TaskState; n: number }>(
+      'SELECT state, COUNT(*) AS n FROM tasks GROUP BY state'
+    )) {
+      counts[r.state] = r.n
+    }
+
+    return counts
+  }
+
+  /** Ids of the unarchived workspaces whose stored status is `status`, oldest first. */
+  listWorkspaceIdsByStatus(status: WorkspaceStatus): string[] {
+    return this.rows<{ id: string }>(
+      'SELECT id FROM workspaces WHERE archived_at IS NULL AND status = ? ORDER BY created_at, id',
+      status
+    ).map((r) => r.id)
   }
 }

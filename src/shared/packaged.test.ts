@@ -78,6 +78,7 @@ describe('packaged paths', () => {
         ...runner,
         cliScript: `${RES}/cli/index.js`
       })
+
       expect(script).toContain(
         `ELECTRON_RUN_AS_NODE=1 exec '${APP}/Contents/MacOS/que' '${RES}/cli/index.js' "$@"`
       )
