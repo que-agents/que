@@ -6,6 +6,7 @@ import { makeProject, makeWorkspace } from '@renderer/testing/fixtures'
 import App from '../App'
 
 const uploader = makeProject()
+
 const retry = makeWorkspace({
   id: 'ws_01hzx3k9c2qf',
   name: 'app-1432-retry-logic',

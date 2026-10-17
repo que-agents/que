@@ -1,0 +1,87 @@
+rules:
+  - id: que-no-electron-outside-main
+    message: electron must not be imported or required in the daemon, CLI, or shared code (CLAUDE.md, Packaged paths).
+    metadata: { category: que-rules, source: CLAUDE.md }
+    severity: ERROR
+    languages: [generic]
+    paths:
+      include: ['/src/daemon/**', '/src/cli/**', '/src/shared/**']
+    pattern-regex: |-
+      (\bfrom\s*|\brequire\(\s*|\bimport\(\s*|\bimport\s+)['"]electron(/[^'"]*)?['"]
+
+  - id: que-no-mock-internal-or-node-builtins
+    message: Do not vi.mock internal modules, node:child_process, or node:fs; fake the subprocess or the window.que bridge instead.
+    metadata: { category: que-rules, source: CLAUDE.md }
+    severity: ERROR
+    languages: [typescript, javascript]
+    paths:
+      include: ['/src/**', '/tests/**']
+    patterns:
+      - pattern-either:
+          - pattern: vi.mock("$M", ...)
+          - pattern: vi.doMock("$M", ...)
+      - metavariable-regex:
+          metavariable: $M
+          regex: ^(\..*|@shared.*|@daemon.*|@renderer.*|(node:)?(child_process|fs)(/.*)?)$
+
+  - id: que-no-sleep-in-tests
+    message: No sleeps in tests; wait on a condition (expect.poll, waitFor, an event, a CLI query).
+    metadata: { category: que-rules, source: CLAUDE.md }
+    severity: ERROR
+    languages: [typescript, javascript]
+    paths:
+      include:
+        - '/tests/**'
+        - '/src/**/*.test.ts'
+        - '/src/**/*.test.tsx'
+        - '/src/testing/**'
+        - '/src/renderer/src/testing/**'
+      exclude:
+        - '/tests/fakes/**'
+        - '/src/testing/leak-check.ts'
+    pattern-either:
+      - pattern: new Promise(($R) => setTimeout($R, ...))
+      - pattern: new Promise(($R) => { ... setTimeout($R, ...); ... })
+      - pattern: new Promise(($R) => setTimeout($R, ...).unref())
+      - pattern: new Promise(function ($R) { ... setTimeout($R, ...); ... })
+
+  - id: que-no-claude-settings-json
+    message: Never reference ~/.claude/settings.json; pass hooks per session with --settings.
+    metadata: { category: que-rules, source: CLAUDE.md }
+    severity: ERROR
+    languages: [generic]
+    paths:
+      include: ['/src/**']
+    pattern-either:
+      - pattern-regex: |-
+          ["'`][^"'`\n]*\.claude/settings\.json
+      - pattern-regex: |-
+          \.claude['"]\s*,\s*['"]settings\.json
+
+  - id: que-no-shell-true
+    message: Do not spawn or exec with shell true; pass an argv array.
+    metadata: { category: que-rules, source: CLAUDE.md }
+    severity: ERROR
+    languages: [typescript, javascript]
+    paths:
+      include: ['/src/**']
+    patterns:
+      - pattern-either:
+          - pattern: '$F(..., { ..., shell: true, ... })'
+          - pattern: '$O.$F(..., { ..., shell: true, ... })'
+      - metavariable-regex:
+          metavariable: $F
+          regex: ^(spawn|spawnSync|exec|execSync|execFile|execFileSync|fork)$
+
+  - id: que-electron-insecure-webpreferences
+    message: Insecure BrowserWindow webPreferences (nodeIntegration, contextIsolation, webSecurity, sandbox).
+    metadata: { category: que-rules, source: CLAUDE.md }
+    severity: ERROR
+    languages: [typescript, javascript]
+    paths:
+      include: ['/src/main/**']
+    pattern-either:
+      - pattern: '{ ..., nodeIntegration: true, ... }'
+      - pattern: '{ ..., contextIsolation: false, ... }'
+      - pattern: '{ ..., webSecurity: false, ... }'
+      - pattern: '{ ..., sandbox: false, ... }'

@@ -15,10 +15,14 @@ export type LineKind = 'added' | 'removed' | 'hunk' | 'header' | 'context'
 
 export function lineKind(line: string): LineKind {
   if (line.startsWith('@@')) return 'hunk'
+
   if (line.startsWith('diff --git') || line.startsWith('---') || line.startsWith('+++'))
     return 'header'
+
   if (line.startsWith('+')) return 'added'
+
   if (line.startsWith('-')) return 'removed'
+
   return 'context'
 }
 

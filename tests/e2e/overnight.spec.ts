@@ -8,12 +8,12 @@ import { join } from 'node:path'
 import { expect, test } from '@playwright/test'
 import type { Project, Task } from '../../src/shared/types'
 import { setFakePullRequest } from '../../src/testing/fakes'
+import { addBareOrigin, makeTempRepo } from '../../src/testing/temp-repo'
 import { AppShellPage } from './pages/AppShellPage'
 import { ReportPage } from './pages/ReportPage'
 import { SidebarPage } from './pages/SidebarPage'
-import { type LaunchedApp, launchApp, newQueHome } from './utils/app'
+import { type LaunchedApp, launchApp, newQueHome, tempDir } from './utils/app'
 import { que, queJson } from './utils/que'
-import { makeRepo } from './utils/repo'
 
 let launched: LaunchedApp
 
@@ -22,7 +22,8 @@ test.afterEach(async () => {
 })
 
 test('a task queued from the CLI runs overnight-style, shows in the sidebar, and lands in the report as a draft PR', async () => {
-  const repo = makeRepo({ origin: true })
+  const repo = makeTempRepo(tempDir('que-e2e-repo-'))
+  addBareOrigin(repo)
   // The PR tracker polls every second here, so the chip follows the fake state fast.
   const queHome = newQueHome('pr_poll_seconds = 1\n[quiet_hours]\nenabled = false\n')
   let project: Project
@@ -37,6 +38,7 @@ test('a task queued from the CLI runs overnight-style, shows in the sidebar, and
 
   await test.step('Register the project and queue a task with the CLI', async () => {
     project = queJson<Project>(queHome, 'project', 'add', repo, '--json')
+
     const added = queJson<Task>(
       queHome,
       'add',
@@ -45,6 +47,7 @@ test('a task queued from the CLI runs overnight-style, shows in the sidebar, and
       'Add retry logic to the uploader',
       '--json'
     )
+
     expect(added).toMatchObject({
       projectId: project.id,
       title: 'Add retry logic to the uploader',
@@ -100,7 +103,7 @@ test('a task queued from the CLI runs overnight-style, shows in the sidebar, and
     await report.waitForLoad()
     await expect(report.groupTask('done', taskId)).toBeVisible()
     await expect(report.taskPrLink(taskId)).toHaveAttribute('href', /\/pull\/\d+$/)
-    await expect(report.totals).toContainText('1 tasks · 1 PRs')
+    await expect(report.totals).toContainText('1 done · 1 PR')
     await launched.window.screenshot({ path: 'test-results/wp4-overnight.png' })
   })
 })

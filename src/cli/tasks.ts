@@ -5,13 +5,14 @@ import fs from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import type { Command } from 'commander'
 import { formatUnlocks } from '../daemon/quiet-hours'
-import { formatCost, formatReport, parseSince } from '../daemon/report'
+import { formatReport, parseSince } from '../daemon/report'
 import { type DaemonClient, resolveDaemonScript, resolveRuntime } from '../shared/client'
 import { formatConfigErrors, loadConfig } from '../shared/config'
+import { formatAge, formatCost } from '../shared/format'
 import { queHome, quePaths } from '../shared/paths'
 import type { QueueState, TaskAddParams } from '../shared/protocol'
 import type { Task } from '../shared/types'
-import { CliError, findWorkspace, formatAge, printTable, withClient } from './common'
+import { CliError, findWorkspace, printJson, printTable, withClient } from './common'
 import { LAUNCHD_LABEL, plistPath, renderPlist } from './launchd'
 
 /** `-r`: a configured repo name, a repo path, or a workspace id or name. */
@@ -20,20 +21,26 @@ async function resolveTarget(
   ref: string
 ): Promise<Pick<TaskAddParams, 'projectId' | 'workspaceId'>> {
   const config = loadConfig({ queHome: queHome() })
+
   if (!config.ok) throw new CliError(`invalid config: ${formatConfigErrors(config.errors)}`)
   const named = config.config.repos[ref]
+
   if (named)
     return { projectId: (await c.request('project.add', { path: named.path, name: ref })).id }
   const path = resolve(ref)
+
   if (fs.existsSync(path) && fs.statSync(path).isDirectory()) {
     return { projectId: (await c.request('project.add', { path })).id }
   }
+
   return { workspaceId: (await findWorkspace(c, ref)).id }
 }
 
 function positiveNumber(value: string, flag: string): number {
   const n = Number(value)
+
   if (!Number.isFinite(n) || n <= 0) throw new CliError(`${flag} must be a positive number`)
+
   return n
 }
 
@@ -63,7 +70,9 @@ function printTask(t: Task): void {
     ['paused until', t.pausedUntil],
     ['log', join(quePaths().logsDir, 'tasks', `${t.id}.log`)]
   ]
+
   for (const [k, v] of rows) if (v !== null) console.log(`${k.padEnd(13)}${v}`)
+
   if (t.resultText) console.log(`\n${t.resultText}`)
 }
 
@@ -92,7 +101,9 @@ export function registerTaskCommands(program: Command, daemon: Command): void {
         withClient(async (c) => {
           if (opts.file && brief) throw new CliError('pass a brief or -f <file>, not both')
           const text = opts.file ? fs.readFileSync(resolve(opts.file), 'utf8') : brief
+
           if (!text?.trim()) throw new CliError('a brief is required (argument or -f <file>)')
+
           const task = await c.request('task.add', {
             ...(await resolveTarget(c, opts.repo)),
             brief: text,
@@ -103,7 +114,8 @@ export function registerTaskCommands(program: Command, daemon: Command): void {
               ? positiveNumber(opts.maxBudget, '--max-budget')
               : undefined
           })
-          if (opts.json) console.log(JSON.stringify(task, null, 2))
+
+          if (opts.json) printJson(task)
           else console.log(`${task.id}  ${task.title}`)
         })
     )
@@ -116,7 +128,9 @@ export function registerTaskCommands(program: Command, daemon: Command): void {
     .action((opts: { json?: boolean }) =>
       withClient(async (c) => {
         const list = await c.request('task.list')
-        if (opts.json) return console.log(JSON.stringify(list, null, 2))
+
+        if (opts.json) return printJson(list)
+
         if (list.length === 0) return console.log('no tasks')
         printTable(
           ['ID', 'STATE', 'REASON', 'TURNS', 'COST', 'UPDATED', 'TITLE'],
@@ -126,7 +140,7 @@ export function registerTaskCommands(program: Command, daemon: Command): void {
             t.reason ?? '-',
             String(t.turns),
             formatCost(t.costUsd),
-            formatAge(t.updatedAt),
+            formatAge(t.updatedAt, Date.now()),
             t.title
           ])
         )
@@ -139,7 +153,8 @@ export function registerTaskCommands(program: Command, daemon: Command): void {
     .action((id: string, opts: { json?: boolean }) =>
       withClient(async (c) => {
         const t = await c.request('task.get', { id })
-        if (opts.json) console.log(JSON.stringify(t, null, 2))
+
+        if (opts.json) printJson(t)
         else printTask(t)
       }, false)
     )
@@ -170,11 +185,14 @@ export function registerTaskCommands(program: Command, daemon: Command): void {
     .action((opts: { jobs?: string; json?: boolean }) =>
       withClient(async (c) => {
         const jobs = opts.jobs === undefined ? undefined : Number(opts.jobs)
+
         if (jobs !== undefined && !(Number.isInteger(jobs) && jobs > 0)) {
           throw new CliError('-j must be a positive integer')
         }
+
         const s = await c.request('queue.open', jobs === undefined ? {} : { concurrency: jobs })
-        if (opts.json) console.log(JSON.stringify(s, null, 2))
+
+        if (opts.json) printJson(s)
         else printQueue(s)
       })
     )
@@ -195,7 +213,8 @@ export function registerTaskCommands(program: Command, daemon: Command): void {
     .action((opts: { json?: boolean }) =>
       withClient(async (c) => {
         const s = await c.request('queue.state')
-        if (opts.json) console.log(JSON.stringify(s, null, 2))
+
+        if (opts.json) printJson(s)
         else printQueue(s)
       }, false)
     )
@@ -208,9 +227,11 @@ export function registerTaskCommands(program: Command, daemon: Command): void {
     .action((opts: { since?: string; json?: boolean }) =>
       withClient(async (c) => {
         const since = opts.since === undefined ? undefined : parseSince(opts.since, Date.now())
+
         if (since === null) throw new CliError(`invalid --since ${opts.since}`)
         const r = await c.request('report.get', since ? { since } : {})
-        if (opts.json) return console.log(JSON.stringify(r, null, 2))
+
+        if (opts.json) return printJson(r)
         const unlocks = await c.request('quiet.log', { since: r.since })
         console.log(formatReport(r, formatUnlocks(unlocks, Date.now())))
       }, false)
@@ -235,6 +256,7 @@ export function registerTaskCommands(program: Command, daemon: Command): void {
         })
       )
       console.log(`wrote ${file}`)
+
       if (opts.load) {
         const uid = process.getuid?.() ?? 0
         execFileSync('launchctl', ['bootstrap', `gui/${uid}`, file], { stdio: 'inherit' })
@@ -247,14 +269,17 @@ export function registerTaskCommands(program: Command, daemon: Command): void {
     .option('--no-load', 'remove the file without unloading the agent')
     .action((opts: { load: boolean }) => {
       const file = plistPath()
+
       if (opts.load && fs.existsSync(file)) {
         const uid = process.getuid?.() ?? 0
+
         try {
           execFileSync('launchctl', ['bootout', `gui/${uid}`, file], { stdio: 'inherit' })
         } catch {
           // Not loaded.
         }
       }
+
       fs.rmSync(file, { force: true })
       console.log(`removed ${file}`)
     })

@@ -1,0 +1,9 @@
+# Replaces Semgrep's built-in ignore list (which skips tests/); tests/ is scanned here.
+# Only build output and local state are listed.
+out/
+node_modules/
+release/
+test-results/
+.private/
+# Vendored lint rules: they run inside oxlint at lint time, never in the app.
+tools/oxlint/anti-slop/

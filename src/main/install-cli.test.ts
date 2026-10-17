@@ -28,11 +28,13 @@ describe('planCliInstall', () => {
 
   it('replaces an earlier link (an older or moved app) in the chosen directory', () => {
     const seen: string[] = []
+
     const plan = planCliInstall({
       home: HOME,
       systemBinWritable: true,
       existing: (link) => {
         seen.push(link)
+
         return 'other-link'
       }
     })

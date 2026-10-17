@@ -8,6 +8,7 @@ import {
   NO_SPLIT,
   type PaneLayout,
   parseLayout,
+  placeIn,
   reconcileLayout
 } from './layout'
 
@@ -103,6 +104,7 @@ describe('parseLayout', () => {
           views: [README, 'view:changes', 3, README, 'view:diff:', PUT]
         })
       )
+
       expect(parsed?.views).toEqual([README, PUT])
       expect(parseLayout(JSON.stringify({ ...NO_SPLIT, views: ['changes', 'pr'] }))).toBeNull()
       expect(parseLayout(JSON.stringify({ split: null }))).toBeNull()
@@ -184,5 +186,42 @@ describe('reconcileLayout', () => {
 
       expect(l).toEqual(before)
     })
+  })
+})
+
+describe('placeIn', () => {
+  it('appends a new tab to the second pane and selects and focuses it there', () => {
+    const l = split({ second: ['term_01hzx9b2'], active: ['term_01hzx8a1', 'term_01hzx9b2'] })
+
+    expect(placeIn(l, 1, PUT, { append: true })).toEqual({
+      ...l,
+      second: ['term_01hzx9b2', PUT],
+      active: ['term_01hzx8a1', PUT],
+      focused: 1
+    })
+  })
+
+  it('selects a new tab in the first pane without listing it in the second', () => {
+    const l = split({ second: ['term_01hzx9b2'], active: [null, 'term_01hzx9b2'], focused: 1 })
+
+    expect(placeIn(l, 0, README, { append: true })).toEqual({
+      ...l,
+      active: [README, 'term_01hzx9b2'],
+      focused: 0
+    })
+  })
+
+  it('selects a tab already in the second pane without adding it again', () => {
+    const l = split({
+      second: ['term_01hzx9b2', INDEX],
+      active: ['term_01hzx8a1', 'term_01hzx9b2']
+    })
+
+    const next = placeIn(l, 1, INDEX, { append: false })
+
+    expect(next.second).toEqual(['term_01hzx9b2', INDEX])
+    expect(next.active).toEqual(['term_01hzx8a1', INDEX])
+    expect(next.focused).toBe(1)
+    expect(l.active).toEqual(['term_01hzx8a1', 'term_01hzx9b2'])
   })
 })

@@ -6,9 +6,13 @@
 // reads a clock shifted to just before (or inside) a window.
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { DaemonClient } from '@shared/client'
-import type { Events } from '@shared/protocol'
-import type { TaskState } from '@shared/types'
-import { startTestDaemon, type TestDaemon } from '../../src/testing/daemon-harness'
+import {
+  recordEvents,
+  startTestDaemon,
+  type TestDaemon,
+  waitForStatus,
+  waitForTaskState
+} from '../../src/testing/daemon-harness'
 import { makeHookEvent } from '../../src/testing/fixtures'
 import { addBareOrigin, makeTempRepo } from '../../src/testing/temp-repo'
 
@@ -22,13 +26,8 @@ afterEach(async () => {
 /** Real time, shifted so that "now" starts at `start` (local wall clock). */
 function clockFrom(start: Date): () => number {
   const offset = start.getTime() - Date.now()
-  return () => Date.now() + offset
-}
 
-function record<E extends keyof Events>(c: DaemonClient, event: E): Events[E][] {
-  const seen: Events[E][] = []
-  c.on(event, (data) => seen.push(data))
-  return seen
+  return () => Date.now() + offset
 }
 
 const QUIET = (extra = ''): string =>
@@ -44,6 +43,7 @@ const NIGHT = new Date(2026, 9, 14, 2, 0)
 
 async function start(config: string, now: Date): Promise<TestDaemon> {
   daemon = await startTestDaemon({ config, now: clockFrom(now) })
+
   return daemon
 }
 
@@ -53,8 +53,8 @@ describe('quiet hours', () => {
   describe('entering quiet hours', () => {
     it('drops a client terminal subscription, keeps the terminal running, and refuses term.attach', async () => {
       const d = await start(QUIET(), new Date(2026, 9, 13, 18, 59, 58))
-      const changes = record(d.client, 'quiet.changed')
-      const data = record(d.client, 'term.data')
+      const changes = recordEvents(d.client, 'quiet.changed')
+      const data = recordEvents(d.client, 'term.data')
       const { id } = await d.client.request('term.create', cat)
       await d.client.request('term.attach', { id, cols: 80, rows: 24 })
 
@@ -71,6 +71,7 @@ describe('quiet hours', () => {
       // the first client (still detached) never received its output.
       const other = new DaemonClient(d.socket)
       await other.connect()
+
       try {
         await other.request('quiet.unlock', { why: 'check the detach' })
         await expect
@@ -127,7 +128,7 @@ describe('quiet hours', () => {
 
     it('ends an unlock on its own when its minutes run out', async () => {
       const d = await start(QUIET('unlock_minutes = 0.05\n'), NIGHT)
-      const changes = record(d.client, 'quiet.changed')
+      const changes = recordEvents(d.client, 'quiet.changed')
 
       const unlocked = await d.client.request('quiet.unlock')
       expect(unlocked.unlockedUntil).not.toBeNull()
@@ -161,16 +162,14 @@ describe('quiet hours', () => {
       addBareOrigin(repo)
       const { id: projectId } = await d.client.request('project.add', { path: repo })
       await d.client.request('quiet.unlock', { why: 'queue tonight' })
+
       const task = await d.client.request('task.add', {
         projectId,
         brief: 'Add retry logic to the uploader'
       })
+
       await d.client.request('queue.open')
-      await expect
-        .poll(async () => (await d.client.request('task.get', { id: task.id })).state, {
-          timeout: 15_000
-        })
-        .toBe('running')
+      await waitForTaskState(d, task.id, 'running', 15_000)
 
       await d.client.request('quiet.lock')
 
@@ -178,12 +177,7 @@ describe('quiet hours', () => {
       await expect(
         d.client.request('task.add', { projectId, brief: 'Document the upload limits' })
       ).rejects.toMatchObject(REFUSAL)
-      await expect
-        .poll(
-          async () => (await d.client.request('task.get', { id: task.id })).state as TaskState,
-          { timeout: 30_000 }
-        )
-        .toBe('done')
+      await waitForTaskState(d, task.id, 'done', 30_000)
       expect((await d.client.request('task.list')).map((t) => t.id)).toEqual([task.id])
     }, 45_000)
   })
@@ -191,7 +185,7 @@ describe('quiet hours', () => {
   describe('config.set', () => {
     it('reloads concurrency live and emits config.changed', async () => {
       const d = await start(QUIET(), new Date(2026, 9, 14, 12, 0))
-      const changed = record(d.client, 'config.changed')
+      const changed = recordEvents(d.client, 'config.changed')
       expect((await d.client.request('queue.state')).concurrency).toBe(2)
 
       const r = await d.client.request('config.set', { patch: { concurrency: 3 } })
@@ -247,8 +241,9 @@ describe('quiet hours', () => {
         `${QUIET()}\n[notifications]\nmorning_summary = true\n`,
         new Date(2026, 9, 14, 6, 59, 58)
       )
-      const summaries = record(d.client, 'quiet.morningSummary')
-      const changes = record(d.client, 'quiet.changed')
+
+      const summaries = recordEvents(d.client, 'quiet.morningSummary')
+      const changes = recordEvents(d.client, 'quiet.changed')
 
       await expect.poll(() => summaries.length, { timeout: 10_000 }).toBe(1)
       expect(summaries[0].report.since).toBe(new Date(2026, 9, 13, 19, 0).toISOString())
@@ -267,17 +262,15 @@ describe('quiet hours', () => {
         now: () => Date.now() + offset
       })
       const d = daemon
-      const summaries = record(d.client, 'quiet.morningSummary')
+      const summaries = recordEvents(d.client, 'quiet.morningSummary')
       const project = await d.client.request('project.add', { path: makeTempRepo(d.home) })
+
       const ws = await d.client.request('workspace.create', {
         projectId: project.id,
         name: 'app-1432-retry-logic'
       })
-      await expect
-        .poll(async () => (await d.client.request('workspace.get', { id: ws.id })).status, {
-          timeout: 10_000
-        })
-        .toBe('idle')
+
+      await waitForStatus(d, ws.id, 'idle')
       await d.client.request('hook.event', {
         workspaceId: ws.id,
         payload: makeHookEvent('UserPromptSubmit', { cwd: ws.path })

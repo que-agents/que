@@ -3,6 +3,7 @@
 // echo it. Events are server-pushed and carry no id.
 
 import type {
+  ConfigPatch,
   Project,
   PullRequest,
   QuietState,
@@ -17,8 +18,6 @@ import type {
   Workspace,
   WorkspaceStatus
 } from './types'
-
-export const PROTOCOL_VERSION = 1
 
 // ---- method types ---------------------------------------------------------
 
@@ -284,6 +283,8 @@ export interface ReportEntry {
   workspaceId: string | null
   branch: string | null
   prUrl: string | null
+  /** When a paused task's rate limit resets; null unless it is paused on one. */
+  pausedUntil: string | null
   durationMs: number | null
   turns: number
   costUsd: number
@@ -366,7 +367,7 @@ export interface ConfigGetResult {
 
 export interface ConfigSetParams {
   /** Deep-merged into the file's table; `null` removes a key. */
-  patch: Record<string, unknown>
+  patch: ConfigPatch
   /** Let a change that shortens or removes tonight's window apply now. */
   applyTonight?: boolean
 }
@@ -463,7 +464,9 @@ export const QUIET_REFUSED_METHODS = [
 ] as const satisfies readonly MethodName[]
 
 export type MethodName = keyof Methods
+
 export type ParamsOf<M extends MethodName> = Methods[M]['params']
+
 export type ResultOf<M extends MethodName> = Methods[M]['result']
 
 // ---- event types ----------------------------------------------------------
@@ -496,7 +499,6 @@ export interface Events {
 }
 
 export type EventName = keyof Events
-export type EventData<E extends EventName> = Events[E]
 
 // ---- envelopes ------------------------------------------------------------
 
@@ -538,22 +540,42 @@ export function encode(msg: unknown): string {
 }
 
 /**
- * Splits a byte stream into complete lines. Feed it chunks in arrival order;
- * a partial trailing line is kept until its newline arrives.
+ * Splits a byte stream into complete, non-blank lines. Feed it chunks in
+ * arrival order; a partial trailing line is kept until its newline arrives.
+ * Each chunk is scanned once, so a long line in many chunks costs linear time.
  */
 export class LineSplitter {
-  private buf = ''
+  /** The pieces of the line in progress, joined when its newline arrives. */
+  private pieces: string[] = []
 
   push(chunk: string): string[] {
-    this.buf += chunk
-    const parts = this.buf.split('\n')
-    this.buf = parts.pop() ?? ''
-    return parts.filter((l) => l.trim().length > 0)
+    const out: string[] = []
+    let start = 0
+
+    for (let nl = chunk.indexOf('\n'); nl !== -1; nl = chunk.indexOf('\n', start)) {
+      this.pieces.push(chunk.slice(start, nl))
+      this.take(out)
+      start = nl + 1
+    }
+
+    if (start < chunk.length) this.pieces.push(chunk.slice(start))
+
+    return out
   }
 
-  /** Bytes received after the last newline. */
-  get pending(): string {
-    return this.buf
+  /** The last line if it never got its newline (call at end of stream). */
+  flush(): string[] {
+    const out: string[] = []
+    this.take(out)
+
+    return out
+  }
+
+  private take(out: string[]): void {
+    const line = this.pieces.length === 1 ? this.pieces[0] : this.pieces.join('')
+    this.pieces = []
+
+    if (line.trim().length > 0) out.push(line)
   }
 }
 
@@ -566,14 +588,26 @@ export class MessageDecoder<T = unknown> {
 
   push(chunk: string | Uint8Array): T[] {
     const text = typeof chunk === 'string' ? chunk : this.decoder.decode(chunk, { stream: true })
+
+    return this.parse(this.lines.push(text))
+  }
+
+  /** Decodes a last line that never got its newline (call at end of stream). */
+  flush(): T[] {
+    return this.parse(this.lines.flush())
+  }
+
+  private parse(lines: string[]): T[] {
     const out: T[] = []
-    for (const line of this.lines.push(text)) {
+
+    for (const line of lines) {
       try {
         out.push(JSON.parse(line) as T)
       } catch (err) {
         this.onError?.(line, err)
       }
     }
+
     return out
   }
 }

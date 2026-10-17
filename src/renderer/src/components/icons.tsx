@@ -174,3 +174,35 @@ export function FileIcon(): React.JSX.Element {
     </svg>
   )
 }
+
+/** An open padlock, its shackle lifted off the right side: unlocked during quiet hours. */
+export function UnlockIcon(): React.JSX.Element {
+  return (
+    <svg {...base} aria-hidden="true">
+      <rect x="3" y="7.25" width="10" height="6.5" rx="1" />
+      <path d="M5.25 7.25V5a2.75 2.75 0 0 1 5.4-.75" />
+    </svg>
+  )
+}
+
+/**
+ * que's mark: a ring with a stem down its right side from the equator, and a
+ * dot in the accent. The numbers are the app icon's own (scripts/make-icon.mjs,
+ * a 1024 canvas), the viewBox cropped square around the glyph, drawn at 18px.
+ */
+export function QMarkIcon(): React.JSX.Element {
+  return (
+    <svg
+      {...base}
+      width={18}
+      height={18}
+      viewBox="287 290 514 514"
+      strokeWidth={64}
+      aria-hidden="true"
+    >
+      <circle cx="482" cy="472" r="150" />
+      <path d="M632 472V772" />
+      <circle cx="742" cy="742" r="46" fill="var(--accent)" stroke="none" />
+    </svg>
+  )
+}

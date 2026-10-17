@@ -8,6 +8,7 @@ import App from '../App'
 const NOW = Date.parse('2026-10-14T03:12:00.000Z')
 const uploader = makeProject()
 const retry = makeTicket()
+
 const refresh = makeTicket({
   key: 'APP-1440',
   summary: 'Refresh the auth token',
@@ -16,6 +17,7 @@ const refresh = makeTicket({
   priority: 'High',
   url: 'https://example.atlassian.net/browse/APP-1440'
 })
+
 const shipped = makeTicket({
   key: 'APP-1301',
   summary: 'Ship the quiet board',
@@ -23,11 +25,13 @@ const shipped = makeTicket({
   statusCategory: 'done',
   priority: null
 })
+
 const WS_NAME = 'app-1432-add-retry-logic-to-the-uploader'
 
 async function openTickets(user: ReturnType<typeof userEvent.setup>): Promise<HTMLElement> {
   render(<App now={() => NOW} />)
   await user.click(await screen.findByRole('button', { name: /^Tickets/ }))
+
   return screen.findByTestId('tickets-view')
 }
 
@@ -208,14 +212,17 @@ describe('TicketsView', () => {
       assigned: false,
       url: ''
     })
+
     const epicB = makeTicket({ key: 'EP-2', summary: 'Quiet auth', level: 'epic' })
     const childA = makeTicket({ key: 'APP-10', summary: 'Chunk the body', parentKey: 'EP-1' })
+
     const subtask = makeTicket({
       key: 'APP-11',
       summary: 'Pick a chunk size',
       level: 'subtask',
       parentKey: 'APP-10'
     })
+
     const childB = makeTicket({ key: 'APP-20', summary: 'Rotate tokens', parentKey: 'EP-2' })
     const childC = makeTicket({ key: 'APP-21', summary: 'Other work', parentKey: 'EP-2' })
     const loose = makeTicket({ key: 'WEB-1', summary: 'Fix the footer' })
@@ -248,6 +255,7 @@ describe('TicketsView', () => {
       const order = within(view)
         .getAllByTestId(/^ticket-[A-Z]+-\d+$/)
         .map((r) => r.dataset.testid)
+
       expect(order).toEqual([
         'ticket-EP-1',
         'ticket-APP-10',

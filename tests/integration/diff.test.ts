@@ -6,7 +6,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { WorkspaceDiff } from '@shared/protocol'
 import type { Workspace } from '@shared/types'
-import { runCli } from '../../src/testing/cli'
+import { runCli, runCliJson } from '../../src/testing/cli'
 import { startTestDaemon, type TestDaemon } from '../../src/testing/daemon-harness'
 import { addBareOrigin, gitIn, makeTempRepo } from '../../src/testing/temp-repo'
 
@@ -19,10 +19,12 @@ beforeEach(async () => {
   repo = makeTempRepo(daemon.home)
   addBareOrigin(repo)
   const project = await daemon.client.request('project.add', { path: repo })
+
   const created = await daemon.client.request('workspace.create', {
     projectId: project.id,
     name: 'app-1500-diff-view'
   })
+
   await expect
     .poll(async () => (await daemon.client.request('workspace.get', { id: created.id })).status, {
       timeout: 10_000
@@ -139,6 +141,7 @@ function branchTwoAhead(): { older: string; newer: string } {
   )
   commitAll('Retry uploads: back off (2x) & give up after 3')
   const newer = gitIn(ws.path, 'rev-parse', 'HEAD')
+
   return { older, newer }
 }
 
@@ -200,6 +203,7 @@ describe('workspace.diff commits, bases and narrowing', () => {
     fs.writeFileSync(join(ws.path, 'scratch.txt'), 'loose\n')
 
     const first = await daemon.client.request('workspace.diff', { id: ws.id, commit: older })
+
     const second = await daemon.client.request('workspace.diff', {
       id: ws.id,
       commit: newer.slice(0, 7)
@@ -244,7 +248,15 @@ describe('que ws diff', () => {
     branchTwoAhead()
 
     const text = await runCli('ws', 'diff', ws.name, '--base', 'release')
-    const json = await runCli('ws', 'diff', ws.name, '--base', 'release', '--json')
+
+    const json = await runCliJson<WorkspaceDiff>(
+      'ws',
+      'diff',
+      ws.name,
+      '--base',
+      'release',
+      '--json'
+    )
 
     expect(text.code).toBe(0)
     const lines = text.stdout.trim().split('\n')
@@ -261,7 +273,7 @@ describe('que ws diff', () => {
       'A retry.ts  +2 -0',
       'A uploader.ts  +1 -0'
     ])
-    expect(JSON.parse(json.stdout)).toMatchObject({
+    expect(json).toMatchObject({
       base: 'release',
       commitsAhead: 3,
       commit: null
@@ -272,7 +284,7 @@ describe('que ws diff', () => {
     const { older } = branchTwoAhead()
 
     const text = await runCli('ws', 'diff', ws.name, '--commit', older)
-    const json = await runCli('ws', 'diff', ws.name, '--commit', older, '--json')
+    const json = await runCliJson<WorkspaceDiff>('ws', 'diff', ws.name, '--commit', older, '--json')
 
     expect(text.code).toBe(0)
     const lines = text.stdout.trim().split('\n')
@@ -282,7 +294,7 @@ describe('que ws diff', () => {
     ])
     expect(lines.at(-1)).toBe('A uploader.ts  +1 -0')
     expect(lines).toHaveLength(5)
-    expect(JSON.parse(json.stdout)).toMatchObject({
+    expect(json).toMatchObject({
       commit: older,
       files: [{ path: 'uploader.ts', dirty: false }]
     })
@@ -315,10 +327,10 @@ describe('que ws diff', () => {
 
   it('says no changes, and prints the WorkspaceDiff with --json', async () => {
     const text = await runCli('ws', 'diff', ws.name)
-    const json = await runCli('ws', 'diff', ws.name, '--json')
+    const json = await runCliJson<WorkspaceDiff>('ws', 'diff', ws.name, '--json')
 
     expect(text.stdout.trim().split('\n')[1]).toBe('no changes')
-    expect(JSON.parse(json.stdout)).toMatchObject({
+    expect(json).toMatchObject({
       workspaceId: ws.id,
       base: 'origin/main',
       commitsAhead: 0,

@@ -1,10 +1,16 @@
 # Subprocess fakes
 
 `tests/fakes/bin/` holds stand-ins for the external programs que spawns. Tests put
-the directory **first on `PATH`** (`vi.stubEnv('PATH', ...)` in Vitest, `testEnv()`
-in Playwright), so the daemon, the CLI, and the app find these instead of the real
+the directory **first on `PATH`**, so the daemon, the CLI, and the app find these instead of the real
 binaries. `git` is never faked: tests use real repos in temp dirs. All of them are
 dependency-free Node scripts.
+
+`tests/fakes/env.cjs` builds that environment once for every caller (the Vitest
+daemon harness, the Playwright `testEnv()`, the soak and packaged-smoke scripts):
+`fakeEnv(home)` gives `QUE_HOME`, `QUE_CONFIG`, the `PATH`, each fake's log and
+data file under the home, and `GIT_CONFIG_GLOBAL`; `writeGitconfig(home, name)`
+writes that fixed git identity; `QUIET_OFF` is the config table that turns quiet
+hours off.
 
 ## `claude`
 
@@ -70,7 +76,8 @@ missing file means no pull requests). When it is set, `gh pr create` records
 `{ number, url, title, state: "OPEN", isDraft, headRefName, reviewDecision: "",
 statusCheckRollup: [], mergedAt: null }` under the current branch of its cwd, and
 `gh pr list --head <branch> --state all --limit 1 --json <fields>` prints a JSON
-array with that branch's entry (only the requested fields) or `[]`. With
+array with that branch's entry (only the requested fields) or `[]`; without
+`--head` it prints every entry, up to `--limit` (default 30). With
 `$QUE_FAKE_GH_FAIL` set, `pr list` exits 1 printing `gh: failed (fake)` on stderr.
 Tests edit the file with `setFakePullRequest()` and read it with
 `readFakePullRequests()` from `src/testing/fakes.ts`. `pr create` also stores `updatedAt` (now).

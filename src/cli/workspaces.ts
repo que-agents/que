@@ -6,6 +6,7 @@ import type { Command } from 'commander'
 import { summarize, trayTitle } from '../daemon/status-engine'
 import type { DaemonClient } from '../shared/client'
 import { formatConfigErrors, loadConfig } from '../shared/config'
+import { formatAge, formatDuration, spanMs } from '../shared/format'
 import { queHome, quePaths } from '../shared/paths'
 import type {
   DiffFile,
@@ -27,7 +28,7 @@ import {
   CliError,
   findProject,
   findWorkspace,
-  formatAge,
+  printJson,
   printTable,
   withClient
 } from './common'
@@ -44,74 +45,82 @@ const DIFF_GLYPH: Record<DiffFile['status'], string> = {
 /** The text `que ws diff` prints: the header, the commit it is narrowed to, the commits, the files. */
 export function formatDiff(d: WorkspaceDiff, now = Date.now()): string {
   const lines = [`${d.head} vs ${d.base} · ${d.commitsAhead} commits ahead`]
+
   if (d.commit) {
     const narrowed = d.commits.find((c) => c.sha === d.commit)
     lines.push(`commit ${d.commit.slice(0, 7)}${narrowed ? ` ${narrowed.subject}` : ''}`)
   }
+
   for (const c of d.commits.slice(0, 200)) {
     lines.push(`  ${c.shortSha} ${c.subject} · ${formatAge(c.at, now)}`)
   }
+
   if (d.files.length === 0) lines.push('no changes')
+
   for (const f of d.files) {
     const name = f.from ? `${f.from} → ${f.path}` : f.path
     lines.push(
       `${DIFF_GLYPH[f.status]} ${name}  +${f.additions} -${f.deletions}${f.dirty ? ' *' : ''}`
     )
   }
+
   return lines.join('\n')
 }
 
 /** The text `que ws files` prints: one path per line, and a note when the listing was cut. */
 export function formatFiles(f: WorkspaceFiles): string {
   const lines = [...f.files]
-  if (f.truncated) lines.push(`… and more (listing cut at ${f.files.length})`)
-  return lines.join('\n')
-}
 
-/** `1m 21s` between two ISO times; null unless both are known and in order. */
-export function formatDuration(from: string | null, to: string | null): string | null {
-  if (!from || !to) return null
-  const ms = Date.parse(to) - Date.parse(from)
-  if (!Number.isFinite(ms) || ms < 0) return null
-  const s = Math.round(ms / 1000)
-  if (s < 60) return `${s}s`
-  if (s < 3600) return `${Math.floor(s / 60)}m ${s % 60}s`
-  return `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`
+  if (f.truncated) lines.push(`… and more (listing cut at ${f.files.length})`)
+
+  return lines.join('\n')
 }
 
 function formatCheck(c: PrCheck): string {
   const source = c.source ? ` (${c.source})` : ''
-  const took = formatDuration(c.startedAt, c.completedAt)
+  // `1m 21s`, unpadded; nothing unless both times are known and in order.
+  const ms = spanMs(c.startedAt, c.completedAt)
+  const took = ms !== null && ms >= 0 ? formatDuration(ms, { pad: false }) : null
+
   return `${c.state.padEnd(7)}  ${c.name}${source}${took ? `  ${took}` : ''}`
 }
 
 /** The text `que ws pr` prints: the pull request, its checks, and its conversation. */
 export function formatPrView(pr: PullRequest, thread: PrThread | null): string {
   const lines = [`#${pr.number} ${pr.state} · ${pr.title}`, pr.url]
+
   if (pr.updatedAt) lines.push(`updated ${pr.updatedAt}`)
   const runs = pr.checkRuns ?? []
   lines.push('', 'checks')
+
   if (runs.length === 0) lines.push('no checks')
+
   for (const c of runs) lines.push(formatCheck(c))
   lines.push('', 'thread')
   const entries = thread?.entries ?? []
+
   if (entries.length === 0) lines.push('no comments')
+
   for (const e of entries) {
     const what = e.kind === 'review' && e.state ? e.state.replace('_', ' ') : e.kind
     const where = e.kind === 'line' && e.path ? ` · ${e.path}${e.line ? `:${e.line}` : ''}` : ''
     lines.push(`${e.author} · ${e.at} · ${what}${where}`)
+
     for (const l of e.body.trimEnd().split('\n')) if (e.body.trim()) lines.push(`  ${l}`)
   }
+
   return lines.join('\n')
 }
 
 /** `-` when there is no pull request, else `#12 open` plus what needs attention. */
 export function formatPr(pr: PullRequest | null): string {
   if (!pr) return '-'
+
   const notes = [
     pr.checks === 'failing' ? 'checks failing' : null,
     pr.review === 'changes_requested' ? 'changes requested' : null
   ].filter(Boolean)
+
   return `#${pr.number} ${pr.state}${notes.map((n) => `·${n}`).join('')}`
 }
 
@@ -144,13 +153,17 @@ function openInEditor(path: string): Promise<void> {
 }
 
 /** `-r` takes a configured repo name or a path. */
-function resolveRepo(ref: string): { path: string; name?: string } {
+function resolveRepo(ref: string) {
   const config = loadConfig({ queHome: queHome() })
+
   if (!config.ok) throw new CliError(`invalid config: ${formatConfigErrors(config.errors)}`)
   const named = config.config.repos[ref]
+
   if (named) return { path: named.path, name: ref }
   const path = resolve(ref)
+
   if (!fs.existsSync(path)) throw new CliError(`no configured repo or directory named ${ref}`)
+
   return { path }
 }
 
@@ -161,8 +174,10 @@ async function waitForSetup(
   seen: WorkspaceStatusEvent[]
 ): Promise<Workspace> {
   const settled = (): boolean => seen.some((e) => e.id === ws.id && e.status !== 'preparing')
+
   if (!settled()) {
     const now = await c.request('workspace.get', { id: ws.id })
+
     if (now.status !== 'preparing') return now
     process.stderr.write(`que: running setup for ${ws.name}…\n`)
     await new Promise<void>((done) => {
@@ -172,12 +187,14 @@ async function waitForSetup(
           done()
         }
       })
+
       if (settled()) {
         off()
         done()
       }
     })
   }
+
   return c.request('workspace.get', { id: ws.id })
 }
 
@@ -191,13 +208,16 @@ async function workspaceTerminal(
     const live = (await c.request('term.list', { workspaceId: ws.id }))
       .filter((t) => t.alive)
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+
     if (live[0]) return live[0].id
   }
+
   const { id } = await c.request('workspace.openTerminal', {
     id: ws.id,
     cols: process.stdout.columns || 80,
     rows: process.stdout.rows || 24
   })
+
   return id
 }
 
@@ -215,7 +235,8 @@ export function registerWorkspaceCommands(program: Command): void {
     .action((path: string, opts: { name?: string; json?: boolean }) =>
       withClient(async (c) => {
         const p = await c.request('project.add', { path: resolve(path), name: opts.name })
-        if (opts.json) console.log(JSON.stringify(p, null, 2))
+
+        if (opts.json) printJson(p)
         else console.log(`${p.id}  ${p.name}  ${p.path}  (default branch ${p.defaultBranch})`)
       })
     )
@@ -226,7 +247,9 @@ export function registerWorkspaceCommands(program: Command): void {
     .action((opts: { json?: boolean }) =>
       withClient(async (c) => {
         const projects = await c.request('project.list')
-        if (opts.json) return console.log(JSON.stringify(projects, null, 2))
+
+        if (opts.json) return printJson(projects)
+
         if (projects.length === 0) return console.log('no projects')
         printTable(
           ['ID', 'NAME', 'DEFAULT', 'PATH'],
@@ -248,19 +271,24 @@ export function registerWorkspaceCommands(program: Command): void {
         const p = await c.request('project.add', { path: repo.path, name: repo.name })
         const seen: WorkspaceStatusEvent[] = []
         c.on('workspace.status', (e) => seen.push(e))
+
         const created = await c.request('workspace.create', {
           projectId: p.id,
           name,
           baseRef: opts.base
         })
+
         const ws = await waitForSetup(c, created, seen)
-        if (opts.json) console.log(JSON.stringify(ws, null, 2))
+
+        if (opts.json) printJson(ws)
         else console.log(ws.path)
+
         if (ws.status === 'stuck') {
           const log = join(quePaths().workspaceLogsDir, `${ws.id}-setup.log`)
           console.error(`que: setup failed for ${ws.name}; see ${log}`)
           process.exitCode = 1
         }
+
         if (opts.open) await openInEditor(ws.path)
       })
     )
@@ -274,7 +302,9 @@ export function registerWorkspaceCommands(program: Command): void {
       withClient(async (c) => {
         const projectId = opts.project ? (await findProject(c, opts.project)).id : undefined
         const list = await c.request('workspace.list', { projectId })
-        if (opts.json) return console.log(JSON.stringify(list, null, 2))
+
+        if (opts.json) return printJson(list)
+
         if (list.length === 0) return console.log('no workspaces')
         const projects = await c.request('project.list')
         printTable(
@@ -311,12 +341,15 @@ export function registerWorkspaceCommands(program: Command): void {
       withClient(async (c) => {
         await assertNotQuiet(c)
         const w = await findWorkspace(c, ref)
+
         const diff = await c.request('workspace.diff', {
           id: w.id,
-          ...(opts.base !== undefined ? { base: opts.base } : {}),
-          ...(opts.commit !== undefined ? { commit: opts.commit } : {})
+          base: opts.base,
+          commit: opts.commit
         })
-        console.log(opts.json ? JSON.stringify(diff, null, 2) : formatDiff(diff))
+
+        if (opts.json) printJson(diff)
+        else console.log(formatDiff(diff))
       })
     )
   ws.command('files <workspace>')
@@ -327,7 +360,9 @@ export function registerWorkspaceCommands(program: Command): void {
         await assertNotQuiet(c)
         const w = await findWorkspace(c, ref)
         const listing = await c.request('workspace.files', { id: w.id })
-        console.log(opts.json ? JSON.stringify(listing, null, 2) : formatFiles(listing))
+
+        if (opts.json) printJson(listing)
+        else console.log(formatFiles(listing))
       })
     )
   ws.command('pr <workspace>')
@@ -339,10 +374,12 @@ export function registerWorkspaceCommands(program: Command): void {
         await assertNotQuiet(c)
         const w = await findWorkspace(c, ref)
         const pr = (await c.request('workspace.get', { id: w.id })).pr
+
         const thread = pr
           ? await c.request('workspace.prThread', { id: w.id, refresh: opts.refresh === true })
           : null
-        if (opts.json) return console.log(JSON.stringify({ pr, thread }, null, 2))
+
+        if (opts.json) return printJson({ pr, thread })
         console.log(pr ? formatPrView(pr, thread) : 'no pull request')
       })
     )
@@ -367,7 +404,9 @@ export function registerWorkspaceCommands(program: Command): void {
           c.request('project.list'),
           c.request('quiet.state')
         ])
+
         const summary = summarize(list)
+
         if (opts.json) {
           const out: StatusJson = {
             summary,
@@ -387,12 +426,15 @@ export function registerWorkspaceCommands(program: Command): void {
               pr: w.pr
             }))
           }
-          return console.log(JSON.stringify(out, null, 2))
+
+          return printJson(out)
         }
+
         if (quiet.inQuietHours) console.log(describeQuietState(quiet))
         console.log(
           `${trayTitle(summary)}   working ${summary.working} · needs input ${summary.needs_input} · stuck ${summary.stuck} · idle ${summary.idle} · exited ${summary.exited} · preparing ${summary.preparing}`
         )
+
         if (list.length === 0) return console.log('no workspaces')
         printTable(
           ['WORKSPACE', 'PROJECT', 'STATUS', 'REASON', 'PR', 'ACTIVE', 'SESSION'],
@@ -402,7 +444,7 @@ export function registerWorkspaceCommands(program: Command): void {
             w.status,
             w.statusReason ?? '-',
             formatPr(w.pr),
-            formatAge(w.lastActivityAt ?? w.statusAt),
+            formatAge(w.lastActivityAt ?? w.statusAt, Date.now()),
             w.sessionId ? w.sessionId.slice(0, 8) : '-'
           ])
         )

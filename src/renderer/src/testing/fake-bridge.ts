@@ -30,8 +30,12 @@ import type {
   WorkspaceFiles,
   WorkspaceStatus
 } from '../../../preload/index.d'
+import { isLocked, quietMessage } from '../../../daemon/quiet-hours'
+import { buildReport } from '../../../daemon/report'
+import { mergeConfigPatch } from '../../../shared/config-patch.decode'
 import { ErrorCodes, QUIET_REFUSED_METHODS } from '../../../shared/protocol'
 import { workspaceSlug } from '../../../shared/slug'
+import { LIVE_STATES } from '../../../shared/types'
 import { makeQuietState, makeUserConfig } from './fixtures'
 
 export type FakeQueApi = QueApi
@@ -45,6 +49,7 @@ export interface FakeTerminal extends TermInfo {
 }
 
 type AnyEvents = Events
+
 type Listener = (data: never) => void
 
 function notFound(what: string, id: string): Error {
@@ -61,8 +66,10 @@ function diffKey(id: string, base?: string, commit?: string): string {
 }
 
 let idCounter = 0
+
 function fakeId(prefix: 'prj_' | 'ws_' | 'tsk_'): string {
   idCounter += 1
+
   return `${prefix}fake${idCounter.toString(36).padStart(8, '0')}`
 }
 
@@ -99,6 +106,7 @@ class FakeBridge {
         state: async () => ({ ...this.quiet }),
         unlock: async (p) => {
           this.unlockRequests.push({ ...p })
+
           if (!this.quiet.inQuietHours) return { ...this.quiet }
           const minutes = p?.minutes ?? this.quiet.unlockMinutes
           const now = Date.now()
@@ -112,12 +120,15 @@ class FakeBridge {
             ...this.quiet,
             unlockedUntil: new Date(now + minutes * 60_000).toISOString()
           })
+
           return { ...this.quiet }
         },
         lock: async () => {
           const open = this.unlocks.find((u) => u.endedAt === null)
+
           if (open) open.endedAt = new Date().toISOString()
           this.setQuietState({ ...this.quiet, unlockedUntil: null })
+
           return { ...this.quiet }
         },
         log: async () => this.unlocks.map((u) => ({ ...u })),
@@ -127,7 +138,11 @@ class FakeBridge {
         get: async () => structuredClone(this.configBook),
         set: async (p) => {
           this.configSets.push(structuredClone(p))
-          this.configBook = { ...this.configBook, raw: mergePatch(this.configBook.raw, p.patch) }
+          this.configBook = {
+            ...this.configBook,
+            raw: mergeConfigPatch(this.configBook.raw, p.patch)
+          }
+
           if ('instructions_file' in p.patch) {
             const file = p.patch.instructions_file
             this.configBook.config = {
@@ -135,7 +150,9 @@ class FakeBridge {
               instructionsFile: typeof file === 'string' && file !== '' ? file : undefined
             }
           }
+
           this.emit('config.changed', structuredClone(this.configBook))
+
           return structuredClone(this.configBook)
         },
         on: (event, cb) => this.subscribe(event, cb as Listener)
@@ -145,53 +162,62 @@ class FakeBridge {
         set: async (p) => {
           if (!this.configBook.config.instructionsFile) {
             throw rpcError(
-              'not_configured',
+              ErrorCodes.NotConfigured,
               'no instructions file: set instructions_file in the que config first'
             )
           }
+
           this.instructionsSets.push(p.content)
           this.instructionsText = p.content
+
           return this.instructionsResult()
         }
       },
       term: {
         create: async (p) => {
           this.refuseIfQuiet('term.create')
+
           return this.createTerminal(p)
         },
         list: async (p) =>
-          [...this.terminals.values()]
-            .filter((t) => !p?.workspaceId || t.workspaceId === p.workspaceId)
-            .map(toInfo),
+          [...this.terminals.values()].flatMap((t) =>
+            !p?.workspaceId || t.workspaceId === p.workspaceId ? [toInfo(t)] : []
+          ),
         attach: async ({ id, cols, rows }) => {
           this.refuseIfQuiet('term.attach')
           const t = this.terminal(id)
           Object.assign(t, { cols, rows })
+
           return { snapshot: t.screen, cols, rows }
         },
         detach: async () => ({ ok: true }),
         write: ({ id, data }) => {
           const t = this.terminals.get(id)
+
           if (t?.alive) t.input += data
         },
         resize: async ({ id, cols, rows }) => {
           Object.assign(this.terminal(id), { cols, rows })
+
           return { ok: true }
         },
         kill: async ({ id }) => {
           this.terminal(id)
           this.terminals.delete(id)
           this.emit('term.killed', { id })
+
           return { ok: true }
         },
         snapshot: async ({ id }) => {
           this.refuseIfQuiet('term.snapshot')
           const t = this.terminal(id)
+
           return { serialized: t.screen, text: t.screen }
         },
         on: (event, cb) => this.subscribe(event, cb as Listener),
         onDisconnect: (cb) => {
           this.disconnectListeners.add(cb)
+
           return () => this.disconnectListeners.delete(cb)
         }
       },
@@ -200,16 +226,19 @@ class FakeBridge {
         openFolder: async () => this.folder,
         openInEditor: async ({ path }) => {
           this.editorCalls.push(path)
+
           return { ok: true }
         },
         trayTitle: async () => this.tray,
         update: async () => (this.updateInfo ? { ...this.updateInfo } : null),
         onUpdate: (cb) => {
           this.updateListeners.add(cb)
+
           return () => this.updateListeners.delete(cb)
         },
         openUpdate: async () => {
           this.updateOpens++
+
           return { ok: true }
         },
         e2e: false
@@ -217,7 +246,9 @@ class FakeBridge {
       project: {
         add: async ({ path, name }) => {
           const existing = [...this.projects.values()].find((p) => p.path === path)
+
           if (existing) return { ...existing }
+
           const project: Project = {
             id: fakeId('prj_'),
             name: name ?? path.split('/').filter(Boolean).pop() ?? 'repo',
@@ -225,18 +256,23 @@ class FakeBridge {
             defaultBranch: 'main',
             createdAt: new Date().toISOString()
           }
+
           this.projects.set(project.id, project)
           this.emit('project.added', { ...project })
+
           return { ...project }
         },
         list: async () => [...this.projects.values()].map((p) => ({ ...p })),
         remove: async ({ id, force }) => {
           if (!this.projects.has(id)) throw notFound('project', id)
           const open = [...this.workspaces.values()].filter((w) => w.projectId === id)
+
           if (open.length > 0 && !force) throw rpcError('conflict', `project ${id} has workspaces`)
+
           for (const w of open) this.removeWorkspace(w.id)
           this.projects.delete(id)
           this.emit('project.removed', { id })
+
           return { ok: true }
         },
         on: (event, cb) => this.subscribe(event, cb as Listener)
@@ -245,11 +281,14 @@ class FakeBridge {
         add: async (p) => {
           this.refuseIfQuiet('task.add')
           const projectId = p.workspaceId ? this.workspace(p.workspaceId).projectId : p.projectId
+
           if (!projectId || !this.projects.has(projectId)) {
             throw notFound('project', projectId ?? '(none)')
           }
+
           if (!p.brief.trim()) throw rpcError('bad_request', 'brief is required')
           const now = new Date().toISOString()
+
           const task: Task = {
             id: fakeId('tsk_'),
             projectId,
@@ -278,25 +317,32 @@ class FakeBridge {
             createdAt: now,
             updatedAt: now
           }
+
           this.tasks.set(task.id, task)
           this.emit('task.created', { ...task })
+
           return { ...task }
         },
         list: async (p) =>
-          [...this.tasks.values()]
-            .filter((t) => !p?.state || t.state === p.state)
-            .map((t) => ({ ...t })),
+          [...this.tasks.values()].flatMap((t) =>
+            !p?.state || t.state === p.state ? [{ ...t }] : []
+          ),
         get: async ({ id }) => ({ ...this.task(id) }),
         stop: async ({ id }) => {
           const t = this.task(id)
-          if (!LIVE.has(t.state)) throw rpcError('conflict', `task ${id} is already ${t.state}`)
+
+          if (!LIVE_STATES.has(t.state))
+            throw rpcError('conflict', `task ${id} is already ${t.state}`)
           this.setTaskState(id, 'stopped')
+
           return { ...this.task(id) }
         },
         remove: async ({ id }) => {
           const t = this.task(id)
-          if (LIVE.has(t.state)) throw rpcError('conflict', `task ${id} is ${t.state}`)
+
+          if (LIVE_STATES.has(t.state)) throw rpcError('conflict', `task ${id} is ${t.state}`)
           this.tasks.delete(id)
+
           return { ok: true }
         },
         on: (event, cb) => this.subscribe(event, cb as Listener)
@@ -310,10 +356,12 @@ class FakeBridge {
             concurrency: p?.concurrency ?? this.queue.concurrency,
             openedAt: new Date().toISOString()
           })
+
           return { ...this.queue }
         },
         close: async () => {
           this.setQueueState({ ...this.queue, open: false })
+
           return { ...this.queue }
         },
         state: async () => ({ ...this.queue }),
@@ -326,25 +374,34 @@ class FakeBridge {
           this.ticketsSync = { ...this.ticketsSync, lastSyncAt: new Date().toISOString() }
           const r = this.ticketsResult()
           this.emit('tickets.synced', r)
+
           return r
         },
         start: async ({ key, projectId, session }) => {
           this.refuseIfQuiet('tickets.start')
           const ticket = this.tickets.get(key)
+
           if (!ticket) throw notFound('ticket', key)
+
           if (session) {
             const t = await this.api.term.create({ cwd: '/Users/dev', cols: 80, rows: 24 })
+
             return { kind: 'session', terminalId: t.id }
           }
+
           const target = projectId ?? this.ticketProjects.get(ticket.projectKey) ?? null
+
           if (!target) return { kind: 'needs_project', projects: [...this.projects.values()] }
           this.ticketProjects.set(ticket.projectKey, target)
+
           const ws = await this.api.workspace.create({
             projectId: target,
             name: `${key.toLowerCase()} ${ticket.summary}`
           })
+
           this.tickets.set(key, { ...ticket, workspaceId: ws.id })
           this.emit('tickets.synced', this.ticketsResult())
+
           return { kind: 'workspace', workspace: ws }
         },
         projectFor: async ({ key }) => ({
@@ -355,16 +412,20 @@ class FakeBridge {
       report: {
         get: async (p) => {
           this.refuseIfQuiet('report.get')
+
           return this.report(p?.since)
         }
       },
       workspace: {
         create: async ({ projectId, name, baseRef, branch }) => {
           const project = this.projects.get(projectId)
+
           if (!project) throw notFound('project', projectId)
           const s = workspaceSlug(name)
+
           if (!s) throw rpcError('bad_request', `invalid workspace name ${name}`)
           const now = new Date().toISOString()
+
           const ws: Workspace = {
             id: fakeId('ws_'),
             projectId,
@@ -382,23 +443,27 @@ class FakeBridge {
             prUrl: null,
             pr: null
           }
+
           this.workspaces.set(ws.id, ws)
           this.emit('workspace.created', { ...ws })
+
           return { ...ws }
         },
         list: async (p) =>
-          [...this.workspaces.values()]
-            .filter((w) => !p?.projectId || w.projectId === p.projectId)
-            .map((w) => ({ ...w })),
+          [...this.workspaces.values()].flatMap((w) =>
+            !p?.projectId || w.projectId === p.projectId ? [{ ...w }] : []
+          ),
         get: async ({ id }) => ({ ...this.workspace(id) }),
         remove: async ({ id }) => {
           this.workspace(id)
           this.removeWorkspace(id)
+
           return { ok: true }
         },
         openTerminal: async ({ id, cols, rows }) => {
           this.refuseIfQuiet('workspace.openTerminal')
           const ws = this.workspace(id)
+
           return this.createTerminal({ cwd: ws.path, cols, rows, name: ws.name }, ws.id)
         },
         diff: async ({ id, base, commit }) => {
@@ -407,8 +472,10 @@ class FakeBridge {
           this.diffCallLog.push({ id, base: base ?? null, commit: commit ?? null })
           const scoped = diffKey(id, base, commit)
           const failure = this.diffFailures.get(scoped)
+
           if (failure !== undefined) throw rpcError('bad_request', failure)
           const seeded = this.diffs.get(scoped) ?? this.diffs.get(diffKey(id))
+
           return structuredClone(
             seeded ?? {
               workspaceId: ws.id,
@@ -428,6 +495,7 @@ class FakeBridge {
           const ws = this.workspace(id)
           this.filesCallLog.push(id)
           const seeded = this.files.get(id)
+
           return structuredClone(
             seeded ?? {
               workspaceId: ws.id,
@@ -442,18 +510,22 @@ class FakeBridge {
           this.workspace(id)
           this.readFileCallLog.push({ id, path })
           const seeded = this.fileContents.get(`${id}\0${path}`)
+
           if (!seeded) throw rpcError(ErrorCodes.NotFound, `no such file: ${path}`)
+
           return structuredClone(seeded)
         },
         watch: async ({ id }) => {
           this.workspace(id)
           this.watchCallLog.push({ id, on: true })
           this.watchedIds.add(id)
+
           return { ok: true }
         },
         unwatch: async ({ id }) => {
           this.watchCallLog.push({ id, on: false })
           this.watchedIds.delete(id)
+
           return { ok: true }
         },
         prThread: async ({ id, refresh }) => {
@@ -461,16 +533,19 @@ class FakeBridge {
           this.workspace(id)
           this.prThreadCallLog.push({ id, refresh: refresh === true })
           const seeded = this.prThreads.get(id)
+
           return seeded ? structuredClone(seeded) : null
         },
         createPr: async ({ id, title }) => {
           this.refuseIfQuiet('workspace.createPr')
           const ws = this.workspace(id)
+
           if (!title.trim()) throw rpcError('bad_request', 'title is required')
           this.prCalls.push({ id, title })
           const prUrl = `https://github.com/rquellh/que/pull/${40 + this.prCalls.length}`
           this.workspaces.set(id, { ...ws, prUrl })
           this.emit('workspace.updated', { ...ws, prUrl })
+
           return { prUrl }
         },
         on: (event, cb) => this.subscribe(event, cb as Listener)
@@ -513,7 +588,9 @@ class FakeBridge {
 
   private instructionsResult(): InstructionsGetResult {
     const path = this.configBook.config.instructionsFile
+
     if (!path) return { exists: false, content: '' }
+
     return { path, exists: this.instructionsText !== null, content: this.instructionsText ?? '' }
   }
 
@@ -525,8 +602,14 @@ class FakeBridge {
   /** The daemon's refusal of detail while quiet hours are locked. */
   private refuseIfQuiet(method: (typeof QUIET_REFUSED_METHODS)[number]): void {
     if (!QUIET_REFUSED_METHODS.includes(method)) return
-    if (this.quiet.inQuietHours && !this.quiet.unlockedUntil) {
-      throw rpcError('quiet_hours', 'quiet hours until 07:00; run `que unlock` for 20 minutes')
+
+    if (isLocked(this.quiet)) {
+      // A state seeded without a window ends at 07:00, like the fixtures' night.
+      const end = this.quiet.windowEnd
+        ? Date.parse(this.quiet.windowEnd)
+        : new Date(2026, 9, 14, 7, 0).getTime()
+
+      throw rpcError('quiet_hours', quietMessage(end, this.quiet.unlockMinutes))
     }
   }
 
@@ -558,7 +641,7 @@ class FakeBridge {
     const ws = this.workspace(id)
     const at = new Date().toISOString()
     this.workspaces.set(id, { ...ws, status, statusReason: reason ?? null, statusAt: at })
-    this.emit('workspace.status', { id, status, ...(reason ? { reason } : {}), at })
+    this.emit('workspace.status', { id, status, reason: reason || undefined, at })
   }
 
   /** Sets (or clears) the workspace's pull request, as a daemon refresh would. */
@@ -583,7 +666,7 @@ class FakeBridge {
   setTaskState(id: string, state: TaskState, reason?: string): void {
     const t = this.task(id)
     const at = new Date().toISOString()
-    const terminal = !LIVE.has(state)
+    const terminal = !LIVE_STATES.has(state)
     this.tasks.set(id, {
       ...t,
       state,
@@ -591,7 +674,7 @@ class FakeBridge {
       updatedAt: at,
       finishedAt: terminal ? at : null
     })
-    this.emit('task.status', { id, state, ...(reason ? { reason } : {}), at })
+    this.emit('task.status', { id, state, reason: reason || undefined, at })
   }
 
   getTask(id: string): Task | undefined {
@@ -639,6 +722,7 @@ class FakeBridge {
    */
   setUpdate(info: UpdateInfo | null): void {
     this.updateInfo = info
+
     if (info) for (const cb of this.updateListeners) cb({ ...info })
   }
 
@@ -767,6 +851,7 @@ class FakeBridge {
     const full: PrThread = Array.isArray(thread)
       ? { workspaceId, number: 1, entries: thread, fetchedAt: new Date().toISOString() }
       : { ...thread, workspaceId }
+
     this.prThreads.set(workspaceId, structuredClone(full))
   }
 
@@ -817,71 +902,34 @@ class FakeBridge {
 
   private workspace(id: string): Workspace {
     const ws = this.workspaces.get(id)
+
     if (!ws) throw notFound('workspace', id)
+
     return ws
   }
 
   private task(id: string): Task {
     const t = this.tasks.get(id)
+
     if (!t) throw notFound('task', id)
+
     return t
   }
 
-  /** Every task in the book, grouped like the daemon's report (no time window). */
+  /** Every task in the book through the daemon's buildReport, with no time window. */
   private report(since?: string): Report {
-    const groups: Report['groups'] = {
-      done: [],
-      stuck: [],
-      failed: [],
-      stopped: [],
-      paused: [],
-      running: [],
-      queued: []
-    }
-    const totals = {
-      tasks: 0,
-      prs: 0,
-      turns: 0,
-      costUsd: 0,
-      durationMs: 0,
-      workspaces: 0,
-      needsInput: 0
-    }
-    for (const t of this.tasks.values()) {
-      const group =
-        t.state === 'preparing' || t.state === 'finishing'
-          ? 'running'
-          : (t.state as keyof typeof groups)
-      const durationMs =
-        t.startedAt && t.finishedAt ? Date.parse(t.finishedAt) - Date.parse(t.startedAt) : null
-      groups[group].push({
-        id: t.id,
-        title: t.title,
-        state: t.state,
-        reason: t.reason,
-        workspace: t.workspaceId ? (this.workspaces.get(t.workspaceId)?.name ?? null) : null,
-        workspaceId: t.workspaceId,
-        branch: t.branch,
-        prUrl: t.prUrl,
-        durationMs,
-        turns: t.turns,
-        costUsd: t.costUsd
-      })
-      totals.tasks += 1
-      totals.prs += t.prUrl ? 1 : 0
-      totals.turns += t.turns
-      totals.costUsd += t.costUsd
-      totals.durationMs += durationMs ?? 0
-    }
     const rank = (s: WorkspaceStatus): number =>
       s === 'needs_input' ? 0 : s === 'stuck' ? 1 : s === 'working' ? 2 : 3
+
     const digests = this.digests
       .map((d) => ({ ...d }))
       .sort((a, b) => rank(a.status) - rank(b.status))
-    totals.workspaces = digests.length
-    totals.needsInput = digests.filter((d) => d.status === 'needs_input').length
-    const now = new Date().toISOString()
-    return { since: since ?? now, generatedAt: now, groups, workspaces: digests, totals }
+
+    const names = new Map([...this.workspaces.values()].map((w) => [w.id, w.name]))
+    const epoch = new Date(0).toISOString()
+    const report = buildReport([...this.tasks.values()], names, epoch, Date.now(), digests)
+
+    return { ...report, since: since ?? report.generatedAt }
   }
 
   private removeWorkspace(id: string): void {
@@ -891,6 +939,7 @@ class FakeBridge {
         this.emit('term.killed', { id: t.id })
       }
     }
+
     this.workspaces.delete(id)
     this.emit('workspace.removed', { id })
   }
@@ -910,27 +959,33 @@ class FakeBridge {
       pid: 40_000 + this.terminals.size,
       alive: true,
       createdAt: new Date().toISOString(),
-      ...(workspaceId ? { workspaceId } : {}),
+      workspaceId: workspaceId || undefined,
       input: '',
       screen: ''
     })
     this.emit('term.created', { id })
+
     return { id }
   }
 
   private terminal(id: string): FakeTerminal {
     const t = this.terminals.get(id)
+
     if (!t) throw notFound('terminal', id)
+
     return t
   }
 
   private subscribe(event: string, cb: Listener): () => void {
     let set = this.listeners.get(event)
+
     if (!set) {
       set = new Set()
       this.listeners.set(event, set)
     }
+
     set.add(cb)
+
     return () => set.delete(cb)
   }
 
@@ -943,34 +998,8 @@ function toInfo({ input: _input, screen: _screen, ...info }: FakeTerminal): Term
   return info
 }
 
-const LIVE: ReadonlySet<TaskState> = new Set([
-  'queued',
-  'preparing',
-  'running',
-  'paused',
-  'finishing'
-])
-
 function defaultConfigBook(): ConfigGetResult {
   return { path: '/Users/dev/.config/que/config.toml', config: makeUserConfig(), raw: {} }
-}
-
-function isTable(v: unknown): v is Record<string, unknown> {
-  return typeof v === 'object' && v !== null && !Array.isArray(v)
-}
-
-/** config.set's merge: tables merge, anything else replaces, null removes. */
-function mergePatch(
-  raw: Record<string, unknown>,
-  patch: Record<string, unknown>
-): Record<string, unknown> {
-  const out: Record<string, unknown> = { ...raw }
-  for (const [k, v] of Object.entries(patch)) {
-    if (v === null) delete out[k]
-    else if (isTable(v)) out[k] = mergePatch(isTable(out[k]) ? out[k] : {}, v)
-    else out[k] = v
-  }
-  return out
 }
 
 function closedQueue(): QueueState {

@@ -16,7 +16,9 @@ const MARKER = '.app/Contents/Resources'
 /** `…/que.app/Contents/Resources` if `dir` is inside an app bundle's resources, else null. */
 export function packagedResourcesDir(dir: string): string | null {
   const at = dir.indexOf(`${MARKER}/`)
+
   if (at >= 0) return dir.slice(0, at + MARKER.length)
+
   return dir.endsWith(MARKER) ? dir : null
 }
 
@@ -28,12 +30,14 @@ export function appExecutable(resources: string): string {
 /** The daemon bundle: Resources/daemon/index.js when packaged, else a sibling in out/. */
 export function daemonScriptFrom(dir: string): string {
   const res = packagedResourcesDir(dir)
+
   return res ? join(res, 'daemon', 'index.js') : join(dir, '..', 'daemon', 'index.js')
 }
 
 /** The CLI bundle: Resources/cli/index.js when packaged, else a sibling in out/. */
 export function cliScriptFrom(dir: string): string {
   const res = packagedResourcesDir(dir)
+
   return res ? join(res, 'cli', 'index.js') : join(dir, '..', 'cli', 'index.js')
 }
 
@@ -49,5 +53,6 @@ export function runtimeFrom(
 ): string | null {
   if (proc.versions.electron) return proc.execPath
   const res = packagedResourcesDir(dir)
+
   return res ? appExecutable(res) : null
 }

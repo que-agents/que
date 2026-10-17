@@ -1,13 +1,16 @@
-import { SCRATCH, useQue, useStore } from '../store'
+import { prNumberOf } from '../format'
+import { SCRATCH, usePanes, useQueSelector } from '../store'
 import { JoinPanesIcon, PanelRightIcon, SplitBelowIcon, SplitBesideIcon } from './icons'
 import { PrChip, StatusBadge } from './StatusBadge'
 import UnlockStatus from './UnlockStatus'
 
 /** The selected workspace (or the loose terminals) and its actions. */
 export default function TopBar({ termKey }: { termKey: string }): React.JSX.Element {
-  const store = useStore()
-  const { workspaces, projects, connected, review } = useQue()
-  const ws = termKey === SCRATCH ? undefined : workspaces[termKey]
+  const store = usePanes(termKey)
+  const ws = useQueSelector((s) => (termKey === SCRATCH ? undefined : s.workspaces[termKey]))
+  const projects = useQueSelector((s) => s.projects)
+  const connected = useQueSelector((s) => s.connected)
+  const review = useQueSelector((s) => s.review)
   const project = ws ? projects.find((p) => p.id === ws.projectId) : undefined
   const split = Boolean(store.layout(termKey).split)
   const cwd = store.activeTab(termKey)?.cwd ?? ws?.path ?? ''
@@ -45,7 +48,7 @@ export default function TopBar({ termKey }: { termKey: string }): React.JSX.Elem
           ) : (
             ws.prUrl && (
               <a href={ws.prUrl} target="_blank" rel="noreferrer" data-testid="topbar-pr">
-                PR #{ws.prUrl.split('/').pop()}
+                PR #{prNumberOf(ws.prUrl)}
               </a>
             )
           )}

@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Project, Task, Workspace } from '../../../preload/index.d'
-import { isLiveTask, latestTasks } from '../format'
-import { SCRATCH, useQue, useStore } from '../store'
+import { isLiveTask, latestTasks, prNumberOf } from '../format'
+import { SCRATCH, usePanes, useQueSelector } from '../store'
 import { countOpenTickets } from '../ticket-tree'
 import { filterSidebar, matches, sortProjects, sortWorkspaces } from '../sidebar-order'
 import { FolderPlusIcon, PlusIcon, SearchIcon, SortIcon } from './icons'
@@ -18,29 +18,31 @@ type OpenMenu = { kind: 'project' | 'workspace'; id: string; at?: Point }
 function WorkspaceBadge({ w, task }: { w: Workspace; task?: Task }): React.JSX.Element {
   const testId = `sidebar-workspace-${w.id}-status`
   const interactive = w.status === 'working' || w.status === 'needs_input'
+
   if (task && isLiveTask(task.state)) return <TaskBadge state={task.state} testId={testId} />
+
   if (task?.state === 'done' && !interactive) return <TaskBadge state="done" testId={testId} />
+
   return <StatusBadge status={w.status} reason={w.statusReason} testId={testId} />
 }
 
 export default function Sidebar(): React.JSX.Element {
-  const store = useStore()
-  const {
-    projects,
-    workspaces,
-    view,
-    connected,
-    loaded,
-    tasks,
-    tickets,
-    ticketsSync,
-    filter,
-    searchOpen,
-    searchFocusNonce,
-    sort
-  } = useQue()
+  const store = usePanes(SCRATCH)
+  const projects = useQueSelector((s) => s.projects)
+  const workspaces = useQueSelector((s) => s.workspaces)
+  const view = useQueSelector((s) => s.view)
+  const connected = useQueSelector((s) => s.connected)
+  const loaded = useQueSelector((s) => s.loaded)
+  const tasks = useQueSelector((s) => s.tasks)
+  const tickets = useQueSelector((s) => s.tickets)
+  const ticketsSync = useQueSelector((s) => s.ticketsSync)
+  const filter = useQueSelector((s) => s.filter)
+  const searchOpen = useQueSelector((s) => s.searchOpen)
+  const searchFocusNonce = useQueSelector((s) => s.searchFocusNonce)
+  const sort = useQueSelector((s) => s.sort)
+
   const searchRef = useRef<HTMLInputElement>(null)
-  // biome-ignore lint/correctness/useExhaustiveDependencies: the nonce re-runs the focus on every request
+  // the nonce re-runs the focus on every request
   useEffect(() => {
     if (!searchOpen) return
     searchRef.current?.focus()
@@ -51,7 +53,7 @@ export default function Sidebar(): React.JSX.Element {
   const owned = latestTasks(tasks)
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set())
   const [menu, setMenu] = useState<OpenMenu | null>(null)
-  const closeMenu = useRef(() => setMenu(null)).current
+  const closeMenu = useCallback(() => setMenu(null), [])
   const selected = view.kind === 'terminals' ? view.key : null
   const allSessions = store.tabs(SCRATCH)
   const sessions = allSessions.filter((t) => matches(filter, t.name, t.cwd))
@@ -62,8 +64,10 @@ export default function Sidebar(): React.JSX.Element {
   const toggle = (id: string): void =>
     setCollapsed((prev) => {
       const next = new Set(prev)
+
       if (next.has(id)) next.delete(id)
       else next.add(id)
+
       return next
     })
 
@@ -243,6 +247,7 @@ export default function Sidebar(): React.JSX.Element {
           const open = filtering || !collapsed.has(p.id)
           const list = sortWorkspaces(narrowed.workspacesOf(p.id), sort)
           const projectMenu = menuFor('project', p.id)
+
           return (
             <div key={p.id} className="project" data-testid={`sidebar-project-${p.id}`}>
               <div className="project-head">
@@ -293,6 +298,7 @@ export default function Sidebar(): React.JSX.Element {
                 <ul>
                   {list.map((w) => {
                     const workspaceMenu = menuFor('workspace', w.id)
+
                     return (
                       <li
                         key={w.id}
@@ -323,7 +329,7 @@ export default function Sidebar(): React.JSX.Element {
                               rel="noreferrer"
                               data-testid={`sidebar-workspace-${w.id}-pr`}
                             >
-                              PR #{owned.get(w.id)?.prUrl?.split('/').pop()}
+                              PR #{prNumberOf(owned.get(w.id)?.prUrl)}
                             </a>
                           )
                         )}

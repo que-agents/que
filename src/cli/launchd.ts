@@ -29,6 +29,7 @@ function xml(s: string): string {
 /** The launchd property list for the daemon agent. */
 export function renderPlist(o: PlistOptions): string {
   const s = (v: string): string => `<string>${xml(v)}</string>`
+
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">

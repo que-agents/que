@@ -3,32 +3,33 @@
 import { type FormEvent, useState } from 'react'
 import type { Project, Workspace } from '../../../preload/index.d'
 import { workspaceSlug } from '../../../shared/slug'
+import { errorMessage } from '../../../shared/errors.decode'
 import { useQue, useStore } from '../store'
 import Dialog from './Dialog'
 
-function useSubmit(): {
-  busy: boolean
-  error: string | null
-  run: (fn: () => Promise<void>) => Promise<void>
-} {
+function useSubmit() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
   const run = async (fn: () => Promise<void>): Promise<void> => {
     setBusy(true)
     setError(null)
+
     try {
       await fn()
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      setError(errorMessage(err))
     } finally {
       setBusy(false)
     }
   }
+
   return { busy, error, run }
 }
 
 function FormError({ error, testId }: { error: string | null; testId: string }) {
   if (!error) return null
+
   return (
     <p className="form-error" role="alert" data-testid={`${testId}-error`}>
       {error}
@@ -53,12 +54,13 @@ export function NewWorkspaceDialog({
 
   const submit = (e: FormEvent): void => {
     e.preventDefault()
+
     if (!slug) return
     void run(async () => {
       await store.createWorkspace({
         projectId: project.id,
         name: slug,
-        ...(baseRef.trim() ? { baseRef: baseRef.trim() } : {})
+        baseRef: baseRef.trim() || undefined
       })
       onClose()
     })

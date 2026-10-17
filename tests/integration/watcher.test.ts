@@ -36,6 +36,7 @@ async function createWorkspace(name: string): Promise<Workspace> {
       timeout: 10_000
     })
     .not.toBe('preparing')
+
   return daemon.client.request('workspace.get', { id: created.id })
 }
 
@@ -46,7 +47,9 @@ async function attach(ws: Workspace): Promise<string> {
     cols: 80,
     rows: 24
   })
+
   await daemon.client.request('term.attach', { id, cols: 80, rows: 24 })
+
   return id
 }
 
@@ -79,7 +82,7 @@ async function sentinel(ws: Workspace, file: string): Promise<void> {
 async function watchBoth(
   ws: Workspace,
   other: Workspace,
-  start: (w: Workspace) => Promise<unknown> = attach
+  start: (w: Workspace) => Promise<string> | Promise<void> = attach
 ): Promise<number> {
   await start(ws)
   await start(other)
@@ -90,12 +93,14 @@ async function watchBoth(
       () => {
         nudge += 1
         fs.writeFileSync(join(other.path, 'settle.txt'), `settle ${nudge}\n`)
+
         return count(other.id)
       },
       { timeout: 10_000, interval: 200 }
     )
     .toBeGreaterThan(before)
   await sentinel(other, 'settled.txt')
+
   return count(ws.id)
 }
 
@@ -225,11 +230,13 @@ describe('worktree watcher', () => {
 
     it('stops watching when the attached connection closes', async () => {
       const ws = await createWorkspace('app-1610-watch-close')
+
       const { id: termId } = await daemon.client.request('workspace.openTerminal', {
         id: ws.id,
         cols: 80,
         rows: 24
       })
+
       const window = new DaemonClient(daemon.socket)
       await window.connect()
       await window.request('term.attach', { id: termId, cols: 80, rows: 24 })

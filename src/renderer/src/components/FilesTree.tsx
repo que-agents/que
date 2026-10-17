@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import type { DiffFile } from '../../../preload/index.d'
 import { GLYPH } from '../diff'
 import { buildTree, defaultExpanded, flatten, type TreeRow } from '../files'
-import { diffId, fileId, useQue, useStore } from '../store'
+import { diffId, fileId, usePanes, useQueSelector } from '../store'
 import { ChevronIcon, EditorIcon, RefreshIcon } from './icons'
 
 const NO_FILES: readonly string[] = []
@@ -14,15 +14,16 @@ const NO_FILES: readonly string[] = []
  * how many changed files sit beneath them.
  */
 export default function FilesTree({ termKey }: { termKey: string }): React.JSX.Element {
-  const store = useStore()
-  const { connected, diffs, diffErrors, fileLists, fileListErrors, filesExpanded, workspaces } =
-    useQue()
-  const ws = workspaces[termKey]
-  const list = fileLists[termKey] ?? null
-  const diff = diffs[termKey] ?? null
-  const error = fileListErrors[termKey] ?? null
-  const diffError = diffErrors[termKey] ?? null
-  const remembered = filesExpanded[termKey]
+  const store = usePanes(termKey)
+  const connected = useQueSelector((s) => s.connected)
+  const ws = useQueSelector((s) => s.workspaces[termKey])
+  const listing = useQueSelector((s) => s.fileLists[termKey])
+  const diffed = useQueSelector((s) => s.diffs[termKey])
+  const remembered = useQueSelector((s) => s.filesExpanded[termKey])
+  const list = listing?.data ?? null
+  const diff = diffed?.data ?? null
+  const error = listing?.error ?? null
+  const diffError = diffed?.error ?? null
   const activeId = store.paneActiveId(termKey, store.focusedPane(termKey))
   const [cursor, setCursor] = useState(0)
 
@@ -35,14 +36,17 @@ export default function FilesTree({ termKey }: { termKey: string }): React.JSX.E
     () => new Map<string, DiffFile>((diff?.files ?? []).map((f) => [f.path, f])),
     [diff]
   )
+
   const listed = list?.files ?? NO_FILES
   const tree = useMemo(() => buildTree(listed, changed), [listed, changed])
   // Until the first load settles, directories with changes are open; after that the clicks stand.
   const settled = list !== null && (diff !== null || diffError !== null)
+
   const expanded = useMemo(
     () => remembered ?? (settled ? defaultExpanded(tree) : new Set<string>()),
     [remembered, settled, tree]
   )
+
   useEffect(() => {
     if (remembered === undefined && settled) store.setFilesExpanded(termKey, defaultExpanded(tree))
   }, [store, termKey, remembered, settled, tree])
@@ -52,6 +56,7 @@ export default function FilesTree({ termKey }: { termKey: string }): React.JSX.E
 
   const setOpen = (path: string, open: boolean): void => {
     const next = new Set(expanded)
+
     if (open) next.add(path)
     else next.delete(path)
     store.setFilesExpanded(termKey, next)
@@ -59,9 +64,11 @@ export default function FilesTree({ termKey }: { termKey: string }): React.JSX.E
 
   const open = (i: number): void => {
     const row = rows[i]
+
     if (!row) return
     setCursor(i)
     const node = row.node
+
     if (node.kind === 'dir') setOpen(node.path, !row.open)
     else if (node.change) store.openDiff(termKey, node.path)
     else store.openFile(termKey, node.path)
@@ -69,12 +76,15 @@ export default function FilesTree({ termKey }: { termKey: string }): React.JSX.E
 
   const onKeyDown = (e: React.KeyboardEvent): void => {
     const row = rows[at]
+
     if (!row) return
     let next: number | null = null
+
     switch (e.key) {
       case 'Enter':
         e.preventDefault()
         open(at)
+
         return
       case 'ArrowDown':
         next = Math.min(at + 1, rows.length - 1)
@@ -99,16 +109,19 @@ export default function FilesTree({ termKey }: { termKey: string }): React.JSX.E
         } else {
           next = parentOf(rows, at) ?? at
         }
+
         break
       default:
         return
     }
+
     e.preventDefault()
     setCursor(next)
   }
 
   const count = list?.files.length ?? 0
   const changedCount = diff?.files.length ?? 0
+
   const title = list
     ? [
         `${count.toLocaleString('en-US')} ${count === 1 ? 'file' : 'files'}`,
@@ -199,7 +212,9 @@ export default function FilesTree({ termKey }: { termKey: string }): React.JSX.E
 /** The row of the nearest directory above a row, one level up. */
 function parentOf(rows: readonly TreeRow[], i: number): number | null {
   const level = rows[i]?.level ?? 1
+
   for (let j = i - 1; j >= 0; j--) if (rows[j].level < level) return j
+
   return null
 }
 
@@ -220,6 +235,7 @@ function Row({
   const dir = node.kind === 'dir'
   const change = node.kind === 'file' ? node.change : null
   const g = change ? GLYPH[change.status] : null
+
   const tone = dir
     ? 'dir'
     : !change
@@ -227,10 +243,11 @@ function Row({
       : change.status === 'deleted'
         ? 'file deleted'
         : 'file changed'
+
   const title = change?.from ? `${change.from} → ${node.path}` : node.path
 
   return (
-    // biome-ignore lint/a11y/useKeyWithClickEvents: the tree handles the keys for its rows, at its cursor
+    // the tree handles the keys for its rows, at its cursor
     <div
       role="treeitem"
       tabIndex={-1}

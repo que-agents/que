@@ -133,6 +133,7 @@ function matches(matcher, target) {
     return true
   }
   try {
+    // nosemgrep: javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp -- test-fake hook matcher from the test's own config
     return new RegExp(`^(?:${matcher})$`).test(target)
   } catch {
     return matcher === target

@@ -1,0 +1,34 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    # Wait out the window in which a bad release usually gets yanked.
+    cooldown:
+      default-days: 7
+    # Majors arrive as individual PRs (Electron, Vitest, React); minor and patch bumps land as one grouped PR.
+    groups:
+      npm-minor-and-patch:
+        update-types:
+          - minor
+          - patch
+    open-pull-requests-limit: 5
+    # @types/node tracks the Node that Electron bundles (24 on Electron 44), not the newest Node;
+    # lift this when an Electron release bundles a newer major.
+    ignore:
+      - dependency-name: '@types/node'
+        update-types: ['version-update:semver-major']
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 7
+    groups:
+      actions:
+        patterns:
+          - '*'
