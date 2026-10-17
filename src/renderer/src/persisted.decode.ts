@@ -65,3 +65,27 @@ export function decodeLayout(v: unknown): PersistedLayout | null {
     views: strings(v.views)
   }
 }
+
+/**
+ * What `key` holds, read through `decode`; the fallback when nothing (or an empty string) is
+ * stored, when storage is unavailable, or when `decode` throws on what it finds.
+ */
+export function readStored<T>(key: string, decode: (raw: string) => T, fallback: T): T {
+  try {
+    const raw = localStorage.getItem(key)
+
+    return raw ? decode(raw) : fallback
+  } catch {
+    return fallback
+  }
+}
+
+/** Remembers a value under `key`, or forgets the key for null; with no storage, nothing is kept. */
+export function writeStored(key: string, value: string | null): void {
+  try {
+    if (value === null) localStorage.removeItem(key)
+    else localStorage.setItem(key, value)
+  } catch {
+    // Nothing to remember into; the value still applies for this session.
+  }
+}

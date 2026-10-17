@@ -40,7 +40,7 @@ import { isLocked } from '../../daemon/quiet-hours'
 import { isLiveTask, latestTasks } from './format'
 import { chime, shouldChime } from './sound'
 import { errorCode, errorMessage } from '../../shared/errors.decode'
-import { decodeDiffBases, decodeReview } from './persisted.decode'
+import { decodeDiffBases, decodeReview, readStored, writeStored } from './persisted.decode'
 
 const DEFAULT_COLS = 80
 const DEFAULT_ROWS = 24
@@ -102,22 +102,21 @@ export function clampReviewWidth(w: number): number {
 function loadReview(): ReviewState {
   const fallback: ReviewState = { open: false, tab: 'changes', width: REVIEW_DEFAULT }
 
-  try {
-    const raw = localStorage.getItem(REVIEW_KEY)
+  return readStored(
+    REVIEW_KEY,
+    (raw) => {
+      const v = decodeReview(JSON.parse(raw))
 
-    if (!raw) return fallback
-    const v = decodeReview(JSON.parse(raw))
+      if (!v) return fallback
 
-    if (!v) return fallback
-
-    return {
-      open: v.open,
-      tab: REVIEW_TABS.find((t) => t === v.tab) ?? 'changes',
-      width: v.width === null ? REVIEW_DEFAULT : clampReviewWidth(v.width)
-    }
-  } catch {
-    return fallback
-  }
+      return {
+        open: v.open,
+        tab: REVIEW_TABS.find((t) => t === v.tab) ?? 'changes',
+        width: v.width === null ? REVIEW_DEFAULT : clampReviewWidth(v.width)
+      }
+    },
+    fallback
+  )
 }
 
 /** What a workspace's diff is narrowed to: the ref it compares against, and one commit. Null: the daemon's choice, every commit. */
@@ -131,30 +130,17 @@ const DIFF_BASES_KEY = 'que.diffBases'
 
 /** The remembered base per workspace id; anything unreadable is dropped. */
 function loadDiffBases(): Record<string, string> {
-  try {
-    const raw = localStorage.getItem(DIFF_BASES_KEY)
-
-    if (!raw) return {}
-
-    return decodeDiffBases(JSON.parse(raw))
-  } catch {
-    return {}
-  }
+  return readStored(DIFF_BASES_KEY, (raw) => decodeDiffBases(JSON.parse(raw)), {})
 }
 
 /** Remembers (or, for null, forgets) a workspace's base across launches. */
 function rememberDiffBase(id: string, base: string | null): void {
-  try {
-    const bases = loadDiffBases()
+  const bases = loadDiffBases()
 
-    if (base === null) delete bases[id]
-    else bases[id] = base
+  if (base === null) delete bases[id]
+  else bases[id] = base
 
-    if (Object.keys(bases).length > 0) localStorage.setItem(DIFF_BASES_KEY, JSON.stringify(bases))
-    else localStorage.removeItem(DIFF_BASES_KEY)
-  } catch {
-    // Nothing to remember into; the base still applies for this session.
-  }
+  writeStored(DIFF_BASES_KEY, Object.keys(bases).length > 0 ? JSON.stringify(bases) : null)
 }
 
 function initialDiffScopes(): Record<string, DiffScope> {
@@ -238,11 +224,7 @@ export interface StoreOptions {
 const SORT_KEY = 'que.sidebarSort'
 
 function loadSort(): SidebarSort {
-  try {
-    return localStorage.getItem(SORT_KEY) === 'activity' ? 'activity' : 'name'
-  } catch {
-    return 'name'
-  }
+  return readStored(SORT_KEY, (raw) => (raw === 'activity' ? 'activity' : 'name'), 'name')
 }
 
 function toTab(t: TermInfo, reattached: boolean): TermTab {
@@ -605,12 +587,7 @@ export class QueStore {
   }
 
   setSort(sort: SidebarSort): void {
-    try {
-      localStorage.setItem(SORT_KEY, sort)
-    } catch {
-      // Nothing to remember into; the sort still applies for this session.
-    }
-
+    writeStored(SORT_KEY, sort)
     this.set({ sort })
   }
 
@@ -641,12 +618,7 @@ export class QueStore {
   private setReview(patch: Partial<ReviewState>): void {
     const review = { ...this.state.review, ...patch }
     this.set({ review })
-
-    try {
-      localStorage.setItem(REVIEW_KEY, JSON.stringify(review))
-    } catch {
-      // Nothing to remember into; the pane still applies for this session.
-    }
+    writeStored(REVIEW_KEY, JSON.stringify(review))
   }
 
   /** Opens the review pane on a tab and loads what it shows for the current workspace. */
@@ -1263,13 +1235,7 @@ export class QueStore {
 
   private setLayout(key: string, layout: PaneLayout): void {
     this.setWith((s) => ({ layouts: { ...s.layouts, [key]: layout } }))
-
-    try {
-      if (isRemembered(layout)) localStorage.setItem(LAYOUT_PREFIX + key, JSON.stringify(layout))
-      else localStorage.removeItem(LAYOUT_PREFIX + key)
-    } catch {
-      // Nothing to remember into; the layout still applies for this session.
-    }
+    writeStored(LAYOUT_PREFIX + key, isRemembered(layout) ? JSON.stringify(layout) : null)
   }
 
   /** Restores the remembered layouts and view tabs, dropping terminals that no longer exist. */
