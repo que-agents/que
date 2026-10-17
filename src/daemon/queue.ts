@@ -63,23 +63,11 @@ export function defaultTitle(brief: string): string {
   return line.length > 80 ? `${line.slice(0, 79).trimEnd()}…` : line
 }
 
-/**
- * How many live tasks are in each state. TEMPORARY: stands in for the store's
- * countTasksByState() (package B1), which counts in SQL instead of decoding rows.
- */
-function countTasksByState(store: Store): Partial<Record<TaskState, number>> {
-  const counts: Partial<Record<TaskState, number>> = {}
-
-  for (const t of store.listTasks([...LIVE_STATES])) counts[t.state] = (counts[t.state] ?? 0) + 1
-
-  return counts
-}
-
 /** The tasks in any of `states`, from a by-state count. */
-function sumOf(counts: Partial<Record<TaskState, number>>, states: Iterable<TaskState>): number {
+function sumOf(counts: Record<TaskState, number>, states: Iterable<TaskState>): number {
   let n = 0
 
-  for (const s of states) n += counts[s] ?? 0
+  for (const s of states) n += counts[s]
 
   return n
 }
@@ -345,7 +333,7 @@ export class TaskQueue {
   /** Holds a `caffeinate -i -w <daemon pid>` while any task is active. */
   private keepAwake(): void {
     if (this.closed) return
-    const needed = sumOf(countTasksByState(this.o.store), ACTIVE_STATES) > 0
+    const needed = sumOf(this.o.store.countTasksByState(), ACTIVE_STATES) > 0
 
     if (needed && !this.caffeinate) {
       const bin = findOnPath('caffeinate', process.env.PATH)
@@ -516,14 +504,14 @@ export class TaskQueue {
   }
 
   state(): QueueState {
-    const counts = countTasksByState(this.o.store)
+    const counts = this.o.store.countTasksByState()
 
     return {
       open: this.isOpen(),
       concurrency: this.concurrency(),
       running: sumOf(counts, ACTIVE_STATES),
-      queued: counts.queued ?? 0,
-      paused: counts.paused ?? 0,
+      queued: counts.queued,
+      paused: counts.paused,
       openedAt: this.o.store.getKv(KV_OPENED_AT) ?? null
     }
   }
