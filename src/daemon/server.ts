@@ -107,6 +107,9 @@ class Connection {
   }
 }
 
+/** How long a read of the user config trusts the last stat of its file. */
+const CONFIG_RECHECK_MS = 1_000
+
 export class DaemonServer {
   private server: net.Server | null = null
   private conns = new Set<Connection>()
@@ -124,9 +127,10 @@ export class DaemonServer {
   readonly workspaces: WorkspaceManager
   readonly tasks: TaskQueue
   readonly quiet: QuietService
-  /** The last good user config and the file stamp it was read at. */
+  /** The last good user config, the file stamp it was read at, and when the file was last statted. */
   private config: UserConfig
   private configStamp = ''
+  private configCheckedAt = Number.NEGATIVE_INFINITY
   /** Watches the worktrees of workspaces with an attached terminal (workspace.changed). */
   readonly watcher = new WorktreeWatcher((id) => this.broadcast('workspace.changed', { id }), {
     log: (m) => this.log(m)
@@ -253,10 +257,17 @@ export class DaemonServer {
   }
 
   /**
-   * The user config, re-read whenever the file changes (so every reader sees
-   * an edit at once). An invalid file keeps the last good config.
+   * The user config, re-read when the file changes. The file is statted at most
+   * once a second (hooks, stream messages and every tick read the config), so a
+   * hand edit is seen within a second; config.set rereads at once. An invalid
+   * file keeps the last good config.
    */
   private configOrDefault(): UserConfig {
+    const now = performance.now()
+
+    if (now - this.configCheckedAt < CONFIG_RECHECK_MS) return this.config
+
+    this.configCheckedAt = now
     const path = configPath()
     let stamp = `${path}:missing`
 
@@ -318,6 +329,7 @@ export class DaemonServer {
     fs.writeFileSync(tmp, text.endsWith('\n') ? text : `${text}\n`)
     fs.renameSync(tmp, path)
     this.configStamp = ''
+    this.configCheckedAt = Number.NEGATIVE_INFINITY
     this.configOrDefault()
     this.log(`config ${path} updated${applyTonight ? ' (apply tonight)' : ''}`)
     this.quiet.configChanged(applyTonight)
