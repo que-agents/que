@@ -107,6 +107,18 @@ export type TaskState =
   | 'failed'
   | 'stopped'
 
+/** States a task can still leave on its own (and can still be stopped). */
+export const LIVE_STATES: ReadonlySet<TaskState> = new Set([
+  'queued',
+  'preparing',
+  'running',
+  'paused',
+  'finishing'
+])
+
+/** States with a claude process (or the finisher) at work. */
+export const ACTIVE_STATES: ReadonlySet<TaskState> = new Set(['preparing', 'running', 'finishing'])
+
 /** Where a task's brief came from. */
 export type TaskSource = 'prompt' | 'file'
 

@@ -31,6 +31,7 @@ import type {
 } from '../../../preload/index.d'
 import { ErrorCodes, QUIET_REFUSED_METHODS } from '../../../shared/protocol'
 import { workspaceSlug } from '../../../shared/slug'
+import { LIVE_STATES } from '../../../shared/types'
 import { makeQuietState, makeUserConfig } from './fixtures'
 
 export type FakeQueApi = QueApi
@@ -295,7 +296,8 @@ class FakeBridge {
         stop: async ({ id }) => {
           const t = this.task(id)
 
-          if (!LIVE.has(t.state)) throw rpcError('conflict', `task ${id} is already ${t.state}`)
+          if (!LIVE_STATES.has(t.state))
+            throw rpcError('conflict', `task ${id} is already ${t.state}`)
           this.setTaskState(id, 'stopped')
 
           return { ...this.task(id) }
@@ -303,7 +305,7 @@ class FakeBridge {
         remove: async ({ id }) => {
           const t = this.task(id)
 
-          if (LIVE.has(t.state)) throw rpcError('conflict', `task ${id} is ${t.state}`)
+          if (LIVE_STATES.has(t.state)) throw rpcError('conflict', `task ${id} is ${t.state}`)
           this.tasks.delete(id)
 
           return { ok: true }
@@ -606,7 +608,7 @@ class FakeBridge {
   setTaskState(id: string, state: TaskState, reason?: string): void {
     const t = this.task(id)
     const at = new Date().toISOString()
-    const terminal = !LIVE.has(state)
+    const terminal = !LIVE_STATES.has(state)
     this.tasks.set(id, {
       ...t,
       state,
@@ -984,14 +986,6 @@ class FakeBridge {
 function toInfo({ input: _input, screen: _screen, ...info }: FakeTerminal): TermInfo {
   return info
 }
-
-const LIVE: ReadonlySet<TaskState> = new Set([
-  'queued',
-  'preparing',
-  'running',
-  'paused',
-  'finishing'
-])
 
 function defaultConfigBook(): ConfigGetResult {
   return { path: '/Users/dev/.config/que/config.toml', config: makeUserConfig(), raw: {} }

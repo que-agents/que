@@ -2,7 +2,7 @@
 // outcome with durations and totals, and its plain-text rendering.
 import type { Report, ReportEntry, ReportGroup, WorkspaceDigest } from '../shared/protocol'
 import { formatCost, formatDuration as duration, hhmm } from '../shared/format'
-import type { Task, TaskState } from '../shared/types'
+import { LIVE_STATES, type Task, type TaskState } from '../shared/types'
 
 /** Reading order: outcomes first, what still needs a look next, stopped last. */
 export const REPORT_GROUPS: ReportGroup[] = [
@@ -26,14 +26,6 @@ const GROUP_OF: Record<TaskState, ReportGroup> = {
   finishing: 'running',
   queued: 'queued'
 }
-
-const LIVE: ReadonlySet<TaskState> = new Set([
-  'queued',
-  'preparing',
-  'running',
-  'paused',
-  'finishing'
-])
 
 export const DEFAULT_REPORT_WINDOW_MS = 24 * 3_600_000
 
@@ -98,7 +90,7 @@ export function buildReport(
   }
 
   const shown = tasks
-    .filter((t) => LIVE.has(t.state) || Date.parse(t.updatedAt) >= from)
+    .filter((t) => LIVE_STATES.has(t.state) || Date.parse(t.updatedAt) >= from)
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
 
   for (const t of shown) {

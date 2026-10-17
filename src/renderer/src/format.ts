@@ -7,6 +7,7 @@ import type {
   TaskState,
   WorkspaceStatus
 } from '../../preload/index.d'
+import { LIVE_STATES } from '../../shared/types'
 
 export type Tone = 'neutral' | 'busy' | 'attention' | 'bad' | 'good' | 'muted'
 
@@ -39,17 +40,9 @@ export function taskBadge(state: TaskState): { label: string; tone: Tone } {
   return TASK[state]
 }
 
-const LIVE: ReadonlySet<TaskState> = new Set([
-  'queued',
-  'preparing',
-  'running',
-  'paused',
-  'finishing'
-])
-
 /** True while a task can still be stopped. */
 export function isLiveTask(state: TaskState): boolean {
-  return LIVE.has(state)
+  return LIVE_STATES.has(state)
 }
 
 /** The newest task that ran (or runs) in each workspace. */

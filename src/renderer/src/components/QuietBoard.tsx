@@ -1,10 +1,9 @@
 import { useEffect, useState } from 'react'
 import type { Task, Workspace } from '../../../preload/index.d'
 import { formatAge, formatCost, formatDuration, hhmm } from '../../../shared/format'
+import { ACTIVE_STATES } from '../../../shared/types'
 import { isLiveTask, newestFirst } from '../format'
 import { useQue, useStore } from '../store'
-
-const RUNNING = new Set(['preparing', 'running', 'finishing'])
 
 interface Row {
   id: string
@@ -128,7 +127,7 @@ export default function QuietBoard(): React.JSX.Element {
       </header>
       <div className="quiet-board-counts" data-testid="quiet-board-counts">
         <p>
-          {count((t) => RUNNING.has(t.state))} running · {paused.length} paused
+          {count((t) => ACTIVE_STATES.has(t.state))} running · {paused.length} paused
           {resets ? ` (limit resets ${hhmm(Date.parse(resets))})` : ''} ·{' '}
           {count((t) => t.state === 'stuck')} stuck · {count((t) => t.state === 'done')} done
         </p>

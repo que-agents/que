@@ -26,7 +26,7 @@ import {
 import { decodeHookEvent } from '../shared/hook.decode'
 import { ensureDirs, quePaths, type QuePaths } from '../shared/paths'
 import type { ConfigGetResult, TaskAddParams, TermCreateParams } from '../shared/protocol'
-import type { TaskSource, TaskState } from '../shared/types'
+import { ACTIVE_STATES, type TaskSource, type TaskState } from '../shared/types'
 import { conflict, RpcError } from './errors'
 import { finishTask, isProtectedBranch } from './finisher'
 import type { HostedTerminal, PtyHost, TermExtra } from './pty-host'
@@ -383,9 +383,7 @@ export class DaemonServer {
       throw conflict(`refusing to open a pull request from protected branch ${ws.branch}`)
     }
 
-    const busy = this.tasks
-      .list()
-      .some((t) => t.workspaceId === id && ['preparing', 'running', 'finishing'].includes(t.state))
+    const busy = this.tasks.list().some((t) => t.workspaceId === id && ACTIVE_STATES.has(t.state))
 
     if (busy) throw conflict(`a task is running in workspace ${ws.name}`)
 
