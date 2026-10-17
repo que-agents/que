@@ -1095,7 +1095,9 @@ body.resizing {
 
 .report-page section ul {
   display: grid;
-  grid-template-columns: 5px minmax(0, 3fr) minmax(0, 2fr) auto auto minmax(25ch, auto);
+  /* The title column fits the section's longest title (capped), so the
+   * workspace follows the titles instead of sitting at a fixed column. */
+  grid-template-columns: 5px fit-content(45%) minmax(0, 1fr) auto auto minmax(25ch, auto);
   column-gap: 10px;
   /* The facts column's `ch` is a mono 11px character, as in the row. */
   font: 11px var(--mono);
