@@ -21,7 +21,7 @@ jobs:
     container:
       image: semgrep/semgrep
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       # Readable @vN action tags are deliberate (Dependabot keeps them current), so the mutable-tag rule is excluded.
