@@ -35,6 +35,8 @@ export {
   defaultQuietHours
 } from './config-defaults'
 
+import { isTable } from './config-patch.decode'
+
 export { mergeConfigPatch } from './config-patch.decode'
 
 export type { PermissionMode, RepoEntry, UserConfig } from './types'
@@ -74,17 +76,25 @@ function parseTable(text: string): ConfigResult<Record<string, unknown>> {
   }
 }
 
-function positive(
-  table: Record<string, unknown>,
+type Table = Record<string, unknown>
+
+/**
+ * The value at `key` when `ok` accepts it. An absent key is undefined; a value
+ * `ok` rejects is undefined too, with `message` reported under the key.
+ */
+function field<T>(
+  t: Table,
   key: string,
-  errors: ConfigError[]
-): number | undefined {
-  const v = table[key]
+  errors: ConfigError[],
+  ok: (v: unknown) => v is T,
+  message: string
+): T | undefined {
+  const v = t[key]
 
   if (v === undefined) return undefined
 
-  if (typeof v !== 'number' || !Number.isFinite(v) || v <= 0) {
-    errors.push({ key, message: 'must be a positive number' })
+  if (!ok(v)) {
+    errors.push({ key, message })
 
     return undefined
   }
@@ -92,77 +102,59 @@ function positive(
   return v
 }
 
-function optionalString(
-  table: Record<string, unknown>,
-  key: string,
-  prefix: string,
-  errors: ConfigError[]
-): string | undefined {
-  const v = table[key]
-
-  if (v === undefined) return undefined
-
-  if (typeof v !== 'string' || v.length === 0) {
-    errors.push({ key: `${prefix}${key}`, message: 'must be a non-empty string' })
-
-    return undefined
-  }
-
-  return v
+/** Any non-array object; a TOML table, or a date where one should be. */
+function isObject(v: unknown): v is Table {
+  return typeof v === 'object' && v !== null && !Array.isArray(v)
 }
 
-function optionalBool(
-  table: Record<string, unknown>,
+/** `v` as a table, or undefined with `message` reported under `key`. */
+function table(
+  v: unknown,
   key: string,
-  errors: ConfigError[]
-): boolean | undefined {
-  const v = table[key]
+  errors: ConfigError[],
+  message = 'must be a table'
+): Table | undefined {
+  if (isObject(v)) return v
+  errors.push({ key, message })
 
-  if (v === undefined) return undefined
-
-  if (typeof v !== 'boolean') {
-    errors.push({ key, message: 'must be true or false' })
-
-    return undefined
-  }
-
-  return v
+  return undefined
 }
 
-function stringList(
-  table: Record<string, unknown>,
-  key: string,
-  errors: ConfigError[]
-): string[] | undefined {
-  const v = table[key]
-
-  if (v === undefined) return undefined
-
-  if (!Array.isArray(v) || !v.every((x) => typeof x === 'string')) {
-    errors.push({ key, message: 'must be a list of strings' })
-
-    return undefined
-  }
-
-  return v
+/** Reports each of `sub` under `prefix` (the section's dotted key and a dot). */
+function prefixed(sub: ConfigError[], prefix: string, errors: ConfigError[]): void {
+  for (const e of sub) errors.push({ key: `${prefix}${e.key}`, message: e.message })
 }
 
-function permissionMode(
-  table: Record<string, unknown>,
-  key: string,
-  errors: ConfigError[]
-): PermissionMode | undefined {
-  const v = table[key]
+const isPositive = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v) && v > 0
 
-  if (v === undefined) return undefined
+const isNonEmptyString = (v: unknown): v is string => typeof v === 'string' && v.length > 0
 
-  if (typeof v !== 'string' || !(PERMISSION_MODES as readonly string[]).includes(v)) {
-    errors.push({ key, message: `must be one of ${PERMISSION_MODES.join(', ')}` })
+const isBool = (v: unknown): v is boolean => typeof v === 'boolean'
 
-    return undefined
-  }
+const isStringList = (v: unknown): v is string[] =>
+  Array.isArray(v) && v.every((x) => typeof x === 'string')
 
-  return v as PermissionMode
+const isPermissionMode = (v: unknown): v is PermissionMode =>
+  typeof v === 'string' && (PERMISSION_MODES as readonly string[]).includes(v)
+
+function positive(t: Table, key: string, errors: ConfigError[]): number | undefined {
+  return field(t, key, errors, isPositive, 'must be a positive number')
+}
+
+function optionalString(t: Table, key: string, errors: ConfigError[]): string | undefined {
+  return field(t, key, errors, isNonEmptyString, 'must be a non-empty string')
+}
+
+function optionalBool(t: Table, key: string, errors: ConfigError[]): boolean | undefined {
+  return field(t, key, errors, isBool, 'must be true or false')
+}
+
+function stringList(t: Table, key: string, errors: ConfigError[]): string[] | undefined {
+  return field(t, key, errors, isStringList, 'must be a list of strings')
+}
+
+function permissionMode(t: Table, key: string, errors: ConfigError[]): PermissionMode | undefined {
+  return field(t, key, errors, isPermissionMode, `must be one of ${PERMISSION_MODES.join(', ')}`)
 }
 
 /** `["19:00", "07:00"]` → a window; reports bad times and start == end. */
@@ -197,14 +189,9 @@ function parseQuietHours(v: unknown, errors: ConfigError[]): QuietHoursConfig {
   const q = defaultQuietHours()
 
   if (v === undefined) return q
+  const t = table(v, 'quiet_hours', errors)
 
-  if (typeof v !== 'object' || v === null || Array.isArray(v)) {
-    errors.push({ key: 'quiet_hours', message: 'must be a table' })
-
-    return q
-  }
-
-  const t = v as Record<string, unknown>
+  if (!t) return q
   const sub: ConfigError[] = []
 
   for (const k of Object.keys(t)) {
@@ -229,37 +216,25 @@ function parseQuietHours(v: unknown, errors: ConfigError[]): QuietHoursConfig {
     }
   }
 
-  for (const e of sub) errors.push({ key: `quiet_hours.${e.key}`, message: e.message })
+  prefixed(sub, 'quiet_hours.', errors)
 
   return q
 }
+
+const isNonBlankString = (v: unknown): v is string => typeof v === 'string' && v.trim() !== ''
+
+// Unlike positive(), an infinite poll interval passes.
+const isAboveZero = (v: unknown): v is number => typeof v === 'number' && v > 0
 
 function parseJira(v: unknown, errors: ConfigError[]): JiraConfig {
   const j = defaultJira()
 
   if (v === undefined) return j
+  const t = table(v, 'jira', errors)
 
-  if (typeof v !== 'object' || v === null || Array.isArray(v)) {
-    errors.push({ key: 'jira', message: 'must be a table' })
-
-    return j
-  }
-
-  const t = v as Record<string, unknown>
-
-  const text = (key: string): string | undefined => {
-    const x = t[key]
-
-    if (x === undefined) return undefined
-
-    if (typeof x !== 'string' || x.trim() === '') {
-      errors.push({ key: `jira.${key}`, message: 'must be a non-empty string' })
-
-      return undefined
-    }
-
-    return x
-  }
+  if (!t) return j
+  const sub: ConfigError[] = []
+  const text = (key: string) => field(t, key, sub, isNonBlankString, 'must be a non-empty string')
 
   j.jql = text('jql') ?? j.jql
   j.startPrompt = text('start_prompt') ?? j.startPrompt
@@ -272,30 +247,27 @@ function parseJira(v: unknown, errors: ConfigError[]): JiraConfig {
       .replace(/\/.*$/, '')
 
     if (host) j.site = host
-    else errors.push({ key: 'jira.site', message: 'must be a host like team.example.net' })
+    else sub.push({ key: 'site', message: 'must be a host like team.example.net' })
   }
 
-  const minutes = t.poll_minutes
+  j.pollMinutes =
+    field(t, 'poll_minutes', sub, isAboveZero, 'must be a positive number') ?? j.pollMinutes
 
-  if (minutes !== undefined) {
-    if (typeof minutes !== 'number' || !(minutes > 0)) {
-      errors.push({ key: 'jira.poll_minutes', message: 'must be a positive number' })
-    } else j.pollMinutes = minutes
-  }
+  if (t.projects !== undefined) {
+    const projects = table(
+      t.projects,
+      'projects',
+      sub,
+      'must be a table of tracker key = que project'
+    )
 
-  const projects = t.projects
-
-  if (projects !== undefined) {
-    if (typeof projects !== 'object' || projects === null || Array.isArray(projects)) {
-      errors.push({ key: 'jira.projects', message: 'must be a table of tracker key = que project' })
-    } else {
-      for (const [k, name] of Object.entries(projects as Record<string, unknown>)) {
-        if (typeof name !== 'string' || name.trim() === '') {
-          errors.push({ key: `jira.projects.${k}`, message: 'must be a que project name' })
-        } else j.projects[k] = name
-      }
+    for (const [k, name] of Object.entries(projects ?? {})) {
+      if (isNonBlankString(name)) j.projects[k] = name
+      else sub.push({ key: `projects.${k}`, message: 'must be a que project name' })
     }
   }
+
+  prefixed(sub, 'jira.', errors)
 
   return j
 }
@@ -304,20 +276,15 @@ function parseNotifications(v: unknown, errors: ConfigError[]): NotificationsCon
   const n = defaultNotifications()
 
   if (v === undefined) return n
+  const t = table(v, 'notifications', errors)
 
-  if (typeof v !== 'object' || v === null || Array.isArray(v)) {
-    errors.push({ key: 'notifications', message: 'must be a table' })
-
-    return n
-  }
-
-  const t = v as Record<string, unknown>
+  if (!t) return n
   const sub: ConfigError[] = []
   n.chimeOnComplete = optionalBool(t, 'chime_on_complete', sub) ?? n.chimeOnComplete
   n.chimeOnNeedsInput = optionalBool(t, 'chime_on_needs_input', sub) ?? n.chimeOnNeedsInput
   n.morningSummary = optionalBool(t, 'morning_summary', sub) ?? n.morningSummary
 
-  for (const e of sub) errors.push({ key: `notifications.${e.key}`, message: e.message })
+  prefixed(sub, 'notifications.', errors)
 
   return n
 }
@@ -335,7 +302,7 @@ export function parseConfig(text: string, env: ConfigEnv): ConfigResult<UserConf
   const errors: ConfigError[] = []
   const config = defaultConfig(env)
 
-  const root = optionalString(t, 'worktree_root', '', errors)
+  const root = optionalString(t, 'worktree_root', errors)
 
   if (root) config.worktreeRoot = expandHome(root)
   config.stallTimeoutMinutes =
@@ -361,25 +328,21 @@ export function parseConfig(text: string, env: ConfigEnv): ConfigResult<UserConf
   config.jira = parseJira(t.jira, errors)
 
   if (t.repos !== undefined) {
-    if (typeof t.repos !== 'object' || t.repos === null || Array.isArray(t.repos)) {
-      errors.push({ key: 'repos', message: 'must be a table' })
-    } else {
-      for (const [name, entry] of Object.entries(t.repos as Record<string, unknown>)) {
-        const prefix = `repos.${name}.`
+    const repos = table(t.repos, 'repos', errors)
 
-        if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) {
-          errors.push({ key: `repos.${name}`, message: 'must be a table' })
-          continue
-        }
+    for (const [name, entry] of Object.entries(repos ?? {})) {
+      const e = table(entry, `repos.${name}`, errors)
 
-        const e = entry as Record<string, unknown>
-        const path = optionalString(e, 'path', prefix, errors)
+      if (!e) continue
+      const sub: ConfigError[] = []
+      const path = optionalString(e, 'path', sub)
 
-        if (e.path === undefined) errors.push({ key: `${prefix}path`, message: 'is required' })
-        const defaultBranch = optionalString(e, 'default_branch', prefix, errors)
+      if (e.path === undefined) sub.push({ key: 'path', message: 'is required' })
+      const defaultBranch = optionalString(e, 'default_branch', sub)
 
-        if (path) config.repos[name] = { path: expandHome(path), defaultBranch }
-      }
+      prefixed(sub, `repos.${name}.`, errors)
+
+      if (path) config.repos[name] = { path: expandHome(path), defaultBranch }
     }
   }
 
@@ -431,17 +394,13 @@ export function stringifyConfig(raw: Record<string, unknown>): string {
   return stringifyToml(raw)
 }
 
-function isPatchTable(v: JsonValue | undefined): v is ConfigPatch {
-  return typeof v === 'object' && v !== null && !Array.isArray(v)
-}
-
 /** Combines two patches (the later wins, tables combine key by key), keeping `null` (a removal) as a value. */
 export function combineConfigPatches(a: ConfigPatch, b: ConfigPatch): ConfigPatch {
   const out = { ...a }
 
   for (const [k, v] of Object.entries(b)) {
     const prev = out[k]
-    out[k] = isPatchTable(prev) && isPatchTable(v) ? combineConfigPatches(prev, v) : v
+    out[k] = isTable(prev) && isTable(v) ? combineConfigPatches(prev, v) : v
   }
 
   return out
@@ -545,25 +504,17 @@ export function parseRepoConfig(text: string, includeFile = ''): ConfigResult<Re
   const errors: ConfigError[] = []
 
   const config: RepoConfig = {
-    setup: optionalString(t, 'setup', '', errors),
-    teardown: optionalString(t, 'teardown', '', errors),
-    defaultBranch: optionalString(t, 'default_branch', '', errors),
+    setup: optionalString(t, 'setup', errors),
+    teardown: optionalString(t, 'teardown', errors),
+    defaultBranch: optionalString(t, 'default_branch', errors),
     worktreeInclude: [],
     permissionMode: permissionMode(t, 'permission_mode', errors),
-    instructions: optionalString(t, 'instructions', '', errors),
-    test: optionalString(t, 'test', '', errors),
+    instructions: optionalString(t, 'instructions', errors),
+    test: optionalString(t, 'test', errors),
     allowedTools: stringList(t, 'allowed_tools', errors) ?? []
   }
 
-  const inc = t.worktree_include
-
-  if (inc !== undefined) {
-    if (!Array.isArray(inc) || !inc.every((x) => typeof x === 'string')) {
-      errors.push({ key: 'worktree_include', message: 'must be a list of strings' })
-    } else {
-      config.worktreeInclude.push(...inc)
-    }
-  }
+  config.worktreeInclude.push(...(stringList(t, 'worktree_include', errors) ?? []))
 
   for (const p of parseWorktreeInclude(includeFile)) {
     if (!config.worktreeInclude.includes(p)) config.worktreeInclude.push(p)
