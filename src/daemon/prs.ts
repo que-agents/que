@@ -8,7 +8,7 @@ import type { JsonValue, Project, PrThread, PullRequest, Workspace } from '../sh
 import { ghFailed, notFound } from './errors'
 import { isProtectedBranch } from './finisher'
 import { parsePullRequest, samePullRequest } from './pr-state'
-import { decodePullRequest } from './pr-state.decode'
+import { decodeHeadRef, decodePullRequest, type GhPullRequest } from './pr-state.decode'
 import { Poller } from './poller'
 import { jsonPages, parsePrThread } from './pr-thread'
 import { decodeLineComments, decodePrView } from './pr-thread.decode'
@@ -17,6 +17,9 @@ import type { Store } from './store'
 import { errorMessage } from '../shared/errors.decode'
 
 const FIELDS = 'number,url,title,state,isDraft,reviewDecision,statusCheckRollup,mergedAt,updatedAt'
+
+/** A project's tick lists at most this many of its most recent pull requests. */
+const LIST_LIMIT = 100
 
 /** A merged or closed pull request is only re-checked on every Nth tick. */
 const SETTLED_EVERY = 5
@@ -47,12 +50,26 @@ async function ghJson(
   }
 }
 
-async function ghPrList(branch: string, cwd: string, signal: AbortSignal): Promise<unknown[]> {
-  const parsed = await ghJson(
-    ['pr', 'list', '--head', branch, '--state', 'all', '--limit', '1', '--json', FIELDS],
-    cwd,
-    signal
-  )
+/** The newest pull request for `branch`, or with no branch the repository's newest LIST_LIMIT. */
+async function ghPrList(
+  branch: string | null,
+  cwd: string,
+  signal: AbortSignal
+): Promise<unknown[]> {
+  const args = branch
+    ? ['pr', 'list', '--head', branch, '--state', 'all', '--limit', '1', '--json', FIELDS]
+    : [
+        'pr',
+        'list',
+        '--state',
+        'all',
+        '--limit',
+        String(LIST_LIMIT),
+        '--json',
+        `${FIELDS},headRefName`
+      ]
+
+  const parsed = await ghJson(args, cwd, signal)
 
   if (!Array.isArray(parsed)) throw new Error('gh printed output that is not JSON')
 
@@ -106,20 +123,28 @@ export class PrService {
     return this.poller.stopped
   }
 
-  /** One pass over every unarchived workspace, one `gh` call at a time. */
+  /** One pass over every unarchived workspace: one `gh pr list` per project, one at a time. */
   async tick(): Promise<void> {
     if (this.polling) return
     this.polling = true
 
     try {
       const n = this.tickCount++
+      const byProject = new Map<string, Workspace[]>()
 
       for (const ws of this.opts.store.listWorkspaces()) {
-        if (this.stopped) return
         const settled = ws.pr?.state === 'merged' || ws.pr?.state === 'closed'
 
         if (settled && n % SETTLED_EVERY !== 0) continue
-        await this.check(ws)
+        const list = byProject.get(ws.projectId)
+
+        if (list) list.push(ws)
+        else byProject.set(ws.projectId, [ws])
+      }
+
+      for (const list of byProject.values()) {
+        if (this.stopped) return
+        await this.poller.track(this.checkProject(list))
       }
     } finally {
       this.polling = false
@@ -214,30 +239,78 @@ export class PrService {
     return this.poller.track(this.checkOne(ws))
   }
 
-  private async checkOne(ws: Workspace): Promise<void> {
-    const project = this.opts.projectOf(ws)
+  /** The workspaces whose branch que may ask about (never a protected one). */
+  private checkable(list: Workspace[]): Workspace[] {
+    const project = this.opts.projectOf(list[0])
     const { protectedBranches } = this.opts.config()
 
-    if (isProtectedBranch(ws.branch, project.defaultBranch, protectedBranches)) return
+    return list.filter(
+      (ws) => !isProtectedBranch(ws.branch, project.defaultBranch, protectedBranches)
+    )
+  }
+
+  /**
+   * Checks one project's workspaces with one listing, matched by branch. A
+   * branch missing from a full page (LIST_LIMIT) may hold an older pull
+   * request, so it is asked about on its own.
+   */
+  private async checkProject(list: Workspace[]): Promise<void> {
+    const open = this.checkable(list)
+
+    if (open.length === 0) return
     let items: unknown[]
 
     try {
-      items = await ghPrList(ws.branch, ws.path, this.poller.signal)
+      items = await ghPrList(null, open[0].path, this.poller.signal)
     } catch (err) {
-      if (this.stopped) return
-
-      if (!this.failing.has(ws.id)) {
-        this.failing.add(ws.id)
-        this.opts.log?.(`pr check failed for ${ws.id}: ${errorMessage(err)}`)
-      }
+      for (const ws of open) this.failed(ws, errorMessage(err))
 
       return
     }
 
     if (this.stopped) return
+    const byBranch = new Map<string, GhPullRequest | null>()
 
+    for (const item of items) {
+      const head = decodeHeadRef(item)
+
+      if (head !== null && !byBranch.has(head)) byBranch.set(head, decodePullRequest(item))
+    }
+
+    for (const ws of open) {
+      if (this.stopped) return
+
+      if (byBranch.has(ws.branch) || items.length < LIST_LIMIT)
+        this.settle(ws, byBranch.get(ws.branch) ?? null)
+      else await this.checkOne(ws)
+    }
+  }
+
+  private async checkOne(ws: Workspace): Promise<void> {
+    if (this.checkable([ws]).length === 0) return
+    let items: unknown[]
+
+    try {
+      items = await ghPrList(ws.branch, ws.path, this.poller.signal)
+    } catch (err) {
+      this.failed(ws, errorMessage(err))
+
+      return
+    }
+
+    if (!this.stopped) this.settle(ws, decodePullRequest(items[0]))
+  }
+
+  /** Logs a workspace's first failed check (until one succeeds). */
+  private failed(ws: Workspace, message: string): void {
+    if (this.stopped || this.failing.has(ws.id)) return
+    this.failing.add(ws.id)
+    this.opts.log?.(`pr check failed for ${ws.id}: ${message}`)
+  }
+
+  /** Stores and announces the pull request `gh` reported for a workspace (null: none). */
+  private settle(ws: Workspace, raw: GhPullRequest | null): void {
     if (this.failing.delete(ws.id)) this.opts.log?.(`pr check recovered for ${ws.id}`)
-    const raw = decodePullRequest(items[0])
     const next = raw && parsePullRequest(raw, new Date().toISOString())
     const current = this.opts.store.getWorkspace(ws.id)
 
@@ -247,8 +320,6 @@ export class PrService {
 
     if (samePullRequest(current.pr, next)) return
     this.opts.store.setWorkspacePr(ws.id, next)
-    const updated = this.opts.store.getWorkspace(ws.id)
-
-    if (updated) this.opts.emit('workspace.updated', updated)
+    this.opts.emit('workspace.updated', { ...current, pr: next })
   }
 }

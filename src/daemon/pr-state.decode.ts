@@ -91,6 +91,11 @@ export function decodeCheckRollup(v: unknown): GhCheck[] {
 }
 
 /** One `gh pr list` item; null when it has no number or url. */
+/** The head branch of one `gh pr list` item (asked for with `headRefName`); null without one. */
+export function decodeHeadRef(v: unknown): string | null {
+  return isObj(v) ? strOrNull(v.headRefName) : null
+}
+
 export function decodePullRequest(v: unknown): GhPullRequest | null {
   if (!isObj(v)) return null
 

@@ -70,7 +70,8 @@ missing file means no pull requests). When it is set, `gh pr create` records
 `{ number, url, title, state: "OPEN", isDraft, headRefName, reviewDecision: "",
 statusCheckRollup: [], mergedAt: null }` under the current branch of its cwd, and
 `gh pr list --head <branch> --state all --limit 1 --json <fields>` prints a JSON
-array with that branch's entry (only the requested fields) or `[]`. With
+array with that branch's entry (only the requested fields) or `[]`; without
+`--head` it prints every entry, up to `--limit` (default 30). With
 `$QUE_FAKE_GH_FAIL` set, `pr list` exits 1 printing `gh: failed (fake)` on stderr.
 Tests edit the file with `setFakePullRequest()` and read it with
 `readFakePullRequests()` from `src/testing/fakes.ts`. `pr create` also stores `updatedAt` (now).
