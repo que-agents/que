@@ -20,6 +20,11 @@ export async function withClient<T>(fn: (c: DaemonClient) => Promise<T>, start =
   }
 }
 
+/** The `--json` output: the value as indented JSON. */
+export function printJson<T>(value: T): void {
+  console.log(JSON.stringify(value, null, 2))
+}
+
 export function printTable(header: string[], rows: string[][]): void {
   const widths = header.map((h, i) => Math.max(h.length, ...rows.map((r) => r[i].length)))
 

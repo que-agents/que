@@ -5,7 +5,7 @@ import type { DaemonClient } from '../shared/client'
 import type { TicketsListResult } from '../shared/protocol'
 import type { Ticket } from '../shared/types'
 import { formatAge } from '../shared/format'
-import { CliError, findProject, withClient } from './common'
+import { CliError, findProject, printJson, withClient } from './common'
 
 const SUMMARY_WIDTH = 60
 
@@ -96,7 +96,7 @@ export function registerTicketCommands(program: Command): void {
       await withClient(async (c) => {
         const r = await c.request('tickets.list', {})
 
-        if (opts.json) console.log(JSON.stringify(r, null, 2))
+        if (opts.json) printJson(r)
         else await printList(c, r)
       })
     })
@@ -109,7 +109,7 @@ export function registerTicketCommands(program: Command): void {
       await withClient(async (c) => {
         const r = await c.request('tickets.sync', {})
 
-        if (opts.json) console.log(JSON.stringify(r, null, 2))
+        if (opts.json) printJson(r)
         else await printList(c, r)
       })
     })

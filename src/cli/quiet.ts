@@ -4,7 +4,7 @@ import type { Command } from 'commander'
 import { formatCountdown, hhmm } from '../shared/format'
 import { combineConfigPatches, describeQuietHours, parseConfigAssignment } from '../shared/config'
 import type { ConfigPatch, QuietState } from '../shared/types'
-import { CliError, withClient } from './common'
+import { CliError, printJson, withClient } from './common'
 import { errorMessage } from '../shared/errors.decode'
 
 /** One line about quiet hours, for `que quiet status` and `que status`. */
@@ -49,7 +49,7 @@ export function registerQuietCommands(program: Command): void {
           why: opts.why || undefined
         })
 
-        if (opts.json) console.log(JSON.stringify(q, null, 2))
+        if (opts.json) printJson(q)
         else if (!q.inQuietHours) console.log('not in quiet hours; nothing to unlock')
         else console.log(describeQuietState(q))
       })
@@ -63,7 +63,7 @@ export function registerQuietCommands(program: Command): void {
       withClient(async (c) => {
         const q = await c.request('quiet.lock')
 
-        if (opts.json) console.log(JSON.stringify(q, null, 2))
+        if (opts.json) printJson(q)
         else console.log(describeQuietState(q))
       })
     )
@@ -77,7 +77,7 @@ export function registerQuietCommands(program: Command): void {
       withClient(async (c) => {
         const q = await c.request('quiet.state')
 
-        if (opts.json) console.log(JSON.stringify(q, null, 2))
+        if (opts.json) printJson(q)
         else console.log(describeQuietState(q))
       })
     )
@@ -91,7 +91,7 @@ export function registerQuietCommands(program: Command): void {
       withClient(async (c) => {
         const r = await c.request('config.get')
 
-        if (opts.json) return console.log(JSON.stringify(r, null, 2))
+        if (opts.json) return printJson(r)
         const cfg = r.config
         console.log(`config ${r.path}`)
         console.log(`quiet hours     ${describeQuietHours(cfg.quietHours)}`)
@@ -123,7 +123,7 @@ export function registerQuietCommands(program: Command): void {
 
         const r = await c.request('config.set', { patch, applyTonight: opts.applyTonight === true })
 
-        if (opts.json) console.log(JSON.stringify(r, null, 2))
+        if (opts.json) printJson(r)
         else console.log(`updated ${r.path}`)
       })
     )

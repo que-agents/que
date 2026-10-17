@@ -28,6 +28,7 @@ import {
   CliError,
   findProject,
   findWorkspace,
+  printJson,
   printTable,
   withClient
 } from './common'
@@ -235,7 +236,7 @@ export function registerWorkspaceCommands(program: Command): void {
       withClient(async (c) => {
         const p = await c.request('project.add', { path: resolve(path), name: opts.name })
 
-        if (opts.json) console.log(JSON.stringify(p, null, 2))
+        if (opts.json) printJson(p)
         else console.log(`${p.id}  ${p.name}  ${p.path}  (default branch ${p.defaultBranch})`)
       })
     )
@@ -247,7 +248,7 @@ export function registerWorkspaceCommands(program: Command): void {
       withClient(async (c) => {
         const projects = await c.request('project.list')
 
-        if (opts.json) return console.log(JSON.stringify(projects, null, 2))
+        if (opts.json) return printJson(projects)
 
         if (projects.length === 0) return console.log('no projects')
         printTable(
@@ -279,7 +280,7 @@ export function registerWorkspaceCommands(program: Command): void {
 
         const ws = await waitForSetup(c, created, seen)
 
-        if (opts.json) console.log(JSON.stringify(ws, null, 2))
+        if (opts.json) printJson(ws)
         else console.log(ws.path)
 
         if (ws.status === 'stuck') {
@@ -302,7 +303,7 @@ export function registerWorkspaceCommands(program: Command): void {
         const projectId = opts.project ? (await findProject(c, opts.project)).id : undefined
         const list = await c.request('workspace.list', { projectId })
 
-        if (opts.json) return console.log(JSON.stringify(list, null, 2))
+        if (opts.json) return printJson(list)
 
         if (list.length === 0) return console.log('no workspaces')
         const projects = await c.request('project.list')
@@ -347,7 +348,8 @@ export function registerWorkspaceCommands(program: Command): void {
           commit: opts.commit
         })
 
-        console.log(opts.json ? JSON.stringify(diff, null, 2) : formatDiff(diff))
+        if (opts.json) printJson(diff)
+        else console.log(formatDiff(diff))
       })
     )
   ws.command('files <workspace>')
@@ -358,7 +360,9 @@ export function registerWorkspaceCommands(program: Command): void {
         await assertNotQuiet(c)
         const w = await findWorkspace(c, ref)
         const listing = await c.request('workspace.files', { id: w.id })
-        console.log(opts.json ? JSON.stringify(listing, null, 2) : formatFiles(listing))
+
+        if (opts.json) printJson(listing)
+        else console.log(formatFiles(listing))
       })
     )
   ws.command('pr <workspace>')
@@ -375,7 +379,7 @@ export function registerWorkspaceCommands(program: Command): void {
           ? await c.request('workspace.prThread', { id: w.id, refresh: opts.refresh === true })
           : null
 
-        if (opts.json) return console.log(JSON.stringify({ pr, thread }, null, 2))
+        if (opts.json) return printJson({ pr, thread })
         console.log(pr ? formatPrView(pr, thread) : 'no pull request')
       })
     )
@@ -423,7 +427,7 @@ export function registerWorkspaceCommands(program: Command): void {
             }))
           }
 
-          return console.log(JSON.stringify(out, null, 2))
+          return printJson(out)
         }
 
         if (quiet.inQuietHours) console.log(describeQuietState(quiet))

@@ -6,7 +6,7 @@ import { quePaths } from '../shared/paths'
 import { delay, waitForExit } from '../shared/process'
 import type { TermInfo } from '../shared/protocol'
 import { attach } from './attach'
-import { CliError, printTable, withClient } from './common'
+import { CliError, printJson, printTable, withClient } from './common'
 import { runDoctor } from './doctor'
 import { runHook } from './hook'
 import { registerQuietCommands } from './quiet'
@@ -149,7 +149,7 @@ async function main(): Promise<void> {
       withClient(async (c) => {
         const terms = await c.request('term.list')
 
-        if (opts.json) console.log(JSON.stringify(terms, null, 2))
+        if (opts.json) printJson(terms)
         else printTerms(terms)
       }, false)
     )
