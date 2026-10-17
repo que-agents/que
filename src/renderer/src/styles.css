@@ -1177,21 +1177,12 @@ body.resizing {
 
 .quiet-board-footer {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  justify-content: flex-end;
 }
 
-/* The note keeps the board's mono; the button keeps the app's button face. */
-.quiet-board-footer > span {
-  font: 11px var(--mono);
-  font-variant-numeric: tabular-nums;
-  color: var(--fg-faint);
-}
-
-/* Unlock is the one control, drawn not to tempt: a word and an icon in the
- * footer's dark grey mono, no border and no fill; a hairline appears only
- * under the pointer. */
+/* Unlock is the one control and the footer's only content, drawn not to
+ * tempt: a word and an icon in the board's dark grey mono, no border and no
+ * fill; a hairline appears only under the pointer. */
 .quiet-board-footer button {
   display: inline-flex;
   align-items: center;

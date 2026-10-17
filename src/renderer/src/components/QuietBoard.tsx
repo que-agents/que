@@ -167,7 +167,6 @@ export default function QuietBoard(): React.JSX.Element {
         )}
       </div>
       <footer className="quiet-board-footer">
-        <span>unlocks are logged</span>
         <button
           type="button"
           className="ghost"

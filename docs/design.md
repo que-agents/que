@@ -145,8 +145,8 @@ HH:MM` faint; one faint mono count line (`.count-line`) that lists only the
 non-zero counts, where only `stuck` takes a tone (`--tone-bad`) and `running`
 reads `--fg-muted`; 30px dot rows (`.dot-row`) one notch dimmer than the
 sidebar, the name in `--fg-secondary` and everything else in mono
-`--fg-faint`; and a footer with `unlocks are logged` and the Unlock button, the
-only control, drawn not to tempt: a word and the open-lock icon in the same
+`--fg-faint`; and a footer holding only the Unlock button, the one control,
+drawn not to tempt: a word and the open-lock icon in the same
 mono `--fg-faint`, no border and no fill, with a `--border` hairline and
 `--fg-muted` only under the pointer. The window end appears once, as `until
 HH:MM` in the strip.
