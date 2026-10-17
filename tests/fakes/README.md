@@ -1,10 +1,16 @@
 # Subprocess fakes
 
 `tests/fakes/bin/` holds stand-ins for the external programs que spawns. Tests put
-the directory **first on `PATH`** (`vi.stubEnv('PATH', ...)` in Vitest, `testEnv()`
-in Playwright), so the daemon, the CLI, and the app find these instead of the real
+the directory **first on `PATH`**, so the daemon, the CLI, and the app find these instead of the real
 binaries. `git` is never faked: tests use real repos in temp dirs. All of them are
 dependency-free Node scripts.
+
+`tests/fakes/env.cjs` builds that environment once for every caller (the Vitest
+daemon harness, the Playwright `testEnv()`, the soak and packaged-smoke scripts):
+`fakeEnv(home)` gives `QUE_HOME`, `QUE_CONFIG`, the `PATH`, each fake's log and
+data file under the home, and `GIT_CONFIG_GLOBAL`; `writeGitconfig(home, name)`
+writes that fixed git identity; `QUIET_OFF` is the config table that turns quiet
+hours off.
 
 ## `claude`
 

@@ -1,5 +1,6 @@
 // Runs the real `que` CLI (bundled from source) as a subprocess.
 import { execFile } from 'node:child_process'
+import { expect } from 'vitest'
 import { bundleEntry } from './bundle'
 
 export interface CliResult {
@@ -15,6 +16,14 @@ export interface CliResult {
  */
 export function runCli(...args: string[]): Promise<CliResult> {
   return runCliWith({}, ...args)
+}
+
+/** Runs `que <args>`, expects exit code 0, and parses its stdout as JSON. */
+export async function runCliJson<T>(...args: string[]): Promise<T> {
+  const r = await runCli(...args)
+  expect(r.code, `que ${args.join(' ')}: ${r.stderr}`).toBe(0)
+
+  return JSON.parse(r.stdout) as T
 }
 
 export interface CliRunOptions {

@@ -14,7 +14,6 @@
 // tab, its width, the chosen base, the diff tab and the file tab come back; ⌘W
 // closes the diff tab and the file tab, and the pane closes and opens again on
 // the tab it was left on.
-import { execFileSync } from 'node:child_process'
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { expect, test } from '@playwright/test'
@@ -26,6 +25,7 @@ import {
   fakeReview,
   setFakePullRequest
 } from '../../src/testing/fakes'
+import { addBareOrigin, gitIn, makeTempRepo } from '../../src/testing/temp-repo'
 import { AppShellPage } from './pages/AppShellPage'
 import { ChangesPage } from './pages/ChangesPage'
 import { DiffPage } from './pages/DiffPage'
@@ -36,35 +36,18 @@ import { ReviewPage } from './pages/ReviewPage'
 import { SidebarPage } from './pages/SidebarPage'
 import { TerminalPage } from './pages/TerminalPage'
 import { TopBarPage } from './pages/TopBarPage'
-import { type LaunchedApp, launchApp, newQueHome } from './utils/app'
+import { type LaunchedApp, launchApp, newQueHome, tempDir } from './utils/app'
 import { queJson } from './utils/que'
-import { makeRepo } from './utils/repo'
 
 let launched: LaunchedApp
-
-/** Runs git in a directory and returns its trimmed output; commits as a fixed test author. */
-function git(dir: string, ...args: string[]): string {
-  return execFileSync(
-    'git',
-    [
-      '-c',
-      'user.name=que e2e',
-      '-c',
-      'user.email=e2e@que.invalid',
-      '-c',
-      'commit.gpgsign=false',
-      ...args
-    ],
-    { cwd: dir, encoding: 'utf8' }
-  ).trim()
-}
 
 test.afterEach(async () => {
   await launched?.close() // quits the app AND stops the test daemon
 })
 
 test('The review pane lists the changes beside the terminals, opens diffs as tabs, and survives a relaunch', async () => {
-  const repo = makeRepo({ origin: true })
+  const repo = makeTempRepo(tempDir('que-e2e-repo-'))
+  addBareOrigin(repo)
   // The tracker polls every second here, so a pull request shows up right after it is seeded.
   const queHome = newQueHome('pr_poll_seconds = 1\n[quiet_hours]\nenabled = false\n')
   const prsFile = join(queHome, 'fake-gh-prs.json')
@@ -178,13 +161,13 @@ test('The review pane lists the changes beside the terminals, opens diffs as tab
   })
 
   await test.step('Two commits: the summary counts them and the list shows both files', async () => {
-    git(workspace.path, 'add', 'README.md')
-    git(workspace.path, 'commit', '--quiet', '-m', 'Document retries')
+    gitIn(workspace.path, 'add', 'README.md')
+    gitIn(workspace.path, 'commit', '--quiet', '-m', 'Document retries')
     writeFileSync(join(workspace.path, 'NOTES.md'), '# notes\n\nBackoff caps at 30s.\n')
-    git(workspace.path, 'add', 'NOTES.md')
-    git(workspace.path, 'commit', '--quiet', '-m', 'Add notes')
-    sha2 = git(workspace.path, 'rev-parse', 'HEAD')
-    sha1 = git(workspace.path, 'rev-parse', 'HEAD~1')
+    gitIn(workspace.path, 'add', 'NOTES.md')
+    gitIn(workspace.path, 'commit', '--quiet', '-m', 'Add notes')
+    sha2 = gitIn(workspace.path, 'rev-parse', 'HEAD')
+    sha1 = gitIn(workspace.path, 'rev-parse', 'HEAD~1')
     // No Refresh: the daemon watches the worktree, and the commits reach Changes on their own.
     await expect(changes.summary).toHaveText('Commits 2 vs origin/main')
     await expect(changes.summary).toHaveAttribute('title', /· 2 files ·/)
@@ -226,7 +209,7 @@ test('The review pane lists the changes beside the terminals, opens diffs as tab
   })
 
   await test.step('The base menu compares against another branch', async () => {
-    git(repo, 'branch', 'release', sha1)
+    gitIn(repo, 'branch', 'release', sha1)
     await changes.refresh.click()
     await changes.baseMenu.click()
     await expect(changes.baseOption(0)).toHaveAttribute('data-ref', 'origin/main')

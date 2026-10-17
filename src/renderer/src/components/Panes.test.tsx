@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { fakeBridge } from '@renderer/testing/fake-bridge'
+import { openWorkspace } from '@renderer/testing/helpers'
 import {
   makeDiffFile,
   makeProject,
@@ -38,17 +39,6 @@ function seed(): void {
 
 function tabsIn(pane: number): HTMLElement[] {
   return within(screen.getByTestId(`pane-${pane}`)).getAllByRole('tab')
-}
-
-/** Opens the workspace and waits for its first terminal; returns that terminal's id. */
-async function openWorkspace(user: ReturnType<typeof userEvent.setup>): Promise<string> {
-  await user.click(await screen.findByTestId(`sidebar-workspace-${retry.id}-open`))
-  const pane = await screen.findByTestId('pane-0')
-  await waitFor(() => {
-    expect(pane.dataset.activeTerm).not.toBe('')
-  })
-
-  return pane.dataset.activeTerm as string
 }
 
 function seedWorkspace(): void {
@@ -384,7 +374,7 @@ describe('Panes', () => {
       const user = userEvent.setup()
       seedWorkspace()
       render(<App />)
-      const term = await openWorkspace(user)
+      const term = await openWorkspace(user, retry.id)
       await openChanges(user)
 
       await user.click(await screen.findByTestId('changes-file-0'))
@@ -422,7 +412,7 @@ describe('Panes', () => {
       const user = userEvent.setup()
       seedWorkspace()
       render(<App />)
-      const term = await openWorkspace(user)
+      const term = await openWorkspace(user, retry.id)
       await openChanges(user)
       await user.click(await screen.findByTestId('changes-file-0'))
       await user.click(screen.getByTestId('changes-file-1'))
@@ -445,7 +435,7 @@ describe('Panes', () => {
       const user = userEvent.setup()
       seedWorkspace()
       render(<App />)
-      await openWorkspace(user)
+      await openWorkspace(user, retry.id)
       const created = await splitBeside(user)
       await openChanges(user)
 
@@ -468,7 +458,7 @@ describe('Panes', () => {
       const user = userEvent.setup()
       seedWorkspace()
       const first = render(<App />)
-      const term = await openWorkspace(user)
+      const term = await openWorkspace(user, retry.id)
       await openChanges(user)
       await user.click(await screen.findByTestId('changes-file-1'))
       first.unmount()
@@ -489,7 +479,7 @@ describe('Panes', () => {
       fakeBridge.seedFiles(makeWorkspaceFiles({ workspaceId: retry.id }))
       fakeBridge.seedFile(makeWorkspaceFile({ workspaceId: retry.id, path: 'src/index.ts' }))
       render(<App />)
-      const term = await openWorkspace(user)
+      const term = await openWorkspace(user, retry.id)
       await openChanges(user)
       await user.click(screen.getByTestId('changes-file-0'))
       await user.click(screen.getByTestId('review-tab-files'))
@@ -533,7 +523,7 @@ describe('Panes', () => {
       fakeBridge.seedFiles(makeWorkspaceFiles({ workspaceId: retry.id }))
       fakeBridge.seedFile(makeWorkspaceFile({ workspaceId: retry.id, path: 'package.json' }))
       const first = render(<App />)
-      await openWorkspace(user)
+      await openWorkspace(user, retry.id)
       await openChanges(user)
       await user.click(screen.getByTestId('changes-file-0'))
       await user.click(screen.getByTestId('review-tab-files'))

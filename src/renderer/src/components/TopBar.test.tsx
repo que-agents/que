@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { fakeBridge } from '@renderer/testing/fake-bridge'
+import { openWorkspace as openFromSidebar } from '@renderer/testing/helpers'
 import { makeProject, makeWorkspace } from '@renderer/testing/fixtures'
 import App from '../App'
 
@@ -12,7 +13,7 @@ async function openWorkspace(user: ReturnType<typeof userEvent.setup>): Promise<
   fakeBridge.seedProject(makeProject())
   fakeBridge.seedWorkspace(makeWorkspace({ id: ID, name: 'app-1432-retry-logic' }))
   render(<App />)
-  await user.click(await screen.findByTestId(`sidebar-workspace-${ID}-open`))
+  await openFromSidebar(user, ID)
   await screen.findByTestId('topbar-review')
 }
 

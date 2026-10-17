@@ -30,6 +30,7 @@ import type {
   WorkspaceStatus
 } from '../../../preload/index.d'
 import { isLocked, quietMessage } from '../../../daemon/quiet-hours'
+import { buildReport } from '../../../daemon/report'
 import { mergeConfigPatch } from '../../../shared/config-patch.decode'
 import { ErrorCodes, QUIET_REFUSED_METHODS } from '../../../shared/protocol'
 import { workspaceSlug } from '../../../shared/slug'
@@ -866,57 +867,8 @@ class FakeBridge {
     return t
   }
 
-  /** Every task in the book, grouped like the daemon's report (no time window). */
+  /** Every task in the book through the daemon's buildReport, with no time window. */
   private report(since?: string): Report {
-    const groups: Report['groups'] = {
-      done: [],
-      stuck: [],
-      failed: [],
-      stopped: [],
-      paused: [],
-      running: [],
-      queued: []
-    }
-
-    const totals = {
-      tasks: 0,
-      prs: 0,
-      turns: 0,
-      costUsd: 0,
-      durationMs: 0,
-      workspaces: 0,
-      needsInput: 0
-    }
-
-    for (const t of this.tasks.values()) {
-      const group =
-        t.state === 'preparing' || t.state === 'finishing'
-          ? 'running'
-          : (t.state as keyof typeof groups)
-
-      const durationMs =
-        t.startedAt && t.finishedAt ? Date.parse(t.finishedAt) - Date.parse(t.startedAt) : null
-
-      groups[group].push({
-        id: t.id,
-        title: t.title,
-        state: t.state,
-        reason: t.reason,
-        workspace: t.workspaceId ? (this.workspaces.get(t.workspaceId)?.name ?? null) : null,
-        workspaceId: t.workspaceId,
-        branch: t.branch,
-        prUrl: t.prUrl,
-        durationMs,
-        turns: t.turns,
-        costUsd: t.costUsd
-      })
-      totals.tasks += 1
-      totals.prs += t.prUrl ? 1 : 0
-      totals.turns += t.turns
-      totals.costUsd += t.costUsd
-      totals.durationMs += durationMs ?? 0
-    }
-
     const rank = (s: WorkspaceStatus): number =>
       s === 'needs_input' ? 0 : s === 'stuck' ? 1 : s === 'working' ? 2 : 3
 
@@ -924,11 +876,11 @@ class FakeBridge {
       .map((d) => ({ ...d }))
       .sort((a, b) => rank(a.status) - rank(b.status))
 
-    totals.workspaces = digests.length
-    totals.needsInput = digests.filter((d) => d.status === 'needs_input').length
-    const now = new Date().toISOString()
+    const names = new Map([...this.workspaces.values()].map((w) => [w.id, w.name]))
+    const epoch = new Date(0).toISOString()
+    const report = buildReport([...this.tasks.values()], names, epoch, Date.now(), digests)
 
-    return { since: since ?? now, generatedAt: now, groups, workspaces: digests, totals }
+    return { ...report, since: since ?? report.generatedAt }
   }
 
   private removeWorkspace(id: string): void {

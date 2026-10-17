@@ -12,10 +12,9 @@ import { execFileSync } from 'node:child_process'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import os from 'node:os'
-import { dirname, join, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { join } from 'node:path'
+import { fakeEnv, QUIET_OFF, writeGitconfig } from '../tests/fakes/env.cjs'
 
-const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const args = process.argv.slice(2)
 
 const opt = (name, fallback) => {
@@ -38,26 +37,14 @@ const log = (msg) => console.log(`soak: ${msg}`)
 // ---- an isolated world ----------------------------------------------------------
 
 const home = mkdtempSync(join(os.tmpdir(), 'que-soak-'))
-const config = join(home, 'config.toml')
+const env = fakeEnv(home)
 
 // Quiet hours off; a short stall timeout so the stall scenario ends in seconds.
-writeFileSync(config, 'stall_timeout_minutes = 0.1\n\n[quiet_hours]\nenabled = false\n')
+writeFileSync(env.QUE_CONFIG, `stall_timeout_minutes = 0.1\n\n${QUIET_OFF}`)
 
-writeFileSync(
-  join(home, 'gitconfig'),
-  '[user]\n\tname = que soak\n\temail = soak@que.invalid\n[commit]\n\tgpgsign = false\n'
-)
+writeGitconfig(home, 'soak')
 
-Object.assign(process.env, {
-  QUE_HOME: home,
-  QUE_CONFIG: config,
-  PATH: `${join(root, 'tests/fakes/bin')}:${process.env.PATH}`,
-  QUE_FAKE_CLAUDE_DELAY_MS: '20',
-  QUE_FAKE_CLAUDE_TRANSCRIPT_DIR: join(home, 'transcripts'),
-  QUE_FAKE_GH_LOG: join(home, 'fake-gh.log'),
-  GIT_CONFIG_GLOBAL: join(home, 'gitconfig'),
-  GIT_CONFIG_NOSYSTEM: '1'
-})
+Object.assign(process.env, env, { QUE_FAKE_CLAUDE_DELAY_MS: '20' })
 
 delete process.env.ELECTRON_RUN_AS_NODE
 
