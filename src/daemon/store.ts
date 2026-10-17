@@ -594,9 +594,11 @@ export class Store {
       JSON.stringify(payload),
       receivedAt
     )
+    // Everything at or below the first id past the newest 500 goes; with 500 or fewer rows
+    // the subquery is NULL and nothing does. Both sides walk the (workspace_id, id) index.
     this.run(
-      `DELETE FROM hook_events WHERE workspace_id = ? AND id NOT IN
-           (SELECT id FROM hook_events WHERE workspace_id = ? ORDER BY id DESC LIMIT ?)`,
+      `DELETE FROM hook_events WHERE workspace_id = ? AND id <=
+         (SELECT id FROM hook_events WHERE workspace_id = ? ORDER BY id DESC LIMIT 1 OFFSET ?)`,
       workspaceId,
       workspaceId,
       HOOK_EVENTS_PER_WORKSPACE
@@ -803,5 +805,38 @@ export class Store {
         key,
         value
       )
+  }
+
+  // ---- counts ---------------------------------------------------------------
+
+  /** How many tasks sit in each state (zero for a state with none). */
+  countTasksByState(): Record<TaskState, number> {
+    const counts: Record<TaskState, number> = {
+      queued: 0,
+      preparing: 0,
+      running: 0,
+      paused: 0,
+      finishing: 0,
+      done: 0,
+      stuck: 0,
+      failed: 0,
+      stopped: 0
+    }
+
+    for (const r of this.rows<{ state: TaskState; n: number }>(
+      'SELECT state, COUNT(*) AS n FROM tasks GROUP BY state'
+    )) {
+      counts[r.state] = r.n
+    }
+
+    return counts
+  }
+
+  /** Ids of the unarchived workspaces whose stored status is `status`, oldest first. */
+  listWorkspaceIdsByStatus(status: WorkspaceStatus): string[] {
+    return this.rows<{ id: string }>(
+      'SELECT id FROM workspaces WHERE archived_at IS NULL AND status = ? ORDER BY created_at, id',
+      status
+    ).map((r) => r.id)
   }
 }
