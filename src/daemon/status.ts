@@ -7,6 +7,7 @@ import { run } from '../shared/exec'
 import type { Events, HookEvent } from '../shared/protocol'
 import type { Workspace, WorkspaceStatus } from '../shared/types'
 import { type AgentEntry, reduce, type StatusInput, type StatusState } from './status-engine'
+import { decodeAgents } from './status.decode'
 import type { Store } from './store'
 
 export type Emit = <E extends keyof Events>(event: E, data: Events[E]) => void
@@ -236,11 +237,7 @@ async function listAgents(): Promise<AgentEntry[]> {
   if (!r.ok) return []
 
   try {
-    const parsed = JSON.parse(r.stdout) as unknown
-
-    const list = Array.isArray(parsed) ? parsed : ((parsed as { agents?: unknown }).agents ?? [])
-
-    return Array.isArray(list) ? (list as AgentEntry[]) : []
+    return decodeAgents(JSON.parse(r.stdout)) ?? []
   } catch {
     return []
   }
