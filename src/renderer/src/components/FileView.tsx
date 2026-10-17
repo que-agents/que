@@ -1,5 +1,26 @@
-import { useEffect } from 'react'
+import { memo, useEffect, useMemo } from 'react'
 import { fileKey, useQue, useStore } from '../store'
+
+/** A file's lines, numbered, one span each; rebuilt only when the text changes. */
+const FileLines = memo(function FileLines({
+  lines
+}: {
+  lines: readonly string[]
+}): React.JSX.Element {
+  return (
+    <>
+      {lines.map((line, i) => (
+        // a file's lines are static and have no identity
+        <span key={i} className="line">
+          <span className="ln" aria-hidden="true">
+            {i + 1}
+          </span>
+          {line}
+        </span>
+      ))}
+    </>
+  )
+})
 
 /** One file of the worktree as a tab beside the terminals, read-only, with line numbers. */
 export default function FileView({
@@ -19,7 +40,8 @@ export default function FileView({
     void store.ensureFile(termKey, path)
   }, [store, termKey, path])
 
-  const lines = file?.content?.replace(/\n$/, '').split('\n') ?? []
+  const content = file?.content
+  const lines = useMemo(() => content?.replace(/\n$/, '').split('\n') ?? [], [content])
   const digits = String(Math.max(lines.length, 1)).length
 
   return (
@@ -57,15 +79,7 @@ export default function FileView({
             data-testid="file-text"
             style={{ '--ln-width': `${digits}ch` } as React.CSSProperties}
           >
-            {lines.map((line, i) => (
-              // a file's lines are static and have no identity
-              <span key={i} className="line">
-                <span className="ln" aria-hidden="true">
-                  {i + 1}
-                </span>
-                {line}
-              </span>
-            ))}
+            <FileLines lines={lines} />
           </pre>
           {file.truncated && (
             <p className="changes-note file-truncated" data-testid="file-truncated">
