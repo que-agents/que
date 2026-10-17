@@ -1,18 +1,19 @@
 // The morning report, as pure functions: which tasks to show, grouped by
-// outcome with durations and totals, and its plain-text rendering.
+// outcome with durations and totals, and its plain-text rendering. No Node
+// imports: the renderer reads the groups and the digest facts from here too.
 import type { Report, ReportEntry, ReportGroup, WorkspaceDigest } from '../shared/protocol'
 import { formatCost, formatDuration as duration, hhmm } from '../shared/format'
 import { LIVE_STATES, type Task, type TaskState } from '../shared/types'
 
-/** Reading order: outcomes first, what still needs a look next, stopped last. */
-export const REPORT_GROUPS: ReportGroup[] = [
-  'done',
-  'stuck',
-  'failed',
-  'paused',
-  'running',
-  'queued',
-  'stopped'
+/** Reading order: outcomes first, what still needs a look next, stopped last; with headings. */
+export const REPORT_GROUPS: ReadonlyArray<{ group: ReportGroup; title: string }> = [
+  { group: 'done', title: 'Done' },
+  { group: 'stuck', title: 'Stuck' },
+  { group: 'failed', title: 'Failed' },
+  { group: 'paused', title: 'Paused' },
+  { group: 'running', title: 'Running' },
+  { group: 'queued', title: 'Queued' },
+  { group: 'stopped', title: 'Stopped' }
 ]
 
 const GROUP_OF: Record<TaskState, ReportGroup> = {
@@ -74,10 +75,9 @@ export function buildReport(
 ): Report {
   const from = Date.parse(since)
 
-  const groups = Object.fromEntries(REPORT_GROUPS.map((g) => [g, [] as ReportEntry[]])) as Record<
-    ReportGroup,
-    ReportEntry[]
-  >
+  const groups = Object.fromEntries(
+    REPORT_GROUPS.map(({ group }) => [group, [] as ReportEntry[]])
+  ) as Record<ReportGroup, ReportEntry[]>
 
   const totals = {
     tasks: 0,
@@ -140,20 +140,9 @@ export function parseSince(value: string, now: number): string | null {
   return Number.isNaN(t) ? null : new Date(t).toISOString()
 }
 
-const HEADINGS: Record<ReportGroup, string> = {
-  done: 'Done',
-  stuck: 'Stuck',
-  failed: 'Failed',
-  stopped: 'Stopped',
-  paused: 'Paused',
-  running: 'Running',
-  queued: 'Queued'
-}
-
-function digestLines(d: WorkspaceDigest): string[] {
-  const status = d.statusReason ? `${d.status} (${d.statusReason})` : d.status
-
-  const facts = [
+/** `worked 1h 12m`, `asked for input 2×`, `waiting since 02:14`, `3 commits ahead`, `PR #41 open`. */
+export function digestFacts(d: WorkspaceDigest): string[] {
+  return [
     d.workingMs > 0 ? `worked ${formatDuration(d.workingMs)}` : 'no work in this window',
     d.needsInputCount > 0 ? `asked for input ${d.needsInputCount}×` : null,
     d.waitingSince ? `waiting since ${hhmm(Date.parse(d.waitingSince))}` : null,
@@ -162,19 +151,23 @@ function digestLines(d: WorkspaceDigest): string[] {
       ? `PR #${d.pr.number} ${d.pr.state}${d.pr.checks === 'failing' ? ', checks failing' : ''}`
       : null
   ].filter((f): f is string => f !== null)
+}
 
-  return [`  ${d.name} · ${d.project} · ${status}`, `    ${facts.join(' · ')}`]
+function digestLines(d: WorkspaceDigest): string[] {
+  const status = d.statusReason ? `${d.status} (${d.statusReason})` : d.status
+
+  return [`  ${d.name} · ${d.project} · ${status}`, `    ${digestFacts(d).join(' · ')}`]
 }
 
 /** The report as plain text for `que report`, with the unlocks line when given. */
 export function formatReport(r: Report, unlocks?: string): string {
   const lines = [`que report since ${r.since}`]
 
-  for (const g of REPORT_GROUPS) {
-    const list = r.groups[g]
+  for (const { group, title } of REPORT_GROUPS) {
+    const list = r.groups[group]
 
     if (list.length === 0) continue
-    lines.push('', `${HEADINGS[g]} (${list.length})`)
+    lines.push('', `${title} (${list.length})`)
 
     for (const e of list) {
       const facts = [

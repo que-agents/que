@@ -539,18 +539,21 @@ export class TaskQueue {
 
     const now = Date.now()
     const from = reportSince(since, this.o.store.getKv(KV_OPENED_AT) ?? null, now)
-    const names = new Map<string, string>()
+    const tasks = this.current(this.o.store.listTasks())
+    const open = this.o.store.listWorkspaces()
+    const names = new Map(open.map((ws) => [ws.id, ws.name]))
 
-    for (const t of this.o.store.listTasks()) {
+    // An archived workspace is not in the listing; its tasks still show its name.
+    for (const t of tasks) {
       if (!t.workspaceId || names.has(t.workspaceId)) continue
       const ws = this.o.store.getWorkspace(t.workspaceId)
 
       if (ws) names.set(ws.id, ws.name)
     }
 
-    const digests: WorkspaceDigest[] = []
+    const pending: Array<Promise<WorkspaceDigest>> = []
 
-    for (const ws of this.o.store.listWorkspaces()) {
+    for (const ws of open) {
       let project: Project
 
       try {
@@ -560,20 +563,15 @@ export class TaskQueue {
       }
 
       const log = this.o.store.listStatusLog(ws.id, from)
-
       const digest = buildWorkspaceDigest(ws, project, log, Date.parse(from), now)
 
-      if (!digest) continue
-      digest.commitsAhead = await commitsAhead(ws, project)
-      digests.push(digest)
+      if (digest) {
+        pending.push(commitsAhead(ws, project).then((n) => ({ ...digest, commitsAhead: n })))
+      }
     }
 
-    return buildReport(
-      this.current(this.o.store.listTasks()),
-      names,
-      from,
-      now,
-      sortDigests(digests)
-    )
+    const digests = await Promise.all(pending)
+
+    return buildReport(tasks, names, from, now, sortDigests(digests))
   }
 }
