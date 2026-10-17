@@ -116,7 +116,6 @@ export async function startTestDaemon(opts: TestDaemonOptions = {}): Promise<Tes
     cliScript: bundleEntry('src/cli/index.ts'),
     statusTickMs: opts.statusTickMs ?? 200,
     queueTickMs: 100,
-    dispatchMs: 100,
     quietTickMs: opts.quietTickMs ?? 200,
     now: opts.now
   })

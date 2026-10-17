@@ -68,13 +68,11 @@ export interface TaskQueueOptions {
   log: (msg: string) => void
   /** Stall / pause / wake tick. Default 5 s. */
   tickMs?: number
-  /** Dispatcher interval. Default 1 s. */
-  dispatchMs?: number
 }
 
 export class TaskQueue {
   readonly runner: TaskRunner
-  private timers: NodeJS.Timeout[] = []
+  private timer: NodeJS.Timeout | null = null
   private kickScheduled = false
   private closed = false
   private caffeinate: ChildProcess | null = null
@@ -98,7 +96,7 @@ export class TaskQueue {
 
   // ---- lifecycle --------------------------------------------------------------
 
-  /** Recovers tasks a previous daemon left live, then starts the timers. */
+  /** Recovers tasks a previous daemon left live, then starts the clock tick. */
   start(): void {
     for (const t of this.o.store.listTasks([...ACTIVE_STATES])) {
       if (t.pid !== null) reapOrphan(t.pid, this.o.log)
@@ -109,20 +107,17 @@ export class TaskQueue {
 
     this.lastWall = Date.now()
     this.lastMono = performance.now()
-    const tick = setInterval(() => this.tick(), this.o.tickMs ?? 5_000)
-    const dispatch = setInterval(() => this.dispatch(), this.o.dispatchMs ?? 1_000)
-    tick.unref()
-    dispatch.unref()
-    this.timers.push(tick, dispatch)
+    this.timer = setInterval(() => this.tick(), this.o.tickMs ?? 5_000)
+    this.timer.unref()
     this.kick()
   }
 
-  /** Daemon shutdown: stops the timers, every run, and the keep-awake. */
+  /** Daemon shutdown: stops the clock tick, every run, and the keep-awake. */
   async shutdown(): Promise<void> {
     this.closed = true
 
-    for (const t of this.timers) clearInterval(t)
-    this.timers = []
+    if (this.timer) clearInterval(this.timer)
+    this.timer = null
     await this.runner.close()
     this.stopCaffeinate()
   }
@@ -214,7 +209,11 @@ export class TaskQueue {
     return this.o.store.getKv(KV_OPEN) === 'true'
   }
 
-  /** Dispatches soon (coalesced). */
+  /**
+   * Dispatches soon (coalesced). There is no dispatch timer: adding a task,
+   * opening the queue, a config change and every task transition (a pause
+   * expiring in tick() among them) kick.
+   */
   kick(): void {
     if (this.kickScheduled || this.closed) return
     this.kickScheduled = true
