@@ -6,9 +6,13 @@ import {
   digestFacts,
   formatDuration,
   formatReport,
+  nothingRanLine,
   parseSince,
-  reportSince
+  reportCountItems,
+  reportSince,
+  reportSummaryText
 } from './report'
+import { countLineText } from '../shared/count-line'
 
 const NOW = Date.parse('2026-10-14T07:30:00.000Z')
 const SINCE = '2026-10-13T22:00:00.000Z'
@@ -70,6 +74,24 @@ const oldFailure = makeTask({
   updatedAt: '2026-10-11T09:30:00.000Z'
 })
 
+const emptyDigest: WorkspaceDigest = {
+  id: 'ws_a',
+  name: 'app-1432-retry-logic',
+  project: 'uploader',
+  branch: 'app-1432-retry-logic',
+  status: 'idle',
+  statusReason: null,
+  firstActivityAt: null,
+  lastActivityAt: null,
+  workingMs: 0,
+  needsInputCount: 0,
+  waitingSince: null,
+  stuckCount: 0,
+  commitsAhead: null,
+  pr: null,
+  sessionId: null
+}
+
 describe('buildReport', () => {
   const report = buildReport(
     [running, stuck, oldFailure, done, queuedLongAgo],
@@ -98,6 +120,7 @@ describe('buildReport', () => {
       workspaceId: 'ws_01hzx3k9c2qf',
       branch: 'add-retry-logic',
       prUrl: 'https://github.com/rquellh/que/pull/88',
+      pausedUntil: null,
       durationMs: 42.5 * 60_000,
       turns: 14,
       costUsd: 1.82
@@ -266,6 +289,102 @@ describe('buildReport', () => {
   it('says so when the window is empty', () => {
     expect(formatReport(buildReport([], WORKSPACES, SINCE, NOW))).toContain(
       'No tasks in this window.'
+    )
+  })
+})
+
+describe('reportCountItems', () => {
+  it('reads done, stuck, failed, needs input, paused, running, queued, PRs, time, cost', () => {
+    const tasks = (
+      ['queued', 'running', 'paused', 'failed', 'stuck', 'done', 'stopped'] as const
+    ).map((state, i) =>
+      makeTask({
+        title: `Task ${state}`,
+        state,
+        prUrl: state === 'done' ? 'https://github.com/rquellh/que/pull/67' : null,
+        costUsd: 0.3,
+        startedAt: '2026-10-13T22:00:00.000Z',
+        finishedAt: '2026-10-13T22:10:00.000Z',
+        createdAt: `2026-10-13T21:0${i}:00.000Z`,
+        updatedAt: `2026-10-13T23:0${i}:00.000Z`
+      })
+    )
+
+    const stuckDigest = {
+      ...emptyDigest,
+      id: 'ws_b',
+      status: 'stuck' as const
+    }
+
+    const waitingDigest = { ...emptyDigest, id: 'ws_c', status: 'needs_input' as const }
+
+    const items = reportCountItems(
+      buildReport(tasks, WORKSPACES, SINCE, NOW, [stuckDigest, waitingDigest])
+    )
+
+    expect(items.map((i) => i.label)).toEqual([
+      'done',
+      'stuck',
+      'failed',
+      'needs input',
+      'paused',
+      'running',
+      'queued',
+      'PR',
+      'duration',
+      'cost'
+    ])
+    expect(items.map((i) => i.tone)).toEqual([
+      'muted',
+      'bad',
+      'bad',
+      'attention',
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined
+    ])
+    expect(countLineText(items)).toBe(
+      '1 done · 2 stuck · 1 failed · 1 needs input · 1 paused · 1 running · 1 queued · 1 PR · 1h 10m · $2.10'
+    )
+  })
+
+  it('leaves the zeros out, and writes PRs in the plural', () => {
+    const second = makeTask({
+      ...done,
+      id: 'tsk_01hzy9q2w8zz',
+      prUrl: 'https://github.com/rquellh/que/pull/89'
+    })
+
+    expect(
+      countLineText(reportCountItems(buildReport([done, second], WORKSPACES, SINCE, NOW)))
+    ).toBe('2 done · 2 PRs · 1h 25m · $3.64')
+  })
+
+  it('has no items when nothing ran', () => {
+    expect(reportCountItems(buildReport([], WORKSPACES, SINCE, NOW))).toEqual([])
+  })
+})
+
+describe('nothingRanLine', () => {
+  it('says nothing ran since the window opened', () => {
+    const since = new Date(2026, 9, 13, 19, 0).toISOString()
+
+    expect(nothingRanLine({ since }, new Date(2026, 9, 14, 7, 30).getTime())).toBe(
+      'nothing ran since 19:00 yesterday'
+    )
+  })
+})
+
+describe('reportSummaryText', () => {
+  it('is the count line in plain words, or nothing ran when it is empty', () => {
+    expect(reportSummaryText(buildReport([done, stuck], WORKSPACES, SINCE, NOW), NOW)).toBe(
+      '1 done · 1 stuck · 1 PR · 47m · $2.22'
+    )
+    expect(reportSummaryText(buildReport([], WORKSPACES, SINCE, NOW), NOW)).toMatch(
+      /^nothing ran since \d\d:\d\d/
     )
   })
 })

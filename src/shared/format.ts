@@ -91,3 +91,56 @@ export function formatMinSec(msLeft: number): string {
 
   return `${pad2(Math.floor(s / 60))}:${pad2(s % 60)}`
 }
+
+const WEEKDAY_NAMES = [
+  'Sunday',
+  'Monday',
+  'Tuesday',
+  'Wednesday',
+  'Thursday',
+  'Friday',
+  'Saturday'
+] as const
+
+const MONTH_NAMES = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec'
+] as const
+
+/** Local midnight of the day `t` falls on. */
+function dayStart(t: number): number {
+  const d = new Date(t)
+
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()
+}
+
+/**
+ * When a window began, read from `now`: `since 19:00` the same day, `since
+ * 19:00 yesterday`, `since 19:00 Tuesday` within the last six days, else
+ * `since 19:00 on 3 Oct`. English names from fixed tables, never the locale.
+ */
+export function formatSince(sinceMs: number, nowMs: number): string {
+  const clock = `since ${hhmm(sinceMs)}`
+  // Rounded, so a day with a daylight-saving shift still counts as one.
+  const days = Math.round((dayStart(nowMs) - dayStart(sinceMs)) / 86_400_000)
+
+  if (days <= 0) return clock
+
+  if (days === 1) return `${clock} yesterday`
+
+  const d = new Date(sinceMs)
+
+  if (days <= 6) return `${clock} ${WEEKDAY_NAMES[d.getDay()]}`
+
+  return `${clock} on ${d.getDate()} ${MONTH_NAMES[d.getMonth()]}`
+}

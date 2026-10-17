@@ -283,6 +283,8 @@ export interface ReportEntry {
   workspaceId: string | null
   branch: string | null
   prUrl: string | null
+  /** When a paused task's rate limit resets; null unless it is paused on one. */
+  pausedUntil: string | null
   durationMs: number | null
   turns: number
   costUsd: number

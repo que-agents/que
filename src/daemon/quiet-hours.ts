@@ -158,20 +158,44 @@ export function quietMessage(windowEnd: Moment, unlockMinutes: number): string {
 
 const TIMES = ['No unlocks', 'once', 'twice']
 
+/** How long one unlock lasted: to its early lock, else its planned end, or now while it runs. */
+function unlockedMs(u: QuietUnlock, now: Moment): number {
+  const start = Date.parse(u.at)
+  const planned = start + u.minutes * 60_000
+  const end = u.endedAt ? Date.parse(u.endedAt) : Math.min(planned, now)
+
+  return Math.max(0, end - start)
+}
+
+/** Whole minutes, `<1` for a moment that was not nothing. */
+function minutesText(ms: number): string {
+  const minutes = Math.round(ms / 60_000)
+
+  return ms > 0 && minutes === 0 ? '<1' : String(minutes)
+}
+
 /** "Unlocked twice last night, 31 min total", or "No unlocks". */
 export function formatUnlocks(unlocks: readonly QuietUnlock[], now: Moment): string {
   if (unlocks.length === 0) return 'No unlocks'
   let total = 0
 
-  for (const u of unlocks) {
-    const start = Date.parse(u.at)
-    const planned = start + u.minutes * 60_000
-    const end = u.endedAt ? Date.parse(u.endedAt) : Math.min(planned, now)
-    total += Math.max(0, end - start)
-  }
+  for (const u of unlocks) total += unlockedMs(u, now)
 
-  const minutes = Math.round(total / 60_000)
   const count = TIMES[unlocks.length] ?? `${unlocks.length} times`
 
-  return `Unlocked ${count} last night, ${total > 0 && minutes === 0 ? '<1' : minutes} min total`
+  return `Unlocked ${count} last night, ${minutesText(total)} min total`
+}
+
+/**
+ * The report's accountability line, `2 unlocks · 23:40 for 20 min · 01:12 for
+ * 11 min`: each unlock's start and how long it lasted. Null when there were none.
+ */
+export function unlocksLine(unlocks: readonly QuietUnlock[], now: Moment): string | null {
+  if (unlocks.length === 0) return null
+
+  const each = unlocks.map(
+    (u) => `${hhmm(Date.parse(u.at))} for ${minutesText(unlockedMs(u, now))} min`
+  )
+
+  return [`${unlocks.length} ${unlocks.length === 1 ? 'unlock' : 'unlocks'}`, ...each].join(' · ')
 }

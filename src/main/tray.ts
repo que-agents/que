@@ -1,6 +1,7 @@
 // The menu-bar item: a template icon titled with the workspace counts
-// (`● working ▸ needs input ✕ stuck`), recomputed from the daemon on every
-// status change, led by the unlock countdown while one runs. Clicking it
+// (`● working ▸ needs input ✕ stuck`; `● working ✕ stuck` while quiet hours are
+// locked), recomputed from the daemon on every status change, led by the
+// unlock countdown while one runs. Clicking it
 // brings the window forward (the quiet board during quiet hours).
 import { Menu, nativeImage, Tray } from 'electron'
 import { quietTrayTitle, summarize, traySummary } from '../daemon/status-engine'
