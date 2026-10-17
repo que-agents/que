@@ -149,7 +149,6 @@ export class DaemonServer {
       paths: this.paths,
       status: this.status,
       emit,
-      config: () => this.configOrDefault(),
       killTerminals: (id) => this.killWorkspaceTerminals(id),
       log: (m) => this.log(m)
     })
