@@ -7,7 +7,8 @@ import {
   RATIO_DEFAULT,
   RATIO_MAX,
   RATIO_MIN,
-  useQue,
+  usePanes,
+  useQueSelector,
   useStore
 } from '../store'
 import { setPaneSource } from '../testHook'
@@ -124,8 +125,9 @@ export function PaneDivider({
 }
 
 function Pane({ termKey, index }: { termKey: string; index: 0 | 1 }): React.JSX.Element {
-  const store = useStore()
-  const { connected, error } = useQue()
+  const store = usePanes(termKey)
+  const connected = useQueSelector((s) => s.connected)
+  const error = useQueSelector((s) => s.error)
   const tabs = store.paneTabs(termKey, index)
   const views = store.paneViews(termKey, index)
   const activeId = store.paneActiveId(termKey, index)
@@ -258,8 +260,7 @@ function Pane({ termKey, index }: { termKey: string; index: 0 | 1 }): React.JSX.
 /** One workspace's (or the loose sessions') terminals, in one pane or two. */
 export default function Panes({ termKey }: { termKey: string }): React.JSX.Element {
   const store = useStore()
-  const { layouts } = useQue()
-  const layout = layouts[termKey] ?? store.layout(termKey)
+  const layout = useQueSelector((s) => s.layouts[termKey]) ?? store.layout(termKey)
   const split = layout.split
 
   // Tell the e2e test hook where the panes are.

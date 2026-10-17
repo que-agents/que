@@ -344,6 +344,10 @@ export class QueStore {
   }
 
   private set(patch: Partial<QueState>): void {
+    const keys = Object.keys(patch) as Array<keyof QueState>
+
+    // Nothing changed (an empty patch, or every value the same): nothing to tell.
+    if (keys.every((k) => Object.is(patch[k], this.state[k]))) return
     this.state = { ...this.state, ...patch }
 
     if (patch.view) this.watchShown()
@@ -1380,4 +1384,26 @@ export function useQue(): QueState {
   const store = useStore()
 
   return useSyncExternalStore(store.subscribe, store.getState)
+}
+
+/**
+ * One value of the store's state; re-renders only when it changes (by Object.is). The selector
+ * must return a value the state already holds (a field, an entry, a primitive), never a new
+ * object or array per call.
+ */
+export function useQueSelector<T>(select: (s: QueState) => T): T {
+  const store = useStore()
+
+  return useSyncExternalStore(store.subscribe, () => select(store.getState()))
+}
+
+/**
+ * The store, for a component that reads a key's tabs and panes through its pane methods
+ * (paneTabs, paneActiveId, activeTab, …): re-renders when the terminals or the key's layout change.
+ */
+export function usePanes(key: string): QueStore {
+  useQueSelector((s) => s.terminals)
+  useQueSelector((s) => s.layouts[key])
+
+  return useStore()
 }

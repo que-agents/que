@@ -1,6 +1,6 @@
 import { memo, useEffect, useMemo } from 'react'
 import { GLYPH, lineKind } from '../diff'
-import { useQue, useStore } from '../store'
+import { useQueSelector, useStore } from '../store'
 
 /** A patch's lines, one span each; rebuilt only when the patch text changes. */
 const PatchLines = memo(function PatchLines({ patch }: { patch: string }): React.JSX.Element {
@@ -27,9 +27,9 @@ export default function DiffView({
   path: string
 }): React.JSX.Element {
   const store = useStore()
-  const { diffs } = useQue()
-  const diff = diffs[termKey]?.data ?? null
-  const error = diffs[termKey]?.error ?? null
+  const entry = useQueSelector((s) => s.diffs[termKey])
+  const diff = entry?.data ?? null
+  const error = entry?.error ?? null
   const file = diff?.files.find((f) => f.path === path)
 
   useEffect(() => {

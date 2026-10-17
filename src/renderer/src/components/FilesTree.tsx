@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import type { DiffFile } from '../../../preload/index.d'
 import { GLYPH } from '../diff'
 import { buildTree, defaultExpanded, flatten, type TreeRow } from '../files'
-import { diffId, fileId, useQue, useStore } from '../store'
+import { diffId, fileId, usePanes, useQueSelector } from '../store'
 import { ChevronIcon, EditorIcon, RefreshIcon } from './icons'
 
 const NO_FILES: readonly string[] = []
@@ -14,16 +14,16 @@ const NO_FILES: readonly string[] = []
  * how many changed files sit beneath them.
  */
 export default function FilesTree({ termKey }: { termKey: string }): React.JSX.Element {
-  const store = useStore()
-
-  const { connected, diffs, fileLists, filesExpanded, workspaces } = useQue()
-
-  const ws = workspaces[termKey]
-  const list = fileLists[termKey]?.data ?? null
-  const diff = diffs[termKey]?.data ?? null
-  const error = fileLists[termKey]?.error ?? null
-  const diffError = diffs[termKey]?.error ?? null
-  const remembered = filesExpanded[termKey]
+  const store = usePanes(termKey)
+  const connected = useQueSelector((s) => s.connected)
+  const ws = useQueSelector((s) => s.workspaces[termKey])
+  const listing = useQueSelector((s) => s.fileLists[termKey])
+  const diffed = useQueSelector((s) => s.diffs[termKey])
+  const remembered = useQueSelector((s) => s.filesExpanded[termKey])
+  const list = listing?.data ?? null
+  const diff = diffed?.data ?? null
+  const error = listing?.error ?? null
+  const diffError = diffed?.error ?? null
   const activeId = store.paneActiveId(termKey, store.focusedPane(termKey))
   const [cursor, setCursor] = useState(0)
 

@@ -1,5 +1,5 @@
 import { memo, useEffect, useMemo } from 'react'
-import { fileKey, useQue, useStore } from '../store'
+import { fileKey, useQueSelector, useStore } from '../store'
 
 /** A file's lines, numbered, one span each; rebuilt only when the text changes. */
 const FileLines = memo(function FileLines({
@@ -31,8 +31,7 @@ export default function FileView({
   path: string
 }): React.JSX.Element {
   const store = useStore()
-  const { fileContents } = useQue()
-  const entry = fileContents[fileKey(termKey, path)]
+  const entry = useQueSelector((s) => s.fileContents[fileKey(termKey, path)])
   const file = entry?.data
   const error = entry?.error ?? null
 
