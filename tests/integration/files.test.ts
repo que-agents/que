@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { ErrorCodes, type WorkspaceFiles } from '@shared/protocol'
 import type { Workspace } from '@shared/types'
 import { MAX_FILE_CHARS } from '@daemon/files'
-import { runCli } from '../../src/testing/cli'
+import { runCli, runCliJson } from '../../src/testing/cli'
 import { startTestDaemon, type TestDaemon } from '../../src/testing/daemon-harness'
 import { gitIn, makeTempRepo } from '../../src/testing/temp-repo'
 
@@ -141,12 +141,10 @@ describe('workspace.readFile', () => {
 describe('que ws files', () => {
   it('prints one path per line, and the whole result with --json', async () => {
     const text = await runCli('ws', 'files', ws.name)
-    const json = await runCli('ws', 'files', ws.name, '--json')
+    const parsed = await runCliJson<WorkspaceFiles>('ws', 'files', ws.name, '--json')
 
     expect(text.code).toBe(0)
     expect(text.stdout.trim().split('\n')).toEqual(EXPECTED_FILES)
-    expect(json.code).toBe(0)
-    const parsed = JSON.parse(json.stdout) as WorkspaceFiles
     expect(parsed).toMatchObject({ workspaceId: ws.id, files: EXPECTED_FILES, truncated: false })
   })
 })

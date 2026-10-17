@@ -4,8 +4,7 @@ import fs from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { DaemonClient } from '@shared/client'
-import type { Events } from '@shared/protocol'
-import { startTestDaemon, type TestDaemon } from '../../src/testing/daemon-harness'
+import { recordEvents, startTestDaemon, type TestDaemon } from '../../src/testing/daemon-harness'
 import { readFakeLog, setFakePullRequest } from '../../src/testing/fakes'
 import { addBareOrigin, makeTempRepo } from '../../src/testing/temp-repo'
 
@@ -20,13 +19,6 @@ beforeEach(async () => {
 afterEach(async () => {
   await daemon.close()
 })
-
-function record<E extends keyof Events>(c: DaemonClient, event: E): Events[E][] {
-  const seen: Events[E][] = []
-  c.on(event, (data) => seen.push(data))
-
-  return seen
-}
 
 async function project() {
   const repo = makeTempRepo(daemon.home)
@@ -49,7 +41,7 @@ const opts = { timeout: 10_000 }
 describe('pull request tracking', () => {
   it('follows a pull request from draft through failing checks to merged', async () => {
     const ws = await workspace()
-    const updates = record(client, 'workspace.updated')
+    const updates = recordEvents(client, 'workspace.updated')
     expect(ws.pr).toBeNull()
 
     setFakePullRequest(daemon.ghPrs, ws.branch, { isDraft: true })

@@ -8,10 +8,12 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import { join } from 'node:path'
-import { vi } from 'vitest'
+import { expect, vi } from 'vitest'
 import { DaemonServer } from '@daemon/server'
 import { DaemonClient } from '@shared/client'
 import { ensureDirs, quePaths } from '@shared/paths'
+import type { Events } from '@shared/protocol'
+import type { Task, TaskState, WorkspaceStatus } from '@shared/types'
 import { bundleEntry } from './bundle'
 import { fakeEnv, QUIET_OFF, writeGitconfig } from '../../tests/fakes/env.cjs'
 import { assertPidsGone, LeakCheckedPtyHost } from './leak-check'
@@ -128,4 +130,40 @@ export async function startTestDaemon(opts: TestDaemonOptions = {}): Promise<Tes
       }
     }
   }
+}
+
+/** Every `event` the client receives from now on, in order. */
+export function recordEvents<E extends keyof Events>(client: DaemonClient, event: E): Events[E][] {
+  const seen: Events[E][] = []
+  client.on(event, (data) => seen.push(data))
+
+  return seen
+}
+
+/** Polls workspace.get until the workspace's status is `status`. */
+export async function waitForStatus(
+  d: TestDaemon,
+  wsId: string,
+  status: WorkspaceStatus,
+  timeoutMs = 10_000
+): Promise<void> {
+  await expect
+    .poll(async () => (await d.client.request('workspace.get', { id: wsId })).status, {
+      timeout: timeoutMs
+    })
+    .toBe(status)
+}
+
+/** Polls task.get until the task is in `state`, then returns it. */
+export async function waitForTaskState(
+  d: TestDaemon,
+  id: string,
+  state: TaskState,
+  timeoutMs = 20_000
+): Promise<Task> {
+  await expect
+    .poll(async () => (await d.client.request('task.get', { id })).state, { timeout: timeoutMs })
+    .toBe(state)
+
+  return d.client.request('task.get', { id })
 }
