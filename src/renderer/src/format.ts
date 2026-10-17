@@ -1,12 +1,6 @@
 // Pure display rules for the renderer: badge labels and tones, and the order
 // things are listed in. Money and durations are in shared/format.
-import type {
-  PullRequest,
-  ReportGroup,
-  Task,
-  TaskState,
-  WorkspaceStatus
-} from '../../preload/index.d'
+import type { PullRequest, Task, TaskState, WorkspaceStatus } from '../../preload/index.d'
 import { LIVE_STATES } from '../../shared/types'
 
 export type Tone = 'neutral' | 'busy' | 'attention' | 'bad' | 'good' | 'muted'
@@ -65,17 +59,6 @@ export function newestFirst(tasks: readonly Task[]): Task[] {
     (a, b) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id)
   )
 }
-
-/** The report's sections, in reading order. */
-export const REPORT_GROUPS: ReadonlyArray<{ group: ReportGroup; title: string }> = [
-  { group: 'done', title: 'Done' },
-  { group: 'stuck', title: 'Stuck' },
-  { group: 'failed', title: 'Failed' },
-  { group: 'paused', title: 'Paused' },
-  { group: 'running', title: 'Running' },
-  { group: 'queued', title: 'Queued' },
-  { group: 'stopped', title: 'Stopped' }
-]
 
 const REVIEW_TEXT = {
   approved: 'approved',
