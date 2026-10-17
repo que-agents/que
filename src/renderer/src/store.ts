@@ -399,10 +399,10 @@ export class QueStore {
         config: s.config ?? config,
         tickets: tickets.tickets,
         ticketsSync: tickets.sync,
-        projects: mergeProjects(projects, s.projects),
+        projects: mergeById(projects, s.projects),
         workspaces: { ...byId(workspaces), ...s.workspaces },
         tasks: { ...byId(tasks), ...s.tasks },
-        terminals: mergeTabs(
+        terminals: mergeById(
           live.map((t) => toTab(t, true)),
           s.terminals
         )
@@ -428,7 +428,7 @@ export class QueStore {
       config.on('config.changed', (c) => this.set({ config: c })),
       tickets.on('tickets.synced', (r) => this.set({ tickets: r.tickets, ticketsSync: r.sync })),
       project.on('project.added', (p) =>
-        this.setWith((s) => ({ projects: mergeProjects(s.projects, [p]) }))
+        this.setWith((s) => ({ projects: mergeById(s.projects, [p]) }))
       ),
       project.on('project.removed', ({ id }) => this.setWith((s) => dropProject(s, id))),
       term.on('term.created', ({ id }) => {
@@ -451,7 +451,7 @@ export class QueStore {
         this.setWith((s) => ({
           workspaces: without(s.workspaces, id),
           diffScopes: without(s.diffScopes, id),
-          view: s.view.kind === 'terminals' && s.view.key === id ? scratchView() : s.view
+          view: viewWithout(s.view, [id])
         }))
       }),
       workspace.on('workspace.status', (e) => {
@@ -472,8 +472,8 @@ export class QueStore {
 
         if (prev !== e.status) this.maybeChime({ state: e.status, reason: e.reason, prev })
       }),
-      task.on('task.created', (t) => this.setWith((s) => ({ tasks: { ...s.tasks, [t.id]: t } }))),
-      task.on('task.updated', (t) => this.setWith((s) => ({ tasks: { ...s.tasks, [t.id]: t } }))),
+      task.on('task.created', (t) => this.upsertTask(t)),
+      task.on('task.updated', (t) => this.upsertTask(t)),
       task.on('task.status', (e) => {
         const prev = this.state.tasks[e.id]
 
@@ -492,7 +492,7 @@ export class QueStore {
         })
         // The status event carries no workspace, branch, or PR; re-read the task.
         void this.api.task.get({ id: e.id }).then(
-          (t) => this.setWith((s) => ({ tasks: { ...s.tasks, [t.id]: t } })),
+          (t) => this.upsertTask(t),
           () => {}
         )
       })
@@ -505,6 +505,10 @@ export class QueStore {
     const kind = shouldChime(event, this.state.quiet, this.state.config?.config.notifications)
 
     if (kind) chime(kind)
+  }
+
+  private upsertTask(t: Task): void {
+    this.setWith((s) => ({ tasks: { ...s.tasks, [t.id]: t } }))
   }
 
   private upsertWorkspace(ws: Workspace): void {
@@ -544,7 +548,7 @@ export class QueStore {
 
     if (!info) return null
     const tab = toTab(info, false)
-    this.setWith((s) => ({ terminals: mergeTabs(s.terminals, [tab]) }))
+    this.setWith((s) => ({ terminals: mergeById(s.terminals, [tab]) }))
 
     return tab
   }
@@ -565,8 +569,13 @@ export class QueStore {
     await this.newTerminal(key)
   }
 
-  private fail(error: string): void {
-    this.set({ error })
+  /** Runs an action; a failure goes to the error banner. */
+  private async guard(action: () => Promise<void>): Promise<void> {
+    try {
+      await action()
+    } catch (err) {
+      this.set({ error: errorMessage(err) })
+    }
   }
 
   // ---- actions --------------------------------------------------------------
@@ -1014,13 +1023,11 @@ export class QueStore {
   }
 
   /** Syncs the tickets now; a failure goes to the error banner. */
-  async syncTickets(): Promise<void> {
-    try {
+  syncTickets(): Promise<void> {
+    return this.guard(async () => {
       const r = await this.api.tickets.sync()
       this.set({ tickets: r.tickets, ticketsSync: r.sync })
-    } catch (err) {
-      this.fail(errorMessage(err))
-    }
+    })
   }
 
   /**
@@ -1047,28 +1054,16 @@ export class QueStore {
   }
 
   /** The Start button: like startTicket, with a failure shown in the error banner. */
-  async beginTicket(key: string): Promise<void> {
-    try {
-      await this.startTicket(key)
-    } catch (err) {
-      this.fail(errorMessage(err))
-    }
+  beginTicket(key: string): Promise<void> {
+    return this.guard(() => this.startTicket(key))
   }
 
-  async unlock(): Promise<void> {
-    try {
-      this.set({ quiet: await this.api.quiet.unlock() })
-    } catch (err) {
-      this.fail(errorMessage(err))
-    }
+  unlock(): Promise<void> {
+    return this.guard(async () => this.set({ quiet: await this.api.quiet.unlock() }))
   }
 
-  async lock(): Promise<void> {
-    try {
-      this.set({ quiet: await this.api.quiet.lock() })
-    } catch (err) {
-      this.fail(errorMessage(err))
-    }
+  lock(): Promise<void> {
+    return this.guard(async () => this.set({ quiet: await this.api.quiet.lock() }))
   }
 
   fetchUnlocks(since?: string): Promise<QuietUnlock[]> {
@@ -1167,7 +1162,7 @@ export class QueStore {
       place(id)
       await this.addTerminal(id)
     } catch (err) {
-      this.fail(errorMessage(err))
+      this.set({ error: errorMessage(err) })
     } finally {
       this.creating--
 
@@ -1285,8 +1280,8 @@ export class QueStore {
     return this.paneActive(key, this.focusedPane(key)) ?? this.paneActive(key, 0)
   }
 
-  async addProject(): Promise<void> {
-    try {
+  addProject(): Promise<void> {
+    return this.guard(async () => {
       const dir = await this.api.app.openFolder()
 
       if (!dir) return
@@ -1296,9 +1291,7 @@ export class QueStore {
           ? s.projects
           : [...s.projects, project]
       }))
-    } catch (err) {
-      this.fail(errorMessage(err))
-    }
+    })
   }
 
   /** Creates a workspace and shows it (which opens its first terminal). Throws for the dialog. */
@@ -1318,16 +1311,14 @@ export class QueStore {
     await this.api.workspace.remove({ id, deleteBranch })
     this.setWith((s) => ({
       workspaces: without(s.workspaces, id),
-      view: s.view.kind === 'terminals' && s.view.key === id ? scratchView() : s.view
+      view: viewWithout(s.view, [id])
     }))
   }
 
-  async openInEditor(path: string): Promise<void> {
-    try {
+  openInEditor(path: string): Promise<void> {
+    return this.guard(async () => {
       await this.api.app.openInEditor({ path })
-    } catch (err) {
-      this.fail(errorMessage(err))
-    }
+    })
   }
 
   async createPr(id: string, title: string): Promise<string> {
@@ -1346,17 +1337,23 @@ export class QueStore {
   }
 }
 
-/** Projects in creation order, without duplicates (the first copy wins). */
-function mergeProjects(a: readonly Project[], b: readonly Project[]): Project[] {
-  const seen = new Set(a.map((p) => p.id))
+/** Both lists in creation order, without duplicates (the first list's copy wins). */
+function mergeById<T extends { id: string; createdAt: string }>(
+  a: readonly T[],
+  b: readonly T[]
+): T[] {
+  const seen = new Set(a.map((x) => x.id))
 
-  return [...a, ...b.filter((p) => !seen.has(p.id))].sort((x, y) =>
+  return [...a, ...b.filter((x) => !seen.has(x.id))].sort((x, y) =>
     x.createdAt.localeCompare(y.createdAt)
   )
 }
 
-function scratchView(): View {
-  return { kind: 'terminals', key: SCRATCH }
+/** The view, or the scratch terminals when it shows one of these workspaces. */
+function viewWithout(view: View, ids: readonly string[]): View {
+  return view.kind === 'terminals' && ids.includes(view.key)
+    ? { kind: 'terminals', key: SCRATCH }
+    : view
 }
 
 /** The state without a project and its workspaces; a view on one of them goes back to scratch. */
@@ -1370,17 +1367,8 @@ function dropProject(s: QueState, id: string): Partial<QueState> {
   return {
     projects: s.projects.filter((p) => p.id !== id),
     workspaces: Object.fromEntries(Object.entries(s.workspaces).filter(([k]) => !gone.has(k))),
-    view: s.view.kind === 'terminals' && gone.has(s.view.key) ? scratchView() : s.view
+    view: viewWithout(s.view, [...gone])
   }
-}
-
-/** Appends the tabs not already present, keeping creation order. */
-function mergeTabs(a: readonly TermTab[], b: readonly TermTab[]): TermTab[] {
-  const seen = new Set(a.map((t) => t.id))
-
-  return [...a, ...b.filter((t) => !seen.has(t.id))].sort((x, y) =>
-    x.createdAt.localeCompare(y.createdAt)
-  )
 }
 
 export const StoreContext = createContext<QueStore | null>(null)

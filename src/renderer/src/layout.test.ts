@@ -216,6 +216,7 @@ describe('placeIn', () => {
       second: ['term_01hzx9b2', INDEX],
       active: ['term_01hzx8a1', 'term_01hzx9b2']
     })
+
     const next = placeIn(l, 1, INDEX, { append: false })
 
     expect(next.second).toEqual(['term_01hzx9b2', INDEX])
