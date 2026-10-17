@@ -1,6 +1,7 @@
 // Decodes the two payloads the update check reads: GitHub's latest-release
 // JSON, and the check state que persisted on an earlier launch.
 import type { UpdateInfo } from '../shared/types'
+import { isObj } from '../shared/json.decode'
 
 /** What is persisted between launches (QUE_HOME/state/update-check.json). */
 export interface UpdateCheckState {
@@ -15,10 +16,6 @@ export interface GhRelease {
   tagName: string
   htmlUrl: string
 }
-
-type Obj = { [key: string]: unknown }
-
-const isObj = (v: unknown): v is Obj => !!v && typeof v === 'object' && !Array.isArray(v)
 
 /** The release; null without a tag and a page url (an error body, say). */
 export function decodeRelease(v: unknown): GhRelease | null {

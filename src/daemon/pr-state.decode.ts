@@ -2,6 +2,7 @@
 // reviewDecision,statusCheckRollup,mergedAt,updatedAt` into typed fields.
 // Missing or mistyped fields read as empty; pr-state.ts maps the result onto
 // the PullRequest que keeps.
+import { isObj, type Obj, strOrEmpty, strOrNull } from '../shared/json.decode'
 
 /** A check run in the rollup (GitHub Actions and other apps). */
 export interface GhCheckRun {
@@ -43,12 +44,6 @@ export interface GhPullRequest {
   checks: GhCheck[]
 }
 
-type Obj = { [key: string]: unknown }
-
-const isObj = (v: unknown): v is Obj => !!v && typeof v === 'object' && !Array.isArray(v)
-const str = (v: unknown): string => (typeof v === 'string' ? v : '')
-const strOrNull = (v: unknown): string | null => (typeof v === 'string' && v ? v : null)
-
 /** One rollup item; null when it is neither a check run nor a commit status. */
 function decodeCheck(i: Obj): GhCheck | null {
   const statusContext =
@@ -58,8 +53,8 @@ function decodeCheck(i: Obj): GhCheck | null {
   if (statusContext) {
     return {
       kind: 'status',
-      name: str(i.context) || str(i.name),
-      state: str(i.state),
+      name: strOrEmpty(i.context) || strOrEmpty(i.name),
+      state: strOrEmpty(i.state),
       targetUrl: strOrNull(i.targetUrl),
       createdAt: strOrNull(i.createdAt)
     }
@@ -71,10 +66,10 @@ function decodeCheck(i: Obj): GhCheck | null {
 
   return {
     kind: 'run',
-    name: str(i.name) || str(i.context),
+    name: strOrEmpty(i.name) || strOrEmpty(i.context),
     workflowName: strOrNull(i.workflowName),
-    status: str(i.status),
-    conclusion: str(i.conclusion),
+    status: strOrEmpty(i.status),
+    conclusion: strOrEmpty(i.conclusion),
     detailsUrl: strOrNull(i.detailsUrl),
     startedAt: strOrNull(i.startedAt),
     completedAt: strOrNull(i.completedAt)
@@ -104,11 +99,11 @@ export function decodePullRequest(v: unknown): GhPullRequest | null {
   return {
     number: v.number,
     url: v.url,
-    title: str(v.title),
-    state: str(v.state),
+    title: strOrEmpty(v.title),
+    state: strOrEmpty(v.state),
     isDraft: v.isDraft === true,
     mergedAt: strOrNull(v.mergedAt),
-    reviewDecision: str(v.reviewDecision),
+    reviewDecision: strOrEmpty(v.reviewDecision),
     updatedAt: typeof v.updatedAt === 'string' ? v.updatedAt : null,
     checks: decodeCheckRollup(v.statusCheckRollup)
   }
