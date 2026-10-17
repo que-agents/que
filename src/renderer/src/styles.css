@@ -860,12 +860,6 @@ body.resizing {
   padding: 0;
 }
 
-.totals {
-  margin: 0 0 14px;
-  font: 11px var(--mono);
-  color: var(--fg-muted);
-}
-
 .report-row {
   position: relative;
   display: flex;
@@ -886,37 +880,6 @@ body.resizing {
 
 .report-row .name {
   font-weight: 500;
-}
-
-.report-row button.link {
-  padding: 0;
-  border: 0;
-  background: none;
-  color: inherit;
-  font: inherit;
-  font-weight: 500;
-  cursor: pointer;
-}
-
-.report-row button.link:hover {
-  text-decoration: underline;
-}
-
-.report-row .facts {
-  font: 11px var(--mono);
-}
-
-.report-row .reason {
-  color: var(--tone-attention);
-}
-
-.report-row .reason.stuck {
-  color: var(--tone-bad);
-  font-weight: 600;
-}
-
-.unlocks {
-  margin: -8px 0 14px;
 }
 
 .pr-link {
@@ -1112,6 +1075,63 @@ body.resizing {
 
 .dot-row-state[class*='tone-'] {
   color: var(--tone);
+}
+
+/* The report page: the quiet board's language for the morning. A left-aligned
+ * 720px column, the count and unlocks lines, then dot rows with two more
+ * columns (the pull request link and the facts). Each section's list is the
+ * grid and its rows take it as a subgrid, so the columns line up down a
+ * section; the row itself looks exactly like the board's. */
+.report-page .report-column {
+  max-width: 720px;
+}
+
+.report-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 20px;
+}
+
+.report-page section ul {
+  display: grid;
+  grid-template-columns: 5px minmax(0, 3fr) minmax(0, 2fr) auto auto minmax(25ch, auto);
+  column-gap: 10px;
+  /* The facts column's `ch` is a mono 11px character, as in the row. */
+  font: 11px var(--mono);
+}
+
+.report-page .dot-row {
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
+}
+
+.dot-row-facts {
+  text-align: right;
+}
+
+.report-pr {
+  font: 11px var(--mono);
+  color: var(--accent);
+}
+
+/* A workspace's name opens its terminals: it looks like a name until hovered. */
+.dot-row button.report-name-link {
+  min-width: 0;
+  height: auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: left;
+  cursor: pointer;
+}
+
+.dot-row button.report-name-link:hover:not(:disabled) {
+  background: none;
+  color: var(--fg-secondary);
+  text-decoration: underline;
 }
 
 /* The quiet board: a dim instrument panel, one step darker than the main

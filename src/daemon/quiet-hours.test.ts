@@ -9,7 +9,8 @@ import {
   nextBoundary,
   quietMessage,
   remaining,
-  shortensTonight
+  shortensTonight,
+  unlocksLine
 } from './quiet-hours'
 
 // Quiet hours are local wall-clock time: build dates with the local
@@ -197,6 +198,35 @@ describe('formatUnlocks', () => {
     expect(formatUnlocks(unlocks.slice(0, 1), ms(14, 8, 0))).toBe(
       'Unlocked once last night, 20 min total'
     )
+  })
+})
+
+describe('unlocksLine', () => {
+  it('is null when nothing was unlocked', () => {
+    expect(unlocksLine([], ms(14, 8, 0))).toBeNull()
+  })
+
+  it('lists each unlock with its start and the minutes it lasted', () => {
+    const unlocks = [
+      { at: at(13, 23, 40).toISOString(), minutes: 20, why: 'check the deploy', endedAt: null },
+      {
+        at: at(14, 1, 12).toISOString(),
+        minutes: 20,
+        why: null,
+        endedAt: at(14, 1, 23).toISOString()
+      }
+    ]
+
+    expect(unlocksLine(unlocks, ms(14, 8, 0))).toBe(
+      '2 unlocks · 23:40 for 20 min · 01:12 for 11 min'
+    )
+    expect(unlocksLine(unlocks.slice(0, 1), ms(14, 8, 0))).toBe('1 unlock · 23:40 for 20 min')
+  })
+
+  it('counts an unlock still running up to now', () => {
+    const running = [{ at: at(14, 2, 0).toISOString(), minutes: 20, why: null, endedAt: null }]
+
+    expect(unlocksLine(running, ms(14, 2, 5))).toBe('1 unlock · 02:00 for 5 min')
   })
 })
 

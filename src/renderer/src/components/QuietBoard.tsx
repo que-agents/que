@@ -1,5 +1,4 @@
 import type { Task, Workspace } from '../../../preload/index.d'
-import { type CountItem, countItemText } from '../../../shared/count-line'
 import { formatAge, formatDuration, hhmm } from '../../../shared/format'
 import {
   boardCountItems,
@@ -11,6 +10,7 @@ import { ACTIVE_STATES } from '../../../shared/types'
 import { isLiveTask, newestFirst, statusBadge, type Tone, taskBadge } from '../format'
 import { useQue, useStore } from '../store'
 import { useNow } from '../useNow'
+import CountLine from './CountLine'
 import { QMarkIcon, UnlockIcon } from './icons'
 
 interface Row {
@@ -29,15 +29,6 @@ interface Row {
 /** `1.5` → `1.5`, `20` → `20`. */
 function minutes(m: number): string {
   return String(Math.round(m * 100) / 100)
-}
-
-/** One count line item as spans: a toned or muted word, else faint. */
-function CountSpan({ item }: { item: CountItem }): React.JSX.Element {
-  const text = countItemText(item)
-
-  if (!item.tone) return <span>{text}</span>
-
-  return <span className={item.tone === 'muted' ? 'muted' : `tone-${item.tone}`}>{text}</span>
 }
 
 /**
@@ -131,16 +122,9 @@ export default function QuietBoard(): React.JSX.Element {
           {hhmm(now)} <span className="quiet-board-until">· until {until}</span>
         </span>
       </header>
-      <p className="count-line" data-testid="quiet-board-counts">
-        {counts.length === 0
-          ? NOTHING_RUNNING
-          : counts.map((item, i) => (
-              <span key={item.label}>
-                {i > 0 ? ' · ' : ''}
-                <CountSpan item={item} />
-              </span>
-            ))}
-      </p>
+      <CountLine items={counts} testId="quiet-board-counts">
+        {NOTHING_RUNNING}
+      </CountLine>
       <div className="quiet-board-rows">
         {rows.length === 0 ? (
           <p className="quiet-board-empty" data-testid="quiet-board-empty">

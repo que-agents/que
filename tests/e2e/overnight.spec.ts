@@ -103,7 +103,7 @@ test('a task queued from the CLI runs overnight-style, shows in the sidebar, and
     await report.waitForLoad()
     await expect(report.groupTask('done', taskId)).toBeVisible()
     await expect(report.taskPrLink(taskId)).toHaveAttribute('href', /\/pull\/\d+$/)
-    await expect(report.totals).toContainText('1 tasks · 1 PRs')
+    await expect(report.totals).toContainText('1 done · 1 PR')
     await launched.window.screenshot({ path: 'test-results/wp4-overnight.png' })
   })
 })

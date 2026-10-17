@@ -3,6 +3,7 @@ import os from 'node:os'
 import { join } from 'node:path'
 import { app, BrowserWindow, dialog, ipcMain, Notification, shell } from 'electron'
 import { isLocked } from '../daemon/quiet-hours'
+import { reportSummaryText } from '../daemon/report'
 import { DaemonClient } from '../shared/client'
 import { loginShellPath, mergePath } from '../shared/login-path'
 import { queHome } from '../shared/paths'
@@ -187,16 +188,12 @@ function applyQuiet(q: QuietState): void {
   }
 }
 
-/** One notification with the night's totals, when quiet hours end. */
+/** One notification with the night's count line, when quiet hours end. */
 function morningSummary(report: Report): void {
   if (e2e || !Notification.isSupported()) return
 
-  const body = [
-    `${report.totals.needsInput} need input`,
-    `${report.workspaces.filter((w) => w.status === 'stuck').length} stuck`,
-    `${report.groups.done.length} tasks done`,
-    `${report.totals.prs} PRs`
-  ].join(' · ')
+  // The same words as the report page's count line.
+  const body = reportSummaryText(report, Date.now())
 
   new Notification({ title: 'que · good morning', body }).show()
 }

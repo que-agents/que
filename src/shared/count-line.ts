@@ -16,13 +16,21 @@ export interface CountItem {
   tone?: 'bad' | 'attention' | 'muted'
   /** Detail in brackets after the label: `limit resets 03:00`. */
   note?: string
+  /**
+   * The item written as this text instead of `count label`, for totals that
+   * are not a count (`1h 07m`, `$1.20`). `count` still decides whether the
+   * item is on the line at all.
+   */
+  text?: string
 }
 
 /** The separator between items, as text. */
 export const COUNT_SEPARATOR = ' · '
 
-/** One item as text: `1 paused (limit resets 03:00)`. */
+/** One item as text: `1 paused (limit resets 03:00)`, or its own `text`: `$1.20`. */
 export function countItemText(item: CountItem): string {
+  if (item.text !== undefined) return item.text
+
   return `${item.count} ${item.label}${item.note ? ` (${item.note})` : ''}`
 }
 

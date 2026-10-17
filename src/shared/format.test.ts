@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { formatAge, formatCost, formatDuration, formatMinSec, formatSpan, hhmm } from './format'
+import {
+  formatAge,
+  formatCost,
+  formatDuration,
+  formatMinSec,
+  formatSince,
+  formatSpan,
+  hhmm
+} from './format'
 
 describe('formatCost', () => {
   it('rounds money to cents', () => {
@@ -59,5 +67,31 @@ describe('clock times', () => {
     expect(formatMinSec(303_000)).toBe('05:03')
     expect(formatMinSec(75 * 60_000)).toBe('75:00')
     expect(formatMinSec(-1)).toBe('00:00')
+  })
+})
+
+describe('formatSince', () => {
+  // Local wall-clock dates. October 2026: Mon 12 … Sun 18.
+  const at = (day: number, h: number, m = 0, month = 9): number =>
+    new Date(2026, month, day, h, m).getTime()
+
+  const now = at(17, 7, 30) // Saturday morning
+
+  it('gives only the clock on the same day', () => {
+    expect(formatSince(at(17, 1, 5), now)).toBe('since 01:05')
+  })
+
+  it('says yesterday for the evening before', () => {
+    expect(formatSince(at(16, 19, 0), now)).toBe('since 19:00 yesterday')
+  })
+
+  it('names the weekday within the last six days', () => {
+    expect(formatSince(at(13, 19, 0), now)).toBe('since 19:00 Tuesday')
+    expect(formatSince(at(11, 22, 15), now)).toBe('since 22:15 Sunday')
+  })
+
+  it('gives the date when older than that', () => {
+    expect(formatSince(at(10, 19, 0), now)).toBe('since 19:00 on 10 Oct')
+    expect(formatSince(at(28, 9, 0, 8), now)).toBe('since 09:00 on 28 Sep')
   })
 })

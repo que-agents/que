@@ -1,8 +1,9 @@
 // The morning report, as pure functions: which tasks to show, grouped by
 // outcome with durations and totals, and its plain-text rendering. No Node
 // imports: the renderer reads the groups and the digest facts from here too.
+import { type CountItem, countLineText } from '../shared/count-line'
 import type { Report, ReportEntry, ReportGroup, WorkspaceDigest } from '../shared/protocol'
-import { formatCost, formatDuration as duration, hhmm } from '../shared/format'
+import { formatCost, formatDuration as duration, formatSince, hhmm } from '../shared/format'
 import { LIVE_STATES, type Task, type TaskState } from '../shared/types'
 
 /** Reading order: outcomes first, what still needs a look next, stopped last; with headings. */
@@ -56,6 +57,7 @@ function entry(task: Task, workspaces: ReadonlyMap<string, string>, now: number)
     workspaceId: task.workspaceId,
     branch: task.branch,
     prUrl: task.prUrl,
+    pausedUntil: task.state === 'paused' ? task.pausedUntil : null,
     durationMs: start === null ? null : Math.max(0, end - start),
     turns: task.turns,
     costUsd: task.costUsd
@@ -120,6 +122,45 @@ export function buildReport(
 /** `0s`, `45s`, `12m`, `1h 05m`; `-` when unknown. */
 export function formatDuration(ms: number | null): string {
   return ms === null ? '-' : duration(ms, { seconds: false, floor: true })
+}
+
+/**
+ * The report's count line, in reading order and only the non-zero items:
+ * done (muted), stuck (tasks and workspaces) and failed (bad), needs input
+ * (attention), paused, running, queued, pull requests, then the total time
+ * and cost. The page, and the morning notification, print the same words.
+ */
+export function reportCountItems(r: Report): CountItem[] {
+  const stuckWorkspaces = r.workspaces.filter((w) => w.status === 'stuck').length
+
+  const items: CountItem[] = [
+    { count: r.groups.done.length, label: 'done', tone: 'muted' },
+    { count: r.groups.stuck.length + stuckWorkspaces, label: 'stuck', tone: 'bad' },
+    { count: r.groups.failed.length, label: 'failed', tone: 'bad' },
+    { count: r.totals.needsInput, label: 'needs input', tone: 'attention' },
+    { count: r.groups.paused.length, label: 'paused' },
+    { count: r.groups.running.length, label: 'running' },
+    { count: r.groups.queued.length, label: 'queued' },
+    { count: r.totals.prs, label: r.totals.prs === 1 ? 'PR' : 'PRs' },
+    {
+      count: r.totals.durationMs,
+      label: 'duration',
+      text: formatDuration(r.totals.durationMs)
+    },
+    { count: r.totals.costUsd, label: 'cost', text: formatCost(r.totals.costUsd) }
+  ]
+
+  return items.filter((i) => i.count > 0)
+}
+
+/** What the count line says when it has no items: `nothing ran since 19:00 yesterday`. */
+export function nothingRanLine(r: Pick<Report, 'since'>, now: number): string {
+  return `nothing ran ${formatSince(Date.parse(r.since), now)}`
+}
+
+/** The count line as plain text, or `nothing ran since …`: the morning notification's body. */
+export function reportSummaryText(r: Report, now: number): string {
+  return countLineText(reportCountItems(r)) || nothingRanLine(r, now)
 }
 
 const UNITS = new Map([
