@@ -17,6 +17,7 @@ import os from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { _electron as electron } from '@playwright/test'
+import { fakeEnv, QUIET_OFF, writeGitconfig } from '../tests/fakes/env.cjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))
@@ -55,12 +56,9 @@ log(`app ${appPath}`)
 // fakes first on PATH, never the user's config or git identity.
 const queHome = mkdtempSync(join(os.tmpdir(), 'que-pkg-'))
 
-writeFileSync(join(queHome, 'config.toml'), '[quiet_hours]\nenabled = false\n')
+writeFileSync(join(queHome, 'config.toml'), QUIET_OFF)
 
-writeFileSync(
-  join(queHome, 'gitconfig'),
-  '[user]\n\tname = que smoke\n\temail = smoke@que.invalid\n'
-)
+writeGitconfig(queHome, 'smoke')
 
 const env = {}
 
@@ -70,15 +68,7 @@ delete env.ELECTRON_RUN_AS_NODE
 
 delete env.ELECTRON_RENDERER_URL
 
-Object.assign(env, {
-  QUE_HOME: queHome,
-  QUE_CONFIG: join(queHome, 'config.toml'),
-  QUE_E2E: '1',
-  QUE_UPDATE_CHECK: '0',
-  PATH: `${join(root, 'tests/fakes/bin')}:${process.env.PATH}`,
-  GIT_CONFIG_GLOBAL: join(queHome, 'gitconfig'),
-  GIT_CONFIG_NOSYSTEM: '1'
-})
+Object.assign(env, fakeEnv(queHome), { QUE_E2E: '1', QUE_UPDATE_CHECK: '0' })
 
 const que = (...args) => execFileSync(cliLauncher, args, { env, encoding: 'utf8' }).trim()
 

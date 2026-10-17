@@ -10,7 +10,8 @@ import {
   type Page
 } from '@playwright/test'
 import { pidAlive } from '../../../src/shared/process'
-import { FAKES_BIN, readFakeLog, REPO_ROOT } from '../../../src/testing/fakes'
+import { readFakeLog, REPO_ROOT } from '../../../src/testing/fakes'
+import { fakeEnv, QUIET_OFF, writeGitconfig } from '../../fakes/env.cjs'
 import { que } from './que'
 
 export interface LaunchedApp {
@@ -27,7 +28,7 @@ export interface LaunchedApp {
   close(): Promise<void>
 }
 
-/** The env every process in a test shares: app, daemon, CLI, fakes. */
+/** The env every process in a test shares (app, daemon, CLI, fakes): fakeEnv plus QUE_E2E. */
 export function testEnv(
   queHome: string,
   extra: Record<string, string> = {}
@@ -40,21 +41,8 @@ export function testEnv(
 
   return {
     ...env,
-    QUE_HOME: queHome,
+    ...fakeEnv(queHome),
     QUE_E2E: '1',
-    PATH: `${FAKES_BIN}:${env.PATH}`,
-    QUE_FAKE_GH_LOG: join(queHome, 'fake-gh.log'),
-    QUE_FAKE_CLAUDE_LOG: join(queHome, 'fake-claude.log'),
-    QUE_FAKE_GH_PRS: join(queHome, 'fake-gh-prs.json'),
-    QUE_FAKE_ACLI_LOG: join(queHome, 'fake-acli.log'),
-    QUE_FAKE_ACLI_TICKETS: join(queHome, 'fake-acli-tickets.json'),
-    QUE_FAKE_CODE_LOG: join(queHome, 'fake-code.log'),
-    QUE_FAKE_CLAUDE_TRANSCRIPT_DIR: join(queHome, 'fake-claude-transcripts'),
-    // Never the user's own config file.
-    QUE_CONFIG: join(queHome, 'config.toml'),
-    // A fixed git identity for commits the finisher makes, never the user's.
-    GIT_CONFIG_GLOBAL: join(queHome, 'gitconfig'),
-    GIT_CONFIG_NOSYSTEM: '1',
     ...extra
   }
 }
@@ -71,12 +59,9 @@ const argvOf = (path: string): string[][] => readFakeLog(path).map((call) => cal
  * Its config.toml turns quiet hours off (they default to on in the evening)
  * unless the spec passes its own config.
  */
-export function newQueHome(config = '[quiet_hours]\nenabled = false\n'): string {
+export function newQueHome(config = QUIET_OFF): string {
   const queHome = tempDir('que-e2e-')
-  writeFileSync(
-    join(queHome, 'gitconfig'),
-    '[user]\n\tname = que e2e\n\temail = e2e@que.invalid\n[commit]\n\tgpgsign = false\n'
-  )
+  writeGitconfig(queHome, 'e2e')
   writeFileSync(join(queHome, 'config.toml'), config)
 
   return queHome

@@ -13,7 +13,7 @@ import { DaemonServer } from '@daemon/server'
 import { DaemonClient } from '@shared/client'
 import { ensureDirs, quePaths } from '@shared/paths'
 import { bundleEntry } from './bundle'
-import { FAKES_BIN } from './fakes'
+import { fakeEnv, QUIET_OFF, writeGitconfig } from '../../tests/fakes/env.cjs'
 import { assertPidsGone, LeakCheckedPtyHost } from './leak-check'
 
 export interface TestDaemon {
@@ -44,16 +44,9 @@ export interface TestDaemon {
   close(opts?: { keepHome?: boolean }): Promise<void>
 }
 
-/**
- * Quiet hours default to on (19:00-07:00), which would refuse terminal detail
- * whenever a suite runs in the evening. Test daemons turn them off unless a
- * test's own config has a [quiet_hours] table.
- */
-export const QUIET_OFF = '\n[quiet_hours]\nenabled = false\n'
-
-/** A test config with quiet hours off unless it sets its own [quiet_hours]. */
+/** A test config with quiet hours off (QUIET_OFF) unless it sets its own [quiet_hours]. */
 export function withQuietOff(config = ''): string {
-  return config.includes('[quiet_hours]') ? config : `${config}${QUIET_OFF}`
+  return config.includes('[quiet_hours]') ? config : `${config}\n${QUIET_OFF}`
 }
 
 export interface TestDaemonOptions {
@@ -75,35 +68,12 @@ export interface TestDaemonOptions {
 
 export async function startTestDaemon(opts: TestDaemonOptions = {}): Promise<TestDaemon> {
   const home = opts.home ?? fs.realpathSync(fs.mkdtempSync(join(os.tmpdir(), 'que-it-')))
-  const claudeLog = join(home, 'fake-claude.log')
-  const ghLog = join(home, 'fake-gh.log')
-  const ghPrs = join(home, 'fake-gh-prs.json')
-  const acliLog = join(home, 'fake-acli.log')
-  const acliTickets = join(home, 'fake-acli-tickets.json')
-  const codeLog = join(home, 'fake-code.log')
-  const caffeinateLog = join(home, 'fake-caffeinate.log')
-  const wrapperLog = join(home, 'fake-wrapper.log')
-  const gitconfig = join(home, 'gitconfig')
-  fs.writeFileSync(
-    gitconfig,
-    '[user]\n\tname = que test\n\temail = test@que.invalid\n[commit]\n\tgpgsign = false\n[init]\n\tdefaultBranch = main\n'
-  )
-  vi.stubEnv('QUE_HOME', home)
-  vi.stubEnv('PATH', [...(opts.pathPrefix ?? []), FAKES_BIN, process.env.PATH].join(':'))
-  vi.stubEnv('QUE_FAKE_CLAUDE_LOG', claudeLog)
-  vi.stubEnv('QUE_FAKE_GH_LOG', ghLog)
-  vi.stubEnv('QUE_FAKE_GH_PRS', ghPrs)
-  vi.stubEnv('QUE_FAKE_ACLI_LOG', acliLog)
-  vi.stubEnv('QUE_FAKE_ACLI_TICKETS', acliTickets)
-  vi.stubEnv('QUE_FAKE_CODE_LOG', codeLog)
-  vi.stubEnv('QUE_FAKE_CAFFEINATE_LOG', caffeinateLog)
-  vi.stubEnv('QUE_FAKE_WRAPPER_LOG', wrapperLog)
-  vi.stubEnv('GIT_CONFIG_GLOBAL', gitconfig)
-  vi.stubEnv('GIT_CONFIG_NOSYSTEM', '1')
-  vi.stubEnv('QUE_FAKE_CLAUDE_TRANSCRIPT_DIR', join(home, 'transcripts'))
-  const configPath = join(home, 'config.toml')
-  vi.stubEnv('QUE_CONFIG', configPath)
+  const env = fakeEnv(home, opts.pathPrefix)
+  writeGitconfig(home, 'test')
+
+  for (const [name, value] of Object.entries(env)) vi.stubEnv(name, value)
   vi.stubEnv('QUE_NODE', process.execPath)
+  const configPath = env.QUE_CONFIG
   fs.writeFileSync(configPath, withQuietOff(opts.config))
 
   const paths = ensureDirs(quePaths())
@@ -133,14 +103,14 @@ export async function startTestDaemon(opts: TestDaemonOptions = {}): Promise<Tes
     host,
     server,
     client,
-    claudeLog,
-    ghLog,
-    ghPrs,
-    acliLog,
-    acliTickets,
-    codeLog,
-    caffeinateLog,
-    wrapperLog,
+    claudeLog: env.QUE_FAKE_CLAUDE_LOG,
+    ghLog: env.QUE_FAKE_GH_LOG,
+    ghPrs: env.QUE_FAKE_GH_PRS,
+    acliLog: env.QUE_FAKE_ACLI_LOG,
+    acliTickets: env.QUE_FAKE_ACLI_TICKETS,
+    codeLog: env.QUE_FAKE_CODE_LOG,
+    caffeinateLog: env.QUE_FAKE_CAFFEINATE_LOG,
+    wrapperLog: env.QUE_FAKE_WRAPPER_LOG,
     configPath,
     async close(closeOpts = {}) {
       if (closed) return
