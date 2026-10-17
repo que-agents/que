@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Project, Task, Workspace } from '../../../preload/index.d'
-import { isLiveTask, latestTasks } from '../format'
+import { isLiveTask, latestTasks, prNumberOf } from '../format'
 import { SCRATCH, usePanes, useQueSelector } from '../store'
 import { countOpenTickets } from '../ticket-tree'
 import { filterSidebar, matches, sortProjects, sortWorkspaces } from '../sidebar-order'
@@ -329,7 +329,7 @@ export default function Sidebar(): React.JSX.Element {
                               rel="noreferrer"
                               data-testid={`sidebar-workspace-${w.id}-pr`}
                             >
-                              PR #{owned.get(w.id)?.prUrl?.split('/').pop()}
+                              PR #{prNumberOf(owned.get(w.id)?.prUrl)}
                             </a>
                           )
                         )}

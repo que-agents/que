@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import type { PrCheck, PrThreadEntry, PullRequest, ReviewState } from '../../../preload/index.d'
 import { formatAge, formatSpan } from '../../../shared/format'
-import type { Tone } from '../format'
+import { prNumberOf, type Tone } from '../format'
 import { splitFences } from '../pr-text'
 import { useQue, useStore } from '../store'
 import { ExternalLinkIcon } from './icons'
@@ -119,7 +119,7 @@ export default function PullRequestView({ termKey }: { termKey: string }): React
   const thread = prThreads[termKey]?.data ?? null
   const error = prThreads[termKey]?.error ?? null
   const url = pr?.url ?? ws?.prUrl ?? null
-  const number = pr?.number ?? (ws?.prUrl ? ws.prUrl.split('/').pop() : null)
+  const number = pr?.number ?? prNumberOf(ws?.prUrl) ?? null
   const now = store.now()
 
   // On mount, unless opening the pane already fetched it; the store fetches again when

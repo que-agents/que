@@ -1,3 +1,4 @@
+import { prNumberOf } from '../format'
 import { SCRATCH, usePanes, useQueSelector } from '../store'
 import { JoinPanesIcon, PanelRightIcon, SplitBelowIcon, SplitBesideIcon } from './icons'
 import { PrChip, StatusBadge } from './StatusBadge'
@@ -47,7 +48,7 @@ export default function TopBar({ termKey }: { termKey: string }): React.JSX.Elem
           ) : (
             ws.prUrl && (
               <a href={ws.prUrl} target="_blank" rel="noreferrer" data-testid="topbar-pr">
-                PR #{ws.prUrl.split('/').pop()}
+                PR #{prNumberOf(ws.prUrl)}
               </a>
             )
           )}
