@@ -9,27 +9,23 @@ import {
 } from './runner'
 
 describe('buildPrompt', () => {
-  it('is the brief, then the repo instructions, then the definition of done with the test command', () => {
+  it('is the brief, then the repo instructions, then the repo test command', () => {
     const prompt = buildPrompt(makeTask({ brief: 'Add retry logic to the uploader.\n' }), {
       instructions: 'Follow docs/STYLE.md.',
       test: 'npm test'
     })
 
-    const parts = prompt.split('\n\n')
-    expect(parts[0]).toBe('Add retry logic to the uploader.')
-    expect(parts[1]).toBe('Follow docs/STYLE.md.')
-    expect(parts[2]).toMatch(/^Definition of done:/)
-    expect(parts[2]).toContain('Work only inside this worktree')
-    expect(parts[2]).toContain('Run the test command `npm test` and make it pass.')
-    expect(parts[2]).toContain('Commit your work with a clear message. Do not push.')
-    expect(parts[2]).toContain('suitable for a pull request description')
+    expect(prompt.split('\n\n')).toEqual([
+      'Add retry logic to the uploader.',
+      'Follow docs/STYLE.md.',
+      'Run the test command `npm test` and make it pass.'
+    ])
   })
 
-  it('leaves out instructions the repo does not have', () => {
+  it('is the brief alone when the repo has no instructions or test command', () => {
     const prompt = buildPrompt(makeTask({ brief: 'Fix the flaky upload test' }), {})
 
-    expect(prompt.split('\n\n')).toHaveLength(2)
-    expect(prompt).toContain('Run the repository tests if it has any')
+    expect(prompt).toBe('Fix the flaky upload test')
   })
 })
 
@@ -37,6 +33,13 @@ describe('SYSTEM_PROMPT', () => {
   it('forbids questions and pushing', () => {
     expect(SYSTEM_PROMPT).toContain('You cannot ask questions. If you are blocked, explain why')
     expect(SYSTEM_PROMPT).toContain('Never push')
+  })
+
+  it('holds the definition of done every run shares', () => {
+    expect(SYSTEM_PROMPT).toContain('Work only inside the current git worktree')
+    expect(SYSTEM_PROMPT).toContain('If the repository has a test command, run it')
+    expect(SYSTEM_PROMPT).toContain('Commit your work with a clear message.')
+    expect(SYSTEM_PROMPT).toContain('suitable for a pull request description')
   })
 })
 

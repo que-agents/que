@@ -35,6 +35,12 @@ const KV_OPEN = 'queue.open'
 const KV_OPENED_AT = 'queue.opened_at'
 const KV_CONCURRENCY = 'concurrency'
 
+/** How long a run's activity stamp and latest text may wait in memory before they are written. */
+const FLUSH_MS = 3_000
+
+/** Fields a stream message changes on its own; writing them can wait for the flush. */
+const DEFERRED: ReadonlySet<keyof Task> = new Set(['lastActivityAt', 'resultText', 'updatedAt'])
+
 /** A wall-clock jump this much larger than the monotonic clock's means the machine slept. */
 export const WAKE_THRESHOLD_MS = 2 * 60_000
 
@@ -57,6 +63,15 @@ export function defaultTitle(brief: string): string {
   return line.length > 80 ? `${line.slice(0, 79).trimEnd()}…` : line
 }
 
+/** The tasks in any of `states`, from a by-state count. */
+function sumOf(counts: Record<TaskState, number>, states: Iterable<TaskState>): number {
+  let n = 0
+
+  for (const s of states) n += counts[s]
+
+  return n
+}
+
 export interface TaskQueueOptions {
   store: Store
   paths: QuePaths
@@ -66,26 +81,26 @@ export interface TaskQueueOptions {
   killTerminals: (workspaceId: string) => number
   socket: () => string
   log: (msg: string) => void
-  now?: () => number
   /** Stall / pause / wake tick. Default 5 s. */
   tickMs?: number
-  /** Dispatcher interval. Default 1 s. */
-  dispatchMs?: number
 }
 
 export class TaskQueue {
   readonly runner: TaskRunner
-  private timers: NodeJS.Timeout[] = []
+  private timer: NodeJS.Timeout | null = null
   private kickScheduled = false
   private closed = false
   private caffeinate: ChildProcess | null = null
   private warnedNoCaffeinate = false
   private lastWall = 0
   private lastMono = 0
-  private readonly now: () => number
+  /** Every live task this queue has touched, as it last committed it; the store may lag. */
+  private live = new Map<string, Task>()
+  /** Live tasks whose deferred fields are not written yet. */
+  private dirty = new Set<string>()
+  private flushTimer: NodeJS.Timeout | null = null
 
   constructor(private o: TaskQueueOptions) {
-    this.now = o.now ?? Date.now
     this.runner = new TaskRunner({
       store: o.store,
       paths: o.paths,
@@ -101,7 +116,7 @@ export class TaskQueue {
 
   // ---- lifecycle --------------------------------------------------------------
 
-  /** Recovers tasks a previous daemon left live, then starts the timers. */
+  /** Recovers tasks a previous daemon left live, then starts the clock tick. */
   start(): void {
     for (const t of this.o.store.listTasks([...ACTIVE_STATES])) {
       if (t.pid !== null) reapOrphan(t.pid, this.o.log)
@@ -110,22 +125,20 @@ export class TaskQueue {
       this.apply(t.id, { type: 'restart' })
     }
 
-    this.lastWall = this.now()
+    this.lastWall = Date.now()
     this.lastMono = performance.now()
-    const tick = setInterval(() => this.tick(), this.o.tickMs ?? 5_000)
-    const dispatch = setInterval(() => this.dispatch(), this.o.dispatchMs ?? 1_000)
-    tick.unref()
-    dispatch.unref()
-    this.timers.push(tick, dispatch)
+    this.timer = setInterval(() => this.tick(), this.o.tickMs ?? 5_000)
+    this.timer.unref()
     this.kick()
   }
 
-  /** Daemon shutdown: stops the timers, every run, and the keep-awake. */
+  /** Daemon shutdown: stops the clock tick, every run, and the keep-awake. */
   async shutdown(): Promise<void> {
+    this.flush()
     this.closed = true
 
-    for (const t of this.timers) clearInterval(t)
-    this.timers = []
+    if (this.timer) clearInterval(this.timer)
+    this.timer = null
     await this.runner.close()
     this.stopCaffeinate()
   }
@@ -147,13 +160,39 @@ export class TaskQueue {
     return { stallTimeoutMs: this.o.config().stallTimeoutMinutes * 60_000 }
   }
 
+  /** The task as last committed: the in-memory copy of a live one, else the stored row. */
+  private read(id: string): Task | undefined {
+    return this.live.get(id) ?? this.o.store.getTask(id)
+  }
+
+  /** Stored tasks with each live one replaced by its in-memory copy. */
+  private current(tasks: Task[]): Task[] {
+    return tasks.map((t) => this.live.get(t.id) ?? t)
+  }
+
+  /** Writes the deferred fields of every dirty task. */
+  private flush(): void {
+    if (this.flushTimer) clearTimeout(this.flushTimer)
+    this.flushTimer = null
+
+    if (this.closed) return
+
+    for (const id of this.dirty) {
+      const t = this.live.get(id)
+
+      if (t) this.o.store.updateTask(t)
+    }
+
+    this.dirty.clear()
+  }
+
   /** Feeds one event to the machine, persists the result, and reacts. */
   apply(id: string, event: TaskEvent): Task | undefined {
     if (this.closed) return undefined
-    const prev = this.o.store.getTask(id)
+    const prev = this.read(id)
 
     if (!prev) return undefined
-    const next = nextTask(prev, event, this.now(), this.limits())
+    const next = nextTask(prev, event, Date.now(), this.limits())
     this.commit(prev, next)
 
     return next
@@ -161,18 +200,36 @@ export class TaskQueue {
 
   private patch(id: string, fields: Partial<Task>): void {
     if (this.closed) return
-    const prev = this.o.store.getTask(id)
+    const prev = this.read(id)
 
     if (prev) this.commit(prev, { ...prev, ...fields })
   }
 
+  /**
+   * Persists a change. One that only moves a run's activity stamp or latest
+   * text (most stream messages) stays in memory until the flush timer or the
+   * next other change writes it; a crash can lose those few seconds.
+   */
   private commit(prev: Task, next: Task): void {
-    const changed = (Object.keys(next) as Array<keyof Task>).some(
+    const changed = (Object.keys(next) as Array<keyof Task>).filter(
       (k) => k !== 'updatedAt' && next[k] !== prev[k]
     )
 
-    if (!changed) return
-    next.updatedAt = new Date(this.now()).toISOString()
+    if (changed.length === 0) return
+    next.updatedAt = new Date().toISOString()
+
+    if (LIVE_STATES.has(next.state)) this.live.set(next.id, next)
+    else this.live.delete(next.id)
+
+    if (LIVE_STATES.has(next.state) && changed.every((k) => DEFERRED.has(k))) {
+      this.dirty.add(next.id)
+      this.flushTimer ??= setTimeout(() => this.flush(), FLUSH_MS)
+      this.flushTimer.unref()
+
+      return
+    }
+
+    this.dirty.delete(next.id)
     this.o.store.updateTask(next)
     const statusChanged = prev.state !== next.state || prev.reason !== next.reason
 
@@ -217,7 +274,11 @@ export class TaskQueue {
     return this.o.store.getKv(KV_OPEN) === 'true'
   }
 
-  /** Dispatches soon (coalesced). */
+  /**
+   * Dispatches soon (coalesced). There is no dispatch timer: adding a task,
+   * opening the queue, a config change and every task transition (a pause
+   * expiring in tick() among them) kick.
+   */
   kick(): void {
     if (this.kickScheduled || this.closed) return
     this.kickScheduled = true
@@ -249,7 +310,7 @@ export class TaskQueue {
 
   tick(): void {
     if (this.closed) return
-    const wall = this.now()
+    const wall = Date.now()
     const mono = performance.now()
     const woke = detectWake(this.lastWall, this.lastMono, wall, mono)
     this.lastWall = wall
@@ -272,7 +333,7 @@ export class TaskQueue {
   /** Holds a `caffeinate -i -w <daemon pid>` while any task is active. */
   private keepAwake(): void {
     if (this.closed) return
-    const needed = this.o.store.listTasks([...ACTIVE_STATES]).length > 0
+    const needed = sumOf(this.o.store.countTasksByState(), ACTIVE_STATES) > 0
 
     if (needed && !this.caffeinate) {
       const bin = findOnPath('caffeinate', process.env.PATH)
@@ -338,7 +399,7 @@ export class TaskQueue {
     positive(p.maxBudgetUsd, 'maxBudgetUsd', false)
     const title = (p.title?.trim() || defaultTitle(p.brief)).slice(0, 200)
     const config = this.o.config()
-    const now = new Date(this.now()).toISOString()
+    const now = new Date().toISOString()
 
     const task: Task = {
       id: newId('tsk_'),
@@ -379,11 +440,11 @@ export class TaskQueue {
   }
 
   list(p: TaskListParams = {}): Task[] {
-    return this.o.store.listTasks(p.state ? [p.state] : undefined)
+    return this.current(this.o.store.listTasks(p.state ? [p.state] : undefined))
   }
 
   get(id: string): Task {
-    const t = this.o.store.getTask(id)
+    const t = this.read(id)
 
     if (!t) throw notFound(`no task ${id}`)
 
@@ -423,7 +484,7 @@ export class TaskQueue {
     }
 
     this.o.store.setKv(KV_OPEN, 'true')
-    this.o.store.setKv(KV_OPENED_AT, new Date(this.now()).toISOString())
+    this.o.store.setKv(KV_OPENED_AT, new Date().toISOString())
 
     if (concurrency !== undefined) this.o.store.setKv(KV_CONCURRENCY, String(concurrency))
     this.o.log(`queue opened (concurrency ${this.concurrency()})`)
@@ -443,14 +504,14 @@ export class TaskQueue {
   }
 
   state(): QueueState {
-    const count = (states: TaskState[]) => this.o.store.listTasks(states).length
+    const counts = this.o.store.countTasksByState()
 
     return {
       open: this.isOpen(),
       concurrency: this.concurrency(),
-      running: count([...ACTIVE_STATES]),
-      queued: count(['queued']),
-      paused: count(['paused']),
+      running: sumOf(counts, ACTIVE_STATES),
+      queued: counts.queued,
+      paused: counts.paused,
       openedAt: this.o.store.getKv(KV_OPENED_AT) ?? null
     }
   }
@@ -464,20 +525,23 @@ export class TaskQueue {
       throw badRequest('since must be an ISO time')
     }
 
-    const now = this.now()
+    const now = Date.now()
     const from = reportSince(since, this.o.store.getKv(KV_OPENED_AT) ?? null, now)
-    const names = new Map<string, string>()
+    const tasks = this.current(this.o.store.listTasks())
+    const open = this.o.store.listWorkspaces()
+    const names = new Map(open.map((ws) => [ws.id, ws.name]))
 
-    for (const t of this.o.store.listTasks()) {
+    // An archived workspace is not in the listing; its tasks still show its name.
+    for (const t of tasks) {
       if (!t.workspaceId || names.has(t.workspaceId)) continue
       const ws = this.o.store.getWorkspace(t.workspaceId)
 
       if (ws) names.set(ws.id, ws.name)
     }
 
-    const digests: WorkspaceDigest[] = []
+    const pending: Array<Promise<WorkspaceDigest>> = []
 
-    for (const ws of this.o.store.listWorkspaces()) {
+    for (const ws of open) {
       let project: Project
 
       try {
@@ -487,16 +551,15 @@ export class TaskQueue {
       }
 
       const log = this.o.store.listStatusLog(ws.id, from)
+      const digest = buildWorkspaceDigest(ws, project, log, Date.parse(from), now)
 
-      const digest = buildWorkspaceDigest(ws, project, log, Date.parse(from), now, {
-        commitsAhead: null
-      })
-
-      if (!digest) continue
-      digest.commitsAhead = await commitsAhead(ws, project)
-      digests.push(digest)
+      if (digest) {
+        pending.push(commitsAhead(ws, project).then((n) => ({ ...digest, commitsAhead: n })))
+      }
     }
 
-    return buildReport(this.o.store.listTasks(), names, from, now, sortDigests(digests))
+    const digests = await Promise.all(pending)
+
+    return buildReport(tasks, names, from, now, sortDigests(digests))
   }
 }

@@ -59,8 +59,6 @@ export interface ServerOptions {
   statusTickMs?: number
   /** Task queue stall / pause tick. Default 5 s. */
   queueTickMs?: number
-  /** Task dispatcher interval. Default 1 s. */
-  dispatchMs?: number
   /** Quiet-hours re-evaluation interval. Default 15 s. */
   quietTickMs?: number
   /** The clock quiet hours read. Default Date.now. */
@@ -175,12 +173,10 @@ export class DaemonServer {
       killTerminals: (id) => this.killWorkspaceTerminals(id),
       socket: () => this.socketPath,
       log: (m) => this.log(m),
-      tickMs: opts.queueTickMs,
-      dispatchMs: opts.dispatchMs
+      tickMs: opts.queueTickMs
     })
     this.prs = new PrService({
       store: this.store,
-      listWorkspaces: () => this.store.listWorkspaces(),
       projectOf: (ws) => this.workspaces.project(ws.projectId),
       emit,
       config: () => this.configOrDefault(),

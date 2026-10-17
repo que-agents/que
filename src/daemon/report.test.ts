@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import type { WorkspaceDigest } from '../shared/protocol'
 import { makeTask } from '../testing/fixtures'
-import { buildReport, formatDuration, formatReport, parseSince, reportSince } from './report'
+import {
+  buildReport,
+  digestFacts,
+  formatDuration,
+  formatReport,
+  parseSince,
+  reportSince
+} from './report'
 
 const NOW = Date.parse('2026-10-14T07:30:00.000Z')
 const SINCE = '2026-10-13T22:00:00.000Z'
@@ -233,6 +240,19 @@ describe('buildReport', () => {
       ])
       expect(lines.at(-3)).toBe('Unlocked once')
       expect(lines.at(-1)).toMatch(/^Total: /)
+    })
+
+    it('lists the facts of each digest, leaving out the ones it has none for', () => {
+      expect(digestFacts(digests[0])).toEqual([
+        'worked 1h 12m',
+        'asked for input 2×',
+        'waiting since 02:05',
+        '4 commits ahead'
+      ])
+      expect(digestFacts(digests[1])).toEqual([
+        'no work in this window',
+        'PR #12 draft, checks failing'
+      ])
     })
 
     it('does not claim there were no tasks when only workspaces had activity', () => {

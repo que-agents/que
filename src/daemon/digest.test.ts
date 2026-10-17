@@ -13,7 +13,6 @@ const PROJECT = {
 
 const SINCE = Date.parse('2026-10-13T22:00:00.000Z')
 const NOW = Date.parse('2026-10-14T07:30:00.000Z')
-const EXTRAS = { commitsAhead: 3 }
 
 const row = (
   status: WorkspaceStatus,
@@ -39,7 +38,7 @@ describe('buildWorkspaceDigest', () => {
       row('idle', '2026-10-14T00:02:00.000Z')
     ]
 
-    const digest = buildWorkspaceDigest(ws, PROJECT, log, SINCE, NOW, EXTRAS)
+    const digest = buildWorkspaceDigest(ws, PROJECT, log, SINCE, NOW)
 
     expect(digest).toMatchObject({
       id: ws.id,
@@ -53,7 +52,7 @@ describe('buildWorkspaceDigest', () => {
       needsInputCount: 2,
       waitingSince: null,
       stuckCount: 0,
-      commitsAhead: 3
+      commitsAhead: null
     })
   })
 
@@ -66,7 +65,7 @@ describe('buildWorkspaceDigest', () => {
       row('needs_input', '2026-10-14T02:10:00.000Z')
     ]
 
-    const digest = buildWorkspaceDigest(ws, PROJECT, log, SINCE, NOW, EXTRAS)
+    const digest = buildWorkspaceDigest(ws, PROJECT, log, SINCE, NOW)
 
     expect(digest).toMatchObject({
       needsInputCount: 1,
@@ -83,7 +82,7 @@ describe('buildWorkspaceDigest', () => {
       row('idle', '2026-10-13T22:30:00.000Z')
     ]
 
-    const digest = buildWorkspaceDigest(ws, PROJECT, log, SINCE, NOW, EXTRAS)
+    const digest = buildWorkspaceDigest(ws, PROJECT, log, SINCE, NOW)
 
     expect(digest?.workingMs).toBe(30 * 60_000)
     expect(digest?.firstActivityAt).toBe('2026-10-13T22:30:00.000Z')
@@ -99,7 +98,7 @@ describe('buildWorkspaceDigest', () => {
       row('working', '2026-10-14T07:00:00.000Z')
     ]
 
-    const digest = buildWorkspaceDigest(ws, PROJECT, log, SINCE, NOW, EXTRAS)
+    const digest = buildWorkspaceDigest(ws, PROJECT, log, SINCE, NOW)
 
     expect(digest).toMatchObject({ workingMs: (10 + 30) * 60_000, stuckCount: 1 })
   })
@@ -108,15 +107,15 @@ describe('buildWorkspaceDigest', () => {
     const ws = makeWorkspace({ status: 'idle' })
     const log = [row('idle', '2026-10-13T20:00:00.000Z')]
 
-    expect(buildWorkspaceDigest(ws, PROJECT, log, SINCE, NOW, EXTRAS)).toBeNull()
-    expect(buildWorkspaceDigest(ws, PROJECT, [], SINCE, NOW, EXTRAS)).toBeNull()
+    expect(buildWorkspaceDigest(ws, PROJECT, log, SINCE, NOW)).toBeNull()
+    expect(buildWorkspaceDigest(ws, PROJECT, [], SINCE, NOW)).toBeNull()
   })
 
   it('keeps a workspace that is stuck now even with nothing in the window', () => {
     const ws = makeWorkspace({ status: 'stuck', statusReason: 'setup_failed' })
     const log = [row('stuck', '2026-10-13T20:00:00.000Z', 'setup_failed')]
 
-    const digest = buildWorkspaceDigest(ws, PROJECT, log, SINCE, NOW, EXTRAS)
+    const digest = buildWorkspaceDigest(ws, PROJECT, log, SINCE, NOW)
 
     expect(digest).toMatchObject({
       status: 'stuck',
@@ -134,7 +133,7 @@ describe('sortDigests', () => {
     const make = (name: string, status: WorkspaceStatus, last: string | null) => {
       const ws = makeWorkspace({ name, status })
       const log = last ? [row(status, last)] : [row(status, '2026-10-13T20:00:00.000Z')]
-      const d = buildWorkspaceDigest(ws, PROJECT, log, SINCE, NOW, EXTRAS)
+      const d = buildWorkspaceDigest(ws, PROJECT, log, SINCE, NOW)
 
       if (!d) throw new Error(`${name} has no digest`)
 
