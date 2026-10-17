@@ -9,6 +9,7 @@ import { ghFailed, notFound } from './errors'
 import { isProtectedBranch } from './finisher'
 import { parsePullRequest, samePullRequest } from './pr-state'
 import { decodePullRequest } from './pr-state.decode'
+import { Poller } from './poller'
 import { jsonPages, parsePrThread } from './pr-thread'
 import { decodeLineComments, decodePrView } from './pr-thread.decode'
 import type { Emit } from './status'
@@ -22,14 +23,10 @@ const SETTLED_EVERY = 5
 
 export interface PrServiceOptions {
   store: Store
-  listWorkspaces: () => Workspace[]
   projectOf: (ws: Workspace) => Project
   emit: Emit
   config: () => UserConfig
   log?: (msg: string) => void
-  now?: () => number
-  /** Overrides the poll interval (otherwise `pr_poll_seconds`, at least 100 ms). */
-  pollMs?: number
 }
 
 /** Runs `gh <args>` in cwd and parses what it prints (as JSON, unless `parse` says otherwise). */
@@ -82,44 +79,31 @@ interface CachedThread {
 }
 
 export class PrService {
-  private timer: NodeJS.Timeout | null = null
   private polling = false
-  private stopped = true
   private tickCount = 0
-  private abort = new AbortController()
-  private inflight = new Set<Promise<void>>()
   /** Workspaces whose last check failed (and were logged), until one succeeds. */
   private failing = new Set<string>()
-  private readonly now: () => number
   /** Each workspace's last fetched conversation, valid while its pull request's updatedAt holds. */
   private threads = new Map<string, CachedThread>()
   private threadFetches = new Map<string, Promise<PrThread>>()
 
-  constructor(private opts: PrServiceOptions) {
-    this.now = opts.now ?? Date.now
-  }
+  private readonly poller = new Poller({
+    intervalMs: () => Math.max(100, this.opts.config().prPollSeconds * 1000),
+    tick: () => this.tick()
+  })
+
+  constructor(private opts: PrServiceOptions) {}
 
   start(): void {
-    if (this.abort.signal.aborted) this.abort = new AbortController()
-    this.stopped = false
-    this.schedulePoll()
+    this.poller.start()
   }
 
   stop(): void {
-    this.stopped = true
-    this.abort.abort()
-
-    if (this.timer) clearTimeout(this.timer)
-    this.timer = null
+    this.poller.stop()
   }
 
-  private schedulePoll(): void {
-    if (this.stopped) return
-    const ms = this.opts.pollMs ?? Math.max(100, this.opts.config().prPollSeconds * 1000)
-    this.timer = setTimeout(() => {
-      void this.tick().finally(() => this.schedulePoll())
-    }, ms)
-    this.timer.unref()
+  private get stopped(): boolean {
+    return this.poller.stopped
   }
 
   /** One pass over every unarchived workspace, one `gh` call at a time. */
@@ -130,7 +114,7 @@ export class PrService {
     try {
       const n = this.tickCount++
 
-      for (const ws of this.opts.listWorkspaces()) {
+      for (const ws of this.opts.store.listWorkspaces()) {
         if (this.stopped) return
         const settled = ws.pr?.state === 'merged' || ws.pr?.state === 'closed'
 
@@ -200,9 +184,9 @@ export class PrService {
         ghJson(
           ['pr', 'view', String(pr.number), '--json', 'comments,reviews'],
           ws.path,
-          this.abort.signal
+          this.poller.signal
         ),
-        ghLineComments(pr.number, ws.path, this.abort.signal)
+        ghLineComments(pr.number, ws.path, this.poller.signal)
       ])
     } catch (err) {
       throw ghFailed(errorMessage(err))
@@ -213,7 +197,7 @@ export class PrService {
       decodeLineComments(lines),
       ws.id,
       pr.number,
-      new Date(this.now()).toISOString()
+      new Date().toISOString()
     )
 
     this.threads.set(ws.id, { thread, number: pr.number, forUpdatedAt: pr.updatedAt ?? null })
@@ -222,15 +206,12 @@ export class PrService {
   }
 
   /** Resolves once every check that was running when stop() was called has ended. */
-  async drain(): Promise<void> {
-    await Promise.allSettled([...this.inflight])
+  drain(): Promise<void> {
+    return this.poller.drain()
   }
 
   private check(ws: Workspace): Promise<void> {
-    const p = this.checkOne(ws)
-    this.inflight.add(p)
-
-    return p.finally(() => this.inflight.delete(p))
+    return this.poller.track(this.checkOne(ws))
   }
 
   private async checkOne(ws: Workspace): Promise<void> {
@@ -241,7 +222,7 @@ export class PrService {
     let items: unknown[]
 
     try {
-      items = await ghPrList(ws.branch, ws.path, this.abort.signal)
+      items = await ghPrList(ws.branch, ws.path, this.poller.signal)
     } catch (err) {
       if (this.stopped) return
 
@@ -257,7 +238,7 @@ export class PrService {
 
     if (this.failing.delete(ws.id)) this.opts.log?.(`pr check recovered for ${ws.id}`)
     const raw = decodePullRequest(items[0])
-    const next = raw && parsePullRequest(raw, new Date(this.now()).toISOString())
+    const next = raw && parsePullRequest(raw, new Date().toISOString())
     const current = this.opts.store.getWorkspace(ws.id)
 
     if (!current || current.archivedAt) return

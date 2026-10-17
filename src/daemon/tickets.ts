@@ -18,6 +18,7 @@ import { cappedSlug, workspaceSlug } from '../shared/slug'
 import type { Project, Ticket, Workspace } from '../shared/types'
 import { adfToText } from './adf-text'
 import { RpcError } from './errors'
+import { Poller } from './poller'
 import type { Emit } from './status'
 import type { Store } from './store'
 import {
@@ -107,9 +108,6 @@ export interface TicketServiceOptions {
   config: () => UserConfig
   emit: Emit
   log?: (msg: string) => void
-  now?: () => number
-  /** Overrides the poll interval (otherwise `jira.poll_minutes`, at least 100 ms). */
-  pollMs?: number
   /** QUE_HOME: briefs for loose sessions go under `<home>/tickets/`. */
   home: string
   projects: () => Project[]
@@ -122,56 +120,34 @@ export interface TicketServiceOptions {
 }
 
 export class TicketService {
-  private timer: NodeJS.Timeout | null = null
-  private stopped = true
-  private abort = new AbortController()
-  private inflight = new Set<Promise<unknown>>()
   private running: Promise<void> | null = null
   private failing = false
   private site = ''
-  private readonly now: () => number
 
-  constructor(private opts: TicketServiceOptions) {
-    this.now = opts.now ?? Date.now
-  }
+  private readonly poller = new Poller({
+    intervalMs: () => Math.max(100, this.opts.config().jira.pollMinutes * 60_000),
+    tick: async () => {
+      await this.sync()
+    }
+  })
+
+  constructor(private opts: TicketServiceOptions) {}
 
   start(): void {
-    if (this.abort.signal.aborted) this.abort = new AbortController()
-    this.stopped = false
-    this.schedule(FIRST_SYNC_MS)
+    this.poller.start(FIRST_SYNC_MS)
   }
 
   stop(): void {
-    this.stopped = true
-    this.abort.abort()
-
-    if (this.timer) clearTimeout(this.timer)
-    this.timer = null
+    this.poller.stop()
   }
 
   /** Resolves once every call that was running when stop() was called has ended. */
-  async drain(): Promise<void> {
-    await Promise.allSettled([...this.inflight])
+  drain(): Promise<void> {
+    return this.poller.drain()
   }
 
-  private schedule(ms?: number): void {
-    if (this.stopped) return
-
-    const wait =
-      ms ?? this.opts.pollMs ?? Math.max(100, this.opts.config().jira.pollMinutes * 60_000)
-
-    this.timer = setTimeout(() => {
-      void this.sync().finally(() => this.schedule())
-    }, wait)
-    this.timer.unref()
-  }
-
-  private track<T>(p: Promise<T>): Promise<T> {
-    this.inflight.add(p)
-    const done = () => this.inflight.delete(p)
-    p.then(done, done)
-
-    return p
+  private get stopped(): boolean {
+    return this.poller.stopped
   }
 
   /** The cached tickets and how the last sync went; never touches the network. */
@@ -193,7 +169,7 @@ export class TicketService {
     if (this.stopped) return this.list()
 
     if (!this.running) {
-      this.running = this.track(this.syncOnce()).finally(() => {
+      this.running = this.poller.track(this.syncOnce()).finally(() => {
         this.running = null
       })
     }
@@ -221,7 +197,7 @@ export class TicketService {
           '--fields',
           SEARCH_FIELDS
         ],
-        this.abort.signal
+        this.poller.signal
       )
 
       let parsed: unknown
@@ -253,7 +229,7 @@ export class TicketService {
     }
 
     if (this.stopped) return
-    const at = new Date(this.now()).toISOString()
+    const at = new Date().toISOString()
     const site = await this.siteHost()
     const tickets = issues.map((i) => ticketFrom(i, at, site))
     const ordered = await this.withParents(tickets, at, site)
@@ -283,7 +259,7 @@ export class TicketService {
     if (this.site) return this.site
 
     try {
-      const out = await acli(['jira', 'auth', 'status'], this.abort.signal)
+      const out = await acli(['jira', 'auth', 'status'], this.poller.signal)
       this.site = /^\s*Site:\s*(\S+)/m.exec(out)?.[1] ?? ''
     } catch (err) {
       if (!this.stopped) this.opts.log?.(`reading the tracker site failed: ${errorMessage(err)}`)
@@ -304,7 +280,7 @@ export class TicketService {
   ): Promise<{ tickets: Ticket[]; checked: Map<string, string | null> }> {
     const { store } = this.opts
     const inSearch = new Set(found.map((t) => t.key))
-    const now = this.now()
+    const now = Date.now()
     const parentOf = new Map<string, string | null>()
     const synthesized = new Map<string, Ticket>()
 
@@ -330,7 +306,7 @@ export class TicketService {
         try {
           const stdout = await acli(
             ['jira', 'workitem', 'view', t.key, '--json', '--fields', PARENT_FIELDS],
-            this.abort.signal
+            this.poller.signal
           )
 
           const link = decodeParentLink(JSON.parse(stdout))
@@ -406,7 +382,7 @@ export class TicketService {
     const view = async (key: string, fields: string): Promise<WorkItemView | null> => {
       const stdout = await acli(
         ['jira', 'workitem', 'view', key, '--json', '--fields', fields],
-        this.abort.signal
+        this.poller.signal
       )
 
       return decodeWorkItemView(JSON.parse(stdout))
@@ -449,7 +425,7 @@ export class TicketService {
 
   /** Starts work on a ticket: a workspace under its project, or a loose session. */
   startTicket(params: TicketsStartParams): Promise<TicketsStartResult> {
-    return this.track(this.startOnce(params))
+    return this.poller.track(this.startOnce(params))
   }
 
   private async startOnce(params: TicketsStartParams): Promise<TicketsStartResult> {

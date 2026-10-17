@@ -176,7 +176,6 @@ export class DaemonServer {
     })
     this.prs = new PrService({
       store: this.store,
-      listWorkspaces: () => this.store.listWorkspaces(),
       projectOf: (ws) => this.workspaces.project(ws.projectId),
       emit,
       config: () => this.configOrDefault(),
