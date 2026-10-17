@@ -3,6 +3,7 @@ import fs from 'node:fs'
 import { Command } from 'commander'
 import { DaemonClient, DaemonError } from '../shared/client'
 import { quePaths } from '../shared/paths'
+import { delay, waitForExit } from '../shared/process'
 import type { TermInfo } from '../shared/protocol'
 import { attach } from './attach'
 import { CliError, printTable, withClient } from './common'
@@ -79,19 +80,11 @@ async function main(): Promise<void> {
       const { pid } = await c.request('daemon.ping')
       const closed = new Promise<void>((r) => c.onClose(r))
       await c.request('daemon.shutdown')
-      await Promise.race([closed, new Promise((r) => setTimeout(r, 2000))])
+      await Promise.race([closed, delay(2000)])
       c.close()
 
       // Wait (briefly) for the process to actually exit.
-      for (let i = 0; i < 30; i++) {
-        try {
-          process.kill(pid, 0)
-        } catch {
-          break
-        }
-
-        await new Promise((r) => setTimeout(r, 100))
-      }
+      await waitForExit(pid, 3_000)
 
       console.log(`daemon stopped (pid ${pid})`)
     })

@@ -10,7 +10,7 @@ import type { Events } from '@shared/protocol'
 import type { Task, TaskState } from '@shared/types'
 import { startTestDaemon, type TestDaemon } from '../../src/testing/daemon-harness'
 import { readFakeLog } from '../../src/testing/fakes'
-import { pidAlive } from '../../src/testing/leak-check'
+import { pidAlive } from '../../src/shared/process'
 import {
   addBareOrigin,
   gitIn,

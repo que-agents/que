@@ -7,6 +7,7 @@ import os from 'node:os'
 import { cleanSpawnEnv } from './env'
 import { daemonScriptFrom, runtimeFrom } from './packaged'
 import { ensureDirs, quePaths, type QuePaths } from './paths'
+import { delay } from './process'
 import {
   MessageDecoder,
   encode,
@@ -283,10 +284,6 @@ function startDaemon(paths: QuePaths, opts: StartOptions): void {
   } finally {
     fs.closeSync(logFd)
   }
-}
-
-function delay(ms: number): Promise<void> {
-  return new Promise((r) => setTimeout(r, ms))
 }
 
 function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {

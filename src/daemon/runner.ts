@@ -23,7 +23,8 @@ import type { TaskEvent } from './task-machine'
 import type { Store } from './store'
 import type { WorkspaceManager } from './workspaces'
 import { findOnPath } from './wrapper'
-import { errorCode, errorMessage } from '../shared/errors.decode'
+import { errorMessage } from '../shared/errors.decode'
+import { delay, pidAlive } from '../shared/process'
 
 // ---- prompts (pure) ------------------------------------------------------------
 
@@ -151,16 +152,6 @@ function signalGroup(pid: number, signal: NodeJS.Signals): void {
   }
 }
 
-function pidAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0)
-
-    return true
-  } catch (err) {
-    return errorCode(err) === 'EPERM'
-  }
-}
-
 /** Kills a claude left running by a daemon that died, after checking it is one. */
 export function reapOrphan(pid: number, log: (m: string) => void): void {
   if (!pidAlive(pid)) return
@@ -283,7 +274,7 @@ export class TaskRunner {
         return ws
       }
 
-      await new Promise((r) => setTimeout(r, 100))
+      await delay(100)
     }
   }
 

@@ -13,7 +13,8 @@ import { bundleEntry } from '../../src/testing/bundle'
 import { startTestDaemon, type TestDaemon } from '../../src/testing/daemon-harness'
 import { FAKES_BIN } from '../../src/testing/fakes'
 import { runCliWith } from '../../src/testing/cli'
-import { assertPidsGone, pidAlive } from '../../src/testing/leak-check'
+import { pidAlive } from '../../src/shared/process'
+import { assertPidsGone } from '../../src/testing/leak-check'
 
 // Captured before any test stubs HOME. Only ever read, never written.
 const REAL_QUE_HOME = join(os.homedir(), '.que')

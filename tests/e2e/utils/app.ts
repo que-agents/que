@@ -9,6 +9,7 @@ import {
   expect,
   type Page
 } from '@playwright/test'
+import { pidAlive } from '../../../src/shared/process'
 import { que } from './que'
 
 export const ROOT = resolve(__dirname, '../../..')
@@ -57,16 +58,6 @@ export function testEnv(
     GIT_CONFIG_GLOBAL: join(queHome, 'gitconfig'),
     GIT_CONFIG_NOSYSTEM: '1',
     ...extra
-  }
-}
-
-function pidAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0)
-
-    return true
-  } catch {
-    return false
   }
 }
 
