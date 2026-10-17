@@ -7,11 +7,18 @@
 import { expect, test } from '@playwright/test'
 import { hhmm } from '../../src/shared/format'
 import type { Workspace } from '../../src/shared/types'
+import { makeTempRepo } from '../../src/testing/temp-repo'
 import { QuietBoardPage } from './pages/QuietBoardPage'
 import { TopBarPage } from './pages/TopBarPage'
-import { findWindow, type LaunchedApp, launchApp, newQueHome, windowStates } from './utils/app'
+import {
+  findWindow,
+  type LaunchedApp,
+  launchApp,
+  newQueHome,
+  windowStates,
+  tempDir
+} from './utils/app'
 import { que, queJson, queResult } from './utils/que'
-import { makeRepo } from './utils/repo'
 
 let launched: LaunchedApp
 
@@ -20,7 +27,7 @@ test.afterEach(async () => {
 })
 
 test('quiet hours show only the board; an unlock brings detail back until it runs out', async () => {
-  const repo = makeRepo()
+  const repo = makeTempRepo(tempDir('que-e2e-repo-'))
   // A window an hour either side of now, and a 0.1-minute unlock.
   const now = Date.now()
   const windowEnd = hhmm(now + 60 * 60_000)

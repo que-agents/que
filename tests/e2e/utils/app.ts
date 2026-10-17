@@ -2,7 +2,7 @@
 // QUE_E2E=1 (the renderer's window.__que hook), and the fakes first on PATH.
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
-import { join, resolve } from 'node:path'
+import { join } from 'node:path'
 import {
   type ElectronApplication,
   _electron as electron,
@@ -10,10 +10,8 @@ import {
   type Page
 } from '@playwright/test'
 import { pidAlive } from '../../../src/shared/process'
+import { FAKES_BIN, readFakeLog, REPO_ROOT } from '../../../src/testing/fakes'
 import { que } from './que'
-
-export const ROOT = resolve(__dirname, '../../..')
-export const FAKES_BIN = join(ROOT, 'tests/fakes/bin')
 
 export interface LaunchedApp {
   app: ElectronApplication
@@ -61,14 +59,12 @@ export function testEnv(
   }
 }
 
-function readLog(path: string): string[][] {
-  if (!existsSync(path)) return []
-
-  return readFileSync(path, 'utf8')
-    .trim()
-    .split('\n')
-    .map((l) => (JSON.parse(l) as { argv: string[] }).argv)
+/** A fresh directory under the system temp dir. */
+export function tempDir(prefix: string): string {
+  return mkdtempSync(join(os.tmpdir(), prefix))
 }
+
+const argvOf = (path: string): string[][] => readFakeLog(path).map((call) => call.argv)
 
 /**
  * A fresh QUE_HOME, for specs that seed state with the CLI before launching.
@@ -76,7 +72,7 @@ function readLog(path: string): string[][] {
  * unless the spec passes its own config.
  */
 export function newQueHome(config = '[quiet_hours]\nenabled = false\n'): string {
-  const queHome = mkdtempSync(join(os.tmpdir(), 'que-e2e-'))
+  const queHome = tempDir('que-e2e-')
   writeFileSync(
     join(queHome, 'gitconfig'),
     '[user]\n\tname = que e2e\n\temail = e2e@que.invalid\n[commit]\n\tgpgsign = false\n'
@@ -90,7 +86,13 @@ export async function launchApp(
   opts: { queHome?: string; env?: Record<string, string> } = {}
 ): Promise<LaunchedApp> {
   const queHome = opts.queHome ?? newQueHome()
-  const app = await electron.launch({ args: ['.'], cwd: ROOT, env: testEnv(queHome, opts.env) })
+
+  const app = await electron.launch({
+    args: ['.'],
+    cwd: REPO_ROOT,
+    env: testEnv(queHome, opts.env)
+  })
+
   const window = await app.firstWindow()
   // One window size everywhere: hosted runners have a 1024px-wide display, which clamps the
   // app's default 1100x720, so the specs see the same (narrow) layout on a laptop as in CI.
@@ -104,9 +106,9 @@ export async function launchApp(
     app,
     window,
     queHome,
-    ghCalls: () => readLog(join(queHome, 'fake-gh.log')),
-    claudeCalls: () => readLog(join(queHome, 'fake-claude.log')),
-    codeCalls: () => readLog(join(queHome, 'fake-code.log')),
+    ghCalls: () => argvOf(join(queHome, 'fake-gh.log')),
+    claudeCalls: () => argvOf(join(queHome, 'fake-claude.log')),
+    codeCalls: () => argvOf(join(queHome, 'fake-code.log')),
     close: async () => {
       // The app first, so it cannot reconnect and respawn a daemon.
       await app.close().catch(() => {})

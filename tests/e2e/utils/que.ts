@@ -2,10 +2,11 @@
 // state with no window in the way.
 import { execFileSync, spawnSync } from 'node:child_process'
 import { join } from 'node:path'
-import { ROOT, testEnv } from './app'
+import { REPO_ROOT } from '../../../src/testing/fakes'
+import { testEnv } from './app'
 
 export function que(queHome: string, ...args: string[]): string {
-  return execFileSync(process.execPath, [join(ROOT, 'out/cli/index.js'), ...args], {
+  return execFileSync(process.execPath, [join(REPO_ROOT, 'out/cli/index.js'), ...args], {
     env: testEnv(queHome),
     encoding: 'utf8'
   })
@@ -20,7 +21,7 @@ export function queResult(
   queHome: string,
   ...args: string[]
 ): { code: number | null; stdout: string; stderr: string } {
-  const r = spawnSync(process.execPath, [join(ROOT, 'out/cli/index.js'), ...args], {
+  const r = spawnSync(process.execPath, [join(REPO_ROOT, 'out/cli/index.js'), ...args], {
     env: testEnv(queHome),
     encoding: 'utf8'
   })
