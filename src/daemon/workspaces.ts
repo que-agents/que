@@ -6,7 +6,6 @@ import fs from 'node:fs'
 import { basename, dirname, isAbsolute, join, normalize } from 'node:path'
 import {
   formatConfigErrors,
-  loadConfig,
   loadRepoConfig,
   type RepoConfig,
   type UserConfig
@@ -93,6 +92,7 @@ export interface WorkspaceManagerOptions {
   paths: QuePaths
   status: StatusService
   emit: Emit
+  config: () => UserConfig
   /** Kills (and announces) every terminal of a workspace. */
   killTerminals: (workspaceId: string) => void
   log?: (msg: string) => void
@@ -105,14 +105,6 @@ export class WorkspaceManager {
 
   private log(msg: string): void {
     this.opts.log?.(msg)
-  }
-
-  config(): UserConfig {
-    const r = loadConfig({ queHome: this.opts.paths.home })
-
-    if (!r.ok) throw badRequest(`invalid que config: ${formatConfigErrors(r.errors)}`)
-
-    return r.config
   }
 
   private repoConfig(repo: string): RepoConfig {
@@ -144,7 +136,7 @@ export class WorkspaceManager {
       throw badRequest(`invalid project name: ${JSON.stringify(name)}`)
     }
 
-    const configured = Object.values(this.config().repos).find((r) => r.path === path)
+    const configured = Object.values(this.opts.config().repos).find((r) => r.path === path)
 
     const defaultBranch =
       this.repoConfig(path).defaultBranch ??
@@ -219,7 +211,7 @@ export class WorkspaceManager {
       throw badRequest(`invalid branch name ${JSON.stringify(branch)}`)
     }
 
-    const config = this.config()
+    const config = this.opts.config()
     const repo = this.repoConfig(project.path)
     const path = join(config.worktreeRoot, project.name, slug)
 
