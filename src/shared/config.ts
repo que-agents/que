@@ -18,7 +18,24 @@ import {
   type UserConfig,
   type Weekday
 } from './types'
+import {
+  configDefaults,
+  defaultJira,
+  defaultNotifications,
+  defaultQuietHours
+} from './config-defaults'
 import { errorCode, errorMessage } from './errors.decode'
+
+export {
+  configDefaults,
+  DEFAULT_JQL,
+  DEFAULT_START_PROMPT,
+  defaultJira,
+  defaultNotifications,
+  defaultQuietHours
+} from './config-defaults'
+
+export { mergeConfigPatch } from './config-patch.decode'
 
 export type { PermissionMode, RepoEntry, UserConfig } from './types'
 
@@ -46,45 +63,7 @@ export interface ConfigEnv {
 }
 
 export function defaultConfig(env: ConfigEnv): UserConfig {
-  return {
-    worktreeRoot: join(env.queHome, 'worktrees'),
-    stallTimeoutMinutes: 5,
-    statusPollSeconds: 10,
-    prPollSeconds: 60,
-    repos: {},
-    concurrency: 2,
-    maxTurns: 50,
-    maxBudgetUsd: 5,
-    allowBypassPermissions: false,
-    protectedBranches: ['main', 'master', 'release'],
-    quietHours: defaultQuietHours(),
-    notifications: defaultNotifications(),
-    jira: defaultJira()
-  }
-}
-
-export function defaultQuietHours(): QuietHoursConfig {
-  return { enabled: true, default: { start: '19:00', end: '07:00' }, days: {}, unlockMinutes: 20 }
-}
-
-export const DEFAULT_JQL =
-  'assignee = currentUser() AND statusCategory != Done ORDER BY updated DESC'
-
-export const DEFAULT_START_PROMPT =
-  'Read .que/ticket.md, the ticket this workspace is for. Restate the goal in a sentence, look at the code it touches, and propose a plan before changing anything.'
-
-export function defaultJira(): JiraConfig {
-  return {
-    jql: DEFAULT_JQL,
-    pollMinutes: 5,
-    site: null,
-    startPrompt: DEFAULT_START_PROMPT,
-    projects: {}
-  }
-}
-
-export function defaultNotifications(): NotificationsConfig {
-  return { chimeOnComplete: true, chimeOnNeedsInput: false, morningSummary: false }
+  return configDefaults(join(env.queHome, 'worktrees'))
 }
 
 function parseTable(text: string): ConfigResult<Record<string, unknown>> {
@@ -445,30 +424,6 @@ export function readRawConfig(path: string = configPath()): ConfigResult<Record<
   }
 
   return parseTable(text)
-}
-
-function isTable(v: unknown): v is Record<string, unknown> {
-  return typeof v === 'object' && v !== null && !Array.isArray(v) && !(v instanceof Date)
-}
-
-/**
- * Deep-merges a patch into a TOML table without touching the input: tables
- * merge key by key, anything else replaces, and `null` removes the key.
- */
-export function mergeConfigPatch(
-  raw: Record<string, unknown>,
-  patch: Record<string, unknown>
-): Record<string, unknown> {
-  const out: Record<string, unknown> = { ...raw }
-
-  for (const [k, v] of Object.entries(patch)) {
-    if (v === null) delete out[k]
-    else if (isTable(v) && isTable(out[k])) out[k] = mergeConfigPatch(out[k], v)
-    else if (isTable(v)) out[k] = mergeConfigPatch({}, v)
-    else out[k] = v
-  }
-
-  return out
 }
 
 /** TOML text for a table. Comments in the original file are not preserved. */

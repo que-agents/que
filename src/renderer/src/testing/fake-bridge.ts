@@ -30,6 +30,7 @@ import type {
   WorkspaceStatus
 } from '../../../preload/index.d'
 import { isLocked, quietMessage } from '../../../daemon/quiet-hours'
+import { mergeConfigPatch } from '../../../shared/config-patch.decode'
 import { ErrorCodes, QUIET_REFUSED_METHODS } from '../../../shared/protocol'
 import { workspaceSlug } from '../../../shared/slug'
 import { LIVE_STATES } from '../../../shared/types'
@@ -132,7 +133,10 @@ class FakeBridge {
         get: async () => structuredClone(this.configBook),
         set: async (p) => {
           this.configSets.push(structuredClone(p))
-          this.configBook = { ...this.configBook, raw: mergePatch(this.configBook.raw, p.patch) }
+          this.configBook = {
+            ...this.configBook,
+            raw: mergeConfigPatch(this.configBook.raw, p.patch)
+          }
           this.emit('config.changed', structuredClone(this.configBook))
 
           return structuredClone(this.configBook)
@@ -995,26 +999,6 @@ function toInfo({ input: _input, screen: _screen, ...info }: FakeTerminal): Term
 
 function defaultConfigBook(): ConfigGetResult {
   return { path: '/Users/dev/.config/que/config.toml', config: makeUserConfig(), raw: {} }
-}
-
-function isTable(v: unknown): v is Record<string, unknown> {
-  return typeof v === 'object' && v !== null && !Array.isArray(v)
-}
-
-/** config.set's merge: tables merge, anything else replaces, null removes. */
-function mergePatch(
-  raw: Record<string, unknown>,
-  patch: Record<string, unknown>
-): Record<string, unknown> {
-  const out: Record<string, unknown> = { ...raw }
-
-  for (const [k, v] of Object.entries(patch)) {
-    if (v === null) delete out[k]
-    else if (isTable(v)) out[k] = mergePatch(isTable(out[k]) ? out[k] : {}, v)
-    else out[k] = v
-  }
-
-  return out
 }
 
 function closedQueue(): QueueState {

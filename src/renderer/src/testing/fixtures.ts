@@ -18,6 +18,7 @@ import type {
   WorkspaceFiles,
   WorkspaceFile
 } from '../../../preload/index.d'
+import { configDefaults } from '../../../shared/config-defaults'
 
 let wsCounter = 0
 let taskCounter = 0
@@ -169,33 +170,7 @@ export function makeQuietState(overrides: Partial<QuietState> = {}): QuietState 
 
 /** The parsed defaults, as config.get reports them. */
 export function makeUserConfig(overrides: Partial<UserConfig> = {}): UserConfig {
-  return {
-    worktreeRoot: '/Users/dev/.que/worktrees',
-    stallTimeoutMinutes: 5,
-    statusPollSeconds: 10,
-    prPollSeconds: 60,
-    repos: {},
-    concurrency: 2,
-    maxTurns: 50,
-    maxBudgetUsd: 5,
-    allowBypassPermissions: false,
-    protectedBranches: ['main', 'master', 'release'],
-    quietHours: {
-      enabled: true,
-      default: { start: '19:00', end: '07:00' },
-      days: {},
-      unlockMinutes: 20
-    },
-    notifications: { chimeOnComplete: true, chimeOnNeedsInput: false, morningSummary: false },
-    jira: {
-      jql: 'assignee = currentUser() AND statusCategory != Done ORDER BY updated DESC',
-      pollMinutes: 5,
-      site: null,
-      startPrompt: 'Read .que/ticket.md and propose a plan before changing anything.',
-      projects: {}
-    },
-    ...overrides
-  }
+  return { ...configDefaults('/Users/dev/.que/worktrees'), ...overrides }
 }
 
 /** A ticket assigned to the user, as tickets.list reports it. */
