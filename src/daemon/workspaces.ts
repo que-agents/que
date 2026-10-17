@@ -25,8 +25,6 @@ import type { Emit, StatusService } from './status'
 import { newId, type Store } from './store'
 import { findOnPath, zshDir } from './wrapper'
 
-export { slugify } from '../shared/slug'
-
 interface GitResult {
   ok: boolean
   stdout: string

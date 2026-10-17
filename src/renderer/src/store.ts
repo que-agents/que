@@ -1261,10 +1261,6 @@ export class QueStore {
     this.setLayout(key, { ...l, split: { ...l.split, ratio: clampRatio(ratio) } })
   }
 
-  resetRatio(key: string): void {
-    this.setRatio(key, RATIO_DEFAULT)
-  }
-
   private setLayout(key: string, layout: PaneLayout): void {
     this.setWith((s) => ({ layouts: { ...s.layouts, [key]: layout } }))
 

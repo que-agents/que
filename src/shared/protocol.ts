@@ -19,8 +19,6 @@ import type {
   WorkspaceStatus
 } from './types'
 
-export const PROTOCOL_VERSION = 1
-
 // ---- method types ---------------------------------------------------------
 
 export interface PingResult {
@@ -483,8 +481,6 @@ export interface Events {
 }
 
 export type EventName = keyof Events
-
-export type EventData<E extends EventName> = Events[E]
 
 // ---- envelopes ------------------------------------------------------------
 
