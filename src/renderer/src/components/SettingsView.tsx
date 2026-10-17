@@ -143,6 +143,11 @@ interface FieldSpec {
   patch: (f: Form) => ConfigPatch
   /** A quiet-hours write, which may end tonight's window early and so asks first. */
   quiet?: true
+  /**
+   * The config key this field writes when another field writes it too. Such fields write on one
+   * chain, and each write carries the latest values of all of them.
+   */
+  shared?: 'quiet_hours.default' | 'start_prompt'
 }
 
 /** Copies one key of `from` into `to`. */
@@ -185,7 +190,8 @@ const startPromptSpec: FieldSpec = {
     f.useStartPrompt
       ? filled(f.workspacePrompt, 'The workspace start prompt cannot be empty')
       : null,
-  patch: (f) => ({ start_prompt: f.useStartPrompt ? f.workspacePrompt : null })
+  patch: (f) => ({ start_prompt: f.useStartPrompt ? f.workspacePrompt : null }),
+  shared: 'start_prompt'
 }
 
 const DAY_SPECS = Object.fromEntries(WEEKDAYS.map((d) => [`day-${d}`, daySpec(d)])) as Record<
@@ -203,13 +209,15 @@ const SPECS = {
     take: own('start'),
     check: (f) => windowProblem(f.start, f.end),
     patch: (f) => quietPatch({ default: [f.start, f.end] }),
-    quiet: true
+    quiet: true,
+    shared: 'quiet_hours.default'
   },
   'quiet-end': {
     take: own('end'),
     check: (f) => windowProblem(f.start, f.end),
     patch: (f) => quietPatch({ default: [f.start, f.end] }),
-    quiet: true
+    quiet: true,
+    shared: 'quiet_hours.default'
   },
   'unlock-minutes': {
     take: own('unlockMinutes'),
@@ -299,6 +307,32 @@ const SPECS = {
 
 type Field = keyof typeof SPECS
 
+const FIELDS = Object.keys(SPECS) as Field[]
+
+/** The chain a field's writes run on: its shared config key, or the field itself. */
+function chainOf(field: Field): string {
+  const spec: FieldSpec = SPECS[field]
+
+  return spec.shared ?? field
+}
+
+/** The fields whose writes run on this field's chain, itself included. */
+function siblingsOf(field: Field): Field[] {
+  return FIELDS.filter((f) => chainOf(f) === chainOf(field))
+}
+
+/**
+ * Copies what a write of `field` sends from `from` over `into`: its own value and that of every
+ * field sharing its config key, so a write never sends a sibling's stale value.
+ */
+function takeWritten(field: Field, from: Form, into: Form): Form {
+  let out = into
+
+  for (const f of siblingsOf(field)) out = SPECS[f].take(from, out)
+
+  return out
+}
+
 /** The instructions file's text, written through instructions.set rather than config.set. */
 const CONTENT = 'instructions-content'
 
@@ -345,8 +379,11 @@ export default function SettingsView(): React.JSX.Element {
   const formRef = useRef<Form | null>(null)
   /** What the daemon last accepted, field by field: the base of every write and of Escape. */
   const saved = useRef<Form | null>(null)
-  /** Each field's writes run one after another, so a slow answer never lands after a newer one. */
-  const chains = useRef(new Map<Mark, Promise<void>>())
+  /**
+   * Each field's writes (or those of the fields sharing a config key) run one after another, so a
+   * slow answer never lands after a newer one.
+   */
+  const chains = useRef(new Map<string, Promise<void>>())
   const quietRef = useRef(quiet)
   const live = useRef(true)
   const timers = useRef(new Set<ReturnType<typeof setTimeout>>())
@@ -451,10 +488,10 @@ export default function SettingsView(): React.JSX.Element {
     timers.current.add(t)
   }
 
-  const enqueue = (field: Mark, job: () => Promise<void>): void => {
-    const prev = chains.current.get(field) ?? Promise.resolve()
+  const enqueue = (chain: string, job: () => Promise<void>): void => {
+    const prev = chains.current.get(chain) ?? Promise.resolve()
     chains.current.set(
-      field,
+      chain,
       prev.then(job).catch(() => {})
     )
   }
@@ -487,13 +524,13 @@ export default function SettingsView(): React.JSX.Element {
 
     if (!next || !base) return
     const spec: FieldSpec = SPECS[field]
-    const problem = spec.check?.(spec.take(next, base)) ?? null
+    const problem = spec.check?.(takeWritten(field, next, base)) ?? null
     setError(field, problem)
 
     if (problem) return
-    enqueue(field, async () => {
+    enqueue(chainOf(field), async () => {
       const before = saved.current ?? base
-      const candidate = spec.take(next, before)
+      const candidate = takeWritten(field, next, before)
       const patch = spec.patch(candidate)
 
       if (JSON.stringify(patch) === JSON.stringify(spec.patch(before))) return
@@ -501,10 +538,12 @@ export default function SettingsView(): React.JSX.Element {
 
       try {
         await store.saveConfig({ patch, applyTonight })
-        saved.current = spec.take(next, saved.current ?? before)
+        saved.current = takeWritten(field, next, saved.current ?? before)
 
         if (!live.current) return
-        setError(field, null)
+
+        // The write carried every sibling's value, so none of their errors still stands.
+        for (const f of siblingsOf(field)) setError(f, null)
         flash(field)
       } catch (err) {
         if (live.current) setError(field, errorMessage(err))

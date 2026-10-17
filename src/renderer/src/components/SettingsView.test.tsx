@@ -325,6 +325,39 @@ describe('SettingsView', () => {
     })
   })
 
+  describe('fields sharing a config key', () => {
+    it('writes quiet hours Start then End so the daemon ends up with both, even while the first is in flight', async () => {
+      const user = userEvent.setup()
+      fakeBridge.setConfig({
+        quietHours: {
+          enabled: true,
+          default: { start: '22:00', end: '07:00' },
+          days: {},
+          unlockMinutes: 20
+        }
+      })
+      await openSettings(user)
+      fakeBridge.holdConfigSets()
+
+      await retype(user, await screen.findByTestId('settings-quiet-start'), '21:15')
+      await user.tab()
+      await retype(user, screen.getByTestId('settings-quiet-end'), '06:30')
+      await user.tab()
+      fakeBridge.releaseConfigSets()
+
+      await waitFor(() => expect(fakeBridge.configSetCalls()).toHaveLength(2))
+      expect(fakeBridge.configSetCalls().map((c) => c.patch)).toEqual([
+        { quiet_hours: { default: ['21:15', '07:00'] } },
+        { quiet_hours: { default: ['21:15', '06:30'] } }
+      ])
+      expect((await fakeBridge.api.config.get()).raw).toEqual({
+        quiet_hours: { default: ['21:15', '06:30'] }
+      })
+      expect(screen.getByTestId('settings-quiet-start')).toHaveValue('21:15')
+      expect(screen.getByTestId('settings-quiet-end')).toHaveValue('06:30')
+    })
+  })
+
   describe('apply tonight', () => {
     it("asks before a change that ends tonight's quiet hours early, and applies it tonight on Yes", async () => {
       const user = userEvent.setup()
@@ -432,6 +465,36 @@ describe('SettingsView new workspaces', () => {
       { start_prompt: suggestion },
       { start_prompt: 'Read .que/brief.md and ask before editing.' }
     ])
+  })
+
+  it('writes the toggle and its prompt in order, so leaving the prompt unchanged mid-write sends nothing', async () => {
+    const user = userEvent.setup()
+    await openSettings(user)
+    fakeBridge.holdConfigSets()
+
+    await user.click(await screen.findByTestId('settings-start-prompt-enabled'))
+    const prompt = screen.getByTestId('settings-workspace-prompt')
+    await user.click(prompt)
+    await user.tab()
+    fakeBridge.releaseConfigSets()
+    await retype(user, prompt, 'Plan from .que/brief.md first.')
+    await user.tab()
+
+    await waitFor(() => {
+      expect(fakeBridge.configSetCalls().at(-1)?.patch).toEqual({
+        start_prompt: 'Plan from .que/brief.md first.'
+      })
+    })
+    expect(fakeBridge.configSetCalls().map((c) => c.patch)).toEqual([
+      {
+        start_prompt:
+          'Read .que/brief.md. Restate the goal, read the relevant code, and propose a plan before editing anything.'
+      },
+      { start_prompt: 'Plan from .que/brief.md first.' }
+    ])
+    expect((await fakeBridge.api.config.get()).raw).toEqual({
+      start_prompt: 'Plan from .que/brief.md first.'
+    })
   })
 
   it('loads a configured prompt turned on, and turning it off removes start_prompt', async () => {
