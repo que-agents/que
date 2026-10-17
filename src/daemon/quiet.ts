@@ -18,6 +18,7 @@ import {
 } from './quiet-hours'
 import type { Emit } from './status'
 import type { Store } from './store'
+import { errorMessage } from '../shared/errors.decode'
 
 const REFUSED: ReadonlySet<string> = new Set(QUIET_REFUSED_METHODS)
 
@@ -282,7 +283,7 @@ export class QuietService {
       const report = await this.o.report(window.start.toISOString())
       this.o.emit('quiet.morningSummary', { report })
     } catch (err) {
-      this.o.log?.(`quiet: morning summary failed: ${(err as Error).message}`)
+      this.o.log?.(`quiet: morning summary failed: ${errorMessage(err)}`)
     }
   }
 

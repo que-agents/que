@@ -9,14 +9,14 @@ import { expect, test } from '@playwright/test'
 import type { StatusJson } from '../../src/cli/workspaces'
 import type { TermInfo } from '../../src/shared/protocol'
 import type { Project, Workspace } from '../../src/shared/types'
+import { makeTempRepo } from '../../src/testing/temp-repo'
 import { AppShellPage } from './pages/AppShellPage'
 import { ChangesPage } from './pages/ChangesPage'
 import { SidebarPage } from './pages/SidebarPage'
 import { TerminalPage } from './pages/TerminalPage'
 import { TopBarPage } from './pages/TopBarPage'
-import { type LaunchedApp, launchApp, newQueHome } from './utils/app'
+import { type LaunchedApp, launchApp, newQueHome, tempDir } from './utils/app'
 import { queJson } from './utils/que'
-import { makeRepo } from './utils/repo'
 
 let launched: LaunchedApp
 
@@ -25,7 +25,7 @@ test.afterEach(async () => {
 })
 
 test('a workspace made in the sidebar runs claude, shows needs input, opens in the editor, and goes with its project', async () => {
-  const repo = makeRepo()
+  const repo = makeTempRepo(tempDir('que-e2e-repo-'))
   const queHome = newQueHome()
   let project: Project
   let workspace: Workspace

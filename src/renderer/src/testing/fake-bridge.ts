@@ -29,8 +29,12 @@ import type {
   WorkspaceFiles,
   WorkspaceStatus
 } from '../../../preload/index.d'
+import { isLocked, quietMessage } from '../../../daemon/quiet-hours'
+import { buildReport } from '../../../daemon/report'
+import { mergeConfigPatch } from '../../../shared/config-patch.decode'
 import { ErrorCodes, QUIET_REFUSED_METHODS } from '../../../shared/protocol'
 import { workspaceSlug } from '../../../shared/slug'
+import { LIVE_STATES } from '../../../shared/types'
 import { makeQuietState, makeUserConfig } from './fixtures'
 
 export type FakeQueApi = QueApi
@@ -130,7 +134,10 @@ class FakeBridge {
         get: async () => structuredClone(this.configBook),
         set: async (p) => {
           this.configSets.push(structuredClone(p))
-          this.configBook = { ...this.configBook, raw: mergePatch(this.configBook.raw, p.patch) }
+          this.configBook = {
+            ...this.configBook,
+            raw: mergeConfigPatch(this.configBook.raw, p.patch)
+          }
           this.emit('config.changed', structuredClone(this.configBook))
 
           return structuredClone(this.configBook)
@@ -295,7 +302,8 @@ class FakeBridge {
         stop: async ({ id }) => {
           const t = this.task(id)
 
-          if (!LIVE.has(t.state)) throw rpcError('conflict', `task ${id} is already ${t.state}`)
+          if (!LIVE_STATES.has(t.state))
+            throw rpcError('conflict', `task ${id} is already ${t.state}`)
           this.setTaskState(id, 'stopped')
 
           return { ...this.task(id) }
@@ -303,7 +311,7 @@ class FakeBridge {
         remove: async ({ id }) => {
           const t = this.task(id)
 
-          if (LIVE.has(t.state)) throw rpcError('conflict', `task ${id} is ${t.state}`)
+          if (LIVE_STATES.has(t.state)) throw rpcError('conflict', `task ${id} is ${t.state}`)
           this.tasks.delete(id)
 
           return { ok: true }
@@ -548,8 +556,13 @@ class FakeBridge {
   private refuseIfQuiet(method: (typeof QUIET_REFUSED_METHODS)[number]): void {
     if (!QUIET_REFUSED_METHODS.includes(method)) return
 
-    if (this.quiet.inQuietHours && !this.quiet.unlockedUntil) {
-      throw rpcError('quiet_hours', 'quiet hours until 07:00; run `que unlock` for 20 minutes')
+    if (isLocked(this.quiet)) {
+      // A state seeded without a window ends at 07:00, like the fixtures' night.
+      const end = this.quiet.windowEnd
+        ? Date.parse(this.quiet.windowEnd)
+        : new Date(2026, 9, 14, 7, 0).getTime()
+
+      throw rpcError('quiet_hours', quietMessage(end, this.quiet.unlockMinutes))
     }
   }
 
@@ -606,7 +619,7 @@ class FakeBridge {
   setTaskState(id: string, state: TaskState, reason?: string): void {
     const t = this.task(id)
     const at = new Date().toISOString()
-    const terminal = !LIVE.has(state)
+    const terminal = !LIVE_STATES.has(state)
     this.tasks.set(id, {
       ...t,
       state,
@@ -854,57 +867,8 @@ class FakeBridge {
     return t
   }
 
-  /** Every task in the book, grouped like the daemon's report (no time window). */
+  /** Every task in the book through the daemon's buildReport, with no time window. */
   private report(since?: string): Report {
-    const groups: Report['groups'] = {
-      done: [],
-      stuck: [],
-      failed: [],
-      stopped: [],
-      paused: [],
-      running: [],
-      queued: []
-    }
-
-    const totals = {
-      tasks: 0,
-      prs: 0,
-      turns: 0,
-      costUsd: 0,
-      durationMs: 0,
-      workspaces: 0,
-      needsInput: 0
-    }
-
-    for (const t of this.tasks.values()) {
-      const group =
-        t.state === 'preparing' || t.state === 'finishing'
-          ? 'running'
-          : (t.state as keyof typeof groups)
-
-      const durationMs =
-        t.startedAt && t.finishedAt ? Date.parse(t.finishedAt) - Date.parse(t.startedAt) : null
-
-      groups[group].push({
-        id: t.id,
-        title: t.title,
-        state: t.state,
-        reason: t.reason,
-        workspace: t.workspaceId ? (this.workspaces.get(t.workspaceId)?.name ?? null) : null,
-        workspaceId: t.workspaceId,
-        branch: t.branch,
-        prUrl: t.prUrl,
-        durationMs,
-        turns: t.turns,
-        costUsd: t.costUsd
-      })
-      totals.tasks += 1
-      totals.prs += t.prUrl ? 1 : 0
-      totals.turns += t.turns
-      totals.costUsd += t.costUsd
-      totals.durationMs += durationMs ?? 0
-    }
-
     const rank = (s: WorkspaceStatus): number =>
       s === 'needs_input' ? 0 : s === 'stuck' ? 1 : s === 'working' ? 2 : 3
 
@@ -912,11 +876,11 @@ class FakeBridge {
       .map((d) => ({ ...d }))
       .sort((a, b) => rank(a.status) - rank(b.status))
 
-    totals.workspaces = digests.length
-    totals.needsInput = digests.filter((d) => d.status === 'needs_input').length
-    const now = new Date().toISOString()
+    const names = new Map([...this.workspaces.values()].map((w) => [w.id, w.name]))
+    const epoch = new Date(0).toISOString()
+    const report = buildReport([...this.tasks.values()], names, epoch, Date.now(), digests)
 
-    return { since: since ?? now, generatedAt: now, groups, workspaces: digests, totals }
+    return { ...report, since: since ?? report.generatedAt }
   }
 
   private removeWorkspace(id: string): void {
@@ -985,36 +949,8 @@ function toInfo({ input: _input, screen: _screen, ...info }: FakeTerminal): Term
   return info
 }
 
-const LIVE: ReadonlySet<TaskState> = new Set([
-  'queued',
-  'preparing',
-  'running',
-  'paused',
-  'finishing'
-])
-
 function defaultConfigBook(): ConfigGetResult {
   return { path: '/Users/dev/.config/que/config.toml', config: makeUserConfig(), raw: {} }
-}
-
-function isTable(v: unknown): v is Record<string, unknown> {
-  return typeof v === 'object' && v !== null && !Array.isArray(v)
-}
-
-/** config.set's merge: tables merge, anything else replaces, null removes. */
-function mergePatch(
-  raw: Record<string, unknown>,
-  patch: Record<string, unknown>
-): Record<string, unknown> {
-  const out: Record<string, unknown> = { ...raw }
-
-  for (const [k, v] of Object.entries(patch)) {
-    if (v === null) delete out[k]
-    else if (isTable(v)) out[k] = mergePatch(isTable(out[k]) ? out[k] : {}, v)
-    else out[k] = v
-  }
-
-  return out
 }
 
 function closedQueue(): QueueState {

@@ -1,7 +1,7 @@
 // Projects (registered git repos) and workspaces (git worktrees on their own
 // branch). Every git call is execFile('git', [...]) with an explicit cwd; user
 // input never reaches a shell string.
-import { type ChildProcess, execFile, spawn } from 'node:child_process'
+import { type ChildProcess, spawn } from 'node:child_process'
 import fs from 'node:fs'
 import { basename, dirname, isAbsolute, join, normalize } from 'node:path'
 import {
@@ -11,6 +11,7 @@ import {
   type RepoConfig,
   type UserConfig
 } from '../shared/config'
+import { run } from '../shared/exec'
 import type { QuePaths } from '../shared/paths'
 import type {
   ProjectAddParams,
@@ -24,8 +25,6 @@ import type { Emit, StatusService } from './status'
 import { newId, type Store } from './store'
 import { findOnPath, zshDir } from './wrapper'
 
-export { slugify } from '../shared/slug'
-
 interface GitResult {
   ok: boolean
   stdout: string
@@ -33,21 +32,15 @@ interface GitResult {
 }
 
 /** Runs git in `cwd`; never throws. */
-export function git(cwd: string, args: string[], timeoutMs = 60_000): Promise<GitResult> {
-  return new Promise((resolve) => {
-    execFile(
-      'git',
-      args,
-      {
-        cwd,
-        encoding: 'utf8',
-        timeout: timeoutMs,
-        maxBuffer: 16 * 1024 * 1024,
-        env: { ...process.env, GIT_TERMINAL_PROMPT: '0' }
-      },
-      (err, stdout, stderr) => resolve({ ok: !err, stdout: stdout.trim(), stderr: stderr.trim() })
-    ).stdin?.end()
+export async function git(cwd: string, args: string[], timeoutMs = 60_000): Promise<GitResult> {
+  const r = await run('git', args, {
+    cwd,
+    timeoutMs,
+    maxBuffer: 16 * 1024 * 1024,
+    env: { ...process.env, GIT_TERMINAL_PROMPT: '0' }
   })
+
+  return { ok: r.ok, stdout: r.stdout.trim(), stderr: r.stderr.trim() }
 }
 
 /**

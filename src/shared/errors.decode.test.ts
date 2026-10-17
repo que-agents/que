@@ -1,3 +1,6 @@
+import fs from 'node:fs'
+import os from 'node:os'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { errorCode, errorMessage } from './errors.decode'
 
@@ -28,6 +31,27 @@ describe('errorCode', () => {
     expect(errorCode(new Error('socket closed'))).toBeNull()
     expect(errorCode({ code: 404 })).toBeNull()
     expect(errorCode('not_found')).toBeNull()
+    expect(errorCode(null)).toBeNull()
+  })
+})
+
+describe('errorCode on node errors', () => {
+  it('reads the code of a real filesystem error', () => {
+    let thrown: unknown
+
+    try {
+      fs.readFileSync(join(os.tmpdir(), `que-missing-${process.pid}-${Date.now()}`))
+    } catch (err) {
+      thrown = err
+    }
+
+    expect(errorCode(thrown)).toBe('ENOENT')
+  })
+
+  it('is null for errors without a string code and for non-errors', () => {
+    expect(errorCode(new Error('plain'))).toBeNull()
+    expect(errorCode({ code: 2 })).toBeNull()
+    expect(errorCode('ENOENT')).toBeNull()
     expect(errorCode(null)).toBeNull()
   })
 })

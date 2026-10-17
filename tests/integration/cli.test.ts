@@ -5,8 +5,13 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { TermInfo } from '@shared/protocol'
 import type { Workspace } from '@shared/types'
 import type { StatusJson } from '../../src/cli/workspaces'
-import { runCli } from '../../src/testing/cli'
-import { startTestDaemon, type TestDaemon, withQuietOff } from '../../src/testing/daemon-harness'
+import { runCli, runCliJson } from '../../src/testing/cli'
+import {
+  startTestDaemon,
+  type TestDaemon,
+  waitForStatus,
+  withQuietOff
+} from '../../src/testing/daemon-harness'
 import { FAKES_BIN, readFakeLog, setFakePullRequest } from '../../src/testing/fakes'
 import { makeHookEvent } from '../../src/testing/fixtures'
 import { addBareOrigin, gitIn, makeTempRepo } from '../../src/testing/temp-repo'
@@ -31,10 +36,7 @@ describe('que term list', () => {
       rows: 24
     })
 
-    const r = await runCli('term', 'list', '--json')
-
-    expect(r.code).toBe(0)
-    const terms = JSON.parse(r.stdout) as TermInfo[]
+    const terms = await runCliJson<TermInfo[]>('term', 'list', '--json')
     expect(terms).toHaveLength(1)
     expect(terms[0]).toEqual({
       id,
@@ -70,10 +72,7 @@ describe('que daemon status', () => {
   it('prints the running daemon as JSON with --json, and running: false with exit 3 once it is gone', async () => {
     const ping = await daemon.client.request('daemon.ping')
 
-    const r = await runCli('daemon', 'status', '--json')
-
-    expect(r.code).toBe(0)
-    expect(JSON.parse(r.stdout)).toEqual({
+    expect(await runCliJson('daemon', 'status', '--json')).toEqual({
       running: true,
       pid: ping.pid,
       version: ping.version,
@@ -101,7 +100,7 @@ describe('que work and que ws', () => {
     expect(r.stdout.trim()).toBe(path)
     expect(fs.readFileSync(join(path, '.setup-done'), 'utf8')).toBe('ok')
     expect(gitIn(path, 'rev-parse', '--abbrev-ref', 'HEAD')).toBe('app-1432-retry-logic')
-    const listed = JSON.parse((await runCli('ws', 'list', '--json')).stdout) as Workspace[]
+    const listed = await runCliJson<Workspace[]>('ws', 'list', '--json')
     expect(listed).toEqual([expect.objectContaining({ path, status: 'idle' })])
   }, 30_000)
 
@@ -151,11 +150,7 @@ describe('que status', () => {
       name: 'app-1432-retry-logic'
     })
 
-    await expect
-      .poll(async () => (await daemon.client.request('workspace.get', { id: ws.id })).status, {
-        timeout: 10_000
-      })
-      .toBe('idle')
+    await waitForStatus(daemon, ws.id, 'idle')
     await daemon.client.request('hook.event', {
       workspaceId: ws.id,
       payload: makeHookEvent('Notification', {
@@ -165,10 +160,7 @@ describe('que status', () => {
       })
     })
 
-    const r = await runCli('status', '--json')
-
-    expect(r.code).toBe(0)
-    const status = JSON.parse(r.stdout) as StatusJson
+    const status = await runCliJson<StatusJson>('status', '--json')
     expect(status.summary).toEqual({
       working: 0,
       idle: 0,
@@ -218,7 +210,7 @@ describe('que status', () => {
       })
       .toBe('failing')
 
-    const json = JSON.parse((await runCli('status', '--json')).stdout) as StatusJson
+    const json = await runCliJson<StatusJson>('status', '--json')
     const table = (await runCli('status')).stdout
 
     expect(json.workspaces[0].pr).toMatchObject({ number: 12, state: 'open', checks: 'failing' })

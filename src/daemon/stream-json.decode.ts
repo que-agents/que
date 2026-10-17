@@ -1,6 +1,7 @@
 // Decodes one parsed line of Claude Code's `--output-format stream-json`
 // output into the events the task machine acts on. The stream's own field
 // names stay in this file; everything past it reads the domain names below.
+import { isObj, num, type Obj, str } from '../shared/json.decode'
 
 /** One stream-json line, decoded. */
 export type StreamEvent =
@@ -27,15 +28,6 @@ export type StreamEvent =
   /** Any other well-formed line: still a sign the run is alive. */
   | { kind: 'other'; type: string }
 
-type Obj = { [key: string]: unknown }
-
-function isObject(v: unknown): v is Obj {
-  return typeof v === 'object' && v !== null && !Array.isArray(v)
-}
-
-const str = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined)
-const num = (v: unknown): number | undefined => (typeof v === 'number' ? v : undefined)
-
 function decodeSystem(v: Obj): StreamEvent | null {
   switch (v.subtype) {
     case 'init': {
@@ -56,11 +48,11 @@ function decodeSystem(v: Obj): StreamEvent | null {
 }
 
 function decodeAssistant(v: Obj): StreamEvent | null {
-  if (!isObject(v.message) || !Array.isArray(v.message.content)) return null
+  if (!isObj(v.message) || !Array.isArray(v.message.content)) return null
   const texts: string[] = []
 
   for (const block of v.message.content) {
-    if (isObject(block) && block.type === 'text' && typeof block.text === 'string') {
+    if (isObj(block) && block.type === 'text' && typeof block.text === 'string') {
       texts.push(block.text)
     }
   }
@@ -86,7 +78,7 @@ function decodeResult(v: Obj): StreamEvent | null {
 }
 
 function decodeRateLimit(v: Obj): StreamEvent | null {
-  if (!isObject(v.rate_limit_info)) return null
+  if (!isObj(v.rate_limit_info)) return null
   const resetsAt = num(v.rate_limit_info.resetsAt)
 
   return {
@@ -101,7 +93,7 @@ function decodeRateLimit(v: Obj): StreamEvent | null {
  * object with a string `type`, or is a kind que reads but malformed.
  */
 export function decodeStreamEvent(v: unknown): StreamEvent | null {
-  if (!isObject(v) || typeof v.type !== 'string') return null
+  if (!isObj(v) || typeof v.type !== 'string') return null
 
   switch (v.type) {
     case 'system':

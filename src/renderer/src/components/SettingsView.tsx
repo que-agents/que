@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import type { QuietHoursConfig, UserConfig, Weekday } from '../../../preload/index.d'
 import { currentWindow } from '../../../daemon/quiet-hours'
-import { type ConfigPatch, WEEKDAYS } from '../../../shared/types'
-import { errorMessage } from '../errors.decode'
+import { type ConfigPatch, HHMM, WEEKDAYS } from '../../../shared/types'
+import { errorMessage } from '../../../shared/errors.decode'
 import { useQue, useStore } from '../store'
 import Dialog from './Dialog'
 import UnlockStatus from './UnlockStatus'
@@ -33,8 +33,6 @@ interface Form {
 
 /** Monday first, as people read a week. */
 const WEEK: Weekday[] = [...WEEKDAYS.slice(1), WEEKDAYS[0]]
-
-const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/
 
 function toForm(c: UserConfig): Form {
   const q = c.quietHours

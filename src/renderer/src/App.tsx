@@ -6,7 +6,8 @@ import {
   RemoveWorkspaceDialog,
   StartTicketDialog
 } from './components/dialogs'
-import { hhmm } from '../../daemon/quiet-hours'
+import { isLocked } from '../../daemon/quiet-hours'
+import { hhmm } from '../../shared/format'
 import QuietBoard from './components/QuietBoard'
 import ReportView from './components/ReportView'
 import SettingsView from './components/SettingsView'
@@ -18,7 +19,7 @@ import ReviewPane from './components/ReviewPane'
 import ReviewResizer from './components/ReviewResizer'
 import TopBar from './components/TopBar'
 import UpdateBanner from './components/UpdateBanner'
-import { isLocked, QueStore, StoreContext, useQue, useStore } from './store'
+import { QueStore, StoreContext, useQue, useQueSelector, useStore } from './store'
 import { setReviewSource } from './testHook'
 
 function Dialogs(): React.JSX.Element | null {
@@ -71,7 +72,12 @@ function Locked(): React.JSX.Element {
 
 function Shell(): React.JSX.Element {
   const store = useStore()
-  const { view, error, dialog, connected, quiet, review } = useQue()
+  const view = useQueSelector((s) => s.view)
+  const error = useQueSelector((s) => s.error)
+  const dialog = useQueSelector((s) => s.dialog)
+  const connected = useQueSelector((s) => s.connected)
+  const quiet = useQueSelector((s) => s.quiet)
+  const review = useQueSelector((s) => s.review)
   const [sidebarWidth, setSidebarWidth] = useSidebarWidth()
   const locked = isLocked(quiet)
   const termKey = view.kind === 'terminals' && !locked ? view.key : null

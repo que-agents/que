@@ -107,6 +107,18 @@ export type TaskState =
   | 'failed'
   | 'stopped'
 
+/** States a task can still leave on its own (and can still be stopped). */
+export const LIVE_STATES: ReadonlySet<TaskState> = new Set([
+  'queued',
+  'preparing',
+  'running',
+  'paused',
+  'finishing'
+])
+
+/** States with a claude process (or the finisher) at work. */
+export const ACTIVE_STATES: ReadonlySet<TaskState> = new Set(['preparing', 'running', 'finishing'])
+
 /** Where a task's brief came from. */
 export type TaskSource = 'prompt' | 'file'
 
@@ -291,6 +303,9 @@ export interface UpdateInfo {
 }
 
 /** What the daemon says about quiet hours (quiet.state and the quiet.changed event). */
+/** A 24-hour `HH:MM` wall-clock time, as quiet-hours windows are written. */
+export const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/
+
 export interface QuietState {
   enabled: boolean
   inQuietHours: boolean

@@ -1,5 +1,5 @@
 // Shared CLI helpers: daemon connection, tables, and id-or-name lookups.
-import { quietMessage } from '../daemon/quiet-hours'
+import { isLocked, quietMessage } from '../daemon/quiet-hours'
 import { DaemonClient, DaemonError } from '../shared/client'
 import type { Project, Workspace } from '../shared/types'
 
@@ -20,6 +20,11 @@ export async function withClient<T>(fn: (c: DaemonClient) => Promise<T>, start =
   }
 }
 
+/** The `--json` output: the value as indented JSON. */
+export function printJson<T>(value: T): void {
+  console.log(JSON.stringify(value, null, 2))
+}
+
 export function printTable(header: string[], rows: string[][]): void {
   const widths = header.map((h, i) => Math.max(h.length, ...rows.map((r) => r[i].length)))
 
@@ -32,20 +37,6 @@ export function printTable(header: string[], rows: string[][]): void {
   console.log(fmt(header))
 
   for (const r of rows) console.log(fmt(r))
-}
-
-/** `42s`, `5m`, `3h`, `2d`; `-` when there is no timestamp. */
-export function formatAge(iso: string | null, now = Date.now()): string {
-  if (!iso) return '-'
-  const s = Math.max(0, Math.floor((now - Date.parse(iso)) / 1000))
-
-  if (s < 60) return `${s}s`
-
-  if (s < 3600) return `${Math.floor(s / 60)}m`
-
-  if (s < 86_400) return `${Math.floor(s / 3600)}h`
-
-  return `${Math.floor(s / 86_400)}d`
 }
 
 export async function findProject(c: DaemonClient, ref: string): Promise<Project> {
@@ -94,7 +85,7 @@ function onlyOne<T extends { id: string }>(items: T[], what: string): T | undefi
 export async function assertNotQuiet(c: DaemonClient): Promise<void> {
   const q = await c.request('quiet.state')
 
-  if (q.inQuietHours && !q.unlockedUntil && q.windowEnd) {
+  if (isLocked(q) && q.windowEnd) {
     throw new DaemonError('quiet_hours', quietMessage(Date.parse(q.windowEnd), q.unlockMinutes))
   }
 }

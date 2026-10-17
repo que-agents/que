@@ -12,6 +12,17 @@ export function slugify(name: string): string {
     .replace(/[^a-z0-9._-]/g, '')
 }
 
+/**
+ * The slug of `text` cut to at most `max` characters, trimmed so it starts and
+ * ends with a letter or digit. It may still be empty; callers check it.
+ */
+export function cappedSlug(text: string, max: number): string {
+  return slugify(text)
+    .replace(/^[^a-z0-9]+/, '')
+    .slice(0, max)
+    .replace(/[^a-z0-9]+$/, '')
+}
+
 /** The slug if it is a valid workspace name, otherwise null. */
 export function workspaceSlug(name: string): string | null {
   const slug = slugify(name)

@@ -14,7 +14,7 @@ import {
   type UserConfig
 } from '../shared/config'
 import type { QuePaths } from '../shared/paths'
-import { slugify, WORKSPACE_NAME_RE } from '../shared/slug'
+import { cappedSlug, WORKSPACE_NAME_RE } from '../shared/slug'
 import type { Project, Task, Workspace } from '../shared/types'
 import { RpcError } from './errors'
 import { finishTask } from './finisher'
@@ -23,16 +23,15 @@ import type { TaskEvent } from './task-machine'
 import type { Store } from './store'
 import type { WorkspaceManager } from './workspaces'
 import { findOnPath } from './wrapper'
+import { errorMessage } from '../shared/errors.decode'
+import { delay, pidAlive } from '../shared/process'
 
 // ---- prompts (pure) ------------------------------------------------------------
 
-const DEFINITION_OF_DONE = `Definition of done:
-- Work only inside this worktree (the current directory); do not touch anything outside it.
-- {test}
-- Commit your work with a clear message. Do not push.
-- End with a short summary of what you changed and why, suitable for a pull request description.`
-
-/** The system prompt appended to every headless run (written to <QUE_HOME>/system.md). */
+/**
+ * The system prompt appended to every headless run (written to <QUE_HOME>/system.md).
+ * It holds the definition of done; a brief adds only the repo's own test command.
+ */
 export const SYSTEM_PROMPT = `You are running unattended as a que overnight task. Nobody is watching this session.
 
 - Work only inside the current git worktree; never modify files outside it.
@@ -42,19 +41,16 @@ export const SYSTEM_PROMPT = `You are running unattended as a que overnight task
 - You cannot ask questions. If you are blocked, explain why in your final message and stop.
 `
 
-/** The brief, then the repo's instructions, then the fixed definition of done. */
+/** The brief, then the repo's instructions, then the repo's test command, when it has one. */
 export function buildPrompt(
   task: Pick<Task, 'brief'>,
   repo: Pick<RepoConfig, 'instructions' | 'test'>
 ): string {
-  const test = repo.test
-    ? `Run the test command \`${repo.test}\` and make it pass.`
-    : 'Run the repository tests if it has any, and make them pass.'
-
   const parts = [task.brief.trim()]
 
   if (repo.instructions?.trim()) parts.push(repo.instructions.trim())
-  parts.push(DEFINITION_OF_DONE.replace('{test}', test))
+
+  if (repo.test) parts.push(`Run the test command \`${repo.test}\` and make it pass.`)
 
   return parts.join('\n\n')
 }
@@ -132,10 +128,7 @@ export function buildClaudeArgs(o: ClaudeArgsOptions): string[] {
 
 /** A workspace name from a task title: its slug, shortened, or `task-<id>`. */
 export function taskWorkspaceName(title: string, taskId: string): string {
-  const slug = slugify(title)
-    .replace(/^[^a-z0-9]+/, '')
-    .slice(0, 48)
-    .replace(/[^a-z0-9]+$/, '')
+  const slug = cappedSlug(title, 48)
 
   return WORKSPACE_NAME_RE.test(slug) ? slug : `task-${taskId.replace(/^tsk_/, '').slice(0, 8)}`
 }
@@ -147,16 +140,6 @@ function signalGroup(pid: number, signal: NodeJS.Signals): void {
     process.kill(-pid, signal)
   } catch {
     // The group is already gone.
-  }
-}
-
-function pidAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0)
-
-    return true
-  } catch (err) {
-    return (err as NodeJS.ErrnoException).code === 'EPERM'
   }
 }
 
@@ -225,7 +208,7 @@ export class TaskRunner {
       fs.mkdirSync(this.o.paths.taskLogsDir, { recursive: true, mode: 0o700 })
       fs.appendFileSync(this.logPath(id), `${lines.map((l) => `[que] ${l}`).join('\n')}\n`)
     } catch (err) {
-      this.o.log(`task ${id}: writing the log failed: ${(err as Error).message}`)
+      this.o.log(`task ${id}: writing the log failed: ${errorMessage(err)}`)
     }
   }
 
@@ -282,7 +265,7 @@ export class TaskRunner {
         return ws
       }
 
-      await new Promise((r) => setTimeout(r, 100))
+      await delay(100)
     }
   }
 
@@ -408,6 +391,12 @@ export class TaskRunner {
     this.o.log(`task ${id}: claude pid ${child.pid} in ${ws.path}`)
 
     const parser = new StreamParser()
+    // stdout goes to the log through a stream, off the event loop; the fd stays
+    // open for claude's stderr until the stream has drained.
+    const out = fs.createWriteStream('', { fd: logFd, autoClose: false })
+    out.on('error', () => {
+      // The log is best effort.
+    })
 
     const feed = (messages: ReturnType<StreamParser['push']>): void => {
       if (this.closed) return
@@ -416,12 +405,7 @@ export class TaskRunner {
     }
 
     child.stdout?.on('data', (chunk: Buffer) => {
-      try {
-        fs.writeSync(logFd, chunk)
-      } catch {
-        // The log is best effort.
-      }
-
+      out.write(chunk)
       feed(parser.push(chunk))
     })
     child.on('error', (err) => this.taskLog(id, `claude process error: ${err.message}`))
@@ -431,26 +415,28 @@ export class TaskRunner {
       if (run.finishTimer) clearTimeout(run.finishTimer)
       // Nothing of the group may outlive the run.
       signalGroup(run.pid, 'SIGKILL')
+      // The rest waits for the stdout still buffered, so que's last lines follow it in the log.
+      out.end(() => {
+        try {
+          fs.closeSync(logFd)
+        } catch {
+          // Already closed.
+        }
 
-      try {
-        fs.closeSync(logFd)
-      } catch {
-        // Already closed.
-      }
+        if (this.runs.get(id) === run) this.runs.delete(id)
 
-      if (this.runs.get(id) === run) this.runs.delete(id)
+        // During shutdown the rows stay as they are; restart recovery picks them up.
+        if (this.closed) return
+        feed(parser.flush())
 
-      // During shutdown the rows stay as they are; restart recovery picks them up.
-      if (this.closed) return
-      feed(parser.flush())
+        if (parser.skipped > 0)
+          this.taskLog(id, `skipped ${parser.skipped} unparsable stdout line(s)`)
+        this.taskLog(id, `claude exited code=${code ?? ''} signal=${signal ?? ''}`)
+        this.o.patch(id, { pid: null })
+        const after = this.o.apply(id, { type: 'exit', code, signal })
 
-      if (parser.skipped > 0)
-        this.taskLog(id, `skipped ${parser.skipped} unparsable stdout line(s)`)
-      this.taskLog(id, `claude exited code=${code ?? ''} signal=${signal ?? ''}`)
-      this.o.patch(id, { pid: null })
-      const after = this.o.apply(id, { type: 'exit', code, signal })
-
-      if (after?.state === 'finishing') this.finish(id)
+        if (after?.state === 'finishing') this.finish(id)
+      })
     })
   }
 

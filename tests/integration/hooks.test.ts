@@ -5,15 +5,16 @@
 import fs from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { DaemonClient } from '@shared/client'
 import type { Events } from '@shared/protocol'
 import type { Workspace } from '@shared/types'
 import { runCliWith } from '../../src/testing/cli'
 import { FAKE_WRAPPERS, FAKES_BIN, readFakeLog, readWrapperLog } from '../../src/testing/fakes'
 import {
+  recordEvents,
   startTestDaemon,
   type TestDaemon,
-  type TestDaemonOptions
+  type TestDaemonOptions,
+  waitForStatus
 } from '../../src/testing/daemon-harness'
 import { makeHookEvent } from '../../src/testing/fixtures'
 import { makeTempRepo } from '../../src/testing/temp-repo'
@@ -25,20 +26,13 @@ afterEach(async () => {
   daemon = undefined
 })
 
-function record<E extends keyof Events>(c: DaemonClient, event: E): Events[E][] {
-  const seen: Events[E][] = []
-  c.on(event, (data) => seen.push(data))
-
-  return seen
-}
-
 /** A daemon plus one idle workspace in a fresh repo. */
 async function idleWorkspace(
   opts: TestDaemonOptions = {}
 ): Promise<{ d: TestDaemon; ws: Workspace; statuses: Events['workspace.status'][] }> {
   const d = await startTestDaemon(opts)
   daemon = d
-  const statuses = record(d.client, 'workspace.status')
+  const statuses = recordEvents(d.client, 'workspace.status')
   const project = await d.client.request('project.add', { path: makeTempRepo(d.home) })
 
   const ws = await d.client.request('workspace.create', {
@@ -46,11 +40,7 @@ async function idleWorkspace(
     name: 'app-1432-retry-logic'
   })
 
-  await expect
-    .poll(async () => (await d.client.request('workspace.get', { id: ws.id })).status, {
-      timeout: 10_000
-    })
-    .toBe('idle')
+  await waitForStatus(d, ws.id, 'idle')
 
   return { d, ws, statuses }
 }

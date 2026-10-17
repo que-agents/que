@@ -1,5 +1,6 @@
 // Decodes a tracker document (its rich text: a tree of typed JSON nodes with
 // `content` arrays and `marks`) into a typed node tree for adf-text.ts.
+import { isObj, type Obj } from '../shared/json.decode'
 
 export type AdfMark = { kind: 'code' } | { kind: 'link'; href: string } | { kind: 'other' }
 
@@ -29,10 +30,6 @@ export type AdfNode =
 
 /** A description as the tracker sends it: a document, a plain string, or nothing usable. */
 export type AdfDocument = AdfNode | { kind: 'plain'; text: string } | null
-
-type Obj = { [key: string]: unknown }
-
-const isObj = (v: unknown): v is Obj => typeof v === 'object' && v !== null && !Array.isArray(v)
 
 function decodeMark(v: unknown): AdfMark | null {
   if (!isObj(v)) return null

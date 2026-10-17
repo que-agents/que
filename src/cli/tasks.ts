@@ -5,13 +5,14 @@ import fs from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import type { Command } from 'commander'
 import { formatUnlocks } from '../daemon/quiet-hours'
-import { formatCost, formatReport, parseSince } from '../daemon/report'
+import { formatReport, parseSince } from '../daemon/report'
 import { type DaemonClient, resolveDaemonScript, resolveRuntime } from '../shared/client'
 import { formatConfigErrors, loadConfig } from '../shared/config'
+import { formatAge, formatCost } from '../shared/format'
 import { queHome, quePaths } from '../shared/paths'
 import type { QueueState, TaskAddParams } from '../shared/protocol'
 import type { Task } from '../shared/types'
-import { CliError, findWorkspace, formatAge, printTable, withClient } from './common'
+import { CliError, findWorkspace, printJson, printTable, withClient } from './common'
 import { LAUNCHD_LABEL, plistPath, renderPlist } from './launchd'
 
 /** `-r`: a configured repo name, a repo path, or a workspace id or name. */
@@ -114,7 +115,7 @@ export function registerTaskCommands(program: Command, daemon: Command): void {
               : undefined
           })
 
-          if (opts.json) console.log(JSON.stringify(task, null, 2))
+          if (opts.json) printJson(task)
           else console.log(`${task.id}  ${task.title}`)
         })
     )
@@ -128,7 +129,7 @@ export function registerTaskCommands(program: Command, daemon: Command): void {
       withClient(async (c) => {
         const list = await c.request('task.list')
 
-        if (opts.json) return console.log(JSON.stringify(list, null, 2))
+        if (opts.json) return printJson(list)
 
         if (list.length === 0) return console.log('no tasks')
         printTable(
@@ -139,7 +140,7 @@ export function registerTaskCommands(program: Command, daemon: Command): void {
             t.reason ?? '-',
             String(t.turns),
             formatCost(t.costUsd),
-            formatAge(t.updatedAt),
+            formatAge(t.updatedAt, Date.now()),
             t.title
           ])
         )
@@ -153,7 +154,7 @@ export function registerTaskCommands(program: Command, daemon: Command): void {
       withClient(async (c) => {
         const t = await c.request('task.get', { id })
 
-        if (opts.json) console.log(JSON.stringify(t, null, 2))
+        if (opts.json) printJson(t)
         else printTask(t)
       }, false)
     )
@@ -191,7 +192,7 @@ export function registerTaskCommands(program: Command, daemon: Command): void {
 
         const s = await c.request('queue.open', jobs === undefined ? {} : { concurrency: jobs })
 
-        if (opts.json) console.log(JSON.stringify(s, null, 2))
+        if (opts.json) printJson(s)
         else printQueue(s)
       })
     )
@@ -213,7 +214,7 @@ export function registerTaskCommands(program: Command, daemon: Command): void {
       withClient(async (c) => {
         const s = await c.request('queue.state')
 
-        if (opts.json) console.log(JSON.stringify(s, null, 2))
+        if (opts.json) printJson(s)
         else printQueue(s)
       }, false)
     )
@@ -230,7 +231,7 @@ export function registerTaskCommands(program: Command, daemon: Command): void {
         if (since === null) throw new CliError(`invalid --since ${opts.since}`)
         const r = await c.request('report.get', since ? { since } : {})
 
-        if (opts.json) return console.log(JSON.stringify(r, null, 2))
+        if (opts.json) return printJson(r)
         const unlocks = await c.request('quiet.log', { since: r.since })
         console.log(formatReport(r, formatUnlocks(unlocks, Date.now())))
       }, false)

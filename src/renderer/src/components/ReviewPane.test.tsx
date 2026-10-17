@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { fakeBridge } from '@renderer/testing/fake-bridge'
+import { openWorkspace } from '@renderer/testing/helpers'
 import {
   makeProject,
   makePullRequest,
@@ -24,24 +25,13 @@ function seed(): void {
   fakeBridge.seedFiles(makeWorkspaceFiles({ workspaceId: retry.id }))
 }
 
-/** Opens the workspace and waits for its first terminal; returns that terminal's id. */
-async function openWorkspace(user: ReturnType<typeof userEvent.setup>): Promise<string> {
-  await user.click(await screen.findByTestId(`sidebar-workspace-${retry.id}-open`))
-  const pane = await screen.findByTestId('pane-0')
-  await waitFor(() => {
-    expect(pane.dataset.activeTerm).not.toBe('')
-  })
-
-  return pane.dataset.activeTerm as string
-}
-
 describe('ReviewPane', () => {
   describe('opening and closing', () => {
     it('opens on Changes from the top bar, beside the terminal, which stays selected', async () => {
       const user = userEvent.setup()
       seed()
       render(<App />)
-      const term = await openWorkspace(user)
+      const term = await openWorkspace(user, retry.id)
       expect(screen.queryByTestId('review-pane')).not.toBeInTheDocument()
 
       await user.click(screen.getByTestId('topbar-review'))
@@ -63,7 +53,7 @@ describe('ReviewPane', () => {
       const user = userEvent.setup()
       seed()
       render(<App />)
-      await openWorkspace(user)
+      await openWorkspace(user, retry.id)
       await user.click(screen.getByTestId('topbar-review'))
 
       await user.click(screen.getByTestId('review-tab-pr'))
@@ -78,7 +68,7 @@ describe('ReviewPane', () => {
       const user = userEvent.setup()
       seed()
       render(<App />)
-      await openWorkspace(user)
+      await openWorkspace(user, retry.id)
       await user.click(screen.getByTestId('topbar-review'))
 
       const tabs = within(screen.getByRole('tablist', { name: 'Review' })).getAllByRole('tab')
@@ -99,7 +89,7 @@ describe('ReviewPane', () => {
       const user = userEvent.setup()
       seed()
       render(<App />)
-      await openWorkspace(user)
+      await openWorkspace(user, retry.id)
 
       await user.click(screen.getByTestId('topbar-review'))
 
@@ -113,7 +103,7 @@ describe('ReviewPane', () => {
       const user = userEvent.setup()
       seed()
       render(<App />)
-      await openWorkspace(user)
+      await openWorkspace(user, retry.id)
       await user.click(screen.getByTestId('topbar-review'))
 
       await user.click(screen.getByRole('tab', { name: 'Pull request' }))
@@ -138,7 +128,7 @@ describe('ReviewPane', () => {
       const user = userEvent.setup()
       seed()
       render(<App />)
-      await openWorkspace(user)
+      await openWorkspace(user, retry.id)
       await user.click(screen.getByTestId('topbar-review'))
       const resizer = screen.getByRole('separator', { name: 'Resize review' })
       expect(resizer).toHaveAttribute('data-testid', 'review-resizer')
@@ -165,7 +155,7 @@ describe('ReviewPane', () => {
       const user = userEvent.setup()
       seed()
       const first = render(<App />)
-      await openWorkspace(user)
+      await openWorkspace(user, retry.id)
       await user.click(screen.getByTestId('topbar-review'))
       await user.click(screen.getByTestId('review-tab-pr'))
       screen.getByTestId('review-resizer').focus()
@@ -173,7 +163,7 @@ describe('ReviewPane', () => {
       first.unmount()
 
       render(<App />)
-      await openWorkspace(user)
+      await openWorkspace(user, retry.id)
 
       expect(screen.getByTestId('review-pane')).toHaveAttribute('data-tab', 'pr')
       expect(screen.getByTestId('review-resizer')).toHaveAttribute('aria-valuenow', '368')
@@ -184,13 +174,13 @@ describe('ReviewPane', () => {
       const user = userEvent.setup()
       seed()
       const first = render(<App />)
-      await openWorkspace(user)
+      await openWorkspace(user, retry.id)
       await user.click(screen.getByTestId('topbar-review'))
       await user.click(screen.getByTestId('review-tab-files'))
       first.unmount()
 
       render(<App />)
-      await openWorkspace(user)
+      await openWorkspace(user, retry.id)
 
       expect(screen.getByTestId('review-pane')).toHaveAttribute('data-tab', 'files')
       expect(screen.getByTestId('review-tab-files')).toHaveAttribute('aria-selected', 'true')
@@ -202,13 +192,13 @@ describe('ReviewPane', () => {
       seed()
       localStorage.setItem('que.review', '{not json')
       const first = render(<App />)
-      await openWorkspace(user)
+      await openWorkspace(user, retry.id)
       expect(screen.queryByTestId('review-pane')).not.toBeInTheDocument()
       first.unmount()
 
       localStorage.setItem('que.review', JSON.stringify({ open: true, tab: 'notes', width: 9999 }))
       render(<App />)
-      await openWorkspace(user)
+      await openWorkspace(user, retry.id)
 
       expect(screen.getByTestId('review-pane')).toHaveAttribute('data-tab', 'changes')
       expect(screen.getByTestId('review-resizer')).toHaveAttribute('aria-valuenow', '520')

@@ -8,12 +8,12 @@ import { join } from 'node:path'
 import { expect, test } from '@playwright/test'
 import type { Project, Task } from '../../src/shared/types'
 import { setFakePullRequest } from '../../src/testing/fakes'
+import { addBareOrigin, makeTempRepo } from '../../src/testing/temp-repo'
 import { AppShellPage } from './pages/AppShellPage'
 import { ReportPage } from './pages/ReportPage'
 import { SidebarPage } from './pages/SidebarPage'
-import { type LaunchedApp, launchApp, newQueHome } from './utils/app'
+import { type LaunchedApp, launchApp, newQueHome, tempDir } from './utils/app'
 import { que, queJson } from './utils/que'
-import { makeRepo } from './utils/repo'
 
 let launched: LaunchedApp
 
@@ -22,7 +22,8 @@ test.afterEach(async () => {
 })
 
 test('a task queued from the CLI runs overnight-style, shows in the sidebar, and lands in the report as a draft PR', async () => {
-  const repo = makeRepo({ origin: true })
+  const repo = makeTempRepo(tempDir('que-e2e-repo-'))
+  addBareOrigin(repo)
   // The PR tracker polls every second here, so the chip follows the fake state fast.
   const queHome = newQueHome('pr_poll_seconds = 1\n[quiet_hours]\nenabled = false\n')
   let project: Project

@@ -113,9 +113,14 @@ if (cmd === 'auth' && sub === 'status') {
     process.stderr.write('gh: failed (fake)\n')
     process.exit(1)
   }
-  const entry = readPrs()[flag('--head') ?? '']
+  const head = flag('--head')
+  const prs = readPrs()
+  const entries = (head === undefined ? Object.values(prs) : [prs[head]]).filter(Boolean)
+  const limit = Number(flag('--limit') ?? 30)
   const fields = (flag('--json') ?? '').split(',').filter(Boolean)
-  const out = entry ? [Object.fromEntries(fields.filter((f) => f in entry).map((f) => [f, entry[f]]))] : []
+  const out = entries
+    .slice(0, limit)
+    .map((entry) => Object.fromEntries(fields.filter((f) => f in entry).map((f) => [f, entry[f]])))
   process.stdout.write(`${JSON.stringify(out)}\n`)
 } else if (cmd === 'pr' && sub === 'view') {
   failIfAsked()

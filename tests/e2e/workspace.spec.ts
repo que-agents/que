@@ -6,13 +6,13 @@
 import { expect, test } from '@playwright/test'
 import type { StatusJson } from '../../src/cli/workspaces'
 import type { Project, Workspace } from '../../src/shared/types'
+import { makeTempRepo } from '../../src/testing/temp-repo'
 import { AppShellPage } from './pages/AppShellPage'
 import { ReportPage } from './pages/ReportPage'
 import { SidebarPage } from './pages/SidebarPage'
 import { TerminalPage } from './pages/TerminalPage'
-import { type LaunchedApp, launchApp } from './utils/app'
+import { type LaunchedApp, launchApp, tempDir } from './utils/app'
 import { que, queJson } from './utils/que'
-import { makeRepo } from './utils/repo'
 
 let launched: LaunchedApp
 
@@ -21,7 +21,7 @@ test.afterEach(async () => {
 })
 
 test('a claude session in a workspace terminal reports needs input to que status', async () => {
-  const repo = makeRepo()
+  const repo = makeTempRepo(tempDir('que-e2e-repo-'))
   let workspace: Workspace
   let termId = ''
   let terminal: TerminalPage

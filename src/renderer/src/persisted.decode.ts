@@ -2,6 +2,7 @@
 // version (or a hand edit) may have written in any shape. Each checks the shape
 // once and returns plain typed fields; the store and layout apply the domain
 // rules (clamping, known tab names, view ids) to the result.
+import { isObj, strings } from '../../shared/json.decode'
 
 /** A remembered review pane, as stored. Fields that are missing or of the wrong type are null. */
 export interface PersistedReview {
@@ -19,21 +20,13 @@ export interface PersistedLayout {
   views: string[]
 }
 
-function isObject(v: unknown): v is { [key: string]: unknown } {
-  return typeof v === 'object' && v !== null && !Array.isArray(v)
-}
-
-function strings(v: unknown): string[] {
-  return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []
-}
-
 function stringOrNull(v: unknown): string | null {
   return typeof v === 'string' ? v : null
 }
 
 /** The review pane state `que.review` holds, or null when it is not an object. */
 export function decodeReview(v: unknown): PersistedReview | null {
-  if (!isObject(v)) return null
+  if (!isObj(v)) return null
 
   return {
     open: v.open === true,
@@ -44,7 +37,7 @@ export function decodeReview(v: unknown): PersistedReview | null {
 
 /** The per-workspace diff bases `que.diffBases` holds; entries that are not non-empty strings are dropped. */
 export function decodeDiffBases(v: unknown): Record<string, string> {
-  if (!isObject(v)) return {}
+  if (!isObj(v)) return {}
 
   return Object.fromEntries(
     Object.entries(v).filter((e): e is [string, string] => typeof e[1] === 'string' && e[1] !== '')
@@ -53,8 +46,8 @@ export function decodeDiffBases(v: unknown): Record<string, string> {
 
 /** A layout `que.layout.<key>` holds, or null when it is not an object. */
 export function decodeLayout(v: unknown): PersistedLayout | null {
-  if (!isObject(v)) return null
-  const sp = isObject(v.split) ? v.split : null
+  if (!isObj(v)) return null
+  const sp = isObj(v.split) ? v.split : null
   const direction = sp?.direction
 
   const split: PersistedLayout['split'] =
@@ -70,5 +63,29 @@ export function decodeLayout(v: unknown): PersistedLayout | null {
     active: [stringOrNull(active[0]), stringOrNull(active[1])],
     focused: v.focused === 1 ? 1 : 0,
     views: strings(v.views)
+  }
+}
+
+/**
+ * What `key` holds, read through `decode`; the fallback when nothing (or an empty string) is
+ * stored, when storage is unavailable, or when `decode` throws on what it finds.
+ */
+export function readStored<T>(key: string, decode: (raw: string) => T, fallback: T): T {
+  try {
+    const raw = localStorage.getItem(key)
+
+    return raw ? decode(raw) : fallback
+  } catch {
+    return fallback
+  }
+}
+
+/** Remembers a value under `key`, or forgets the key for null; with no storage, nothing is kept. */
+export function writeStored(key: string, value: string | null): void {
+  try {
+    if (value === null) localStorage.removeItem(key)
+    else localStorage.setItem(key, value)
+  } catch {
+    // Nothing to remember into; the value still applies for this session.
   }
 }

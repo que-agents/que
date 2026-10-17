@@ -3,7 +3,7 @@
 import { type FormEvent, useState } from 'react'
 import type { Project, Workspace } from '../../../preload/index.d'
 import { workspaceSlug } from '../../../shared/slug'
-import { errorMessage } from '../errors.decode'
+import { errorMessage } from '../../../shared/errors.decode'
 import { useQue, useStore } from '../store'
 import Dialog from './Dialog'
 

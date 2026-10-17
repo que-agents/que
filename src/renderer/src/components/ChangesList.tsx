@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { GLYPH } from '../diff'
-import { formatAge } from '../format'
-import { diffId, useQue, useStore } from '../store'
+import { formatAge } from '../../../shared/format'
+import { diffId, usePanes, useQueSelector } from '../store'
+import { useNow } from '../useNow'
 import { EditorIcon, RefreshIcon } from './icons'
 import Menu, { type MenuItem } from './Menu'
 
@@ -12,11 +13,13 @@ import Menu, { type MenuItem } from './Menu'
  * the ref they are compared against.
  */
 export default function ChangesList({ termKey }: { termKey: string }): React.JSX.Element {
-  const store = useStore()
-  const { connected, diffs, diffErrors, diffScopes, workspaces } = useQue()
-  const ws = workspaces[termKey]
-  const diff = diffs[termKey] ?? null
-  const error = diffErrors[termKey] ?? null
+  const store = usePanes(termKey)
+  const connected = useQueSelector((s) => s.connected)
+  const ws = useQueSelector((s) => s.workspaces[termKey])
+  const entry = useQueSelector((s) => s.diffs[termKey])
+  const scope = useQueSelector((s) => s.diffScopes[termKey])
+  const diff = entry?.data ?? null
+  const error = entry?.error ?? null
   const files = diff?.files ?? []
   const activeId = store.paneActiveId(termKey, store.focusedPane(termKey))
   const [cursor, setCursor] = useState(0)
@@ -24,7 +27,7 @@ export default function ChangesList({ termKey }: { termKey: string }): React.JSX
   const closeMenu = useCallback(() => setMenu(null), [])
   const commitsButton = useRef<HTMLButtonElement>(null)
   const baseButton = useRef<HTMLButtonElement>(null)
-  const chosen = diffScopes[termKey]?.commit ?? null
+  const chosen = scope?.commit ?? null
   const chosenCommit = chosen ? diff?.commits.find((c) => c.sha === chosen) : undefined
 
   const toggleMenu = (which: 'commits' | 'base'): void =>
@@ -62,7 +65,7 @@ export default function ChangesList({ termKey }: { termKey: string }): React.JSX
   const adds = files.reduce((n, f) => n + f.additions, 0)
   const dels = files.reduce((n, f) => n + f.deletions, 0)
 
-  const now = store.now()
+  const now = useNow()
 
   const commitItems: MenuItem[] = [
     {
@@ -72,7 +75,7 @@ export default function ChangesList({ termKey }: { termKey: string }): React.JSX
       action: () => void store.setDiffCommit(termKey, null)
     },
     ...(diff?.commits ?? []).map((c) => ({
-      label: `${c.shortSha} ${c.subject} · ${formatAge(c.at, now)}`,
+      label: `${c.shortSha} ${c.subject} · ${formatAge(c.at, now, ' ago')}`,
       title: `${c.subject} (${c.author})`,
       testId: c.sha,
       selected: c.sha === chosen,

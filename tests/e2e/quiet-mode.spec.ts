@@ -5,12 +5,20 @@
 // brings the main window back with its countdown, and when the (six-second)
 // unlock runs out the board returns on its own.
 import { expect, test } from '@playwright/test'
+import { hhmm } from '../../src/shared/format'
 import type { Workspace } from '../../src/shared/types'
+import { makeTempRepo } from '../../src/testing/temp-repo'
 import { QuietBoardPage } from './pages/QuietBoardPage'
 import { TopBarPage } from './pages/TopBarPage'
-import { findWindow, type LaunchedApp, launchApp, newQueHome, windowStates } from './utils/app'
+import {
+  findWindow,
+  type LaunchedApp,
+  launchApp,
+  newQueHome,
+  windowStates,
+  tempDir
+} from './utils/app'
 import { que, queJson, queResult } from './utils/que'
-import { makeRepo } from './utils/repo'
 
 let launched: LaunchedApp
 
@@ -18,14 +26,8 @@ test.afterEach(async () => {
   await launched?.close() // quits the app AND stops the test daemon
 })
 
-const hhmm = (ms: number): string => {
-  const d = new Date(ms)
-
-  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
-}
-
 test('quiet hours show only the board; an unlock brings detail back until it runs out', async () => {
-  const repo = makeRepo()
+  const repo = makeTempRepo(tempDir('que-e2e-repo-'))
   // A window an hour either side of now, and a 0.1-minute unlock.
   const now = Date.now()
   const windowEnd = hhmm(now + 60 * 60_000)

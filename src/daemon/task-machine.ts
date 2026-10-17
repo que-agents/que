@@ -1,8 +1,10 @@
 // The task state machine, as one pure function: a task and an event in, the
 // next task out. Time is passed in (`now`, epoch ms); nothing here reads the
 // clock, spawns, or touches the store, and the input is never mutated.
-import type { Task, TaskState } from '../shared/types'
+import { ACTIVE_STATES, LIVE_STATES, type Task, type TaskState } from '../shared/types'
 import type { StreamEvent } from './stream-json'
+
+export { ACTIVE_STATES, LIVE_STATES } from '../shared/types'
 
 /** The subset of a hook payload the task rules read. */
 export interface TaskHookPayload {
@@ -29,17 +31,6 @@ export interface TaskLimits {
   stallTimeoutMs: number
 }
 
-/** States a task can still leave on its own. */
-export const LIVE_STATES: ReadonlySet<TaskState> = new Set([
-  'queued',
-  'preparing',
-  'running',
-  'paused',
-  'finishing'
-])
-
-/** States with a claude process (or the finisher) at work. */
-export const ACTIVE_STATES: ReadonlySet<TaskState> = new Set(['preparing', 'running', 'finishing'])
 const TERMINAL: ReadonlySet<TaskState> = new Set(['done', 'stuck', 'failed', 'stopped'])
 
 /** Automatic re-queues (crash, daemon restart) stop once a task reaches this attempt. */

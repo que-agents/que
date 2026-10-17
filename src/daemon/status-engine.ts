@@ -1,7 +1,13 @@
 // The status engine's rules, as pure functions: hook events, terminal exits,
 // clock ticks, and `claude agents --json` entries in; a workspace status out.
 // Time is always passed in (`now`, epoch ms); nothing here reads the clock.
-import type { StatusSummary, TaskState, WorkspaceStatus } from '../shared/types'
+import { formatMinSec } from '../shared/format'
+import {
+  ACTIVE_STATES,
+  type StatusSummary,
+  type TaskState,
+  type WorkspaceStatus
+} from '../shared/types'
 
 export interface StatusState {
   status: WorkspaceStatus
@@ -182,8 +188,6 @@ export function trayTitle(s: StatusSummary): string {
   return `● ${s.working} ▸ ${s.needs_input} ✕ ${s.stuck}`
 }
 
-const TASK_WORKING: ReadonlySet<TaskState> = new Set(['preparing', 'running', 'finishing'])
-
 /**
  * Workspace counts for the tray, with overnight tasks folded in: a task that is
  * running counts its workspace as working (or itself, before it has one), and
@@ -197,7 +201,7 @@ export function traySummary(
   const unplaced: WorkspaceStatus[] = []
 
   for (const t of tasks) {
-    const status: WorkspaceStatus | null = TASK_WORKING.has(t.state)
+    const status: WorkspaceStatus | null = ACTIVE_STATES.has(t.state)
       ? 'working'
       : t.state === 'stuck'
         ? 'stuck'
@@ -225,8 +229,6 @@ export function quietTrayTitle(
   const base = trayTitle(s)
 
   if (!quiet?.inQuietHours || !quiet.unlockedUntil) return base
-  const left = Math.max(0, Math.ceil((Date.parse(quiet.unlockedUntil) - now) / 1000))
-  const mmss = `${String(Math.floor(left / 60)).padStart(2, '0')}:${String(left % 60).padStart(2, '0')}`
 
-  return `🔓 ${mmss} · ${base}`
+  return `🔓 ${formatMinSec(Date.parse(quiet.unlockedUntil) - now)} · ${base}`
 }

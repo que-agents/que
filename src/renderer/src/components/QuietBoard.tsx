@@ -1,10 +1,9 @@
-import { useEffect, useState } from 'react'
 import type { Task, Workspace } from '../../../preload/index.d'
-import { hhmm } from '../../../daemon/quiet-hours'
-import { formatAge, formatCost, formatDuration, isLiveTask, newestFirst } from '../format'
+import { formatAge, formatCost, formatDuration, hhmm } from '../../../shared/format'
+import { ACTIVE_STATES } from '../../../shared/types'
+import { isLiveTask, newestFirst } from '../format'
 import { useQue, useStore } from '../store'
-
-const RUNNING = new Set(['preparing', 'running', 'finishing'])
+import { useNow } from '../useNow'
 
 interface Row {
   id: string
@@ -32,16 +31,8 @@ function minutes(m: number): string {
 export default function QuietBoard(): React.JSX.Element {
   const store = useStore()
   const { quiet, tasks, workspaces, projects, terminals, connected } = useQue()
-  const [, tick] = useState(0)
-
   // Ages and elapsed times move on their own; events refresh everything else.
-  useEffect(() => {
-    const t = setInterval(() => tick((n) => n + 1), 30_000)
-
-    return () => clearInterval(t)
-  }, [])
-
-  const now = store.now()
+  const now = useNow()
   const since = quiet?.windowStart ? Date.parse(quiet.windowStart) : now
   const projectName = (id: string): string => projects.find((p) => p.id === id)?.name ?? ''
 
@@ -128,7 +119,7 @@ export default function QuietBoard(): React.JSX.Element {
       </header>
       <div className="quiet-board-counts" data-testid="quiet-board-counts">
         <p>
-          {count((t) => RUNNING.has(t.state))} running · {paused.length} paused
+          {count((t) => ACTIVE_STATES.has(t.state))} running · {paused.length} paused
           {resets ? ` (limit resets ${hhmm(Date.parse(resets))})` : ''} ·{' '}
           {count((t) => t.state === 'stuck')} stuck · {count((t) => t.state === 'done')} done
         </p>
@@ -164,7 +155,7 @@ export default function QuietBoard(): React.JSX.Element {
                   <td className={`state state-${r.state}`}>{r.stateText}</td>
                   <td className="state">{r.pr}</td>
                   <td>{r.elapsedMs === null ? '-' : formatDuration(r.elapsedMs)}</td>
-                  <td>{formatAge(r.lastActivity, now)}</td>
+                  <td>{formatAge(r.lastActivity, now, ' ago')}</td>
                   <td>{r.turns ?? '-'}</td>
                   <td>{r.costUsd === null ? '-' : formatCost(r.costUsd)}</td>
                 </tr>

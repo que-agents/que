@@ -12,14 +12,33 @@ async function call<T>(method: string, params?: unknown): Promise<T> {
   throw err
 }
 
+/** The subscriptions per event name, fed by the one `que:event` listener below. */
+const subscriptions = new Map<string, Set<(data: unknown) => void>>()
+
+ipcRenderer.on('que:event', (_e: IpcRendererEvent, name: string, data: unknown) => {
+  const subs = subscriptions.get(name)
+
+  // A copy, so one unsubscribing (or subscribing) mid-dispatch changes only the next event's list.
+  if (subs) for (const deliver of [...subs]) deliver(data)
+})
+
 function subscribe(event: string, cb: (data: unknown) => void): () => void {
-  const listener = (_e: IpcRendererEvent, name: string, data: unknown): void => {
-    if (name === event) cb(data)
+  // A fresh entry per call, so the same callback subscribed twice is called twice.
+  const deliver = (data: unknown): void => cb(data)
+  let subs = subscriptions.get(event)
+
+  if (!subs) {
+    subs = new Set()
+    subscriptions.set(event, subs)
   }
 
-  ipcRenderer.on('que:event', listener)
+  subs.add(deliver)
 
-  return () => ipcRenderer.removeListener('que:event', listener)
+  return () => {
+    subs.delete(deliver)
+
+    if (subs.size === 0 && subscriptions.get(event) === subs) subscriptions.delete(event)
+  }
 }
 
 const api: QueApi = {

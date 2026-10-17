@@ -16,14 +16,14 @@ const ATTENTION: ReadonlySet<WorkspaceStatus> = new Set(['working', 'needs_input
 /**
  * `log` holds every row with `at >= since` plus the last row before it, oldest
  * first. Null when the workspace did nothing in the window and is not active.
+ * `commitsAhead` is left null for the caller, which asks git.
  */
 export function buildWorkspaceDigest(
   ws: Workspace,
   project: Project,
   log: readonly StatusLogEntry[],
   since: number,
-  now: number,
-  extras: { commitsAhead: number | null }
+  now: number
 ): WorkspaceDigest | null {
   const rows = [...log].sort((a, b) => a.at.localeCompare(b.at))
   const inside = rows.filter((r) => Date.parse(r.at) >= since)
@@ -76,7 +76,7 @@ export function buildWorkspaceDigest(
     needsInputCount,
     waitingSince,
     stuckCount,
-    commitsAhead: extras.commitsAhead,
+    commitsAhead: null,
     pr: ws.pr,
     sessionId: ws.sessionId
   }

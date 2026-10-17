@@ -3,6 +3,7 @@
 // from the REST `pulls/{n}/comments` list. Items that are not objects are
 // dropped; missing or mistyped fields read as empty. pr-thread.ts maps the
 // result onto the PrThread que shows.
+import { isObj, numOrNull, objects, strOrEmpty, strOrNull } from '../shared/json.decode'
 
 /** An issue comment. */
 export interface GhComment {
@@ -45,14 +46,6 @@ export interface GhLineComment {
   hunk: string | null
 }
 
-type Obj = { [key: string]: unknown }
-
-const isObj = (v: unknown): v is Obj => !!v && typeof v === 'object' && !Array.isArray(v)
-const objects = (v: unknown): Obj[] => (Array.isArray(v) ? v.filter(isObj) : [])
-const str = (v: unknown): string => (typeof v === 'string' ? v : '')
-const strOrNull = (v: unknown): string | null => (typeof v === 'string' && v ? v : null)
-const numOrNull = (v: unknown): number | null => (typeof v === 'number' ? v : null)
-
 const idOf = (v: unknown): string =>
   typeof v === 'string' || typeof v === 'number' ? String(v) : ''
 
@@ -66,16 +59,16 @@ export function decodePrView(v: unknown): GhPrView {
     comments: objects(view.comments).map((c) => ({
       id: idOf(c.id),
       author: loginOf(c.author),
-      body: str(c.body),
-      createdAt: str(c.createdAt),
+      body: strOrEmpty(c.body),
+      createdAt: strOrEmpty(c.createdAt),
       url: strOrNull(c.url)
     })),
     reviews: objects(view.reviews).map((r) => ({
       id: idOf(r.id),
       author: loginOf(r.author),
-      body: str(r.body),
-      state: str(r.state),
-      submittedAt: str(r.submittedAt),
+      body: strOrEmpty(r.body),
+      state: strOrEmpty(r.state),
+      submittedAt: strOrEmpty(r.submittedAt),
       url: strOrNull(r.url)
     }))
   }
@@ -86,8 +79,8 @@ export function decodeLineComments(v: unknown): GhLineComment[] {
   return objects(v).map((l) => ({
     id: idOf(l.id),
     author: loginOf(l.user),
-    body: str(l.body),
-    createdAt: str(l.created_at),
+    body: strOrEmpty(l.body),
+    createdAt: strOrEmpty(l.created_at),
     url: strOrNull(l.html_url),
     path: strOrNull(l.path),
     line: numOrNull(l.line),

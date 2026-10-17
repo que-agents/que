@@ -1,21 +1,15 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { PullRequest, Report, WorkspaceDigest } from '../../../preload/index.d'
 import { formatUnlocks } from '../../../daemon/quiet-hours'
-import { formatCost, formatDuration, REPORT_GROUPS } from '../format'
-import { errorMessage } from '../errors.decode'
+import { formatCost, formatDuration, hhmm } from '../../../shared/format'
+import { REPORT_GROUPS } from '../../../daemon/report'
+import { errorMessage } from '../../../shared/errors.decode'
 import { useQue, useStore } from '../store'
-import { hhmm } from '../../../daemon/quiet-hours'
 import { PrChip, StatusBadge, TaskBadge } from './StatusBadge'
 import UnlockStatus from './UnlockStatus'
 
 /** Whole minutes: `1h 12m`, `42m`; seconds only under a minute. */
-function workedFor(ms: number): string {
-  const minutes = Math.floor(ms / 60_000)
-
-  if (minutes === 0) return `${Math.round(ms / 1000)}s`
-
-  return minutes >= 60 ? `${Math.floor(minutes / 60)}h ${minutes % 60}m` : `${minutes}m`
-}
+const workedFor = (ms: number): string => formatDuration(ms, { pad: false, seconds: false })
 
 /** `worked 1h 12m · asked for input 2× · waiting since 02:14 · 3 commits ahead`. */
 function digestFacts(d: WorkspaceDigest): string {

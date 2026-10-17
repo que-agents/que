@@ -3,15 +3,17 @@ import fs from 'node:fs'
 import { Command } from 'commander'
 import { DaemonClient, DaemonError } from '../shared/client'
 import { quePaths } from '../shared/paths'
+import { delay, waitForExit } from '../shared/process'
 import type { TermInfo } from '../shared/protocol'
 import { attach } from './attach'
-import { CliError, printTable, withClient } from './common'
+import { CliError, printJson, printTable, withClient } from './common'
 import { runDoctor } from './doctor'
 import { runHook } from './hook'
 import { registerQuietCommands } from './quiet'
 import { registerTaskCommands } from './tasks'
 import { registerTicketCommands } from './tickets'
 import { registerWorkspaceCommands } from './workspaces'
+import { errorMessage } from '../shared/errors.decode'
 
 declare const __QUE_VERSION__: string
 
@@ -78,19 +80,11 @@ async function main(): Promise<void> {
       const { pid } = await c.request('daemon.ping')
       const closed = new Promise<void>((r) => c.onClose(r))
       await c.request('daemon.shutdown')
-      await Promise.race([closed, new Promise((r) => setTimeout(r, 2000))])
+      await Promise.race([closed, delay(2000)])
       c.close()
 
       // Wait (briefly) for the process to actually exit.
-      for (let i = 0; i < 30; i++) {
-        try {
-          process.kill(pid, 0)
-        } catch {
-          break
-        }
-
-        await new Promise((r) => setTimeout(r, 100))
-      }
+      await waitForExit(pid, 3_000)
 
       console.log(`daemon stopped (pid ${pid})`)
     })
@@ -155,7 +149,7 @@ async function main(): Promise<void> {
       withClient(async (c) => {
         const terms = await c.request('term.list')
 
-        if (opts.json) console.log(JSON.stringify(terms, null, 2))
+        if (opts.json) printJson(terms)
         else printTerms(terms)
       }, false)
     )
@@ -242,7 +236,7 @@ main().catch((err) => {
       ? `${err.message} (${err.code})`
       : err instanceof CliError
         ? err.message
-        : (err as Error).message
+        : errorMessage(err)
 
   console.error(`que: ${msg}`)
   process.exit(1)

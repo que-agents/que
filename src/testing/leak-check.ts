@@ -2,17 +2,7 @@
 // created must be gone once the harness has torn the daemon down.
 import type { TermCreateParams } from '@shared/protocol'
 import { type HostedTerminal, PtyHost, type TermExtra } from '@daemon/pty-host'
-
-/** True while `pid` exists (signal 0 only checks; it sends nothing). */
-export function pidAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0)
-
-    return true
-  } catch (err) {
-    return (err as NodeJS.ErrnoException).code === 'EPERM'
-  }
-}
+import { delay, pidAlive } from '@shared/process'
 
 /** The real PtyHost, recording the pid of every terminal it spawns. */
 export class LeakCheckedPtyHost extends PtyHost {
@@ -35,7 +25,7 @@ export async function assertPidsGone(pids: Iterable<number>, timeoutMs = 3_000):
   let alive = [...pids].filter(pidAlive)
 
   while (alive.length > 0 && Date.now() < deadline) {
-    await new Promise((r) => setTimeout(r, 25))
+    await delay(25)
     alive = alive.filter(pidAlive)
   }
 

@@ -5,10 +5,9 @@ import fs from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { DaemonClient } from '@shared/client'
-import type { Events } from '@shared/protocol'
-import { startTestDaemon, type TestDaemon } from '../../src/testing/daemon-harness'
+import { recordEvents, startTestDaemon, type TestDaemon } from '../../src/testing/daemon-harness'
 import { readFakeLog } from '../../src/testing/fakes'
-import { pidAlive } from '../../src/testing/leak-check'
+import { pidAlive } from '../../src/shared/process'
 import { addBareOrigin, gitIn, makeTempRepo } from '../../src/testing/temp-repo'
 
 let daemon: TestDaemon
@@ -22,13 +21,6 @@ beforeEach(async () => {
 afterEach(async () => {
   await daemon.close()
 })
-
-function record<E extends keyof Events>(c: DaemonClient, event: E): Events[E][] {
-  const seen: Events[E][] = []
-  c.on(event, (data) => seen.push(data))
-
-  return seen
-}
 
 describe('projects', () => {
   it('registers the git toplevel once, with its default branch', async () => {
@@ -92,8 +84,8 @@ worktree_include = ["config/local", "missing.json"]
 
       fs.writeFileSync(join(repo, '.worktreeinclude'), '.env\n')
       const mainHead = gitIn(repo, 'rev-parse', 'HEAD')
-      const created = record(client, 'workspace.created')
-      const statuses = record(client, 'workspace.status')
+      const created = recordEvents(client, 'workspace.created')
+      const statuses = recordEvents(client, 'workspace.status')
       const project = await client.request('project.add', { path: repo })
 
       const ws = await client.request('workspace.create', {
@@ -215,8 +207,8 @@ worktree_include = ["config/local", "missing.json"]
 
       const [term] = await client.request('term.list', { workspaceId: ws.id })
       expect(term).toMatchObject({ id: termId, workspaceId: ws.id, cwd: ws.path, alive: true })
-      const killed = record(client, 'term.killed')
-      const removed = record(client, 'workspace.removed')
+      const killed = recordEvents(client, 'term.killed')
+      const removed = recordEvents(client, 'workspace.removed')
 
       await client.request('workspace.remove', { id: ws.id, deleteBranch: true })
 
@@ -252,7 +244,7 @@ describe('workspace.createPr', () => {
 
   it('commits the uncommitted work as the title, pushes, and opens a draft PR', async () => {
     const { origin, ws } = await workspaceWithOrigin()
-    const updates = record(client, 'workspace.updated')
+    const updates = recordEvents(client, 'workspace.updated')
     fs.writeFileSync(join(ws.path, 'retry.ts'), 'export const retries = 3\n')
 
     const result = await client.request('workspace.createPr', {

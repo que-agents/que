@@ -1,17 +1,14 @@
 import { Fragment, useState } from 'react'
 import type { Ticket } from '../../../preload/index.d'
-import { formatAge } from '../format'
+import { formatAge, hhmm } from '../../../shared/format'
 import { matches } from '../sidebar-order'
 import { useQue, useStore } from '../store'
 import { buildTicketTree, type TicketNode } from '../ticket-tree'
+import { useNow } from '../useNow'
 
 /** `synced 14:05` in local time, or `synced never`. */
 function syncedAt(iso: string | null): string {
-  if (!iso) return 'synced never'
-  const d = new Date(iso)
-  const pad = (n: number): string => String(n).padStart(2, '0')
-
-  return `synced ${pad(d.getHours())}:${pad(d.getMinutes())}`
+  return iso ? `synced ${hhmm(Date.parse(iso))}` : 'synced never'
 }
 
 /** Open items first in the given order, done ones after. */
@@ -49,6 +46,8 @@ function statusTone(t: Ticket): string {
 export default function TicketsView(): React.JSX.Element {
   const store = useStore()
   const { connected, tickets, ticketsSync, filter } = useQue()
+  // The rows' "updated … ago" ages move on their own; the rows re-render with this view.
+  useNow()
   const tree = buildTicketTree(tickets)
 
   const groups = tree.groups
@@ -212,7 +211,7 @@ function TicketRow({
       <span className="name summary">{t.summary}</span>
       <span className="muted">{t.status}</span>
       <span className="muted">{t.priority ?? ''}</span>
-      <span className="muted">{formatAge(t.updatedAt, store.now())}</span>
+      <span className="muted">{formatAge(t.updatedAt, store.now(), ' ago')}</span>
       {ws ? (
         <button
           type="button"

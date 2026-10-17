@@ -187,17 +187,25 @@ function countLines(text: string): number {
   return text.endsWith('\n') ? newlines : newlines + 1
 }
 
-async function chooseBase(ws: Workspace, project: Project): Promise<string> {
+/** `origin/<default>` when it exists, else the local default branch, else the workspace's base. */
+function chooseBase(ws: Workspace, project: Project, refs: readonly string[]): string {
   const def = project.defaultBranch
 
-  const q = (ref: string): Promise<{ ok: boolean }> =>
-    git(ws.path, ['show-ref', '--verify', '--quiet', ref], GIT_TIMEOUT_MS)
+  if (refs.includes(`origin/${def}`)) return `origin/${def}`
 
-  if ((await q(`refs/remotes/origin/${def}`)).ok) return `origin/${def}`
-
-  if ((await q(`refs/heads/${def}`)).ok) return def
+  if (refs.includes(def)) return def
 
   return ws.baseRef
+}
+
+/**
+ * Splits `git diff` output into one patch per file, in git's order, each
+ * trimmed as git() trims a single file's diff.
+ */
+export function splitPatches(out: string): string[] {
+  if (!out.startsWith('diff --git ')) return []
+
+  return out.split(/\n(?=diff --git )/).map((p) => p.trim())
 }
 
 export interface DiffOptions {
@@ -244,7 +252,9 @@ export async function workspaceDiff(
     throw badRequest(`base ${opts.base} is not a commit`)
   }
 
-  const base = opts.base ?? (await chooseBase(ws, project))
+  const refs = await run('for-each-ref', '--format=%(refname)', 'refs/heads', 'refs/remotes/origin')
+  const allRefs = parseRefs(refs.stdout)
+  const base = opts.base ?? chooseBase(ws, project, allRefs)
   let commit: string | null = null
 
   if (opts.commit !== undefined) {
@@ -263,14 +273,13 @@ export async function workspaceDiff(
   }
 
   try {
-    const [counted, log, refs] = await Promise.all([
+    const [counted, log] = await Promise.all([
       run('rev-list', '--count', `${base}..HEAD`),
-      run('log', '--format=%H%x00%s%x00%an%x00%aI', '-n', String(MAX_COMMITS), `${base}..HEAD`),
-      run('for-each-ref', '--format=%(refname)', 'refs/heads', 'refs/remotes/origin')
+      run('log', '--format=%H%x00%s%x00%an%x00%aI', '-n', String(MAX_COMMITS), `${base}..HEAD`)
     ])
 
     // Never the workspace's own branch: comparing it against itself shows nothing.
-    const refNames = parseRefs(refs.stdout).filter((r) => r !== ws.branch)
+    const refNames = allRefs.filter((r) => r !== ws.branch)
 
     const result = (files: DiffFile[]): WorkspaceDiff => ({
       ...empty(base),
@@ -338,21 +347,32 @@ export async function workspaceDiff(
 
 /**
  * The tracked files changed across `range` (one rev: it against the working
- * tree; two: the first against the second), each with its patch.
+ * tree; two: the first against the second), each with its patch. One
+ * `git diff -M` gives every patch, in the order numstat lists the files; a
+ * file's own `git diff` is the fallback when the two do not line up.
  */
 async function listFiles(
   run: Run,
   range: string[],
   dirty = new Set<string>()
 ): Promise<DiffFile[]> {
-  const [numstat, names] = await Promise.all([
+  const [numstat, names, full] = await Promise.all([
     run('diff', '--numstat', '-M', ...range),
-    run('diff', '--name-status', '-M', ...range)
+    run('diff', '--name-status', '-M', ...range),
+    run('diff', '-M', ...range)
   ])
 
   const entries = parseNumstat(numstat.stdout)
   const binary = new Set(entries.filter((e) => e.binary).map((e) => e.path))
   const listed = mergeListings(entries, parseNameStatus(names.stdout), dirty)
+  const patches = full.ok ? splitPatches(full.stdout) : []
+
+  if (patches.length === listed.length) {
+    return listed.map((f, i) => ({
+      ...f,
+      patch: binary.has(f.path) ? null : capPatch(patches[i] ?? '')
+    }))
+  }
 
   return Promise.all(
     listed.map(async (f): Promise<DiffFile> => {

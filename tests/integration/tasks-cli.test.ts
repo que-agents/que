@@ -5,8 +5,13 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { QueueState, Report } from '@shared/protocol'
 import type { Task } from '@shared/types'
-import { runCli, runCliWith } from '../../src/testing/cli'
-import { startTestDaemon, type TestDaemon } from '../../src/testing/daemon-harness'
+import { runCli, runCliJson, runCliWith } from '../../src/testing/cli'
+import {
+  startTestDaemon,
+  type TestDaemon,
+  waitForStatus,
+  waitForTaskState
+} from '../../src/testing/daemon-harness'
 import { makeHookEvent } from '../../src/testing/fixtures'
 import { addBareOrigin, makeTempRepo } from '../../src/testing/temp-repo'
 
@@ -38,7 +43,7 @@ describe('que add, run, task list, report', () => {
     const [id, ...title] = added.stdout.trim().split(/\s+/)
     expect(id).toMatch(/^tsk_[a-z2-7]{12}$/)
     expect(title.join(' ')).toBe('Add retry logic to the uploader')
-    const listed = JSON.parse((await runCli('task', 'list', '--json')).stdout) as Task[]
+    const listed = await runCliJson<Task[]>('task', 'list', '--json')
     expect(listed).toEqual([expect.objectContaining({ id, state: 'queued', maxTurns: 30 })])
 
     const run = await runCli('run', '-j', '1')
@@ -47,15 +52,9 @@ describe('que add, run, task list, report', () => {
     expect(run.stdout.trim()).toMatch(
       /^queue open · concurrency 1 · [01] running · [01] queued · 0 paused$/
     )
-    await expect
-      .poll(async () => (await daemon.client.request('task.get', { id })).state, {
-        timeout: 30_000
-      })
-      .toBe('done')
+    await waitForTaskState(daemon, id, 'done', 30_000)
 
-    const json = await runCli('report', '--json', '--since', '1h')
-    expect(json.code).toBe(0)
-    const report = JSON.parse(json.stdout) as Report
+    const report = await runCliJson<Report>('report', '--json', '--since', '1h')
     expect(report.groups.done).toEqual([
       expect.objectContaining({
         id,
@@ -89,15 +88,12 @@ describe('que add, run, task list, report', () => {
     const brief = join(daemon.home, 'brief.md')
     fs.writeFileSync(brief, 'Cover the retry logic with tests\n\nUse the fake clock.\n')
 
-    const added = await runCli('add', '-r', 'app-1432-retry-logic', '-f', brief, '--json')
-
-    expect(added.code).toBe(0)
-    const task = JSON.parse(added.stdout) as Task
+    const task = await runCliJson<Task>('add', '-r', 'app-1432-retry-logic', '-f', brief, '--json')
     expect(task).toMatchObject({ source: 'file', title: 'Cover the retry logic with tests' })
     const shown = await runCli('task', 'show', task.id)
     expect(shown.stdout).toMatch(/^state\s+queued$/m)
     expect(shown.stdout).toContain(join(daemon.home, 'logs', 'tasks', `${task.id}.log`))
-    const status = JSON.parse((await runCli('queue', 'status', '--json')).stdout) as QueueState
+    const status = await runCliJson<QueueState>('queue', 'status', '--json')
     expect(status).toMatchObject({ open: false, queued: 1 })
   }, 30_000)
 
@@ -109,20 +105,13 @@ describe('que add, run, task list, report', () => {
       name: 'app-1432-retry-logic'
     })
 
-    await expect
-      .poll(async () => (await daemon.client.request('workspace.get', { id: ws.id })).status, {
-        timeout: 10_000
-      })
-      .toBe('idle')
+    await waitForStatus(daemon, ws.id, 'idle')
     await daemon.client.request('hook.event', {
       workspaceId: ws.id,
       payload: makeHookEvent('UserPromptSubmit', { cwd: ws.path })
     })
 
-    const json = await runCli('report', '--json', '--since', '1h')
-
-    expect(json.code).toBe(0)
-    const report = JSON.parse(json.stdout) as Report
+    const report = await runCliJson<Report>('report', '--json', '--since', '1h')
     expect(report.workspaces).toEqual([
       expect.objectContaining({ id: ws.id, name: ws.name, status: 'working', commitsAhead: 0 })
     ])

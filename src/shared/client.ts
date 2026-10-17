@@ -7,6 +7,7 @@ import os from 'node:os'
 import { cleanSpawnEnv } from './env'
 import { daemonScriptFrom, runtimeFrom } from './packaged'
 import { ensureDirs, quePaths, type QuePaths } from './paths'
+import { delay } from './process'
 import {
   MessageDecoder,
   encode,
@@ -19,6 +20,7 @@ import {
   type ResultOf,
   type ServerMessage
 } from './protocol'
+import { errorCode } from './errors.decode'
 
 export class DaemonError extends Error {
   constructor(
@@ -178,7 +180,7 @@ export class DaemonClient {
 
       return first
     } catch (err) {
-      const code = (err as NodeJS.ErrnoException).code
+      const code = errorCode(err)
 
       if (code === 'ECONNREFUSED' && fs.existsSync(paths.socket)) {
         log(`removing stale socket ${paths.socket}`)
@@ -282,10 +284,6 @@ function startDaemon(paths: QuePaths, opts: StartOptions): void {
   } finally {
     fs.closeSync(logFd)
   }
-}
-
-function delay(ms: number): Promise<void> {
-  return new Promise((r) => setTimeout(r, ms))
 }
 
 function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {

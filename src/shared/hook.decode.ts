@@ -2,16 +2,9 @@
 // by `que hook` (which decodes before forwarding) and the daemon (which
 // decodes the `hook.event` payload once as it arrives on the socket).
 import { HOOK_EVENT_NAMES, type HookEvent, type HookEventName } from './protocol'
-
-type Obj = { [key: string]: unknown }
+import { isObj, type Obj, str } from './json.decode'
 
 type OptionalFields = Omit<HookEvent, 'hook_event_name' | 'session_id' | 'cwd' | 'transcript_path'>
-
-function isObject(v: unknown): v is Obj {
-  return typeof v === 'object' && v !== null && !Array.isArray(v)
-}
-
-const str = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined)
 
 function isEventName(v: unknown): v is HookEventName {
   return HOOK_EVENT_NAMES.some((name) => name === v)
@@ -52,7 +45,7 @@ function optional(v: Obj): OptionalFields {
 
   if (source !== undefined) out.source = source
 
-  if (isObject(v.tool_input)) out.tool_input = v.tool_input
+  if (isObj(v.tool_input)) out.tool_input = v.tool_input
 
   if ('tool_response' in v) out.tool_response = v.tool_response
 
@@ -67,7 +60,7 @@ function optional(v: Obj): OptionalFields {
  * `transcript_path`). Fields que does not know are dropped.
  */
 export function decodeHookEvent(v: unknown): HookEvent | null {
-  if (!isObject(v) || !isEventName(v.hook_event_name)) return null
+  if (!isObj(v) || !isEventName(v.hook_event_name)) return null
   const sessionId = str(v.session_id)
   const cwd = str(v.cwd)
   const transcriptPath = str(v.transcript_path)

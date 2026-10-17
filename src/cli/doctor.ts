@@ -1,10 +1,10 @@
 // `que doctor`: checks everything que depends on and says what is missing.
-import { execFile } from 'node:child_process'
 import fs from 'node:fs'
 import { join } from 'node:path'
 import { findOnPath } from '../daemon/wrapper'
 import { DaemonClient } from '../shared/client'
 import { configPath, describeQuietHours, formatConfigErrors, loadConfig } from '../shared/config'
+import { firstLine, run as exec } from '../shared/exec'
 import { quePaths } from '../shared/paths'
 
 interface Check {
@@ -14,12 +14,10 @@ interface Check {
   detail: string
 }
 
-function run(file: string, args: string[]): Promise<{ ok: boolean; out: string }> {
-  return new Promise((resolve) => {
-    execFile(file, args, { encoding: 'utf8', timeout: 10_000 }, (err, stdout, stderr) => {
-      resolve({ ok: !err, out: `${stdout}${stderr}`.trim().split('\n')[0] ?? '' })
-    }).stdin?.end()
-  })
+async function run(file: string, args: string[]): Promise<{ ok: boolean; out: string }> {
+  const r = await exec(file, args, { timeoutMs: 10_000 })
+
+  return { ok: r.ok, out: firstLine(`${r.stdout}${r.stderr}`) }
 }
 
 function executable(path: string): boolean {

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { fakeBridge } from '@renderer/testing/fake-bridge'
+import { openWorkspace } from '@renderer/testing/helpers'
 import {
   makeDiffCommit,
   makeDiffFile,
@@ -40,14 +41,10 @@ function seed(files = [put, readme]): void {
 /** Opens the workspace, waits for its terminal, and opens the review pane on Changes. */
 async function openChanges(user: ReturnType<typeof userEvent.setup>): Promise<string> {
   render(<App now={now} />)
-  await user.click(await screen.findByTestId(`sidebar-workspace-${retry.id}-open`))
-  const pane = await screen.findByTestId('pane-0')
-  await waitFor(() => {
-    expect(pane.dataset.activeTerm).not.toBe('')
-  })
+  const termId = await openWorkspace(user, retry.id)
   await user.click(screen.getByRole('button', { name: 'Review pane' }))
 
-  return pane.dataset.activeTerm as string
+  return termId
 }
 
 describe('ChangesList', () => {
