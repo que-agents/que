@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { GLYPH } from '../diff'
 import { formatAge } from '../../../shared/format'
 import { diffId, usePanes, useQueSelector } from '../store'
+import { useNow } from '../useNow'
 import { EditorIcon, RefreshIcon } from './icons'
 import Menu, { type MenuItem } from './Menu'
 
@@ -64,7 +65,7 @@ export default function ChangesList({ termKey }: { termKey: string }): React.JSX
   const adds = files.reduce((n, f) => n + f.additions, 0)
   const dels = files.reduce((n, f) => n + f.deletions, 0)
 
-  const now = store.now()
+  const now = useNow()
 
   const commitItems: MenuItem[] = [
     {
