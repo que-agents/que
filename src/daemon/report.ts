@@ -1,6 +1,7 @@
 // The morning report, as pure functions: which tasks to show, grouped by
 // outcome with durations and totals, and its plain-text rendering.
 import type { Report, ReportEntry, ReportGroup, WorkspaceDigest } from '../shared/protocol'
+import { formatCost, formatDuration as duration, hhmm } from '../shared/format'
 import type { Task, TaskState } from '../shared/types'
 
 /** Reading order: outcomes first, what still needs a look next, stopped last. */
@@ -126,19 +127,7 @@ export function buildReport(
 
 /** `0s`, `45s`, `12m`, `1h 05m`; `-` when unknown. */
 export function formatDuration(ms: number | null): string {
-  if (ms === null) return '-'
-  const s = Math.floor(ms / 1000)
-
-  if (s < 60) return `${s}s`
-  const m = Math.floor(s / 60)
-
-  if (m < 60) return `${m}m`
-
-  return `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, '0')}m`
-}
-
-export function formatCost(usd: number): string {
-  return `$${usd.toFixed(2)}`
+  return ms === null ? '-' : duration(ms, { seconds: false, floor: true })
 }
 
 const UNITS = new Map([
@@ -169,19 +158,13 @@ const HEADINGS: Record<ReportGroup, string> = {
   queued: 'Queued'
 }
 
-function clock(iso: string): string {
-  const d = new Date(iso)
-
-  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
-}
-
 function digestLines(d: WorkspaceDigest): string[] {
   const status = d.statusReason ? `${d.status} (${d.statusReason})` : d.status
 
   const facts = [
     d.workingMs > 0 ? `worked ${formatDuration(d.workingMs)}` : 'no work in this window',
     d.needsInputCount > 0 ? `asked for input ${d.needsInputCount}×` : null,
-    d.waitingSince ? `waiting since ${clock(d.waitingSince)}` : null,
+    d.waitingSince ? `waiting since ${hhmm(Date.parse(d.waitingSince))}` : null,
     d.commitsAhead !== null ? `${d.commitsAhead} commits ahead` : null,
     d.pr
       ? `PR #${d.pr.number} ${d.pr.state}${d.pr.checks === 'failing' ? ', checks failing' : ''}`

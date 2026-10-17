@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { Task, Workspace } from '../../../preload/index.d'
-import { hhmm } from '../../../daemon/quiet-hours'
-import { formatAge, formatCost, formatDuration, isLiveTask, newestFirst } from '../format'
+import { formatAge, formatCost, formatDuration, hhmm } from '../../../shared/format'
+import { isLiveTask, newestFirst } from '../format'
 import { useQue, useStore } from '../store'
 
 const RUNNING = new Set(['preparing', 'running', 'finishing'])
@@ -164,7 +164,7 @@ export default function QuietBoard(): React.JSX.Element {
                   <td className={`state state-${r.state}`}>{r.stateText}</td>
                   <td className="state">{r.pr}</td>
                   <td>{r.elapsedMs === null ? '-' : formatDuration(r.elapsedMs)}</td>
-                  <td>{formatAge(r.lastActivity, now)}</td>
+                  <td>{formatAge(r.lastActivity, now, ' ago')}</td>
                   <td>{r.turns ?? '-'}</td>
                   <td>{r.costUsd === null ? '-' : formatCost(r.costUsd)}</td>
                 </tr>

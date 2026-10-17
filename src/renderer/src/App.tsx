@@ -6,7 +6,7 @@ import {
   RemoveWorkspaceDialog,
   StartTicketDialog
 } from './components/dialogs'
-import { hhmm } from '../../daemon/quiet-hours'
+import { hhmm } from '../../shared/format'
 import QuietBoard from './components/QuietBoard'
 import ReportView from './components/ReportView'
 import SettingsView from './components/SettingsView'

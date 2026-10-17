@@ -34,20 +34,6 @@ export function printTable(header: string[], rows: string[][]): void {
   for (const r of rows) console.log(fmt(r))
 }
 
-/** `42s`, `5m`, `3h`, `2d`; `-` when there is no timestamp. */
-export function formatAge(iso: string | null, now = Date.now()): string {
-  if (!iso) return '-'
-  const s = Math.max(0, Math.floor((now - Date.parse(iso)) / 1000))
-
-  if (s < 60) return `${s}s`
-
-  if (s < 3600) return `${Math.floor(s / 60)}m`
-
-  if (s < 86_400) return `${Math.floor(s / 3600)}h`
-
-  return `${Math.floor(s / 86_400)}d`
-}
-
 export async function findProject(c: DaemonClient, ref: string): Promise<Project> {
   const projects = await c.request('project.list')
 

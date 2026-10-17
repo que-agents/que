@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { formatCountdown } from '../shared/format'
 import { makeQuietHours } from '../testing/fixtures'
 import {
   currentWindow,
   effectiveConfig,
-  formatCountdown,
   formatUnlocks,
   isQuiet,
   nextBoundary,

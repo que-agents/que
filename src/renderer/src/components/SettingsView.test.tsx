@@ -1,12 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { hhmm } from '@shared/format'
 import { fakeBridge } from '@renderer/testing/fake-bridge'
 import { makeQuietState } from '@renderer/testing/fixtures'
 import App from '../App'
-
-const hhmm = (d: Date): string =>
-  `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 
 /** A window an hour either side of now, and the quiet state the daemon reports for it. */
 function tonight(): { start: string; end: string; state: ReturnType<typeof makeQuietState> } {
@@ -16,8 +14,8 @@ function tonight(): { start: string; end: string; state: ReturnType<typeof makeQ
   end.setSeconds(0, 0)
 
   return {
-    start: hhmm(start),
-    end: hhmm(end),
+    start: hhmm(start.getTime()),
+    end: hhmm(end.getTime()),
     // Unlocked: the main window (and so Settings) only shows during quiet hours then.
     state: makeQuietState({
       inQuietHours: true,

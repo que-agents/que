@@ -1,7 +1,7 @@
 // Quiet hours and config: `que unlock`, `que lock`, `que quiet status`,
 // `que config get|set`.
 import type { Command } from 'commander'
-import { formatCountdown, hhmm } from '../daemon/quiet-hours'
+import { formatCountdown, hhmm } from '../shared/format'
 import { combineConfigPatches, describeQuietHours, parseConfigAssignment } from '../shared/config'
 import type { ConfigPatch, QuietState } from '../shared/types'
 import { CliError, withClient } from './common'

@@ -5,13 +5,14 @@ import fs from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import type { Command } from 'commander'
 import { formatUnlocks } from '../daemon/quiet-hours'
-import { formatCost, formatReport, parseSince } from '../daemon/report'
+import { formatReport, parseSince } from '../daemon/report'
 import { type DaemonClient, resolveDaemonScript, resolveRuntime } from '../shared/client'
 import { formatConfigErrors, loadConfig } from '../shared/config'
+import { formatAge, formatCost } from '../shared/format'
 import { queHome, quePaths } from '../shared/paths'
 import type { QueueState, TaskAddParams } from '../shared/protocol'
 import type { Task } from '../shared/types'
-import { CliError, findWorkspace, formatAge, printTable, withClient } from './common'
+import { CliError, findWorkspace, printTable, withClient } from './common'
 import { LAUNCHD_LABEL, plistPath, renderPlist } from './launchd'
 
 /** `-r`: a configured repo name, a repo path, or a workspace id or name. */
@@ -139,7 +140,7 @@ export function registerTaskCommands(program: Command, daemon: Command): void {
             t.reason ?? '-',
             String(t.turns),
             formatCost(t.costUsd),
-            formatAge(t.updatedAt),
+            formatAge(t.updatedAt, Date.now()),
             t.title
           ])
         )

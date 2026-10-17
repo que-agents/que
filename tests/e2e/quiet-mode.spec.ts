@@ -5,6 +5,7 @@
 // brings the main window back with its countdown, and when the (six-second)
 // unlock runs out the board returns on its own.
 import { expect, test } from '@playwright/test'
+import { hhmm } from '../../src/shared/format'
 import type { Workspace } from '../../src/shared/types'
 import { QuietBoardPage } from './pages/QuietBoardPage'
 import { TopBarPage } from './pages/TopBarPage'
@@ -17,12 +18,6 @@ let launched: LaunchedApp
 test.afterEach(async () => {
   await launched?.close() // quits the app AND stops the test daemon
 })
-
-const hhmm = (ms: number): string => {
-  const d = new Date(ms)
-
-  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
-}
 
 test('quiet hours show only the board; an unlock brings detail back until it runs out', async () => {
   const repo = makeRepo()

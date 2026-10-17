@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { formatCountdown } from '../../../daemon/quiet-hours'
+import { formatCountdown } from '../../../shared/format'
 import { useQue, useStore } from '../store'
 
 /** `🔓 unlocked · 14:32 left` and Lock now, while an unlock runs. */

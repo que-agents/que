@@ -5,7 +5,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { ConfigGetResult } from '@shared/protocol'
 import type { QuietState } from '@shared/types'
-import { hhmm } from '@daemon/quiet-hours'
+import { hhmm } from '@shared/format'
 import type { StatusJson } from '../../src/cli/workspaces'
 import { runCli } from '../../src/testing/cli'
 import { startTestDaemon, type TestDaemon } from '../../src/testing/daemon-harness'

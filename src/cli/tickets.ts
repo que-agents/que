@@ -4,7 +4,8 @@ import type { Command } from 'commander'
 import type { DaemonClient } from '../shared/client'
 import type { TicketsListResult } from '../shared/protocol'
 import type { Ticket } from '../shared/types'
-import { CliError, findProject, formatAge, withClient } from './common'
+import { formatAge } from '../shared/format'
+import { CliError, findProject, withClient } from './common'
 
 const SUMMARY_WIDTH = 60
 
@@ -32,7 +33,7 @@ async function printList(c: DaemonClient, r: TicketsListResult): Promise<void> {
     truncate(t.summary, SUMMARY_WIDTH),
     t.status,
     t.priority ?? '-',
-    formatAge(t.updatedAt),
+    formatAge(t.updatedAt, Date.now()),
     t.workspaceId ? (names.get(t.workspaceId) ?? t.workspaceId) : '-'
   ]
 

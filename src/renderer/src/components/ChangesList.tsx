@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { GLYPH } from '../diff'
-import { formatAge } from '../format'
+import { formatAge } from '../../../shared/format'
 import { diffId, useQue, useStore } from '../store'
 import { EditorIcon, RefreshIcon } from './icons'
 import Menu, { type MenuItem } from './Menu'
@@ -72,7 +72,7 @@ export default function ChangesList({ termKey }: { termKey: string }): React.JSX
       action: () => void store.setDiffCommit(termKey, null)
     },
     ...(diff?.commits ?? []).map((c) => ({
-      label: `${c.shortSha} ${c.subject} · ${formatAge(c.at, now)}`,
+      label: `${c.shortSha} ${c.subject} · ${formatAge(c.at, now, ' ago')}`,
       title: `${c.subject} (${c.author})`,
       testId: c.sha,
       selected: c.sha === chosen,

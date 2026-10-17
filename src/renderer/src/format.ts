@@ -1,5 +1,5 @@
-// Pure display rules for the renderer: badge labels and tones, money and
-// durations, and the order things are listed in.
+// Pure display rules for the renderer: badge labels and tones, and the order
+// things are listed in. Money and durations are in shared/format.
 import type {
   PullRequest,
   ReportGroup,
@@ -66,36 +66,6 @@ export function latestTasks(tasks: Record<string, Task>): Map<string, Task> {
   return out
 }
 
-/** `$0.42`; whole cents, never `$0.4200001`. */
-export function formatCost(usd: number): string {
-  return `$${usd.toFixed(2)}`
-}
-
-/**
- * The span between two ISO timestamps (a check's start and finish) as `formatDuration`
- * writes it; empty when either is unknown.
- */
-export function formatSpan(startedAt: string | null, completedAt: string | null): string {
-  const start = startedAt ? Date.parse(startedAt) : Number.NaN
-  const end = completedAt ? Date.parse(completedAt) : Number.NaN
-
-  if (!Number.isFinite(start) || !Number.isFinite(end)) return ''
-
-  return formatDuration(end - start)
-}
-
-/** `42s`, `3m 05s`, `2h 07m`: a length of time in ms. */
-export function formatDuration(ms: number): string {
-  const s = Math.max(0, Math.round(ms / 1000))
-
-  if (s < 60) return `${s}s`
-  const m = Math.floor(s / 60)
-
-  if (m < 60) return `${m}m ${String(s % 60).padStart(2, '0')}s`
-
-  return `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, '0')}m`
-}
-
 /** Newest first, ties broken by id so the order is stable. */
 export function newestFirst(tasks: readonly Task[]): Task[] {
   return [...tasks].sort(
@@ -113,20 +83,6 @@ export const REPORT_GROUPS: ReadonlyArray<{ group: ReportGroup; title: string }>
   { group: 'queued', title: 'Queued' },
   { group: 'stopped', title: 'Stopped' }
 ]
-
-/** `42s ago`, `5m ago`, `3h ago`; `-` when there is no timestamp. */
-export function formatAge(iso: string | null, now: number): string {
-  if (!iso) return '-'
-  const s = Math.max(0, Math.floor((now - Date.parse(iso)) / 1000))
-
-  if (s < 60) return `${s}s ago`
-
-  if (s < 3600) return `${Math.floor(s / 60)}m ago`
-
-  if (s < 86_400) return `${Math.floor(s / 3600)}h ago`
-
-  return `${Math.floor(s / 86_400)}d ago`
-}
 
 const REVIEW_TEXT = {
   approved: 'approved',

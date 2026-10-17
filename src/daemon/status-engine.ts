@@ -1,6 +1,7 @@
 // The status engine's rules, as pure functions: hook events, terminal exits,
 // clock ticks, and `claude agents --json` entries in; a workspace status out.
 // Time is always passed in (`now`, epoch ms); nothing here reads the clock.
+import { formatMinSec } from '../shared/format'
 import type { StatusSummary, TaskState, WorkspaceStatus } from '../shared/types'
 
 export interface StatusState {
@@ -225,8 +226,6 @@ export function quietTrayTitle(
   const base = trayTitle(s)
 
   if (!quiet?.inQuietHours || !quiet.unlockedUntil) return base
-  const left = Math.max(0, Math.ceil((Date.parse(quiet.unlockedUntil) - now) / 1000))
-  const mmss = `${String(Math.floor(left / 60)).padStart(2, '0')}:${String(left % 60).padStart(2, '0')}`
 
-  return `🔓 ${mmss} · ${base}`
+  return `🔓 ${formatMinSec(Date.parse(quiet.unlockedUntil) - now)} · ${base}`
 }

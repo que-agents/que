@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import type { PrCheck, PrThreadEntry, PullRequest, ReviewState } from '../../../preload/index.d'
-import { formatAge, formatSpan, type Tone } from '../format'
+import { formatAge, formatSpan } from '../../../shared/format'
+import type { Tone } from '../format'
 import { splitFences } from '../pr-text'
 import { useQue, useStore } from '../store'
 import { ExternalLinkIcon } from './icons'
@@ -85,11 +86,11 @@ function Comment({
         )}
         {entry.url ? (
           <a className="pr-when" href={entry.url} target="_blank" rel="noreferrer" title={entry.at}>
-            {formatAge(entry.at, now)}
+            {formatAge(entry.at, now, ' ago')}
           </a>
         ) : (
           <span className="pr-when" title={entry.at}>
-            {formatAge(entry.at, now)}
+            {formatAge(entry.at, now, ' ago')}
           </span>
         )}
       </div>

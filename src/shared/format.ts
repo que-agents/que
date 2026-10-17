@@ -1,0 +1,93 @@
+// Pure text formatters shared by the daemon, the CLI and the renderer: money,
+// lengths of time, ages, and wall-clock times. No Node imports.
+
+/** `$0.42`; whole cents, never `$0.4200001`. */
+export function formatCost(usd: number): string {
+  return `$${usd.toFixed(2)}`
+}
+
+export interface DurationStyle {
+  /** Zero-pad the second unit: `3m 05s`, `2h 07m` (the default) or `3m 5s`, `2h 7m`. */
+  pad?: boolean
+  /** Show seconds past the first minute: `3m 05s` (the default) or `3m`. */
+  seconds?: boolean
+  /** Truncate to whole seconds instead of rounding. */
+  floor?: boolean
+}
+
+/**
+ * A length of time in ms: `42s`, `3m 05s`, `2h 07m` by default. Without
+ * `seconds` the minutes are whole minutes (`12m`), and seconds show only under one.
+ */
+export function formatDuration(ms: number, style: DurationStyle = {}): string {
+  const { pad = true, seconds = true, floor = false } = style
+  const s = Math.max(0, (floor ? Math.floor : Math.round)(ms / 1000))
+  const m = seconds ? Math.floor(s / 60) : Math.floor(Math.max(0, ms) / 60_000)
+  const two = (n: number): string => (pad ? String(n).padStart(2, '0') : String(n))
+
+  if (m === 0) return `${s}s`
+
+  if (m < 60) return seconds ? `${m}m ${two(s % 60)}s` : `${m}m`
+
+  return `${Math.floor(m / 60)}h ${two(m % 60)}m`
+}
+
+/** The ms between two ISO timestamps; null when either is missing or unparsable. */
+export function spanMs(from: string | null, to: string | null): number | null {
+  const start = from ? Date.parse(from) : Number.NaN
+  const end = to ? Date.parse(to) : Number.NaN
+
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return null
+
+  return end - start
+}
+
+/**
+ * The span between two ISO timestamps (a check's start and finish) as
+ * `formatDuration` writes it; empty when either is unknown.
+ */
+export function formatSpan(from: string | null, to: string | null, style?: DurationStyle): string {
+  const ms = spanMs(from, to)
+
+  return ms === null ? '' : formatDuration(ms, style)
+}
+
+/** `42s`, `5m`, `3h`, `2d` (each followed by `suffix`, such as ` ago`); `-` without a timestamp. */
+export function formatAge(iso: string | null, now: number, suffix = ''): string {
+  if (!iso) return '-'
+  const s = Math.max(0, Math.floor((now - Date.parse(iso)) / 1000))
+
+  if (s < 60) return `${s}s${suffix}`
+
+  if (s < 3600) return `${Math.floor(s / 60)}m${suffix}`
+
+  if (s < 86_400) return `${Math.floor(s / 3600)}h${suffix}`
+
+  return `${Math.floor(s / 86_400)}d${suffix}`
+}
+
+const pad2 = (n: number): string => String(n).padStart(2, '0')
+
+/** `HH:MM` in local time. */
+export function hhmm(t: number): string {
+  const d = new Date(t)
+
+  return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`
+}
+
+/** `14:32` (minutes:seconds) for a countdown; `1:02:03` past an hour. */
+export function formatCountdown(msLeft: number): string {
+  const s = Math.max(0, Math.ceil(msLeft / 1000))
+  const h = Math.floor(s / 3600)
+  const m = Math.floor((s % 3600) / 60)
+  const sec = pad2(s % 60)
+
+  return h > 0 ? `${h}:${pad2(m)}:${sec}` : `${m}:${sec}`
+}
+
+/** `05:03`: a countdown as zero-padded minutes and seconds, minutes uncapped (`75:00`). */
+export function formatMinSec(msLeft: number): string {
+  const s = Math.max(0, Math.ceil(msLeft / 1000))
+
+  return `${pad2(Math.floor(s / 60))}:${pad2(s % 60)}`
+}

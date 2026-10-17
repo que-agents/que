@@ -11,6 +11,7 @@ import {
   WEEKDAYS,
   type Weekday
 } from '../shared/types'
+import { hhmm } from '../shared/format'
 
 export interface ActiveWindow {
   start: Date
@@ -142,23 +143,6 @@ export function shortensTonight(
   incoming: QuietHoursConfig
 ): boolean {
   return effectiveConfig(now, current, incoming, false) === current && current !== incoming
-}
-
-/** `HH:MM` in local time. */
-export function hhmm(t: Moment): string {
-  const d = new Date(t)
-
-  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
-}
-
-/** `14:32` (minutes:seconds) for a countdown; `1:02:03` past an hour. */
-export function formatCountdown(msLeft: number): string {
-  const s = Math.max(0, Math.ceil(msLeft / 1000))
-  const h = Math.floor(s / 3600)
-  const m = Math.floor((s % 3600) / 60)
-  const sec = String(s % 60).padStart(2, '0')
-
-  return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${sec}` : `${m}:${sec}`
 }
 
 /** The one-line refusal every detail command gets during quiet hours. */
