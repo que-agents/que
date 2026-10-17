@@ -35,6 +35,12 @@ const KV_OPEN = 'queue.open'
 const KV_OPENED_AT = 'queue.opened_at'
 const KV_CONCURRENCY = 'concurrency'
 
+/** How long a run's activity stamp and latest text may wait in memory before they are written. */
+const FLUSH_MS = 3_000
+
+/** Fields a stream message changes on its own; writing them can wait for the flush. */
+const DEFERRED: ReadonlySet<keyof Task> = new Set(['lastActivityAt', 'resultText', 'updatedAt'])
+
 /** A wall-clock jump this much larger than the monotonic clock's means the machine slept. */
 export const WAKE_THRESHOLD_MS = 2 * 60_000
 
@@ -100,6 +106,11 @@ export class TaskQueue {
   private warnedNoCaffeinate = false
   private lastWall = 0
   private lastMono = 0
+  /** Every live task this queue has touched, as it last committed it; the store may lag. */
+  private live = new Map<string, Task>()
+  /** Live tasks whose deferred fields are not written yet. */
+  private dirty = new Set<string>()
+  private flushTimer: NodeJS.Timeout | null = null
 
   constructor(private o: TaskQueueOptions) {
     this.runner = new TaskRunner({
@@ -135,6 +146,7 @@ export class TaskQueue {
 
   /** Daemon shutdown: stops the clock tick, every run, and the keep-awake. */
   async shutdown(): Promise<void> {
+    this.flush()
     this.closed = true
 
     if (this.timer) clearInterval(this.timer)
@@ -160,10 +172,36 @@ export class TaskQueue {
     return { stallTimeoutMs: this.o.config().stallTimeoutMinutes * 60_000 }
   }
 
+  /** The task as last committed: the in-memory copy of a live one, else the stored row. */
+  private read(id: string): Task | undefined {
+    return this.live.get(id) ?? this.o.store.getTask(id)
+  }
+
+  /** Stored tasks with each live one replaced by its in-memory copy. */
+  private current(tasks: Task[]): Task[] {
+    return tasks.map((t) => this.live.get(t.id) ?? t)
+  }
+
+  /** Writes the deferred fields of every dirty task. */
+  private flush(): void {
+    if (this.flushTimer) clearTimeout(this.flushTimer)
+    this.flushTimer = null
+
+    if (this.closed) return
+
+    for (const id of this.dirty) {
+      const t = this.live.get(id)
+
+      if (t) this.o.store.updateTask(t)
+    }
+
+    this.dirty.clear()
+  }
+
   /** Feeds one event to the machine, persists the result, and reacts. */
   apply(id: string, event: TaskEvent): Task | undefined {
     if (this.closed) return undefined
-    const prev = this.o.store.getTask(id)
+    const prev = this.read(id)
 
     if (!prev) return undefined
     const next = nextTask(prev, event, Date.now(), this.limits())
@@ -174,18 +212,36 @@ export class TaskQueue {
 
   private patch(id: string, fields: Partial<Task>): void {
     if (this.closed) return
-    const prev = this.o.store.getTask(id)
+    const prev = this.read(id)
 
     if (prev) this.commit(prev, { ...prev, ...fields })
   }
 
+  /**
+   * Persists a change. One that only moves a run's activity stamp or latest
+   * text (most stream messages) stays in memory until the flush timer or the
+   * next other change writes it; a crash can lose those few seconds.
+   */
   private commit(prev: Task, next: Task): void {
-    const changed = (Object.keys(next) as Array<keyof Task>).some(
+    const changed = (Object.keys(next) as Array<keyof Task>).filter(
       (k) => k !== 'updatedAt' && next[k] !== prev[k]
     )
 
-    if (!changed) return
+    if (changed.length === 0) return
     next.updatedAt = new Date().toISOString()
+
+    if (LIVE_STATES.has(next.state)) this.live.set(next.id, next)
+    else this.live.delete(next.id)
+
+    if (LIVE_STATES.has(next.state) && changed.every((k) => DEFERRED.has(k))) {
+      this.dirty.add(next.id)
+      this.flushTimer ??= setTimeout(() => this.flush(), FLUSH_MS)
+      this.flushTimer.unref()
+
+      return
+    }
+
+    this.dirty.delete(next.id)
     this.o.store.updateTask(next)
     const statusChanged = prev.state !== next.state || prev.reason !== next.reason
 
@@ -396,11 +452,11 @@ export class TaskQueue {
   }
 
   list(p: TaskListParams = {}): Task[] {
-    return this.o.store.listTasks(p.state ? [p.state] : undefined)
+    return this.current(this.o.store.listTasks(p.state ? [p.state] : undefined))
   }
 
   get(id: string): Task {
-    const t = this.o.store.getTask(id)
+    const t = this.read(id)
 
     if (!t) throw notFound(`no task ${id}`)
 
@@ -512,6 +568,12 @@ export class TaskQueue {
       digests.push(digest)
     }
 
-    return buildReport(this.o.store.listTasks(), names, from, now, sortDigests(digests))
+    return buildReport(
+      this.current(this.o.store.listTasks()),
+      names,
+      from,
+      now,
+      sortDigests(digests)
+    )
   }
 }

@@ -391,6 +391,12 @@ export class TaskRunner {
     this.o.log(`task ${id}: claude pid ${child.pid} in ${ws.path}`)
 
     const parser = new StreamParser()
+    // stdout goes to the log through a stream, off the event loop; the fd stays
+    // open for claude's stderr until the stream has drained.
+    const out = fs.createWriteStream('', { fd: logFd, autoClose: false })
+    out.on('error', () => {
+      // The log is best effort.
+    })
 
     const feed = (messages: ReturnType<StreamParser['push']>): void => {
       if (this.closed) return
@@ -399,12 +405,7 @@ export class TaskRunner {
     }
 
     child.stdout?.on('data', (chunk: Buffer) => {
-      try {
-        fs.writeSync(logFd, chunk)
-      } catch {
-        // The log is best effort.
-      }
-
+      out.write(chunk)
       feed(parser.push(chunk))
     })
     child.on('error', (err) => this.taskLog(id, `claude process error: ${err.message}`))
@@ -414,26 +415,28 @@ export class TaskRunner {
       if (run.finishTimer) clearTimeout(run.finishTimer)
       // Nothing of the group may outlive the run.
       signalGroup(run.pid, 'SIGKILL')
+      // The rest waits for the stdout still buffered, so que's last lines follow it in the log.
+      out.end(() => {
+        try {
+          fs.closeSync(logFd)
+        } catch {
+          // Already closed.
+        }
 
-      try {
-        fs.closeSync(logFd)
-      } catch {
-        // Already closed.
-      }
+        if (this.runs.get(id) === run) this.runs.delete(id)
 
-      if (this.runs.get(id) === run) this.runs.delete(id)
+        // During shutdown the rows stay as they are; restart recovery picks them up.
+        if (this.closed) return
+        feed(parser.flush())
 
-      // During shutdown the rows stay as they are; restart recovery picks them up.
-      if (this.closed) return
-      feed(parser.flush())
+        if (parser.skipped > 0)
+          this.taskLog(id, `skipped ${parser.skipped} unparsable stdout line(s)`)
+        this.taskLog(id, `claude exited code=${code ?? ''} signal=${signal ?? ''}`)
+        this.o.patch(id, { pid: null })
+        const after = this.o.apply(id, { type: 'exit', code, signal })
 
-      if (parser.skipped > 0)
-        this.taskLog(id, `skipped ${parser.skipped} unparsable stdout line(s)`)
-      this.taskLog(id, `claude exited code=${code ?? ''} signal=${signal ?? ''}`)
-      this.o.patch(id, { pid: null })
-      const after = this.o.apply(id, { type: 'exit', code, signal })
-
-      if (after?.state === 'finishing') this.finish(id)
+        if (after?.state === 'finishing') this.finish(id)
+      })
     })
   }
 
