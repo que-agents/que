@@ -43,6 +43,10 @@ jobs:
 
       - run: npm ci
 
+      # Since Electron 42 the npm package downloads its binary on first use, not in postinstall; fetch it before verify (see .github/actions/setup).
+      - name: Fetch the Electron binary
+        run: npx --no install-electron
+
       - run: npm run verify
 
       - name: Build
