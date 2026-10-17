@@ -461,7 +461,7 @@ describe('SettingsView sidebar titles', () => {
     })
   })
 
-  it('refuses an empty model or an interval under a minute, saying why', async () => {
+  it('refuses an empty model or an interval that is not whole minutes, saying why', async () => {
     const user = userEvent.setup()
     await openSettings(user)
 
@@ -472,7 +472,7 @@ describe('SettingsView sidebar titles', () => {
 
     const error = await screen.findByTestId('settings-error')
     expect(error).toHaveTextContent('The summary model cannot be empty')
-    expect(error).toHaveTextContent('Summary minutes must be a whole number of at least 1')
+    expect(error).toHaveTextContent('Summary minutes must be a whole number from 1 to 1440')
     expect(fakeBridge.configSetCalls()).toEqual([])
   })
 })

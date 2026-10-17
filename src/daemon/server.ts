@@ -73,6 +73,8 @@ export interface ServerOptions {
   queueTickMs?: number
   /** Quiet-hours re-evaluation interval. Default 15 s. */
   quietTickMs?: number
+  /** How long a sidebar-title summary call may run. Default 60 s. */
+  summaryTimeoutMs?: number
   /** The clock quiet hours and the summary throttle read. Default Date.now. */
   now?: () => number
   /** Draws the name of a workspace created without one. Default randomWorkspaceName. */
@@ -181,7 +183,8 @@ export class DaemonServer {
       config: () => this.configOrDefault(),
       transcriptPath: (id) => this.status.transcriptPath(id),
       log: (m) => this.log(m),
-      now: opts.now
+      now: opts.now,
+      timeoutMs: opts.summaryTimeoutMs
     })
     this.tasks = new TaskQueue({
       store: this.store,

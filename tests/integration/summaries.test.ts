@@ -27,6 +27,7 @@ import {
 } from '../../src/testing/daemon-harness'
 import { makeHookEvent } from '../../src/testing/fixtures'
 import { makeTempRepo } from '../../src/testing/temp-repo'
+import { pidAlive } from '../../src/shared/process'
 
 const RETRY_BRIEF =
   'Add retry logic to the uploader\n\nRetry failed chunk uploads three times with exponential backoff.'
@@ -135,7 +136,10 @@ describe('sidebar title summaries', () => {
         '--model',
         'haiku',
         '--output-format',
-        'text'
+        'text',
+        '--tools',
+        '',
+        '--no-session-persistence'
       ])
       expect(promptOf(call)).toContain(RETRY_BRIEF)
       expect(promptOf(call)).not.toContain('Latest progress:')
@@ -143,6 +147,65 @@ describe('sidebar title summaries', () => {
       expect(call.cwd.startsWith(ws.path)).toBe(false)
       expect(call.env).not.toContain('QUE_WORKSPACE_ID')
     }, 30_000)
+  })
+
+  describe('a reply that is the current title', () => {
+    it('marks the title as summarised, so the brief title is not asked about again', async () => {
+      vi.stubEnv('QUE_FAKE_CLAUDE_SUMMARY', 'Add retry logic to the uploader.')
+      const { d, projectId } = await start()
+
+      const ws = await d.client.request('workspace.create', { projectId, brief: RETRY_BRIEF })
+
+      expect(ws).toMatchObject({ title: 'Add retry logic to the uploader', titleSource: 'brief' })
+      await expect
+        .poll(
+          async () => (await d.client.request('workspace.get', { id: ws.id })).titleSource,
+          opts
+        )
+        .toBe('summary')
+      expect(await titleOf(d, ws.id)).toBe('Add retry logic to the uploader')
+    }, 30_000)
+  })
+
+  describe('a call that does not answer', () => {
+    /** The pid of the summary call whose prompt has `brief`, once the fake has logged it. */
+    async function hungPid(d: TestDaemon, brief: string): Promise<number> {
+      await expect
+        .poll(() => summaryCalls(d).some((c) => promptOf(c).includes(brief)), opts)
+        .toBe(true)
+
+      return summaryCalls(d).find((c) => promptOf(c).includes(brief))?.pid as number
+    }
+
+    it('is stopped at the timeout, keeps the title, and lets the next call run', async () => {
+      vi.stubEnv('QUE_FAKE_CLAUDE_SUMMARY_HANG', '1')
+      const { d, projectId } = await start({ summaryTimeoutMs: 500 })
+      const ws = await d.client.request('workspace.create', { projectId, brief: RETRY_BRIEF })
+      const pid = await hungPid(d, RETRY_BRIEF)
+
+      // The next call answers: it runs only once the stuck one was stopped.
+      vi.stubEnv('QUE_FAKE_CLAUDE_SUMMARY_HANG', '')
+      await fence(d, projectId)
+
+      await expect.poll(() => pidAlive(pid), opts).toBe(false)
+      expect(await d.client.request('workspace.get', { id: ws.id })).toMatchObject({
+        title: 'Add retry logic to the uploader',
+        titleSource: 'brief'
+      })
+    }, 30_000)
+
+    it('does not hold up shutdown, which stops it', async () => {
+      vi.stubEnv('QUE_FAKE_CLAUDE_SUMMARY_HANG', '1')
+      // The daemon's own 60 s timeout: only the shutdown can end the call within this test.
+      const { d, projectId } = await start()
+      await d.client.request('workspace.create', { projectId, brief: RETRY_BRIEF })
+      const pid = await hungPid(d, RETRY_BRIEF)
+
+      await d.close()
+      daemon = undefined
+
+      await expect.poll(() => pidAlive(pid), opts).toBe(false)
+    }, 20_000)
   })
 
   describe('task workspaces', () => {
@@ -183,7 +246,10 @@ describe('sidebar title summaries', () => {
         '--model',
         'haiku',
         '--output-format',
-        'text'
+        'text',
+        '--tools',
+        '',
+        '--no-session-persistence'
       ])
       expect(call.cwd).toBe(d.home)
       expect(call.env).not.toContain('QUE_WORKSPACE_ID')
@@ -258,7 +324,10 @@ describe('sidebar title summaries', () => {
         '--model',
         'haiku',
         '--output-format',
-        'text'
+        'text',
+        '--tools',
+        '',
+        '--no-session-persistence'
       ])
       expect(calls[1].cwd).toBe(d.home)
       expect(calls[1].env).not.toContain('QUE_WORKSPACE_ID')

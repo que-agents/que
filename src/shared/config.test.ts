@@ -279,8 +279,16 @@ start_prompt = 3
     const zero = parseConfig('summary_interval_minutes = 0\n', env)
     expect(!zero.ok && zero.errors[0]).toEqual({
       key: 'summary_interval_minutes',
-      message: 'must be a whole number of at least 1'
+      message: 'must be a whole number from 1 to 1440'
     })
+    // Past a day, the throttle's timer delay would overflow and fire at once.
+    const long = parseConfig('summary_interval_minutes = 1441\n', env)
+    expect(!long.ok && long.errors[0]).toEqual({
+      key: 'summary_interval_minutes',
+      message: 'must be a whole number from 1 to 1440'
+    })
+    const day = parseConfig('summary_interval_minutes = 1440\n', env)
+    expect(day.ok && day.config.summaryIntervalMinutes).toBe(1440)
   })
 
   it('reports a TOML syntax error without a key', () => {

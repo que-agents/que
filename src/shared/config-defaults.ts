@@ -26,6 +26,9 @@ export function configDefaults(worktreeRoot: string): UserConfig {
   }
 }
 
+/** The longest summary interval: a day. Longer would overflow the throttle timer's 32-bit delay. */
+export const MAX_SUMMARY_INTERVAL_MINUTES = 1_440
+
 export function defaultQuietHours(): QuietHoursConfig {
   return { enabled: true, default: { start: '19:00', end: '07:00' }, days: {}, unlockMinutes: 20 }
 }

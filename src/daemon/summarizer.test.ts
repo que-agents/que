@@ -2,11 +2,16 @@
 // the reply sanitiser, which workspaces may be summarised, and the throttle
 // with an injected clock. Its wiring (the fake claude, hooks, events) is in
 // tests/integration/summaries.test.ts.
-import { describe, expect, it } from 'vitest'
+import fs from 'node:fs'
+import os from 'node:os'
+import { join } from 'node:path'
+import { afterEach, describe, expect, it } from 'vitest'
 import type { Workspace } from '@shared/types'
 import { makeWorkspace } from '../testing/entities'
 import {
+  BRIEF_CHARS,
   buildSummaryPrompt,
+  readTranscriptTail,
   SUMMARY_INSTRUCTION,
   SummaryThrottle,
   sanitizeSummary,
@@ -55,6 +60,16 @@ describe('buildSummaryPrompt', () => {
       `${SUMMARY_INSTRUCTION}\n\nBrief:\n${BRIEF}\n\nLatest progress:\nBackoff is in; writing the tests for it now.`
     )
   })
+
+  it('keeps only the start of a long brief', () => {
+    const pasted = `${BRIEF}\n\n${'Stack trace line from the failing upload test.\n'.repeat(200)}`
+
+    const prompt = buildSummaryPrompt(pasted, null)
+
+    expect(prompt).toBe(
+      `${SUMMARY_INSTRUCTION}\n\nBrief:\n${pasted.slice(0, BRIEF_CHARS).trimEnd()}`
+    )
+  })
 })
 
 describe('transcriptTail', () => {
@@ -86,6 +101,45 @@ describe('transcriptTail', () => {
     expect(
       transcriptTail(jsonl({ type: 'user', message: { content: 'hi' } }, 'not json'))
     ).toBeNull()
+  })
+})
+
+describe('readTranscriptTail', () => {
+  let dir = ''
+
+  afterEach(() => {
+    if (dir) fs.rmSync(dir, { recursive: true, force: true })
+    dir = ''
+  })
+
+  function writeTranscript(text: string): string {
+    dir = fs.mkdtempSync(join(os.tmpdir(), 'que-transcript-'))
+    const path = join(dir, 'session.jsonl')
+    fs.writeFileSync(path, text)
+
+    return path
+  }
+
+  it('finds the latest assistant entry in the end of a long transcript', async () => {
+    const earlier = jsonl(...Array.from({ length: 50 }, (_, i) => assistant(`Step ${i} done.`)))
+    const last = jsonl(assistant('Backoff is in.'))
+    const path = writeTranscript(`${earlier}${last}`)
+
+    expect(await readTranscriptTail(path, last.length + 10)).toBe('Backoff is in.')
+  })
+
+  it('drops the partial line the window opens on instead of misreading it', async () => {
+    const entry = jsonl(assistant('An earlier reply cut by the window.'))
+    const path = writeTranscript(entry)
+
+    expect(await readTranscriptTail(path, entry.length - 5)).toBeNull()
+    expect(await readTranscriptTail(path, entry.length)).toBe('An earlier reply cut by the window.')
+  })
+
+  it('throws for a missing file, leaving the caller to go on with the brief alone', async () => {
+    dir = fs.mkdtempSync(join(os.tmpdir(), 'que-transcript-'))
+
+    await expect(readTranscriptTail(join(dir, 'missing.jsonl'))).rejects.toThrow(/ENOENT/)
   })
 })
 

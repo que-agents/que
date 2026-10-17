@@ -7,6 +7,7 @@ import type {
 } from '../../../preload/index.d'
 import { currentWindow } from '../../../daemon/quiet-hours'
 import { SUGGESTED_START_PROMPT } from '../../../shared/brief'
+import { MAX_SUMMARY_INTERVAL_MINUTES } from '../../../shared/config-defaults'
 import { type ConfigPatch, HHMM, WEEKDAYS } from '../../../shared/types'
 import { errorMessage } from '../../../shared/errors.decode'
 import { useQue, useStore } from '../store'
@@ -125,8 +126,13 @@ function validate(f: Form): string[] {
   if (f.summaryModel.trim() === '') errors.push('The summary model cannot be empty')
   const interval = Number(f.summaryInterval)
 
-  if (f.summaryInterval.trim() === '' || !Number.isInteger(interval) || interval < 1) {
-    errors.push('Summary minutes must be a whole number of at least 1')
+  if (
+    f.summaryInterval.trim() === '' ||
+    !Number.isInteger(interval) ||
+    interval < 1 ||
+    interval > MAX_SUMMARY_INTERVAL_MINUTES
+  ) {
+    errors.push(`Summary minutes must be a whole number from 1 to ${MAX_SUMMARY_INTERVAL_MINUTES}`)
   }
 
   const file = f.instructionsFile.trim()
@@ -545,6 +551,7 @@ export default function SettingsView(): React.JSX.Element {
             <input
               type="number"
               min="1"
+              max={MAX_SUMMARY_INTERVAL_MINUTES}
               step="1"
               data-testid="settings-summary-interval"
               value={form.summaryInterval}

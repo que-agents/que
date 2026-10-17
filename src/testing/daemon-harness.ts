@@ -73,6 +73,8 @@ export interface TestDaemonOptions {
   now?: () => number
   /** Quiet-hours re-evaluation interval. Default 200 ms (the daemon's is 15 s). */
   quietTickMs?: number
+  /** How long a summary call may run before it is stopped. Default the daemon's (60 s). */
+  summaryTimeoutMs?: number
   /** Status engine stall-check interval. Default 200 ms (the daemon's is 5 s). */
   statusTickMs?: number
   /** Reuse this QUE_HOME (from a daemon closed with keepHome) instead of a fresh one. */
@@ -105,6 +107,7 @@ export async function startTestDaemon(opts: TestDaemonOptions = {}): Promise<Tes
     queueTickMs: 100,
     quietTickMs: opts.quietTickMs ?? 200,
     now: opts.now,
+    summaryTimeoutMs: opts.summaryTimeoutMs,
     randomWorkspaceName: opts.randomWorkspaceName
   })
 

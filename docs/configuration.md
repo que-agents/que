@@ -75,7 +75,7 @@ start_prompt = "Read .que/ticket.md, the ticket this workspace is for. Restate t
 | `start_prompt`                       | Empty by default: a workspace made from a brief (New workspace with "Start Claude with this brief" on) starts `claude` with the brief itself as the first prompt. Set it to send this text instead; the brief is in `.que/brief.md`, so the text can tell Claude to read it. |
 | `summaries`                          | Sidebar titles summarised in the background (see [Sidebar titles](#sidebar-titles)).                                                                                                                                                                                         |
 | `summary_model`                      | The model the summariser asks, passed to `claude --model`.                                                                                                                                                                                                                   |
-| `summary_interval_minutes`           | At most one summary per workspace in this many minutes (a whole number, at least 1).                                                                                                                                                                                         |
+| `summary_interval_minutes`           | At most one summary per workspace in this many minutes (a whole number from 1 to 1440, a day).                                                                                                                                                                               |
 | `instructions_file`                  | A file appended to the system prompt of every session started in a workspace (see [Instructions](#instructions)). Absolute, or starting with `~`; empty means unset.                                                                                                         |
 | `quiet_hours.enabled`                | Quiet mode on or off.                                                                                                                                                                                                                                                        |
 | `quiet_hours.default`                | The nightly window, `[start, end]` in local 24-hour time. It may cross midnight.                                                                                                                                                                                             |
@@ -124,10 +124,11 @@ A workspace made from a brief starts with the brief's first line as its title. W
 words saying what the session is doing: once when the workspace is created, and again
 after a turn ends (the session's Stop hook), at most once per `summary_interval_minutes`
 per workspace; a turn that ends sooner leaves one refresh pending for when the interval is
-up. Each call runs `claude -p --model <summary_model> --output-format text` from
-`QUE_HOME`, never the worktree, with the brief and the end of Claude's latest reply in the
-session transcript. Calls run one at a time, are stopped after 60 seconds, and a failed or
-empty answer keeps the current title.
+up. Each call runs `claude -p --model <summary_model> --output-format text --tools ''
+--no-session-persistence` (no tools, no saved session) from `QUE_HOME`, never the worktree,
+with the start of the brief and the end of Claude's latest reply, found in the last 256 KiB
+of the session transcript. Calls run one at a time, are stopped after 60 seconds (or when
+the daemon stops), and a failed or empty answer keeps the current title.
 
 Renaming a workspace pins its title: a title you set (or one a ticket gives, `KEY
 summary`) is never replaced. Archived workspaces are never summarised.

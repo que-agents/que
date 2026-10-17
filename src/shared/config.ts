@@ -22,7 +22,8 @@ import {
   configDefaults,
   defaultJira,
   defaultNotifications,
-  defaultQuietHours
+  defaultQuietHours,
+  MAX_SUMMARY_INTERVAL_MINUTES
 } from './config-defaults'
 import { errorCode, errorMessage } from './errors.decode'
 
@@ -32,7 +33,8 @@ export {
   DEFAULT_START_PROMPT,
   defaultJira,
   defaultNotifications,
-  defaultQuietHours
+  defaultQuietHours,
+  MAX_SUMMARY_INTERVAL_MINUTES
 } from './config-defaults'
 
 import { isTable } from './config-patch.decode'
@@ -158,7 +160,8 @@ const isPositive = (v: unknown): v is number => typeof v === 'number' && Number.
 
 const isString = (v: unknown): v is string => typeof v === 'string'
 
-const isWholeAtLeastOne = (v: unknown): v is number => Number.isInteger(v) && Number(v) >= 1
+const isSummaryInterval = (v: unknown): v is number =>
+  Number.isInteger(v) && Number(v) >= 1 && Number(v) <= MAX_SUMMARY_INTERVAL_MINUTES
 
 const isNonEmptyString = (v: unknown): v is string => typeof v === 'string' && v.length > 0
 
@@ -382,8 +385,8 @@ export function parseConfig(text: string, env: ConfigEnv): ConfigResult<UserConf
       t,
       'summary_interval_minutes',
       errors,
-      isWholeAtLeastOne,
-      'must be a whole number of at least 1'
+      isSummaryInterval,
+      `must be a whole number from 1 to ${MAX_SUMMARY_INTERVAL_MINUTES}`
     ) ?? config.summaryIntervalMinutes
 
   if (t.repos !== undefined) {
