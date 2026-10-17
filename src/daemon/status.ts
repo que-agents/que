@@ -41,6 +41,7 @@ function fromRow(w: Workspace): Tracked {
 }
 
 export class StatusService {
+  /** Every unarchived workspace's state, from start(); archiving forgets one. */
   private states = new Map<string, Tracked>()
   private tickTimer: NodeJS.Timeout | null = null
   private pollTimer: NodeJS.Timeout | null = null
@@ -56,6 +57,11 @@ export class StatusService {
 
   start(): void {
     this.stopped = false
+
+    for (const w of this.opts.store.listWorkspaces()) {
+      if (!this.states.has(w.id)) this.states.set(w.id, fromRow(w))
+    }
+
     this.tickTimer = setInterval(() => this.tick(), this.opts.tickMs ?? 5_000)
     this.tickTimer.unref()
     this.schedulePoll()
@@ -178,24 +184,23 @@ export class StatusService {
 
   /** Stall check; a transcript written since the last hook counts as activity. */
   tick(): void {
-    for (const ws of this.opts.store.listWorkspaces()) {
-      const s = this.state(ws.id)
+    if (this.closed) return
+    const working = [...this.states].filter(([, s]) => s.status === 'working')
 
-      if (s?.status !== 'working') continue
-
+    for (const [id, s] of working) {
       if (s.transcriptPath) {
         try {
           const mtime = fs.statSync(s.transcriptPath).mtimeMs
 
           if (s.lastActivityAt === null || mtime > s.lastActivityAt) {
-            this.commit(ws.id, s, { ...s, lastActivityAt: Math.floor(mtime) })
+            this.commit(id, s, { ...s, lastActivityAt: Math.floor(mtime) })
           }
         } catch {
           // No transcript (yet); the hook timestamps are all there is.
         }
       }
 
-      this.apply(ws.id, { kind: 'tick' })
+      this.apply(id, { kind: 'tick' })
     }
   }
 
