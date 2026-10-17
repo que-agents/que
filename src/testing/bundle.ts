@@ -12,6 +12,7 @@ const built = new Map<string, string>()
 /** Returns the path of a fresh CommonJS bundle of `entry`, built once per worker. */
 export function bundleEntry(entry: 'src/cli/index.ts' | 'src/daemon/index.ts'): string {
   const cached = built.get(entry)
+
   if (cached) return cached
   const name = entry.split('/')[1]
   const outfile = join(OUT_DIR, `${name}.js`)
@@ -32,5 +33,6 @@ export function bundleEntry(entry: 'src/cli/index.ts' | 'src/daemon/index.ts'): 
   })
   fs.renameSync(tmpfile, outfile)
   built.set(entry, outfile)
+
   return outfile
 }

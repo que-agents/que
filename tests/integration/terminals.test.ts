@@ -3,8 +3,7 @@
 // first work package's pty-host and server tests).
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DaemonClient } from '@shared/client'
-import type { Events } from '@shared/protocol'
-import { startTestDaemon, type TestDaemon } from '../../src/testing/daemon-harness'
+import { recordEvents, startTestDaemon, type TestDaemon } from '../../src/testing/daemon-harness'
 
 let daemon: TestDaemon
 let client: DaemonClient
@@ -19,16 +18,11 @@ afterEach(async () => {
 })
 
 /** Collects every payload of one event on a client, in arrival order. */
-function record<E extends keyof Events>(c: DaemonClient, event: E): Events[E][] {
-  const seen: Events[E][] = []
-  c.on(event, (data) => seen.push(data))
-  return seen
-}
-
 describe('terminals', () => {
   describe('output', () => {
     it('mirrors program output into the snapshot and reports the exit code', async () => {
-      const exits = record(client, 'term.exit')
+      const exits = recordEvents(client, 'term.exit')
+
       const { id } = await client.request('term.create', {
         file: '/bin/sh',
         args: ['-c', 'printf "QUE_MIRROR_4b1e\\n"; exit 3'],
@@ -51,7 +45,7 @@ describe('terminals', () => {
     }, 20_000)
 
     it('streams live output to an attached client', async () => {
-      const data = record(client, 'term.data')
+      const data = recordEvents(client, 'term.data')
       const { id } = await client.request('term.create', { file: '/bin/cat', cols: 80, rows: 24 })
       await client.request('term.attach', { id, cols: 80, rows: 24 })
 
@@ -79,6 +73,7 @@ describe('terminals', () => {
       vi.stubEnv('CLAUDECODE', '1')
       vi.stubEnv('CLAUDE_CODE_CHILD_SESSION', '1')
       vi.stubEnv('CLAUDE_CONFIG_DIR', '/Users/dev/.claude-work')
+
       const { id } = await client.request('term.create', {
         file: '/bin/sh',
         args: [
@@ -92,10 +87,12 @@ describe('terminals', () => {
       await expect
         .poll(async () => (await client.request('term.snapshot', { id })).text, { timeout: 10_000 })
         .toContain('QUE_ENV_END')
+
       const lines = (await client.request('term.snapshot', { id })).text
         .split('\n')
         .map((l) => l.trim())
         .filter((l) => l.includes('='))
+
       expect(lines).toEqual([
         'CLAUDE_CONFIG_DIR=/Users/dev/.claude-work',
         'QUE_TERMINAL=1',
@@ -112,6 +109,7 @@ describe('terminals', () => {
         file: '/bin/sh',
         args: ['-c', 'printf QUE_ATTACH_7f3a; sleep 30']
       })
+
       await expect
         .poll(async () => (await client.request('term.snapshot', { id })).text, { timeout: 10_000 })
         .toContain('QUE_ATTACH_7f3a')
@@ -125,7 +123,7 @@ describe('terminals', () => {
     }, 20_000)
 
     it('stops streaming to a client once it detaches', async () => {
-      const data = record(client, 'term.data')
+      const data = recordEvents(client, 'term.data')
       const { id } = await client.request('term.create', { file: '/bin/cat', cols: 80, rows: 24 })
       await client.request('term.attach', { id, cols: 80, rows: 24 })
       await client.request('term.write', { id, data: 'QUE_BEFORE_d2a8\n' })
@@ -164,8 +162,8 @@ describe('terminals', () => {
 
   describe('kill', () => {
     it('kills a terminal, announces it, and drops it from the list', async () => {
-      const created = record(client, 'term.created')
-      const killed = record(client, 'term.killed')
+      const created = recordEvents(client, 'term.created')
+      const killed = recordEvents(client, 'term.killed')
       const { id } = await client.request('term.create', { file: '/bin/cat', cols: 80, rows: 24 })
       await expect.poll(() => created, { timeout: 5_000 }).toContainEqual({ id })
 

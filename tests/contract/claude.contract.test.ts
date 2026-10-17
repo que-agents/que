@@ -90,6 +90,7 @@ describe.skipIf(!CONTRACT)('claude contract', () => {
     expect(r.code).toBe(0)
     const agents = JSON.parse(r.stdout) as unknown
     expect(Array.isArray(agents)).toBe(true)
+
     for (const agent of agents as Record<string, unknown>[]) {
       expect(Object.keys(agent)).toEqual(
         expect.arrayContaining(['pid', 'cwd', 'kind', 'sessionId', 'status'])
@@ -100,6 +101,7 @@ describe.skipIf(!CONTRACT)('claude contract', () => {
   it('runs headless with stream-json, firing hooks and ending in a result', async () => {
     const marker = `que-contract-${Math.random().toString(36).slice(2, 10)}`
     const command = `'${process.execPath}' '${hookScript}' '${hookLog}'`
+
     const hooks = Object.fromEntries(
       HOOK_EVENTS.map((event) => [event, [{ hooks: [{ type: 'command', command }] }]])
     )
@@ -130,7 +132,9 @@ describe.skipIf(!CONTRACT)('claude contract', () => {
       marker: string | null
       payload: Record<string, unknown>
     }[]
+
     expect(entries.map((e) => e.payload.hook_event_name)).toEqual([...HOOK_EVENTS])
+
     for (const { marker: seen, payload } of entries) {
       expect(seen).toBe(marker)
       expect(Object.keys(payload)).toEqual(

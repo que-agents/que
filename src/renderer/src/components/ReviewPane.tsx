@@ -1,4 +1,4 @@
-import { type ReviewTab, SCRATCH, useQue, useStore } from '../store'
+import { type ReviewTab, SCRATCH, useQueSelector, useStore } from '../store'
 import ChangesList from './ChangesList'
 import FilesTree from './FilesTree'
 import { CloseIcon } from './icons'
@@ -13,7 +13,7 @@ const TABS: ReadonlyArray<{ tab: ReviewTab; label: string }> = [
 /** The review pane at the right of the main area: the workspace's changes, its files, or its pull request. */
 export default function ReviewPane({ termKey }: { termKey: string }): React.JSX.Element {
   const store = useStore()
-  const { review } = useQue()
+  const review = useQueSelector((s) => s.review)
 
   return (
     <aside className="review" data-testid="review-pane" data-tab={review.tab} aria-label="Review">

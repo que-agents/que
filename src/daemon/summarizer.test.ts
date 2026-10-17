@@ -2,10 +2,16 @@
 // the reply sanitiser, which workspaces may be summarised, and the throttle
 // with an injected clock. Its wiring (the fake claude, hooks, events) is in
 // tests/integration/summaries.test.ts.
-import { describe, expect, it } from 'vitest'
+import fs from 'node:fs'
+import os from 'node:os'
+import { join } from 'node:path'
+import { afterEach, describe, expect, it } from 'vitest'
 import type { Workspace } from '@shared/types'
+import { makeWorkspace } from '../testing/entities'
 import {
+  BRIEF_CHARS,
   buildSummaryPrompt,
+  readTranscriptTail,
   SUMMARY_INSTRUCTION,
   SummaryThrottle,
   sanitizeSummary,
@@ -15,6 +21,7 @@ import {
 
 const BRIEF =
   'Add retry logic to the uploader\n\nRetry failed chunk uploads three times with backoff.'
+
 const MINUTE = 60_000
 const T0 = new Date(2026, 9, 16, 14, 0).getTime()
 
@@ -33,27 +40,12 @@ const assistant = (...texts: string[]) => ({
 })
 
 function workspace(overrides: Partial<Workspace> = {}): Workspace {
-  return {
-    id: 'ws_01hzx3k9c2qf',
-    projectId: 'prj_01hzx0a1b2c3',
-    name: 'amber-otter-lane',
-    branch: 'amber-otter-lane',
-    path: '/Users/dev/.que/worktrees/uploader/amber-otter-lane',
-    baseRef: 'origin/main',
-    status: 'idle',
-    statusReason: null,
-    statusAt: '2026-10-16T14:00:00.000Z',
-    lastActivityAt: null,
-    sessionId: null,
-    createdAt: '2026-10-16T14:00:00.000Z',
-    archivedAt: null,
-    prUrl: null,
-    pr: null,
+  return makeWorkspace({
     title: 'Add retry logic to the uploader',
     brief: BRIEF,
     titleSource: 'brief',
     ...overrides
-  }
+  })
 }
 
 describe('buildSummaryPrompt', () => {
@@ -66,6 +58,16 @@ describe('buildSummaryPrompt', () => {
 
     expect(prompt).toBe(
       `${SUMMARY_INSTRUCTION}\n\nBrief:\n${BRIEF}\n\nLatest progress:\nBackoff is in; writing the tests for it now.`
+    )
+  })
+
+  it('keeps only the start of a long brief', () => {
+    const pasted = `${BRIEF}\n\n${'Stack trace line from the failing upload test.\n'.repeat(200)}`
+
+    const prompt = buildSummaryPrompt(pasted, null)
+
+    expect(prompt).toBe(
+      `${SUMMARY_INSTRUCTION}\n\nBrief:\n${pasted.slice(0, BRIEF_CHARS).trimEnd()}`
     )
   })
 })
@@ -99,6 +101,45 @@ describe('transcriptTail', () => {
     expect(
       transcriptTail(jsonl({ type: 'user', message: { content: 'hi' } }, 'not json'))
     ).toBeNull()
+  })
+})
+
+describe('readTranscriptTail', () => {
+  let dir = ''
+
+  afterEach(() => {
+    if (dir) fs.rmSync(dir, { recursive: true, force: true })
+    dir = ''
+  })
+
+  function writeTranscript(text: string): string {
+    dir = fs.mkdtempSync(join(os.tmpdir(), 'que-transcript-'))
+    const path = join(dir, 'session.jsonl')
+    fs.writeFileSync(path, text)
+
+    return path
+  }
+
+  it('finds the latest assistant entry in the end of a long transcript', async () => {
+    const earlier = jsonl(...Array.from({ length: 50 }, (_, i) => assistant(`Step ${i} done.`)))
+    const last = jsonl(assistant('Backoff is in.'))
+    const path = writeTranscript(`${earlier}${last}`)
+
+    expect(await readTranscriptTail(path, last.length + 10)).toBe('Backoff is in.')
+  })
+
+  it('drops the partial line the window opens on instead of misreading it', async () => {
+    const entry = jsonl(assistant('An earlier reply cut by the window.'))
+    const path = writeTranscript(entry)
+
+    expect(await readTranscriptTail(path, entry.length - 5)).toBeNull()
+    expect(await readTranscriptTail(path, entry.length)).toBe('An earlier reply cut by the window.')
+  })
+
+  it('throws for a missing file, leaving the caller to go on with the brief alone', async () => {
+    dir = fs.mkdtempSync(join(os.tmpdir(), 'que-transcript-'))
+
+    await expect(readTranscriptTail(join(dir, 'missing.jsonl'))).rejects.toThrow(/ENOENT/)
   })
 })
 
@@ -151,10 +192,12 @@ describe('summarisable', () => {
 describe('SummaryThrottle', () => {
   function throttle(intervalMinutes = 5) {
     let now = T0
+
     const t = new SummaryThrottle(
       () => intervalMinutes * MINUTE,
       () => now
     )
+
     return { t, at: (ms: number) => (now = ms) }
   }
 
@@ -264,10 +307,12 @@ describe('SummaryThrottle', () => {
     it('reads the interval at each request', () => {
       let minutes = 5
       let now = T0
+
       const t = new SummaryThrottle(
         () => minutes * MINUTE,
         () => now
       )
+
       t.begin('ws_a')
       t.done('ws_a')
 

@@ -36,11 +36,11 @@ You are an expert Playwright test engineer for que. You write, debug, run, and f
 
 Pattern: `{component}-{entity-id?}-{element}`
 
-| Type              | Pattern                      | Example                                                |
-| ----------------- | ---------------------------- | ------------------------------------------------------ |
-| Container         | `{component}`                | `sidebar`, `quiet-board`, `report`                     |
-| Container element | `{component}-{element}`      | `quiet-board-unlock`, `sidebar-add-project`            |
-| Dynamic container | `{component}-{id}`           | `sidebar-workspace-ws_01hzx3k9c2qf`, `terminal-tab-<id>` |
+| Type              | Pattern                      | Example                                                                |
+| ----------------- | ---------------------------- | ---------------------------------------------------------------------- |
+| Container         | `{component}`                | `sidebar`, `quiet-board`, `report`                                     |
+| Container element | `{component}-{element}`      | `quiet-board-unlock`, `sidebar-add-project`                            |
+| Dynamic container | `{component}-{id}`           | `sidebar-workspace-ws_01hzx3k9c2qf`, `terminal-tab-<id>`               |
 | Dynamic child     | `{component}-{id}-{element}` | `sidebar-workspace-ws_01hzx3k9c2qf-status`, `report-task-<id>-pr-link` |
 
 ### Which ID to use for dynamic testids
@@ -52,13 +52,35 @@ Workspaces, terminals, and tasks all carry an **opaque id minted by the daemon**
 **`src/renderer/src/App.tsx`** - terminal tabs, keyed by terminal id (already available as `t.id`):
 
 ```tsx
-<span key={t.id} className={`tab${t.id === activeId ? ' active' : ''}`} data-testid={`terminal-tab-${t.id}`}>
-  <button type="button" data-term-id={t.id} data-testid={`terminal-tab-${t.id}-select`} onClick={() => select(t.id)}>
+<span
+  key={t.id}
+  className={`tab${t.id === activeId ? ' active' : ''}`}
+  data-testid={`terminal-tab-${t.id}`}
+>
+  <button
+    type="button"
+    data-term-id={t.id}
+    data-testid={`terminal-tab-${t.id}-select`}
+    onClick={() => select(t.id)}
+  >
     {t.name}
-    {!t.alive && <span className="badge exited" data-testid={`terminal-tab-${t.id}-exited`}>exited</span>}
-    {t.reattached && <span className="badge" data-testid={`terminal-tab-${t.id}-reattached`}>reattached</span>}
+    {!t.alive && (
+      <span className="badge exited" data-testid={`terminal-tab-${t.id}-exited`}>
+        exited
+      </span>
+    )}
+    {t.reattached && (
+      <span className="badge" data-testid={`terminal-tab-${t.id}-reattached`}>
+        reattached
+      </span>
+    )}
   </button>
-  <button type="button" className="close" data-testid={`terminal-tab-${t.id}-close`} aria-label={`Close ${t.name}`}>
+  <button
+    type="button"
+    className="close"
+    data-testid={`terminal-tab-${t.id}-close`}
+    aria-label={`Close ${t.name}`}
+  >
     ×
   </button>
 </span>
@@ -71,7 +93,11 @@ Workspaces, terminals, and tasks all carry an **opaque id minted by the daemon**
   <button type="button" data-testid={`sidebar-workspace-${ws.id}-open`} onClick={() => open(ws.id)}>
     {ws.name}
   </button>
-  <span className={`status status--${ws.status}`} data-testid={`sidebar-workspace-${ws.id}-status`} data-status={ws.status}>
+  <span
+    className={`status status--${ws.status}`}
+    data-testid={`sidebar-workspace-${ws.id}-status`}
+    data-status={ws.status}
+  >
     {statusLabel(ws.status)}
   </span>
 </li>
@@ -82,7 +108,9 @@ Workspaces, terminals, and tasks all carry an **opaque id minted by the daemon**
 ```tsx
 <section data-testid="quiet-board" aria-label="Quiet hours">
   <p data-testid="quiet-board-until">Quiet until {formatTime(window.end)}</p>
-  <button type="button" data-testid="quiet-board-unlock">Unlock for 15 minutes</button>
+  <button type="button" data-testid="quiet-board-unlock">
+    Unlock for 15 minutes
+  </button>
 </section>
 ```
 
@@ -143,8 +171,12 @@ export class SidebarPage {
   async waitForLoad() {
     await this.root.waitFor({ state: 'visible' })
     await Promise.race([
-      this.page.getByTestId(/^sidebar-workspace-/).first().waitFor({ state: 'visible' }).catch(() => {}),
-      this.emptyState.waitFor({ state: 'visible' }).catch(() => {}),
+      this.page
+        .getByTestId(/^sidebar-workspace-/)
+        .first()
+        .waitFor({ state: 'visible' })
+        .catch(() => {}),
+      this.emptyState.waitFor({ state: 'visible' }).catch(() => {})
     ])
   }
 }
@@ -192,10 +224,13 @@ export class TerminalPage {
   // OK - polls the xterm buffer until a whole line matches, with the screen in the failure message
   async expectScreenToContain(text: string, timeout = 15_000) {
     await expect
-      .poll(async () => (await this.screenText()).split('\n').some((line) => line.trim() === text), {
-        message: `no screen line "${text}"`,
-        timeout,
-      })
+      .poll(
+        async () => (await this.screenText()).split('\n').some((line) => line.trim() === text),
+        {
+          message: `no screen line "${text}"`,
+          timeout
+        }
+      )
       .toBe(true)
   }
 }
@@ -292,10 +327,18 @@ The first work package's `tests/e2e/persistence.spec.ts` predates these conventi
 
 ```typescript
 // These move OUT of the spec:
-function cli(...args: string[]): string { /* execFileSync out/cli/index.js */ }
-async function launch() { /* electron.launch + firstWindow + waitForFunction */ }
-async function waitForOutputLine(page: Page, marker: string) { /* page.waitForFunction */ }
-async function typeLine(page: Page, line: string) { /* focus .xterm-helper-textarea, type, Enter */ }
+function cli(...args: string[]): string {
+  /* execFileSync out/cli/index.js */
+}
+async function launch() {
+  /* electron.launch + firstWindow + waitForFunction */
+}
+async function waitForOutputLine(page: Page, marker: string) {
+  /* page.waitForFunction */
+}
+async function typeLine(page: Page, line: string) {
+  /* focus .xterm-helper-textarea, type, Enter */
+}
 ```
 
 **After (utils + page objects):**
@@ -383,8 +426,10 @@ test('a queued task runs headless and ends as a draft PR in the morning report',
     const task = queJson<{ id: string; workspaceId: string }>(
       launched.queHome,
       'add',
-      '--project', repo,
-      '--name', 'APP-1432-retry-logic',
+      '--project',
+      repo,
+      '--name',
+      'APP-1432-retry-logic',
       '--json',
       'Add retry logic to the uploader'
     )
@@ -509,7 +554,10 @@ export interface LaunchedApp {
 }
 
 /** The env every process in a test shares: app, daemon, CLI, fakes. */
-export function testEnv(queHome: string, extra: Record<string, string> = {}): Record<string, string> {
+export function testEnv(
+  queHome: string,
+  extra: Record<string, string> = {}
+): Record<string, string> {
   const env: Record<string, string> = {}
   for (const [k, v] of Object.entries(process.env)) if (v !== undefined) env[k] = v
   delete env.ELECTRON_RUN_AS_NODE
@@ -520,11 +568,13 @@ export function testEnv(queHome: string, extra: Record<string, string> = {}): Re
     QUE_E2E: '1',
     PATH: `${FAKES_BIN}:${env.PATH}`,
     QUE_FAKE_GH_LOG: join(queHome, 'fake-gh.log'),
-    ...extra,
+    ...extra
   }
 }
 
-export async function launchApp(opts: { queHome?: string; env?: Record<string, string> } = {}): Promise<LaunchedApp> {
+export async function launchApp(
+  opts: { queHome?: string; env?: Record<string, string> } = {}
+): Promise<LaunchedApp> {
   const queHome = opts.queHome ?? mkdtempSync(join(os.tmpdir(), 'que-e2e-'))
   const app = await electron.launch({ args: ['.'], cwd: ROOT, env: testEnv(queHome, opts.env) })
   const window = await app.firstWindow()
@@ -535,7 +585,10 @@ export async function launchApp(opts: { queHome?: string; env?: Record<string, s
     ghCalls: () => {
       const log = join(queHome, 'fake-gh.log')
       if (!existsSync(log)) return []
-      return readFileSync(log, 'utf8').trim().split('\n').map((l) => JSON.parse(l) as string[])
+      return readFileSync(log, 'utf8')
+        .trim()
+        .split('\n')
+        .map((l) => JSON.parse(l) as string[])
     },
     close: async () => {
       await app.close().catch(() => {})
@@ -544,7 +597,7 @@ export async function launchApp(opts: { queHome?: string; env?: Record<string, s
       } catch {
         // already stopped
       }
-    },
+    }
   }
 }
 ```
@@ -562,7 +615,7 @@ import { ROOT, testEnv } from './app'
 export function que(queHome: string, ...args: string[]): string {
   return execFileSync(process.execPath, [join(ROOT, 'out/cli/index.js'), ...args], {
     env: testEnv(queHome),
-    encoding: 'utf8',
+    encoding: 'utf8'
   })
 }
 
@@ -584,9 +637,12 @@ import { join } from 'node:path'
 
 const GIT_ENV = {
   ...process.env,
-  GIT_AUTHOR_NAME: 'que e2e', GIT_AUTHOR_EMAIL: 'e2e@que.invalid',
-  GIT_COMMITTER_NAME: 'que e2e', GIT_COMMITTER_EMAIL: 'e2e@que.invalid',
-  GIT_AUTHOR_DATE: '2026-10-01T09:00:00Z', GIT_COMMITTER_DATE: '2026-10-01T09:00:00Z',
+  GIT_AUTHOR_NAME: 'que e2e',
+  GIT_AUTHOR_EMAIL: 'e2e@que.invalid',
+  GIT_COMMITTER_NAME: 'que e2e',
+  GIT_COMMITTER_EMAIL: 'e2e@que.invalid',
+  GIT_AUTHOR_DATE: '2026-10-01T09:00:00Z',
+  GIT_COMMITTER_DATE: '2026-10-01T09:00:00Z'
 }
 
 /** The same small repo every run: two commits on main and a que.toml with a trivial setup command. */
@@ -614,7 +670,13 @@ Most specs need nothing beyond `makeRepo()` and `launchApp()`. The fake `claude`
 test('a session asking for permission shows needs input in the sidebar', async () => {
   const repo = makeRepo()
   launched = await launchApp({ env: { QUE_FAKE_CLAUDE_SCENARIO: 'needs_input' } })
-  const ws = queJson<{ id: string }>(launched.queHome, 'work', repo, 'APP-1440-quiet-board', '--json')
+  const ws = queJson<{ id: string }>(
+    launched.queHome,
+    'work',
+    repo,
+    'APP-1440-quiet-board',
+    '--json'
+  )
   // ...open the workspace, assert sidebar.workspaceStatus(ws.id) reaches needs_input...
 })
 ```
@@ -629,11 +691,11 @@ Drive it through the UI if it **is** the flow under test (creating a workspace f
 
 The subprocess fakes in `tests/fakes/bin/` are what make E2E deterministic. They are the same binaries the Vitest integration suite uses.
 
-| Fake     | What a spec can rely on                                                                                                                                                                                                                                                       |
-| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Fake     | What a spec can rely on                                                                                                                                                                                                                                                                                                                                                                                           |
+| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `claude` | Headless (`-p --output-format stream-json`) emits a realistic stream ending in a `result` line; interactive mode prints a banner and a prompt into the PTY; `--settings` hooks fire with real hook JSON, so the status engine sees `UserPromptSubmit`, `Notification`, `Stop` as it would from the real thing. `QUE_FAKE_CLAUDE_SCENARIO`: `success`, `stall`, `rate_limit`, `max_turns`, `crash`, `needs_input`. |
-| `gh`     | Logs argv to `QUE_FAKE_GH_LOG` (`launched.ghCalls()` reads it back) and prints a fake PR URL from `gh pr create`.                                                                                                                                                              |
-| `code`   | Logs its invocation, so "Open in VS Code" is assertable without an editor window appearing.                                                                                                                                                                                   |
+| `gh`     | Logs argv to `QUE_FAKE_GH_LOG` (`launched.ghCalls()` reads it back) and prints a fake PR URL from `gh pr create`.                                                                                                                                                                                                                                                                                                 |
+| `code`   | Logs its invocation, so "Open in VS Code" is assertable without an editor window appearing.                                                                                                                                                                                                                                                                                                                       |
 
 **Scenarios belong in integration tests.** E2E uses the fakes to make a journey run end to end — `success` for the overnight journey, `needs_input` for the one spec that proves a hook reaches the sidebar through the real app. Every other scenario (`stall`, `rate_limit`, `max_turns`, `crash`) is proven once in the Vitest runner integration tests; an E2E spec per scenario is the overlap the `test-planning` skill exists to prevent.
 
@@ -698,14 +760,18 @@ async waitForLoad() {
 
 ```typescript
 // 1. An element reflecting daemon state - Playwright's auto-retrying assertions
-await expect(sidebar.workspaceStatus(workspaceId)).toHaveAttribute('data-status', 'done', { timeout: 30_000 })
+await expect(sidebar.workspaceStatus(workspaceId)).toHaveAttribute('data-status', 'done', {
+  timeout: 30_000
+})
 
 // 2. Terminal content - expect.poll over screenText(), via TerminalPage
 await terminal.expectScreenToContain('QUE_MARKER_5c2e')
 
 // 3. Daemon state with no window involved - expect.poll over a CLI query
 await expect
-  .poll(() => queJson<{ state: string }>(launched.queHome, 'status', taskId, '--json').state, { timeout: 30_000 })
+  .poll(() => queJson<{ state: string }>(launched.queHome, 'status', taskId, '--json').state, {
+    timeout: 30_000
+  })
   .toBe('done')
 ```
 
@@ -766,13 +832,13 @@ test-results/                  # Screenshots and Playwright artifacts (gitignore
 
 ## 9. Commands
 
-| Command                                             | Purpose                                                                                       |
-| --------------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| `npm run e2e`                                       | Build the app, then run the full E2E suite - **DEFAULT**                                      |
-| `npx playwright test tests/e2e/persistence.spec.ts` | Run a single spec against the current build (run `npm run build` first if source changed)    |
-| `npx playwright test -g "reattaches"`               | Run tests whose title matches                                                                 |
-| `npx playwright test --ui`                          | Open Playwright UI mode for debugging                                                         |
-| `npx playwright show-report`                        | View the HTML report from the last run (requires the `html` reporter in `playwright.config.ts`) |
+| Command                                             | Purpose                                                                                                  |
+| --------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `npm run e2e`                                       | Build the app, then run the full E2E suite - **DEFAULT**                                                 |
+| `npx playwright test tests/e2e/persistence.spec.ts` | Run a single spec against the current build (run `npm run build` first if source changed)                |
+| `npx playwright test -g "reattaches"`               | Run tests whose title matches                                                                            |
+| `npx playwright test --ui`                          | Open Playwright UI mode for debugging                                                                    |
+| `npx playwright show-report`                        | View the HTML report from the last run (requires the `html` reporter in `playwright.config.ts`)          |
 | `npm run smoke`                                     | Headless daemon smoke check (`scripts/smoke.mjs`) — not E2E, but the fastest "is the build alive" signal |
 
 If a run is interrupted and leaves a daemon behind, stop it through the CLI with the same `QUE_HOME` the spec used (`QUE_HOME=/tmp/que-e2e-… node out/cli/index.js daemon stop`); never kill processes by name, which could hit the daemon serving your real `~/.que`.

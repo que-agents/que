@@ -16,6 +16,7 @@ const T0 = new Date(2026, 9, 14, 10, 0).getTime()
 const STALL = { stallTimeoutMs: 300_000 }
 
 const idle: StatusState = { ...initialState(T0, 'idle') }
+
 const working: StatusState = {
   ...initialState(T0, 'working'),
   lastActivityAt: T0,
@@ -25,6 +26,7 @@ const working: StatusState = {
 
 function hook(state: StatusState, ...args: Parameters<typeof makeHookEvent>) {
   const payload = makeHookEvent(...args)
+
   return reduce(state, { kind: 'hook', event: payload.hook_event_name, payload }, T0 + 1_000)
 }
 
@@ -152,6 +154,7 @@ describe('reduce', () => {
       kind: 'agents_json' as const,
       entry: { cwd: '/Users/dev/.que/worktrees/uploader/app-1432-retry-logic', status }
     })
+
     const old = T0 + AGENTS_JSON_MIN_AGE_MS + 1
 
     it('is ignored while the hook-derived state is fresh', () => {
@@ -220,6 +223,7 @@ describe('traySummary', () => {
     name: 'app-1432-retry-logic',
     status: 'idle'
   })
+
   const board = makeWorkspace({
     id: 'ws_01hzx4m1p8rt',
     name: 'app-1440-quiet-board',
@@ -271,7 +275,9 @@ describe('quietTrayTitle', () => {
     { status: 'working' },
     { status: 'needs_input' }
   ])
+
   const now = new Date(2026, 9, 14, 2, 0).getTime()
+
   const quiet = {
     inQuietHours: true,
     unlockedUntil: new Date(now + 14 * 60_000 + 32_000).toISOString()
@@ -284,10 +290,13 @@ describe('quietTrayTitle', () => {
     )
   })
 
-  it('is the plain counts while quiet and locked, and in work hours', () => {
+  it('drops the needs-input count while quiet and locked', () => {
     expect(quietTrayTitle(summary, { inQuietHours: true, unlockedUntil: null }, now)).toBe(
-      '● 3 ▸ 1 ✕ 0'
+      '● 3 ✕ 0'
     )
+  })
+
+  it('is the plain counts in work hours', () => {
     expect(quietTrayTitle(summary, { inQuietHours: false, unlockedUntil: null }, now)).toBe(
       '● 3 ▸ 1 ✕ 0'
     )

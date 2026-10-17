@@ -7,7 +7,9 @@ import type {
 } from '../../../preload/index.d'
 import { currentWindow } from '../../../daemon/quiet-hours'
 import { SUGGESTED_START_PROMPT } from '../../../shared/brief'
-import { WEEKDAYS } from '../../../shared/types'
+import { MAX_SUMMARY_INTERVAL_MINUTES } from '../../../shared/config-defaults'
+import { type ConfigPatch, HHMM, WEEKDAYS } from '../../../shared/types'
+import { errorMessage } from '../../../shared/errors.decode'
 import { useQue, useStore } from '../store'
 import UnlockStatus from './UnlockStatus'
 
@@ -46,25 +48,27 @@ interface Form {
 /** Monday first, as people read a week. */
 const WEEK: Weekday[] = [...WEEKDAYS.slice(1), WEEKDAYS[0]]
 
-const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/
-
 /** How long the Saved mark stays after a write. */
 const SAVED_MS = 2_000
 
 function toForm(c: UserConfig): Form {
   const q = c.quietHours
+
   const days = Object.fromEntries(
     WEEKDAYS.map((d) => {
       const o = q.days[d]
+
       const day: DayForm =
         o === undefined
           ? { mode: 'inherit', start: q.default.start, end: q.default.end }
           : o === 'none'
             ? { mode: 'none', start: q.default.start, end: q.default.end }
             : { mode: 'custom', start: o.start, end: o.end }
+
       return [d, day]
     })
   ) as Record<Weekday, DayForm>
+
   return {
     enabled: q.enabled,
     start: q.default.start,
@@ -94,11 +98,14 @@ function capital(s: string): string {
 
 function quietOf(f: Form): QuietHoursConfig {
   const days: QuietHoursConfig['days'] = {}
+
   for (const d of WEEKDAYS) {
     const day = f.days[d]
+
     if (day.mode === 'none') days[d] = 'none'
     else if (day.mode === 'custom') days[d] = { start: day.start, end: day.end }
   }
+
   return {
     enabled: f.enabled,
     default: { start: f.start, end: f.end },
@@ -110,12 +117,15 @@ function quietOf(f: Form): QuietHoursConfig {
 /** A quiet window's problem, or null. */
 function windowProblem(start: string, end: string): string | null {
   if (!HHMM.test(start) || !HHMM.test(end)) return 'Use 24-hour HH:MM times'
+
   if (start === end) return 'Start and end must differ'
+
   return null
 }
 
 function positive(value: string, message: string): string | null {
   const n = Number(value)
+
   return value.trim() === '' || !Number.isFinite(n) || n <= 0 ? message : null
 }
 
@@ -130,20 +140,27 @@ interface FieldSpec {
   /** What is wrong with this field's value in a form, or null. */
   check?: (f: Form) => string | null
   /** The config.set patch (the file's snake_case keys) for this field alone; `null` removes. */
-  patch: (f: Form) => Record<string, unknown>
+  patch: (f: Form) => ConfigPatch
   /** A quiet-hours write, which may end tonight's window early and so asks first. */
   quiet?: true
+}
+
+/** Copies one key of `from` into `to`. */
+function copyKey<K extends keyof Form>(to: Form, from: Form, key: K): void {
+  to[key] = from[key]
 }
 
 const own =
   (...keys: Array<keyof Form>) =>
   (from: Form, into: Form): Form => {
-    const next: Record<string, unknown> = { ...into }
-    for (const k of keys) next[k] = from[k]
-    return next as unknown as Form
+    const next = { ...into }
+
+    for (const k of keys) copyKey(next, from, k)
+
+    return next
   }
 
-const quietPatch = (q: Record<string, unknown>): Record<string, unknown> => ({ quiet_hours: q })
+const quietPatch = (q: ConfigPatch): ConfigPatch => ({ quiet_hours: q })
 
 function daySpec(d: Weekday): FieldSpec {
   return {
@@ -152,6 +169,7 @@ function daySpec(d: Weekday): FieldSpec {
       f.days[d].mode === 'custom' ? windowProblem(f.days[d].start, f.days[d].end) : null,
     patch: (f) => {
       const day = f.days[d]
+
       return quietPatch({
         [d]: day.mode === 'inherit' ? null : day.mode === 'none' ? 'none' : [day.start, day.end]
       })
@@ -245,8 +263,12 @@ const SPECS = {
     take: own('summaryInterval'),
     check: (f) => {
       const n = Number(f.summaryInterval)
-      return f.summaryInterval.trim() === '' || !Number.isInteger(n) || n < 1
-        ? 'Summary minutes must be a whole number of at least 1'
+
+      return f.summaryInterval.trim() === '' ||
+        !Number.isInteger(n) ||
+        n < 1 ||
+        n > MAX_SUMMARY_INTERVAL_MINUTES
+        ? `Summary minutes must be a whole number from 1 to ${MAX_SUMMARY_INTERVAL_MINUTES}`
         : null
     },
     patch: (f) => ({ summary_interval_minutes: Number(f.summaryInterval) })
@@ -255,6 +277,7 @@ const SPECS = {
     take: own('instructionsFile'),
     check: (f) => {
       const file = f.instructionsFile.trim()
+
       return file !== '' && !file.startsWith('/') && !file.startsWith('~')
         ? 'The instructions file must be an absolute path or start with ~'
         : null
@@ -278,6 +301,7 @@ type Field = keyof typeof SPECS
 
 /** The instructions file's text, written through instructions.set rather than config.set. */
 const CONTENT = 'instructions-content'
+
 type Mark = Field | typeof CONTENT
 
 /** A brief "Saved" after a write: a polite live region, the mark fading as it goes. */
@@ -296,15 +320,12 @@ function SavedMark({ field, shown }: { field: Mark; shown: boolean }): React.JSX
 /** A field's own problem: a value it refuses, or the daemon's refusal of the write. */
 function FieldError({ field, error }: { field: Mark; error?: string }): React.JSX.Element | null {
   if (!error) return null
+
   return (
     <span className="form-error" role="alert" data-testid={`settings-${field}-error`}>
       {error}
     </span>
   )
-}
-
-function messageOf(err: unknown): string {
-  return err instanceof Error ? err.message : String(err)
 }
 
 /** A number field's change from its stepper (or arrow keys) rather than from typing. */
@@ -322,13 +343,11 @@ export default function SettingsView(): React.JSX.Element {
   const { config, quiet, connected } = useQue()
   const [form, setForm] = useState<Form | null>(null)
   const formRef = useRef<Form | null>(null)
-  formRef.current = form
   /** What the daemon last accepted, field by field: the base of every write and of Escape. */
   const saved = useRef<Form | null>(null)
   /** Each field's writes run one after another, so a slow answer never lands after a newer one. */
   const chains = useRef(new Map<Mark, Promise<void>>())
   const quietRef = useRef(quiet)
-  quietRef.current = quiet
   const live = useRef(true)
   const timers = useRef(new Set<ReturnType<typeof setTimeout>>())
   const stamp = useRef(0)
@@ -340,45 +359,55 @@ export default function SettingsView(): React.JSX.Element {
   const [instructions, setInstructions] = useState<InstructionsGetResult | null>(null)
   const [draft, setDraft] = useState('')
   const draftRef = useRef('')
-  draftRef.current = draft
   const savedContent = useRef('')
   const [loadError, setLoadError] = useState<string | null>(null)
   const instructionsFile = config?.config.instructionsFile
 
+  // The form is seeded from the config once it first arrives.
+  if (config && form === null) setForm(toForm(config.config))
+
+  // Handlers read the latest values through these, and what the daemon last accepted starts as the
+  // seeded form.
   useEffect(() => {
-    if (config && form === null) {
-      const f = toForm(config.config)
-      saved.current = f
-      setForm(f)
-    }
-  }, [config, form])
+    formRef.current = form
+    quietRef.current = quiet
+    draftRef.current = draft
+
+    if (form && saved.current === null) saved.current = form
+  })
 
   useEffect(() => {
     live.current = true
     const pending = timers.current
+
     return () => {
       live.current = false
+
       for (const t of pending) clearTimeout(t)
       pending.clear()
     }
   }, [])
 
   // The file's text, read again whenever the configured path changes.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: reload on a new path only
   useEffect(() => {
     let current = true
-    store.loadInstructions().then(
-      (r) => {
+
+    const load = async (): Promise<void> => {
+      try {
+        const r = await store.loadInstructions()
+
         if (!current) return
         setInstructions(r)
         setDraft(r.content)
         savedContent.current = r.content
         setLoadError(null)
-      },
-      (err: unknown) => {
-        if (current) setLoadError(messageOf(err))
+      } catch (err) {
+        if (current) setLoadError(errorMessage(err))
       }
-    )
+    }
+
+    void load()
+
     return () => {
       current = false
     }
@@ -396,8 +425,10 @@ export default function SettingsView(): React.JSX.Element {
     setErrors((e) => {
       if ((e[field] ?? null) === error) return e
       const next = { ...e }
+
       if (error === null) delete next[field]
       else next[field] = error
+
       return next
     })
 
@@ -405,15 +436,18 @@ export default function SettingsView(): React.JSX.Element {
     stamp.current += 1
     const mine = stamp.current
     setMarks((m) => ({ ...m, [field]: mine }))
+
     const t = setTimeout(() => {
       timers.current.delete(t)
       setMarks((m) => {
         if (m[field] !== mine) return m
         const next = { ...m }
         delete next[field]
+
         return next
       })
     }, SAVED_MS)
+
     timers.current.add(t)
   }
 
@@ -440,39 +474,47 @@ export default function SettingsView(): React.JSX.Element {
   /** Tonight's window in progress would end sooner (or go away) under this config. */
   const endsTonightEarly = (candidate: Form): boolean => {
     const q = quietRef.current
+
     if (!q?.inQuietHours || !q.windowEnd) return false
     const next = currentWindow(store.now(), quietOf(candidate))
+
     return !next || next.end.getTime() < Date.parse(q.windowEnd)
   }
 
   /** Validates one field's value in `next` and, when it is fine and changed, writes it alone. */
   const commit = (field: Field, next: Form | null): void => {
     const base = saved.current
+
     if (!next || !base) return
     const spec: FieldSpec = SPECS[field]
     const problem = spec.check?.(spec.take(next, base)) ?? null
     setError(field, problem)
+
     if (problem) return
     enqueue(field, async () => {
       const before = saved.current ?? base
       const candidate = spec.take(next, before)
       const patch = spec.patch(candidate)
+
       if (JSON.stringify(patch) === JSON.stringify(spec.patch(before))) return
       const applyTonight = spec.quiet && endsTonightEarly(candidate) ? await ask() : false
+
       try {
         await store.saveConfig({ patch, applyTonight })
         saved.current = spec.take(next, saved.current ?? before)
+
         if (!live.current) return
         setError(field, null)
         flash(field)
       } catch (err) {
-        if (live.current) setError(field, messageOf(err))
+        if (live.current) setError(field, errorMessage(err))
       }
     })
   }
 
   const revert = (field: Field): void => {
     const base = saved.current
+
     if (base) setForm((f) => (f ? SPECS[field].take(base, f) : f))
     setError(field, null)
   }
@@ -481,15 +523,17 @@ export default function SettingsView(): React.JSX.Element {
     const text = draftRef.current
     enqueue(CONTENT, async () => {
       if (text === savedContent.current) return
+
       try {
         const r = await store.saveInstructions(text)
         savedContent.current = r.content
+
         if (!live.current) return
         setInstructions(r)
         setError(CONTENT, null)
         flash(CONTENT)
       } catch (err) {
-        if (live.current) setError(CONTENT, messageOf(err))
+        if (live.current) setError(CONTENT, errorMessage(err))
       }
     })
   }
@@ -524,6 +568,7 @@ export default function SettingsView(): React.JSX.Element {
     (e: React.ChangeEvent<HTMLInputElement>): void => {
       const next = { ...form, [key]: e.target.value }
       setForm(next)
+
       if (stepped(e)) commit(field, next)
     }
 
@@ -538,12 +583,15 @@ export default function SettingsView(): React.JSX.Element {
       <SavedMark field={field} shown={marks[field] !== undefined} />
     </span>
   )
+
   const mark = (field: Mark): React.JSX.Element => (
     <SavedMark field={field} shown={marks[field] !== undefined} />
   )
+
   const error = (field: Mark): React.JSX.Element => (
     <FieldError field={field} error={errors[field]} />
   )
+
   const off = !connected
 
   return (
@@ -613,6 +661,7 @@ export default function SettingsView(): React.JSX.Element {
                 const day = form.days[d]
                 const field = `day-${d}` as const
                 const times = text(field)
+
                 return (
                   <tr key={d} data-testid={`settings-day-${d}`}>
                     <th scope="row">{capital(d)}</th>
@@ -803,12 +852,12 @@ export default function SettingsView(): React.JSX.Element {
               data-testid="settings-start-prompt-enabled"
               checked={form.useStartPrompt}
               onChange={(e) =>
-                now('start-prompt-enabled', {
-                  useStartPrompt: e.target.checked,
-                  ...(e.target.checked && form.workspacePrompt.trim() === ''
-                    ? { workspacePrompt: SUGGESTED_START_PROMPT }
-                    : {})
-                })
+                now(
+                  'start-prompt-enabled',
+                  e.target.checked && form.workspacePrompt.trim() === ''
+                    ? { useStartPrompt: true, workspacePrompt: SUGGESTED_START_PROMPT }
+                    : { useStartPrompt: e.target.checked }
+                )
               }
             />
             Use a start prompt instead of the brief
@@ -864,6 +913,7 @@ export default function SettingsView(): React.JSX.Element {
             <input
               type="number"
               min="1"
+              max={MAX_SUMMARY_INTERVAL_MINUTES}
               step="1"
               data-testid="settings-summary-interval"
               value={form.summaryInterval}

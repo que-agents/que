@@ -1,12 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { hhmm } from '@shared/format'
 import { fakeBridge } from '@renderer/testing/fake-bridge'
 import { makeQuietState } from '@renderer/testing/fixtures'
 import App from '../App'
-
-const hhmm = (d: Date): string =>
-  `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 
 /** A window an hour either side of now, and the quiet state the daemon reports for it. */
 function tonight(): { start: string; end: string; state: ReturnType<typeof makeQuietState> } {
@@ -14,9 +12,10 @@ function tonight(): { start: string; end: string; state: ReturnType<typeof makeQ
   const end = new Date(Date.now() + 3_600_000)
   start.setSeconds(0, 0)
   end.setSeconds(0, 0)
+
   return {
-    start: hhmm(start),
-    end: hhmm(end),
+    start: hhmm(start.getTime()),
+    end: hhmm(end.getTime()),
     // Unlocked: the main window (and so Settings) only shows during quiet hours then.
     state: makeQuietState({
       inQuietHours: true,
@@ -30,6 +29,7 @@ function tonight(): { start: string; end: string; state: ReturnType<typeof makeQ
 async function openSettings(user: ReturnType<typeof userEvent.setup>): Promise<HTMLElement> {
   render(<App />)
   await user.click(await screen.findByRole('button', { name: 'Settings' }))
+
   return screen.findByTestId('settings-view')
 }
 
@@ -418,8 +418,10 @@ describe('SettingsView new workspaces', () => {
 
     await user.click(await screen.findByTestId('settings-start-prompt-enabled'))
     const prompt = screen.getByTestId('settings-workspace-prompt')
+
     const suggestion =
       'Read .que/brief.md. Restate the goal, read the relevant code, and propose a plan before editing anything.'
+
     expect(prompt).toHaveValue(suggestion)
     await waitFor(() => expect(fakeBridge.configSetCalls()).toHaveLength(1))
     await retype(user, prompt, 'Read .que/brief.md and ask before editing.')
@@ -643,6 +645,7 @@ describe('SettingsView sidebar titles', () => {
     const toggle = await screen.findByRole('checkbox', {
       name: 'Summarise what each session is doing in its sidebar title'
     })
+
     expect(toggle).toBeChecked()
     expect(screen.getByLabelText('Model')).toHaveValue('haiku')
     expect(screen.getByLabelText(/At most every \(minutes\)/)).toHaveValue(5)
@@ -663,7 +666,7 @@ describe('SettingsView sidebar titles', () => {
     ])
   })
 
-  it('refuses an empty model or an interval under a minute, saying why', async () => {
+  it('refuses an empty model or an interval that is not whole minutes, saying why', async () => {
     const user = userEvent.setup()
     await openSettings(user)
 
@@ -676,7 +679,7 @@ describe('SettingsView sidebar titles', () => {
       'The summary model cannot be empty'
     )
     expect(await screen.findByTestId('settings-summary-interval-error')).toHaveTextContent(
-      'Summary minutes must be a whole number of at least 1'
+      'Summary minutes must be a whole number from 1 to 1440'
     )
     expect(fakeBridge.configSetCalls()).toEqual([])
   })

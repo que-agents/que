@@ -13,12 +13,12 @@ import {
   makeFakeIssue,
   writeFakeTickets
 } from '../../src/testing/fakes'
+import { makeTempRepo } from '../../src/testing/temp-repo'
 import { SidebarPage } from './pages/SidebarPage'
 import { TicketsPage } from './pages/TicketsPage'
 import { TopBarPage } from './pages/TopBarPage'
-import { type LaunchedApp, launchApp, newQueHome, testEnv } from './utils/app'
+import { type LaunchedApp, launchApp, newQueHome, testEnv, tempDir } from './utils/app'
 import { queJson } from './utils/que'
-import { makeRepo } from './utils/repo'
 
 let launched: LaunchedApp
 
@@ -27,7 +27,7 @@ test.afterEach(async () => {
 })
 
 test('a ticket assigned to me becomes a workspace with claude started on its brief', async () => {
-  const repo = makeRepo()
+  const repo = makeTempRepo(tempDir('que-e2e-repo-'))
   // Tickets sync every 120 ms here, so the list fills right after launch.
   const queHome = newQueHome('[jira]\npoll_minutes = 0.002\n[quiet_hours]\nenabled = false\n')
   const env = testEnv(queHome)

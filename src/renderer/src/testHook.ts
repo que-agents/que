@@ -18,8 +18,10 @@ export interface ReviewInfo {
 
 // Registry of the xterms currently on screen, by terminal id, read by the e2e test hook.
 const mounted = new Map<string, Terminal>()
+
 // Where the panes are, supplied by <Panes> while it is on screen.
 let paneSource: (() => PaneInfo[]) | null = null
+
 // The review pane's state, supplied by the app shell.
 let reviewSource: (() => ReviewInfo) | null = null
 
@@ -42,9 +44,11 @@ export function setPaneSource(source: (() => PaneInfo[]) | null): void {
 function textOf(term: Terminal): string {
   const buf = term.buffer.active
   const lines: string[] = []
+
   for (let i = 0; i < buf.length; i++) {
     lines.push(buf.getLine(i)?.translateToString(true) ?? '')
   }
+
   return lines.join('\n')
 }
 
@@ -57,24 +61,31 @@ export function installTestHook(): void {
   if (window.que.app.e2e !== true) return
   const chimes: ChimeKind[] = []
   setChimePlayer({ play: (kind) => chimes.push(kind) })
+
   const screenTextOf = (termId: string): string => {
     const term = mounted.get(termId)
+
     return term ? textOf(term) : ''
   }
+
   // The focused pane's terminal, once it is attached.
   const activeTermId = (): string | null => {
     const focused = paneSource?.().find((p) => p.focused)
+
     return focused?.activeTermId && mounted.has(focused.activeTermId) ? focused.activeTermId : null
   }
+
   window.__que = {
     activeTermId,
     screenText: () => {
       const id = activeTermId()
+
       return id ? screenTextOf(id) : ''
     },
     panes: () => paneSource?.() ?? [],
     review: () => {
       const r = reviewSource?.() ?? { open: false, tab: 'changes', width: 0 }
+
       return { open: r.open, tab: r.tab, width: r.width }
     },
     screenTextOf,

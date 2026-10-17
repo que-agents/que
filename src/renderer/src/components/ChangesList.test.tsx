@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { fakeBridge } from '@renderer/testing/fake-bridge'
+import { openWorkspace } from '@renderer/testing/helpers'
 import {
   makeDiffCommit,
   makeDiffFile,
@@ -15,6 +16,7 @@ import ChangesList from './ChangesList'
 
 const retry = makeWorkspace({ id: 'ws_01hzx3k9c2qf', name: 'app-1432-retry-logic' })
 const put = makeDiffFile()
+
 const readme = makeDiffFile({
   path: 'README.md',
   status: 'added',
@@ -26,6 +28,7 @@ const readme = makeDiffFile({
 
 const newest = makeDiffCommit()
 const oldest = makeWorkspaceDiff().commits[1]
+
 /** Twenty minutes after the newest fixture commit. */
 const now = (): number => Date.parse('2026-10-14T14:00:00.000Z')
 
@@ -38,13 +41,10 @@ function seed(files = [put, readme]): void {
 /** Opens the workspace, waits for its terminal, and opens the review pane on Changes. */
 async function openChanges(user: ReturnType<typeof userEvent.setup>): Promise<string> {
   render(<App now={now} />)
-  await user.click(await screen.findByTestId(`sidebar-workspace-${retry.id}-open`))
-  const pane = await screen.findByTestId('pane-0')
-  await waitFor(() => {
-    expect(pane.dataset.activeTerm).not.toBe('')
-  })
+  const termId = await openWorkspace(user, retry.id)
   await user.click(screen.getByRole('button', { name: 'Review pane' }))
-  return pane.dataset.activeTerm as string
+
+  return termId
 }
 
 describe('ChangesList', () => {
@@ -278,7 +278,9 @@ describe('ChangesList', () => {
       const items = within(screen.getByRole('menu', { name: 'Commits' })).getAllByRole(
         'menuitemradio'
       )
+
       expect(items).toHaveLength(3)
+
       for (const item of items) expect(item).toBeDisabled()
     })
   })
@@ -294,6 +296,7 @@ describe('ChangesList', () => {
       const items = within(screen.getByRole('menu', { name: 'Compare against' })).getAllByRole(
         'menuitemradio'
       )
+
       expect(items.map((i) => i.textContent)).toEqual(['origin/main', 'main'])
       expect(items[0]).toHaveAttribute('data-testid', 'changes-base-option-0')
       expect(items[0]).toHaveAttribute('aria-checked', 'true')

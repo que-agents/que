@@ -8,6 +8,7 @@ import {
   parseConfigAssignment,
   parseRepoConfig,
   parseWorktreeInclude,
+  resolvePermissionMode,
   stringifyConfig
 } from './config'
 
@@ -257,6 +258,7 @@ start_prompt = 3
       const r = parseConfig(text, env)
       expect(r.ok && r.config.startPrompt).toBe('')
     }
+
     const set = parseConfig('start_prompt = "Read .que/brief.md first."\n', env)
     expect(set.ok && set.config.startPrompt).toBe('Read .que/brief.md first.')
     const again = parseConfig(stringifyConfig({ start_prompt: '' }), env)
@@ -268,6 +270,7 @@ start_prompt = 3
       'summaries = "yes"\nsummary_model = ""\nsummary_interval_minutes = 0.5\n',
       env
     )
+
     expect(!bad.ok && bad.errors.map((e) => e.key)).toEqual([
       'summaries',
       'summary_model',
@@ -276,8 +279,16 @@ start_prompt = 3
     const zero = parseConfig('summary_interval_minutes = 0\n', env)
     expect(!zero.ok && zero.errors[0]).toEqual({
       key: 'summary_interval_minutes',
-      message: 'must be a whole number of at least 1'
+      message: 'must be a whole number from 1 to 1440'
     })
+    // Past a day, the throttle's timer delay would overflow and fire at once.
+    const long = parseConfig('summary_interval_minutes = 1441\n', env)
+    expect(!long.ok && long.errors[0]).toEqual({
+      key: 'summary_interval_minutes',
+      message: 'must be a whole number from 1 to 1440'
+    })
+    const day = parseConfig('summary_interval_minutes = 1440\n', env)
+    expect(day.ok && day.config.summaryIntervalMinutes).toBe(1440)
   })
 
   it('reports a TOML syntax error without a key', () => {
@@ -326,6 +337,50 @@ allowed_tools = ["Bash(npm test)", "Edit"]
   })
 })
 
+describe('resolvePermissionMode', () => {
+  const user = { defaultPermissionMode: undefined, allowBypassPermissions: false }
+
+  it('prefers que.toml, then the user default, then acceptEdits', () => {
+    expect(
+      resolvePermissionMode(
+        { permissionMode: 'plan' },
+        { ...user, defaultPermissionMode: 'default' }
+      ).mode
+    ).toBe('plan')
+    expect(resolvePermissionMode({}, { ...user, defaultPermissionMode: 'default' }).mode).toBe(
+      'default'
+    )
+    expect(resolvePermissionMode({}, user)).toEqual({ mode: 'acceptEdits', warning: null })
+  })
+
+  it('honours bypassPermissions only when the repo sets it and the user allows it', () => {
+    expect(
+      resolvePermissionMode(
+        { permissionMode: 'bypassPermissions' },
+        { ...user, allowBypassPermissions: true }
+      )
+    ).toEqual({ mode: 'bypassPermissions', warning: null })
+  })
+
+  it.each([
+    [
+      'the repo asks but the user has not allowed it',
+      { permissionMode: 'bypassPermissions' as const },
+      user
+    ],
+    [
+      'only the user default asks for it',
+      {},
+      { defaultPermissionMode: 'bypassPermissions' as const, allowBypassPermissions: true }
+    ]
+  ])('downgrades to acceptEdits with a warning when %s', (_, repo, config) => {
+    const r = resolvePermissionMode(repo, config)
+
+    expect(r.mode).toBe('acceptEdits')
+    expect(r.warning).toContain('allow_bypass_permissions')
+  })
+})
+
 describe('parseWorktreeInclude', () => {
   it('keeps one path per line, skipping blanks and comments', () => {
     expect(parseWorktreeInclude('.env\n  # comment\n\n  .env.local  \n')).toEqual([
@@ -342,6 +397,7 @@ describe('config patches', () => {
       quiet_hours: { enabled: true, default: ['19:00', '07:00'], saturday: 'none' },
       repos: { uploader: { path: '/Users/dev/code/uploader' } }
     }
+
     const before = structuredClone(raw)
 
     const merged = mergeConfigPatch(raw, {

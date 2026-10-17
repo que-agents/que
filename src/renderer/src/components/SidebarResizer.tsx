@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { readStored, writeStored } from '../persisted.decode'
 
 export const SIDEBAR_MIN = 180
 export const SIDEBAR_MAX = 520
@@ -12,25 +13,23 @@ export function clampSidebarWidth(w: number): number {
 
 /** The remembered width, or the default when nothing sane is stored. */
 export function loadSidebarWidth(): number {
-  try {
-    const n = Number(localStorage.getItem(STORAGE_KEY))
-    return Number.isFinite(n) && n > 0 ? clampSidebarWidth(n) : SIDEBAR_DEFAULT
-  } catch {
-    return SIDEBAR_DEFAULT
-  }
+  return readStored(
+    STORAGE_KEY,
+    (raw) => {
+      const n = Number(raw)
+
+      return Number.isFinite(n) && n > 0 ? clampSidebarWidth(n) : SIDEBAR_DEFAULT
+    },
+    SIDEBAR_DEFAULT
+  )
 }
 
 /** The sidebar width as state, remembered across launches. */
 export function useSidebarWidth(): [number, (w: number) => void] {
   const [width, setWidth] = useState(loadSidebarWidth)
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, String(width))
-    } catch {
-      // Nothing to remember into; the width still applies for this session.
-    }
-  }, [width])
+  useEffect(() => writeStored(STORAGE_KEY, String(width)), [width])
   const set = useCallback((w: number) => setWidth(clampSidebarWidth(w)), [])
+
   return [width, set]
 }
 
@@ -56,9 +55,11 @@ export default function SidebarResizer({
   const end = (e: React.PointerEvent<HTMLHRElement>): void => {
     if (!drag.current) return
     drag.current = null
+
     if (e.currentTarget.hasPointerCapture?.(e.pointerId)) {
       e.currentTarget.releasePointerCapture(e.pointerId)
     }
+
     document.body.classList.remove('resizing')
   }
 
@@ -98,6 +99,7 @@ export default function SidebarResizer({
                 : e.key === 'End'
                   ? SIDEBAR_MAX
                   : null
+
         if (next === null) return
         e.preventDefault()
         onChange(next)

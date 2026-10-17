@@ -1,9 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import { jsonPages, parsePrThread } from './pr-thread'
+import { decodeLineComments, decodePrView } from './pr-thread.decode'
 
 const WS = 'ws_01hzx3k9c2qf'
 const FETCHED = '2026-10-14T04:00:00.000Z'
-const parse = (view: unknown, lines: unknown = []) => parsePrThread(view, lines, WS, 7, FETCHED)
+
+// Each case goes in as `gh` prints it, through the decoders, then the mapping under test.
+const parse = (view: unknown, lines: unknown = []) =>
+  parsePrThread(decodePrView(view), decodeLineComments(lines), WS, 7, FETCHED)
 
 const comment = {
   id: 'IC_kwDOA1',
@@ -12,6 +16,7 @@ const comment = {
   createdAt: '2026-10-14T03:00:00Z',
   url: 'https://github.com/rquellh/que/pull/7#issuecomment-1'
 }
+
 const review = {
   id: 'PRR_kwDOB2',
   author: { login: 'jules' },
@@ -20,6 +25,7 @@ const review = {
   submittedAt: '2026-10-14T03:10:00Z',
   url: 'https://github.com/rquellh/que/pull/7#pullrequestreview-2'
 }
+
 const lineComment = {
   id: 3301,
   user: { login: 'jules' },
@@ -122,6 +128,7 @@ describe('parsePrThread', () => {
 
   it('keeps the input order for entries posted at the same time', () => {
     const at = '2026-10-14T03:00:00Z'
+
     const entries = parse(
       {
         comments: [
@@ -184,6 +191,6 @@ describe('jsonPages', () => {
   })
 
   it.each([['[1, 2'], ['nope'], ['[] x']])('rejects %j', (text) => {
-    expect(() => jsonPages(text)).toThrow()
+    expect(() => jsonPages(text)).toThrow('not JSON')
   })
 })

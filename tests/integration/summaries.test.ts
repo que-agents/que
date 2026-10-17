@@ -27,11 +27,14 @@ import {
 } from '../../src/testing/daemon-harness'
 import { makeHookEvent } from '../../src/testing/fixtures'
 import { makeTempRepo } from '../../src/testing/temp-repo'
+import { pidAlive } from '../../src/shared/process'
 
 const RETRY_BRIEF =
   'Add retry logic to the uploader\n\nRetry failed chunk uploads three times with exponential backoff.'
+
 const FENCE_BRIEF =
   'Document the release checklist\n\nWrite down the steps we follow to cut a release.'
+
 const FAKE_SUMMARY = 'Fake summary of the session'
 const opts = { timeout: 15_000 }
 
@@ -45,18 +48,22 @@ afterEach(async () => {
 /** A daemon with summaries on (test daemons default them off) unless `config` says otherwise. */
 async function start(o: TestDaemonOptions = {}): Promise<{ d: TestDaemon; projectId: string }> {
   const config = o.config ?? ''
+
   const d = await startTestDaemon({
     ...o,
     config: /^summaries\s*=/m.test(config) ? config : `summaries = true\n${config}`
   })
+
   daemon = d
   const project = await d.client.request('project.add', { path: makeTempRepo(d.home) })
+
   return { d, projectId: project.id }
 }
 
 function record<E extends keyof Events>(c: DaemonClient, event: E): Events[E][] {
   const seen: Events[E][] = []
   c.on(event, (data) => seen.push(data))
+
   return seen
 }
 
@@ -77,21 +84,26 @@ async function sendStop(d: TestDaemon, ws: Workspace, transcriptPath: string): P
     transcript_path: transcriptPath,
     stop_hook_active: false
   })
+
   const r = await runCliWith(
     { input: JSON.stringify(payload), env: { QUE_WORKSPACE_ID: ws.id, QUE_SOCKET: d.socket } },
     'hook'
   )
+
   expect(r).toEqual({ code: 0, stdout: '', stderr: '' })
 }
 
 /** A transcript whose last assistant entry is `text`. */
 function writeTranscript(d: TestDaemon, text: string): string {
   const path = join(d.home, 'session-transcript.jsonl')
+
   const lines = [
     { type: 'user', message: { role: 'user', content: 'Add retry logic to the uploader' } },
     { type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text }] } }
   ]
+
   fs.writeFileSync(path, `${lines.map((l) => JSON.stringify(l)).join('\n')}\n`)
+
   return path
 }
 
@@ -124,7 +136,10 @@ describe('sidebar title summaries', () => {
         '--model',
         'haiku',
         '--output-format',
-        'text'
+        'text',
+        '--tools',
+        '',
+        '--no-session-persistence'
       ])
       expect(promptOf(call)).toContain(RETRY_BRIEF)
       expect(promptOf(call)).not.toContain('Latest progress:')
@@ -132,6 +147,65 @@ describe('sidebar title summaries', () => {
       expect(call.cwd.startsWith(ws.path)).toBe(false)
       expect(call.env).not.toContain('QUE_WORKSPACE_ID')
     }, 30_000)
+  })
+
+  describe('a reply that is the current title', () => {
+    it('marks the title as summarised, so the brief title is not asked about again', async () => {
+      vi.stubEnv('QUE_FAKE_CLAUDE_SUMMARY', 'Add retry logic to the uploader.')
+      const { d, projectId } = await start()
+
+      const ws = await d.client.request('workspace.create', { projectId, brief: RETRY_BRIEF })
+
+      expect(ws).toMatchObject({ title: 'Add retry logic to the uploader', titleSource: 'brief' })
+      await expect
+        .poll(
+          async () => (await d.client.request('workspace.get', { id: ws.id })).titleSource,
+          opts
+        )
+        .toBe('summary')
+      expect(await titleOf(d, ws.id)).toBe('Add retry logic to the uploader')
+    }, 30_000)
+  })
+
+  describe('a call that does not answer', () => {
+    /** The pid of the summary call whose prompt has `brief`, once the fake has logged it. */
+    async function hungPid(d: TestDaemon, brief: string): Promise<number> {
+      await expect
+        .poll(() => summaryCalls(d).some((c) => promptOf(c).includes(brief)), opts)
+        .toBe(true)
+
+      return summaryCalls(d).find((c) => promptOf(c).includes(brief))?.pid as number
+    }
+
+    it('is stopped at the timeout, keeps the title, and lets the next call run', async () => {
+      vi.stubEnv('QUE_FAKE_CLAUDE_SUMMARY_HANG', '1')
+      const { d, projectId } = await start({ summaryTimeoutMs: 500 })
+      const ws = await d.client.request('workspace.create', { projectId, brief: RETRY_BRIEF })
+      const pid = await hungPid(d, RETRY_BRIEF)
+
+      // The next call answers: it runs only once the stuck one was stopped.
+      vi.stubEnv('QUE_FAKE_CLAUDE_SUMMARY_HANG', '')
+      await fence(d, projectId)
+
+      await expect.poll(() => pidAlive(pid), opts).toBe(false)
+      expect(await d.client.request('workspace.get', { id: ws.id })).toMatchObject({
+        title: 'Add retry logic to the uploader',
+        titleSource: 'brief'
+      })
+    }, 30_000)
+
+    it('does not hold up shutdown, which stops it', async () => {
+      vi.stubEnv('QUE_FAKE_CLAUDE_SUMMARY_HANG', '1')
+      // The daemon's own 60 s timeout: only the shutdown can end the call within this test.
+      const { d, projectId } = await start()
+      await d.client.request('workspace.create', { projectId, brief: RETRY_BRIEF })
+      const pid = await hungPid(d, RETRY_BRIEF)
+
+      await d.close()
+      daemon = undefined
+
+      await expect.poll(() => pidAlive(pid), opts).toBe(false)
+    }, 20_000)
   })
 
   describe('task workspaces', () => {
@@ -172,7 +246,10 @@ describe('sidebar title summaries', () => {
         '--model',
         'haiku',
         '--output-format',
-        'text'
+        'text',
+        '--tools',
+        '',
+        '--no-session-persistence'
       ])
       expect(call.cwd).toBe(d.home)
       expect(call.env).not.toContain('QUE_WORKSPACE_ID')
@@ -195,6 +272,7 @@ describe('sidebar title summaries', () => {
         id: ws.id,
         title: 'Uploader retries'
       })
+
       expect(renamed).toMatchObject({ title: 'Uploader retries', titleSource: 'user' })
       await sendStop(d, ws, writeTranscript(d, 'Retries are wired in.'))
       await fence(d, projectId)
@@ -207,10 +285,12 @@ describe('sidebar title summaries', () => {
   describe('unchanged input', () => {
     it('skips a Stop whose transcript has not moved on, and runs once it has', async () => {
       let ahead = 0
+
       const { d, projectId } = await start({
         config: 'summaries = false\n',
         now: () => Date.now() + ahead
       })
+
       const ws = await d.client.request('workspace.create', { projectId, brief: RETRY_BRIEF })
       await d.client.request('config.set', { patch: { summaries: true } })
       const transcript = writeTranscript(d, 'Backoff is in; the uploader retries each chunk.')
@@ -244,7 +324,10 @@ describe('sidebar title summaries', () => {
         '--model',
         'haiku',
         '--output-format',
-        'text'
+        'text',
+        '--tools',
+        '',
+        '--no-session-persistence'
       ])
       expect(calls[1].cwd).toBe(d.home)
       expect(calls[1].env).not.toContain('QUE_WORKSPACE_ID')
@@ -273,14 +356,18 @@ describe('sidebar title summaries', () => {
         .toBe(1)
 
       const r = await d.client.request('tickets.start', { key: 'APP-1432', projectId })
+
       if (r.kind !== 'workspace') throw new Error(`expected a workspace, got ${r.kind}`)
       expect(r.workspace.titleSource).toBe('user')
+
       // The started claude finishes its first turn: working, then idle on Stop.
       const idleAfterWork = () => {
         const seen = statuses.filter((s) => s.id === r.workspace.id).map((s) => s.status)
         const working = seen.indexOf('working')
+
         return working >= 0 && seen.lastIndexOf('idle') > working
       }
+
       await expect.poll(idleAfterWork, { timeout: 20_000 }).toBe(true)
       await fence(d, projectId)
 

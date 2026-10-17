@@ -6,6 +6,7 @@ import { makeProject, makeWorkspace } from '@renderer/testing/fixtures'
 import App from '../App'
 
 const uploader = makeProject()
+
 const retry = makeWorkspace({
   id: 'ws_01hzx3k9c2qf',
   name: 'app-1432-retry-logic',
@@ -37,11 +38,13 @@ describe('work-mode dialogs', () => {
       await user.type(brief, 'Retry uploads{Shift>}{Enter}{/Shift}Back off three times.')
       expect(submit).toBeEnabled()
       const drawn = new Set([(name as HTMLInputElement).value])
+
       for (let i = 0; i < 5; i++) {
         await user.click(within(dialog).getByRole('button', { name: 'New name' }))
         expect((name as HTMLInputElement).value).toMatch(/^[a-z]+-[a-z]+-[a-z]+$/)
         drawn.add((name as HTMLInputElement).value)
       }
+
       expect(drawn.size).toBeGreaterThan(1)
 
       await user.clear(name)
@@ -86,9 +89,11 @@ describe('work-mode dialogs', () => {
       expect(
         within(dialog).getByRole('checkbox', { name: 'Start Claude with this brief' })
       ).toBeChecked()
+
       const name = (
         within(dialog).getByRole('textbox', { name: 'Branch and folder' }) as HTMLInputElement
       ).value
+
       await user.click(within(dialog).getByText('Advanced'))
       await user.type(within(dialog).getByRole('textbox', { name: /Base ref/ }), 'origin/release')
 

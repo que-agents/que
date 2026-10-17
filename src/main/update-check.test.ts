@@ -19,11 +19,15 @@ function fakeFetch(
   respond: () => Response | Promise<Response>
 ): typeof fetch & { calls: string[] } {
   const calls: string[] = []
+
   const f = (async (url: string | URL | Request) => {
     calls.push(String(url))
+
     return respond()
   }) as typeof fetch & { calls: string[] }
+
   f.calls = calls
+
   return f
 }
 

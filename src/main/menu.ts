@@ -4,9 +4,11 @@ import os from 'node:os'
 import { join } from 'node:path'
 import { app, dialog, Menu, type MenuItemConstructorOptions } from 'electron'
 import { describeCliInstall, installCli } from './install-cli'
+import { errorMessage } from '../shared/errors.decode'
 
 async function installCommand(): Promise<void> {
   const launcher = join(process.resourcesPath, 'cli', 'que')
+
   try {
     const plan = installCli(launcher, os.homedir())
     const { message, detail } = describeCliInstall(plan)
@@ -19,7 +21,7 @@ async function installCommand(): Promise<void> {
     await dialog.showMessageBox({
       type: 'error',
       message: "Could not install the 'que' command",
-      detail: (err as Error).message
+      detail: errorMessage(err)
     })
   }
 }
@@ -43,6 +45,7 @@ export function installMenu(): void {
         ]
       }
     : { role: 'appMenu' }
+
   Menu.setApplicationMenu(
     Menu.buildFromTemplate([
       appMenu,

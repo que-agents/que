@@ -5,10 +5,9 @@
 // Quiet-hours refusal of workspace.prThread is covered by the safety table.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { DaemonClient } from '@shared/client'
-import type { Events } from '@shared/protocol'
-import type { Workspace } from '@shared/types'
-import { runCli } from '../../src/testing/cli'
-import { startTestDaemon, type TestDaemon } from '../../src/testing/daemon-harness'
+import type { PrThread, PullRequest, Workspace } from '@shared/types'
+import { runCli, runCliJson } from '../../src/testing/cli'
+import { recordEvents, startTestDaemon, type TestDaemon } from '../../src/testing/daemon-harness'
 import {
   fakeCheckRun,
   fakeComment,
@@ -35,20 +34,17 @@ afterEach(async () => {
 
 const opts = { timeout: 10_000 }
 const prOf = async (id: string) => (await client.request('workspace.get', { id })).pr
+
 const views = () =>
   readFakeLog(daemon.ghLog).filter((c) => c.argv[0] === 'pr' && c.argv[1] === 'view')
-const apiCalls = () => readFakeLog(daemon.ghLog).filter((c) => c.argv[0] === 'api')
 
-function record<E extends keyof Events>(event: E): Events[E][] {
-  const seen: Events[E][] = []
-  client.on(event, (data) => seen.push(data))
-  return seen
-}
+const apiCalls = () => readFakeLog(daemon.ghLog).filter((c) => c.argv[0] === 'api')
 
 async function workspace(name = 'app-1520-pr-thread'): Promise<Workspace> {
   const repo = makeTempRepo(daemon.home)
   addBareOrigin(repo)
   const project = await client.request('project.add', { path: repo })
+
   return client.request('workspace.create', { projectId: project.id, name })
 }
 
@@ -91,6 +87,7 @@ async function workspaceWithThread(): Promise<Workspace> {
     ]
   })
   await expect.poll(async () => (await prOf(ws.id))?.updatedAt, opts).toBe(UPDATED)
+
   return ws
 }
 
@@ -172,7 +169,7 @@ describe('workspace.prThread', () => {
 describe('check runs', () => {
   it('arrive through the tracker failing first, and a finished run updates the workspace', async () => {
     const ws = await workspace()
-    const updates = record('workspace.updated')
+    const updates = recordEvents(client, 'workspace.updated')
     setFakePullRequest(daemon.ghPrs, ws.branch, {
       isDraft: false,
       updatedAt: UPDATED,
@@ -262,11 +259,15 @@ describe('que ws pr', () => {
   it('prints { pr, thread } with --json, and refetches with --refresh', async () => {
     const ws = await workspaceWithThread()
 
-    const r = await runCli('ws', 'pr', ws.name, '--json')
+    const out = await runCliJson<{ pr: PullRequest; thread: PrThread }>(
+      'ws',
+      'pr',
+      ws.name,
+      '--json'
+    )
+
     await runCli('ws', 'pr', ws.name, '--refresh')
 
-    expect(r.code).toBe(0)
-    const out = JSON.parse(r.stdout)
     expect(out.pr).toMatchObject({ number: 42, state: 'open', checkRuns: [] })
     expect(out.thread).toMatchObject({ workspaceId: ws.id, number: 42 })
     expect(out.thread.entries).toHaveLength(4)

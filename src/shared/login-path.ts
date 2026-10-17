@@ -10,11 +10,13 @@ export function mergePath(current: string | undefined, login: string | null): st
   if (!login) return current ?? ''
   const seen = new Set<string>()
   const out: string[] = []
+
   for (const entry of [...login.split(':'), ...(current ?? '').split(':')]) {
     if (!entry || seen.has(entry)) continue
     seen.add(entry)
     out.push(entry)
   }
+
   return out.join(':')
 }
 
@@ -23,6 +25,7 @@ export function loginShellPath(
   opts: { shell?: string; env?: NodeJS.ProcessEnv; timeoutMs?: number } = {}
 ): Promise<string | null> {
   const shell = opts.shell ?? process.env.SHELL ?? '/bin/zsh'
+
   return new Promise((resolve) => {
     try {
       const child = execFile(
@@ -39,6 +42,7 @@ export function loginShellPath(
           resolve(err || !out.includes('/') ? null : out)
         }
       )
+
       child.stdin?.end()
     } catch {
       resolve(null)

@@ -17,6 +17,7 @@ export default function UpdateBanner(): React.JSX.Element | null {
       () => {}
     )
     const off = store.onUpdate((found) => setInfo(found))
+
     return () => {
       live = false
       off()
@@ -24,6 +25,7 @@ export default function UpdateBanner(): React.JSX.Element | null {
   }, [store])
 
   if (!info || dismissed) return null
+
   return (
     <div className="update-banner" role="status" data-testid="app-update-banner">
       <span>que {info.version} is available.</span>

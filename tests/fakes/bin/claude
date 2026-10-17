@@ -33,6 +33,7 @@ const VALUE_FLAGS = new Map([
   ['--append-system-prompt', 'appendSystemPrompt'],
   ['--system-prompt', 'systemPrompt'],
   ['--model', 'model'],
+  ['--tools', 'tools'],
   ['--fallback-model', 'fallbackModel']
 ])
 const BOOL_FLAGS = new Map([
@@ -41,6 +42,7 @@ const BOOL_FLAGS = new Map([
   ['--include-partial-messages', 'includePartialMessages'],
   ['--dangerously-skip-permissions', 'skipPermissions'],
   ['--continue', 'continue'],
+  ['--no-session-persistence', 'noSessionPersistence'],
   ['-c', 'continue']
 ])
 const VARIADIC_FLAGS = new Map([
@@ -133,6 +135,7 @@ function matches(matcher, target) {
     return true
   }
   try {
+    // nosemgrep: javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp -- test-fake hook matcher from the test's own config
     return new RegExp(`^(?:${matcher})$`).test(target)
   } catch {
     return matcher === target
@@ -595,7 +598,9 @@ async function main() {
       process.exit(1)
     }
     if (opts.outputFormat === 'text') {
-      // A one-shot question (que's sidebar-title summariser): print the answer and exit.
+      // A one-shot question (que's sidebar-title summariser): print the answer and exit,
+      // or never answer (until killed) under QUE_FAKE_CLAUDE_SUMMARY_HANG=1.
+      if (process.env.QUE_FAKE_CLAUDE_SUMMARY_HANG === '1') await blockForever()
       const summary = process.env.QUE_FAKE_CLAUDE_SUMMARY ?? 'Fake summary of the session'
       process.stdout.write(`${summary}\n`)
       return

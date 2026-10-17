@@ -5,10 +5,9 @@ import fs from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { DaemonClient } from '@shared/client'
-import type { Events } from '@shared/protocol'
-import { startTestDaemon, type TestDaemon } from '../../src/testing/daemon-harness'
+import { recordEvents, startTestDaemon, type TestDaemon } from '../../src/testing/daemon-harness'
 import { readFakeLog } from '../../src/testing/fakes'
-import { pidAlive } from '../../src/testing/leak-check'
+import { pidAlive } from '../../src/shared/process'
 import { addBareOrigin, gitIn, makeTempRepo } from '../../src/testing/temp-repo'
 
 let daemon: TestDaemon
@@ -22,12 +21,6 @@ beforeEach(async () => {
 afterEach(async () => {
   await daemon.close()
 })
-
-function record<E extends keyof Events>(c: DaemonClient, event: E): Events[E][] {
-  const seen: Events[E][] = []
-  c.on(event, (data) => seen.push(data))
-  return seen
-}
 
 describe('projects', () => {
   it('registers the git toplevel once, with its default branch', async () => {
@@ -63,6 +56,7 @@ describe('projects', () => {
 
   it('refuses to remove a project with workspaces unless forced', async () => {
     const project = await client.request('project.add', { path: makeTempRepo(daemon.home) })
+
     const ws = await client.request('workspace.create', {
       projectId: project.id,
       name: 'app-1440-quiet-board'
@@ -87,10 +81,11 @@ worktree_include = ["config/local", "missing.json"]
 `,
         ignored: { '.env': 'API_TOKEN=tok_51f2\n', 'config/local/db.json': '{"port":5433}\n' }
       })
+
       fs.writeFileSync(join(repo, '.worktreeinclude'), '.env\n')
       const mainHead = gitIn(repo, 'rev-parse', 'HEAD')
-      const created = record(client, 'workspace.created')
-      const statuses = record(client, 'workspace.status')
+      const created = recordEvents(client, 'workspace.created')
+      const statuses = recordEvents(client, 'workspace.status')
       const project = await client.request('project.add', { path: repo })
 
       const ws = await client.request('workspace.create', {
@@ -192,23 +187,28 @@ worktree_include = ["config/local", "missing.json"]
   describe('remove', () => {
     it('kills its terminals, runs teardown, removes the worktree and branch', async () => {
       const marker = join(daemon.home, 'teardown-ran.txt')
+
       const repo = makeTempRepo(daemon.home, {
         queToml: `setup = "true"\nteardown = "pwd > '${marker}'"\n`
       })
+
       const project = await client.request('project.add', { path: repo })
+
       const ws = await client.request('workspace.create', {
         projectId: project.id,
         name: 'app-1470-cleanup'
       })
+
       const { id: termId } = await client.request('workspace.openTerminal', {
         id: ws.id,
         cols: 80,
         rows: 24
       })
+
       const [term] = await client.request('term.list', { workspaceId: ws.id })
       expect(term).toMatchObject({ id: termId, workspaceId: ws.id, cwd: ws.path, alive: true })
-      const killed = record(client, 'term.killed')
-      const removed = record(client, 'workspace.removed')
+      const killed = recordEvents(client, 'term.killed')
+      const removed = recordEvents(client, 'workspace.removed')
 
       await client.request('workspace.remove', { id: ws.id, deleteBranch: true })
 
@@ -258,11 +258,13 @@ describe('workspaces from a brief', () => {
     const project = await client.request('project.add', { path: makeTempRepo(daemon.home) })
 
     const first = await client.request('workspace.create', { projectId: project.id, brief })
+
     const second = await client.request('workspace.create', {
       projectId: project.id,
       title: 'Speed up the diff view',
       brief
     })
+
     const named = await client.request('workspace.create', {
       projectId: project.id,
       name: 'APP-1490 upload timeout',
@@ -310,20 +312,25 @@ describe('workspace.start', () => {
     await expect
       .poll(() => readFakeLog(daemon.claudeLog).length, { timeout: 15_000 })
       .toBeGreaterThanOrEqual(n)
+
     return readFakeLog(daemon.claudeLog)
   }
 
   it('opens the first terminal at once and, once setup ends, starts claude on the brief verbatim', async () => {
     const gate = join(daemon.home, 'setup-gate')
+
     const repo = makeTempRepo(daemon.home, {
       queToml: `setup = "until [ -f '${gate}' ]; do sleep 0.05; done"\n`
     })
+
     const instructions = join(daemon.home, 'instructions.md')
     fs.writeFileSync(instructions, 'Delegate broad searches to a smaller model.\n')
     await client.request('config.set', { patch: { instructions_file: instructions } })
     const project = await client.request('project.add', { path: repo })
+
     const brief =
       'Don\'t drop uploads on a 503\n\nRetry with backoff; cap the wait at $MAX_WAIT seconds.\n  Keep `the` indent and "quotes".'
+
     const ws = await client.request('workspace.create', { projectId: project.id, brief })
 
     const { terminalId } = await client.request('workspace.start', { id: ws.id })
@@ -349,6 +356,7 @@ describe('workspace.start', () => {
       patch: { start_prompt: "Read .que/brief.md, then say what you'd do first." }
     })
     const project = await client.request('project.add', { path: makeTempRepo(daemon.home) })
+
     const ws = await client.request('workspace.create', {
       projectId: project.id,
       brief: 'Fix the flaky upload test'
@@ -362,6 +370,7 @@ describe('workspace.start', () => {
 
   it('starts a bare claude in a workspace without a brief', async () => {
     const project = await client.request('project.add', { path: makeTempRepo(daemon.home) })
+
     const ws = await client.request('workspace.create', {
       projectId: project.id,
       name: 'app-1490-no-brief'
@@ -384,16 +393,18 @@ describe('workspace.rename', () => {
   async function created() {
     const repo = makeTempRepo(daemon.home)
     const project = await client.request('project.add', { path: repo })
+
     const ws = await client.request('workspace.create', {
       projectId: project.id,
       brief: 'Fix the flaky upload test'
     })
+
     return { repo, ws }
   }
 
   it('changes the title, announces it, and keeps the branch and folder', async () => {
     const { ws } = await created()
-    const updated = record(client, 'workspace.updated')
+    const updated = recordEvents(client, 'workspace.updated')
 
     const renamed = await client.request('workspace.rename', {
       id: ws.id,
@@ -461,12 +472,14 @@ describe('workspace.rename', () => {
       })
     ).rejects.toMatchObject({ code: 'conflict' })
     expect(gitIn(ws.path, 'rev-parse', '--abbrev-ref', 'HEAD')).toBe(ws.branch)
+
     // The same branch is not a rename: the title still changes.
     const renamed = await client.request('workspace.rename', {
       id: ws.id,
       title: 'Raise the upload test timeout',
       branch: ws.branch
     })
+
     expect(renamed).toMatchObject({ title: 'Raise the upload test timeout', branch: ws.branch })
   }, 20_000)
 })
@@ -476,17 +489,19 @@ describe('workspace.createPr', () => {
     const repo = makeTempRepo(daemon.home)
     const origin = addBareOrigin(repo)
     const { id: projectId } = await client.request('project.add', { path: repo })
+
     const ws = await client.request('workspace.create', {
       projectId,
       name: 'APP-1432 retry logic',
-      ...(branch ? { branch } : {})
+      branch: branch || undefined
     })
+
     return { origin, ws }
   }
 
   it('commits the uncommitted work as the title, pushes, and opens a draft PR', async () => {
     const { origin, ws } = await workspaceWithOrigin()
-    const updates = record(client, 'workspace.updated')
+    const updates = recordEvents(client, 'workspace.updated')
     fs.writeFileSync(join(ws.path, 'retry.ts'), 'export const retries = 3\n')
 
     const result = await client.request('workspace.createPr', {

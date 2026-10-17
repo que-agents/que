@@ -59,6 +59,7 @@ function runWrapper(args: string[], env: Record<string, string>): Promise<Run> {
       detached: true,
       stdio: ['ignore', 'pipe', 'pipe']
     })
+
     let stdout = ''
     let stderr = ''
     child.stdout.on('data', (d: Buffer) => {
@@ -67,9 +68,11 @@ function runWrapper(args: string[], env: Record<string, string>): Promise<Run> {
     child.stderr.on('data', (d: Buffer) => {
       stderr += d.toString()
     })
+
     const watchdog = setTimeout(() => {
       if (child.pid) process.kill(-child.pid, 'SIGKILL')
     }, 10_000)
+
     child.on('error', reject)
     child.on('close', (code) => {
       clearTimeout(watchdog)
