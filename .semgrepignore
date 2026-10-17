@@ -4,6 +4,8 @@ out/
 node_modules/
 release/
 test-results/
+# Coverage report (npm run test:coverage): generated html and JavaScript.
+coverage/
 .private/
 # Vendored lint rules: they run inside oxlint at lint time, never in the app.
 tools/oxlint/anti-slop/

@@ -26,15 +26,44 @@ jobs:
       - uses: ./.github/actions/setup
 
       - name: Vitest
-        run: npx vitest run --reporter=default --reporter=json --outputFile=test-results/vitest.json
+        run: npx vitest run --coverage --reporter=default --reporter=json --outputFile=test-results/vitest.json
+
+      - name: Upload coverage report
+        if: always()
+        id: coverage
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage
+          path: coverage/
+          retention-days: 14
+          if-no-files-found: ignore
 
       - name: Summarize results
         if: always()
+        # The artifact link reaches the shell as an environment variable, never interpolated into the script.
+        env:
+          COVERAGE_URL: ${{ steps.coverage.outputs.artifact-url }}
         run: |
           if [ -f test-results/vitest.json ]; then
             jq -r '"### Unit tests\n\(.numPassedTests) passed, \(.numFailedTests) failed, \(.numPendingTests) skipped (of \(.numTotalTests))"' test-results/vitest.json >> "$GITHUB_STEP_SUMMARY"
           else
             echo "### Unit tests: no results file" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [ -f coverage/coverage-summary.json ]; then
+            {
+              echo
+              echo "#### Coverage"
+              echo
+              echo "| Metric | Covered |"
+              echo "| --- | ---: |"
+              jq -r '.total | "| Lines | \(.lines.pct)% |", "| Statements | \(.statements.pct)% |", "| Branches | \(.branches.pct)% |", "| Functions | \(.functions.pct)% |"' coverage/coverage-summary.json
+              if [ -n "$COVERAGE_URL" ]; then
+                echo
+                echo "[Full coverage report]($COVERAGE_URL)"
+              fi
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            { echo; echo "No coverage summary was written."; } >> "$GITHUB_STEP_SUMMARY"
           fi
 
       - name: Upload test results
