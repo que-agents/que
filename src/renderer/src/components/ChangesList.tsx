@@ -13,10 +13,10 @@ import Menu, { type MenuItem } from './Menu'
  */
 export default function ChangesList({ termKey }: { termKey: string }): React.JSX.Element {
   const store = useStore()
-  const { connected, diffs, diffErrors, diffScopes, workspaces } = useQue()
+  const { connected, diffs, diffScopes, workspaces } = useQue()
   const ws = workspaces[termKey]
-  const diff = diffs[termKey] ?? null
-  const error = diffErrors[termKey] ?? null
+  const diff = diffs[termKey]?.data ?? null
+  const error = diffs[termKey]?.error ?? null
   const files = diff?.files ?? []
   const activeId = store.paneActiveId(termKey, store.focusedPane(termKey))
   const [cursor, setCursor] = useState(0)

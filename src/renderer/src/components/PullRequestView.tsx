@@ -113,11 +113,11 @@ function Comment({
 /** A workspace's pull request: its header, CI checks and conversation. Read-only. */
 export default function PullRequestView({ termKey }: { termKey: string }): React.JSX.Element {
   const store = useStore()
-  const { workspaces, prThreads, prThreadErrors, connected } = useQue()
+  const { workspaces, prThreads, connected } = useQue()
   const ws = workspaces[termKey]
   const pr = ws?.pr ?? null
-  const thread = prThreads[termKey] ?? null
-  const error = prThreadErrors[termKey] ?? null
+  const thread = prThreads[termKey]?.data ?? null
+  const error = prThreads[termKey]?.error ?? null
   const url = pr?.url ?? ws?.prUrl ?? null
   const number = pr?.number ?? (ws?.prUrl ? ws.prUrl.split('/').pop() : null)
   const now = store.now()

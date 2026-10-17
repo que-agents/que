@@ -16,14 +16,13 @@ const NO_FILES: readonly string[] = []
 export default function FilesTree({ termKey }: { termKey: string }): React.JSX.Element {
   const store = useStore()
 
-  const { connected, diffs, diffErrors, fileLists, fileListErrors, filesExpanded, workspaces } =
-    useQue()
+  const { connected, diffs, fileLists, filesExpanded, workspaces } = useQue()
 
   const ws = workspaces[termKey]
-  const list = fileLists[termKey] ?? null
-  const diff = diffs[termKey] ?? null
-  const error = fileListErrors[termKey] ?? null
-  const diffError = diffErrors[termKey] ?? null
+  const list = fileLists[termKey]?.data ?? null
+  const diff = diffs[termKey]?.data ?? null
+  const error = fileLists[termKey]?.error ?? null
+  const diffError = diffs[termKey]?.error ?? null
   const remembered = filesExpanded[termKey]
   const activeId = store.paneActiveId(termKey, store.focusedPane(termKey))
   const [cursor, setCursor] = useState(0)

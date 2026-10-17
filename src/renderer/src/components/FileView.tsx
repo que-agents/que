@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { useQue, useStore } from '../store'
+import { fileKey, useQue, useStore } from '../store'
 
 /** One file of the worktree as a tab beside the terminals, read-only, with line numbers. */
 export default function FileView({
@@ -10,10 +10,10 @@ export default function FileView({
   path: string
 }): React.JSX.Element {
   const store = useStore()
-  const { fileContents, fileErrors } = useQue()
-  const contents = fileContents[termKey]
-  const file = contents && path in contents ? contents[path] : undefined
-  const error = fileErrors[termKey]?.[path] ?? null
+  const { fileContents } = useQue()
+  const entry = fileContents[fileKey(termKey, path)]
+  const file = entry?.data
+  const error = entry?.error ?? null
 
   useEffect(() => {
     void store.ensureFile(termKey, path)

@@ -11,9 +11,9 @@ export default function DiffView({
   path: string
 }): React.JSX.Element {
   const store = useStore()
-  const { diffs, diffErrors } = useQue()
-  const diff = diffs[termKey] ?? null
-  const error = diffErrors[termKey] ?? null
+  const { diffs } = useQue()
+  const diff = diffs[termKey]?.data ?? null
+  const error = diffs[termKey]?.error ?? null
   const file = diff?.files.find((f) => f.path === path)
 
   useEffect(() => {
