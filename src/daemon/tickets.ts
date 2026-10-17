@@ -1,12 +1,12 @@
 // The ticket queue: polls the user's issue tracker through `acli` (read only),
 // caches the tickets assigned to them, and turns one into a workspace with a
 // brief and a claude session on it.
-import { execFile } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import type { UserConfig } from '../shared/config'
 import { cleanSpawnEnv } from '../shared/env'
+import { firstLine, run } from '../shared/exec'
 import { ErrorCodes } from '../shared/protocol'
 import type {
   TicketsListResult,
@@ -29,7 +29,7 @@ import {
 } from './tickets.decode'
 import { shQuote } from './wrapper'
 import { git } from './workspaces'
-import { errorCode, errorMessage } from '../shared/errors.decode'
+import { errorMessage } from '../shared/errors.decode'
 
 const SEARCH_FIELDS = 'key,summary,status,priority,issuetype,assignee,labels'
 const VIEW_FIELDS = 'summary,description,status,priority,issuetype,labels'
@@ -91,33 +91,19 @@ export function workspaceNameFor(ticket: Ticket): string {
   return workspaceSlug(capped) ?? key
 }
 
-function acli(args: string[], signal?: AbortSignal): Promise<string> {
-  return new Promise((resolvePromise, reject) => {
-    execFile(
-      'acli',
-      args,
-      {
-        encoding: 'utf8',
-        timeout: 30_000,
-        maxBuffer: 32 * 1024 * 1024,
-        env: cleanSpawnEnv(process.env),
-        signal
-      },
-      (err, stdout, stderr) => {
-        if (err) {
-          if (errorCode(err) === 'ENOENT') {
-            return reject(new Error('acli is not installed or not on PATH'))
-          }
-
-          const first = (s: string) => s.trim().split('\n')[0]?.trim() ?? ''
-
-          return reject(new Error(first(String(stderr)) || first(String(stdout)) || err.message))
-        }
-
-        resolvePromise(stdout)
-      }
-    ).stdin?.end()
+async function acli(args: string[], signal?: AbortSignal): Promise<string> {
+  const r = await run('acli', args, {
+    timeoutMs: 30_000,
+    maxBuffer: 32 * 1024 * 1024,
+    env: cleanSpawnEnv(process.env),
+    signal
   })
+
+  if (r.ok) return r.stdout
+
+  if (r.code === 'ENOENT') throw new Error('acli is not installed or not on PATH')
+
+  throw new Error(firstLine(r.stderr).trim() || firstLine(r.stdout).trim() || r.error)
 }
 
 export interface TicketServiceOptions {

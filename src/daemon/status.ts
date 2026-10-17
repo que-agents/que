@@ -1,9 +1,9 @@
 // Runs the status engine for every workspace: feeds it hook events, terminal
 // exits, a clock tick, and `claude agents --json`; persists transitions and
 // emits workspace.status.
-import { execFile } from 'node:child_process'
 import fs from 'node:fs'
 import type { UserConfig } from '../shared/config'
+import { run } from '../shared/exec'
 import type { Events, HookEvent } from '../shared/protocol'
 import type { Workspace, WorkspaceStatus } from '../shared/types'
 import { type AgentEntry, reduce, type StatusInput, type StatusState } from './status-engine'
@@ -230,27 +230,18 @@ export class StatusService {
 }
 
 /** Runs `claude agents --json`; a missing binary or bad output is no agents. */
-function listAgents(): Promise<AgentEntry[]> {
-  return new Promise((resolve) => {
-    execFile(
-      'claude',
-      ['agents', '--json'],
-      { encoding: 'utf8', timeout: 5_000 },
-      (err, stdout) => {
-        if (err) return resolve([])
+async function listAgents(): Promise<AgentEntry[]> {
+  const r = await run('claude', ['agents', '--json'], { timeoutMs: 5_000 })
 
-        try {
-          const parsed = JSON.parse(stdout) as unknown
+  if (!r.ok) return []
 
-          const list = Array.isArray(parsed)
-            ? parsed
-            : ((parsed as { agents?: unknown }).agents ?? [])
+  try {
+    const parsed = JSON.parse(r.stdout) as unknown
 
-          resolve(Array.isArray(list) ? (list as AgentEntry[]) : [])
-        } catch {
-          resolve([])
-        }
-      }
-    ).stdin?.end()
-  })
+    const list = Array.isArray(parsed) ? parsed : ((parsed as { agents?: unknown }).agents ?? [])
+
+    return Array.isArray(list) ? (list as AgentEntry[]) : []
+  } catch {
+    return []
+  }
 }

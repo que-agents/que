@@ -1,8 +1,8 @@
 // The finisher: after a successful run, commit what the agent left
 // uncommitted, then push the task branch and open a draft pull request.
 // Nothing is ever pushed to the project's default branch or a protected one.
-import { execFile } from 'node:child_process'
 import fs from 'node:fs'
+import { run } from '../shared/exec'
 import type { Project, Task, Workspace } from '../shared/types'
 import { git } from './workspaces'
 
@@ -39,20 +39,17 @@ export function prBody(resultText: string | null, workspaceName: string): string
 
 const PR_URL = /https?:\/\/\S+\/pull\/\d+/
 
-function gh(cwd: string, args: string[]): Promise<{ ok: boolean; stdout: string; stderr: string }> {
-  return new Promise((resolve) => {
-    execFile(
-      'gh',
-      args,
-      { cwd, encoding: 'utf8', timeout: 120_000, env: { ...process.env, GH_PROMPT_DISABLED: '1' } },
-      (err, stdout, stderr) =>
-        resolve({
-          ok: !err,
-          stdout: stdout ?? '',
-          stderr: `${stderr ?? ''}${err && !stderr ? err.message : ''}`
-        })
-    ).stdin?.end()
+async function gh(
+  cwd: string,
+  args: string[]
+): Promise<{ ok: boolean; stdout: string; stderr: string }> {
+  const r = await run('gh', args, {
+    cwd,
+    timeoutMs: 120_000,
+    env: { ...process.env, GH_PROMPT_DISABLED: '1' }
   })
+
+  return { ok: r.ok, stdout: r.stdout, stderr: `${r.stderr}${!r.ok && !r.stderr ? r.error : ''}` }
 }
 
 export async function finishTask(o: FinishOptions): Promise<FinishResult> {

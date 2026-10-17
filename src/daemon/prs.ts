@@ -2,8 +2,8 @@
 // workspace's branch, stores what changed, and emits workspace.updated.
 // Also answers workspace.prThread: the conversation is fetched on demand and
 // cached until the tracker sees the pull request's updatedAt move.
-import { execFile } from 'node:child_process'
 import type { UserConfig } from '../shared/config'
+import { firstLine, run } from '../shared/exec'
 import type { JsonValue, Project, PrThread, PullRequest, Workspace } from '../shared/types'
 import { ghFailed, notFound } from './errors'
 import { isProtectedBranch } from './finisher'
@@ -32,28 +32,22 @@ export interface PrServiceOptions {
   pollMs?: number
 }
 
-/** Runs `gh <args>` in cwd and parses what it prints as JSON. */
-function ghJson(args: string[], cwd: string, signal: AbortSignal): Promise<JsonValue> {
-  return new Promise((resolve, reject) => {
-    execFile(
-      'gh',
-      args,
-      { cwd, encoding: 'utf8', timeout: 15_000, signal, maxBuffer: 32 * 1024 * 1024 },
-      (err, stdout, stderr) => {
-        if (err) {
-          const detail = String(stderr).trim().split('\n')[0] || err.message
+/** Runs `gh <args>` in cwd and parses what it prints (as JSON, unless `parse` says otherwise). */
+async function ghJson(
+  args: string[],
+  cwd: string,
+  signal: AbortSignal,
+  parse: (stdout: string) => JsonValue = (out) => JSON.parse(out) as JsonValue
+): Promise<JsonValue> {
+  const r = await run('gh', args, { cwd, timeoutMs: 15_000, signal, maxBuffer: 32 * 1024 * 1024 })
 
-          return reject(new Error(detail))
-        }
+  if (!r.ok) throw new Error(firstLine(r.stderr, r.error))
 
-        try {
-          resolve(JSON.parse(stdout) as JsonValue)
-        } catch {
-          reject(new Error('gh printed output that is not JSON'))
-        }
-      }
-    ).stdin?.end()
-  })
+  try {
+    return parse(r.stdout)
+  } catch {
+    throw new Error('gh printed output that is not JSON')
+  }
 }
 
 async function ghPrList(branch: string, cwd: string, signal: AbortSignal): Promise<unknown[]> {
@@ -73,28 +67,12 @@ async function ghPrList(branch: string, cwd: string, signal: AbortSignal): Promi
  * them. A single page parses as is.
  */
 function ghLineComments(number: number, cwd: string, signal: AbortSignal): Promise<JsonValue> {
-  return new Promise((resolve, reject) => {
-    execFile(
-      'gh',
-      ['api', `repos/{owner}/{repo}/pulls/${number}/comments`, '--paginate'],
-      { cwd, encoding: 'utf8', timeout: 15_000, signal, maxBuffer: 32 * 1024 * 1024 },
-      (err, stdout, stderr) => {
-        if (err) {
-          const detail = String(stderr).trim().split('\n')[0] || err.message
-
-          return reject(new Error(detail))
-        }
-
-        try {
-          resolve(
-            jsonPages(stdout).flatMap((page) => (Array.isArray(page) ? page : [page])) as JsonValue
-          )
-        } catch {
-          reject(new Error('gh printed output that is not JSON'))
-        }
-      }
-    ).stdin?.end()
-  })
+  return ghJson(
+    ['api', `repos/{owner}/{repo}/pulls/${number}/comments`, '--paginate'],
+    cwd,
+    signal,
+    (out) => jsonPages(out).flatMap((page) => (Array.isArray(page) ? page : [page])) as JsonValue
+  )
 }
 
 interface CachedThread {
