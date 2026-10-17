@@ -24,6 +24,7 @@
     "src/renderer/src/**/*",
     "src/preload/index.d.ts",
     "src/daemon/quiet-hours.ts",
+    "src/daemon/report.ts",
     "src/shared/config-defaults.ts",
     "src/shared/config-patch.decode.ts",
     "src/shared/errors.decode.ts",
