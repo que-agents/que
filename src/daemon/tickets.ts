@@ -15,7 +15,7 @@ import type {
   WorkspaceCreateParams
 } from '../shared/protocol'
 import { cappedSlug, workspaceSlug } from '../shared/slug'
-import type { Project, Ticket, Workspace } from '../shared/types'
+import type { JsonValue, Project, Ticket, Workspace } from '../shared/types'
 import { adfToText } from './adf-text'
 import { RpcError } from './errors'
 import { Poller } from './poller'
@@ -43,11 +43,16 @@ const FIRST_SYNC_MS = 1000
 const KV_LAST_SYNC = 'tickets.last_sync_at'
 const KV_ERROR = 'tickets.error'
 
+/** The ticket's page on the tracker's `site`, or '' without one. */
+function ticketUrl(site: string, key: string): string {
+  return site ? `https://${site}/browse/${key}` : ''
+}
+
 /** A decoded work item as que keeps it: synced at `syncedAt`, linked to its page on `site`. */
 export function ticketFrom(item: WorkItem, syncedAt: string, site = ''): Ticket {
   return {
     ...item,
-    url: site ? `https://${site}/browse/${item.key}` : '',
+    url: ticketUrl(site, item.key),
     syncedAt,
     workspaceId: null
   }
@@ -304,12 +309,7 @@ export class TicketService {
         const t = todo[next++]
 
         try {
-          const stdout = await acli(
-            ['jira', 'workitem', 'view', t.key, '--json', '--fields', PARENT_FIELDS],
-            this.poller.signal
-          )
-
-          const link = decodeParentLink(JSON.parse(stdout))
+          const link = decodeParentLink(await this.viewItem(t.key, PARENT_FIELDS))
           const parentKey = link?.key ?? null
           checked.set(t.key, parentKey)
           parentOf.set(t.key, parentKey)
@@ -350,7 +350,7 @@ export class TicketService {
           out.push({
             ...parent,
             syncedAt: at,
-            url: site ? `https://${site}/browse/${parentKey}` : ''
+            url: ticketUrl(site, parentKey)
           })
         }
       }
@@ -378,15 +378,19 @@ export class TicketService {
     return this.opts.projects().find((p) => p.name === name) ?? null
   }
 
-  private async brief(ticket: Ticket): Promise<string> {
-    const view = async (key: string, fields: string): Promise<WorkItemView | null> => {
-      const stdout = await acli(
-        ['jira', 'workitem', 'view', key, '--json', '--fields', fields],
-        this.poller.signal
-      )
+  /** One work item's `fields`, as the tracker CLI prints them. */
+  private async viewItem(key: string, fields: string): Promise<JsonValue> {
+    const stdout = await acli(
+      ['jira', 'workitem', 'view', key, '--json', '--fields', fields],
+      this.poller.signal
+    )
 
-      return decodeWorkItemView(JSON.parse(stdout))
-    }
+    return JSON.parse(stdout) as JsonValue
+  }
+
+  private async brief(ticket: Ticket): Promise<string> {
+    const view = async (key: string, fields: string): Promise<WorkItemView | null> =>
+      decodeWorkItemView(await this.viewItem(key, fields))
 
     let description = '(could not be fetched)'
 
