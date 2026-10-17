@@ -66,7 +66,6 @@ export interface TaskQueueOptions {
   killTerminals: (workspaceId: string) => number
   socket: () => string
   log: (msg: string) => void
-  now?: () => number
   /** Stall / pause / wake tick. Default 5 s. */
   tickMs?: number
   /** Dispatcher interval. Default 1 s. */
@@ -82,10 +81,8 @@ export class TaskQueue {
   private warnedNoCaffeinate = false
   private lastWall = 0
   private lastMono = 0
-  private readonly now: () => number
 
   constructor(private o: TaskQueueOptions) {
-    this.now = o.now ?? Date.now
     this.runner = new TaskRunner({
       store: o.store,
       paths: o.paths,
@@ -110,7 +107,7 @@ export class TaskQueue {
       this.apply(t.id, { type: 'restart' })
     }
 
-    this.lastWall = this.now()
+    this.lastWall = Date.now()
     this.lastMono = performance.now()
     const tick = setInterval(() => this.tick(), this.o.tickMs ?? 5_000)
     const dispatch = setInterval(() => this.dispatch(), this.o.dispatchMs ?? 1_000)
@@ -153,7 +150,7 @@ export class TaskQueue {
     const prev = this.o.store.getTask(id)
 
     if (!prev) return undefined
-    const next = nextTask(prev, event, this.now(), this.limits())
+    const next = nextTask(prev, event, Date.now(), this.limits())
     this.commit(prev, next)
 
     return next
@@ -172,7 +169,7 @@ export class TaskQueue {
     )
 
     if (!changed) return
-    next.updatedAt = new Date(this.now()).toISOString()
+    next.updatedAt = new Date().toISOString()
     this.o.store.updateTask(next)
     const statusChanged = prev.state !== next.state || prev.reason !== next.reason
 
@@ -249,7 +246,7 @@ export class TaskQueue {
 
   tick(): void {
     if (this.closed) return
-    const wall = this.now()
+    const wall = Date.now()
     const mono = performance.now()
     const woke = detectWake(this.lastWall, this.lastMono, wall, mono)
     this.lastWall = wall
@@ -338,7 +335,7 @@ export class TaskQueue {
     positive(p.maxBudgetUsd, 'maxBudgetUsd', false)
     const title = (p.title?.trim() || defaultTitle(p.brief)).slice(0, 200)
     const config = this.o.config()
-    const now = new Date(this.now()).toISOString()
+    const now = new Date().toISOString()
 
     const task: Task = {
       id: newId('tsk_'),
@@ -423,7 +420,7 @@ export class TaskQueue {
     }
 
     this.o.store.setKv(KV_OPEN, 'true')
-    this.o.store.setKv(KV_OPENED_AT, new Date(this.now()).toISOString())
+    this.o.store.setKv(KV_OPENED_AT, new Date().toISOString())
 
     if (concurrency !== undefined) this.o.store.setKv(KV_CONCURRENCY, String(concurrency))
     this.o.log(`queue opened (concurrency ${this.concurrency()})`)
@@ -464,7 +461,7 @@ export class TaskQueue {
       throw badRequest('since must be an ISO time')
     }
 
-    const now = this.now()
+    const now = Date.now()
     const from = reportSince(since, this.o.store.getKv(KV_OPENED_AT) ?? null, now)
     const names = new Map<string, string>()
 
@@ -488,9 +485,7 @@ export class TaskQueue {
 
       const log = this.o.store.listStatusLog(ws.id, from)
 
-      const digest = buildWorkspaceDigest(ws, project, log, Date.parse(from), now, {
-        commitsAhead: null
-      })
+      const digest = buildWorkspaceDigest(ws, project, log, Date.parse(from), now)
 
       if (!digest) continue
       digest.commitsAhead = await commitsAhead(ws, project)
