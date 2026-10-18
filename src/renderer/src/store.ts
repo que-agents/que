@@ -849,7 +849,7 @@ export class QueStore {
 
   /**
    * Fetches a workspace's diff in its scope; a failure (quiet hours too) is kept for the views.
-   * A base the daemon refuses (a branch since deleted) is forgotten when the daemon's own base works.
+   * A base the daemon reports as rejected (a branch since deleted) is forgotten; the diff is then against its default.
    * Only the latest fetch per workspace lands, so a quick change of scope never shows a stale answer.
    */
   fetchDiff(key: string): Promise<void> {
@@ -859,29 +859,20 @@ export class QueStore {
       async (current) => {
         const scope = this.diffScope(key)
 
-        try {
-          return await this.api.workspace.diff({
-            id: key,
-            base: scope.base ?? undefined,
-            commit: scope.commit ?? undefined
-          })
-        } catch (err) {
-          if (scope.base === null || !current()) throw err
-          let diff: WorkspaceDiff
+        const diff = await this.api.workspace.diff({
+          id: key,
+          base: scope.base ?? undefined,
+          commit: scope.commit ?? undefined
+        })
 
-          try {
-            diff = await this.api.workspace.diff({ id: key })
-          } catch {
-            throw err
-          }
-
-          if (current()) {
-            rememberDiffBase(key, null)
-            this.setWith((s) => ({ diffScopes: without(s.diffScopes, key) }))
-          }
-
-          return diff
+        if (diff.rejectedBase !== null && current()) {
+          rememberDiffBase(key, null)
+          this.setWith((s) => ({
+            diffScopes: { ...s.diffScopes, [key]: { ...scope, base: null } }
+          }))
         }
+
+        return diff
       },
       { latestOnly: true, keepOnError: false, onData: (s, diff) => openNewlyChanged(s, key, diff) }
     )

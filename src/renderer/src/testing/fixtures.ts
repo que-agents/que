@@ -160,6 +160,7 @@ export function makeWorkspaceDiff(overrides: Partial<WorkspaceDiff> = {}): Works
     bases: ['origin/main', 'main'],
     commit: null,
     files: [makeDiffFile()],
+    rejectedBase: null,
     generatedAt: '2026-10-14T14:00:00.000Z',
     ...overrides
   }

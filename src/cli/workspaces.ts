@@ -349,6 +349,10 @@ export function registerWorkspaceCommands(program: Command): void {
           commit: opts.commit
         })
 
+        // The daemon falls back for a remembered base; a base typed here is an error.
+        if (diff.rejectedBase !== null)
+          throw new CliError(`base ${diff.rejectedBase} is not a commit`)
+
         if (opts.json) printJson(diff)
         else console.log(formatDiff(diff))
       })

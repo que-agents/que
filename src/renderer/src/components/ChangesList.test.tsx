@@ -366,7 +366,7 @@ describe('ChangesList', () => {
 
     it('forgets a remembered ref the daemon refuses and shows the default comparison', async () => {
       seed()
-      fakeBridge.failDiff(retry.id, { base: 'feature/gone' }, 'unknown ref feature/gone')
+      fakeBridge.refuseDiffBase(retry.id, 'feature/gone')
       localStorage.setItem('que.diffBases', JSON.stringify({ [retry.id]: 'feature/gone' }))
 
       render(
@@ -378,10 +378,7 @@ describe('ChangesList', () => {
       expect(await screen.findByTestId('changes-file-1')).toHaveAttribute('data-path', 'README.md')
       expect(screen.getByTestId('changes-summary')).toHaveTextContent('Commits 2 vs origin/main')
       expect(screen.queryByTestId('changes-error')).not.toBeInTheDocument()
-      expect(fakeBridge.diffCalls()).toEqual([
-        { id: retry.id, base: 'feature/gone', commit: null },
-        { id: retry.id, base: null, commit: null }
-      ])
+      expect(fakeBridge.diffCalls()).toEqual([{ id: retry.id, base: 'feature/gone', commit: null }])
       expect(localStorage.getItem('que.diffBases')).toBeNull()
     })
   })

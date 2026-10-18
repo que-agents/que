@@ -222,13 +222,28 @@ describe('workspace.diff commits, bases and narrowing', () => {
     ])
   })
 
-  it('rejects a base that is not a commit', async () => {
-    await expect(
-      daemon.client.request('workspace.diff', { id: ws.id, base: 'no-such-branch' })
-    ).rejects.toMatchObject({
-      code: 'bad_request',
-      message: expect.stringContaining('no-such-branch')
+  it('falls back to the default comparison when the base is not a commit', async () => {
+    branchTwoAhead()
+
+    const plain = await diff()
+
+    const d = await daemon.client.request('workspace.diff', {
+      id: ws.id,
+      base: 'no-such-branch'
     })
+
+    expect(d.rejectedBase).toBe('no-such-branch')
+    expect(d.base).toBe('origin/main')
+    expect(d.files).toEqual(plain.files)
+    expect(d.commitsAhead).toBe(plain.commitsAhead)
+    expect(plain.rejectedBase).toBeNull()
+  })
+
+  it('reports a base that looks like an option instead of passing it on', async () => {
+    const d = await daemon.client.request('workspace.diff', { id: ws.id, base: '--output=x' })
+
+    expect(d.rejectedBase).toBe('--output=x')
+    expect(d.base).toBe('origin/main')
   })
 
   it('rejects a commit that is not on the branch past the base', async () => {
@@ -298,6 +313,14 @@ describe('que ws diff', () => {
       commit: older,
       files: [{ path: 'uploader.ts', dirty: false }]
     })
+  }, 30_000)
+
+  it('fails with the reason when --base is not a commit', async () => {
+    const r = await runCli('ws', 'diff', ws.name, '--base', 'no-such-branch')
+
+    expect(r.code).toBe(1)
+    expect(r.stderr).toContain('base no-such-branch is not a commit')
+    expect(r.stdout).toBe('')
   }, 30_000)
 
   it('fails with the reason when --commit is not on the branch', async () => {
