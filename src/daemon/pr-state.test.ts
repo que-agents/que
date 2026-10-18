@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { checkRunsOf, parsePullRequest, samePullRequest } from './pr-state'
+import {
+  checkRunsOf,
+  currentPullRequest,
+  parsePullRequest,
+  pullRequestList,
+  samePullRequest,
+  samePullRequests
+} from './pr-state'
 import { decodeCheckRollup, decodePullRequest } from './pr-state.decode'
 
 const AT = '2026-10-14T03:00:00.000Z'
@@ -23,7 +30,16 @@ describe('parsePullRequest', () => {
       review: null,
       checkRuns: [],
       updatedAt: null,
+      additions: null,
+      deletions: null,
       checkedAt: AT
+    })
+  })
+
+  it('keeps the line counts gh printed', () => {
+    expect(parse({ state: 'OPEN', additions: 212, deletions: 48 })).toMatchObject({
+      additions: 212,
+      deletions: 48
     })
   })
 
@@ -225,6 +241,7 @@ describe('samePullRequest', () => {
     expect(samePullRequest(a, parse({ state: 'OPEN', isDraft: true }))).toBe(false)
     expect(samePullRequest(a, parse({ state: 'OPEN', reviewDecision: 'APPROVED' }))).toBe(false)
     expect(samePullRequest(a, parse({ state: 'OPEN', title: 'New title' }))).toBe(false)
+    expect(samePullRequest(a, parse({ state: 'OPEN', additions: 3, deletions: 0 }))).toBe(false)
   })
 
   it('tells pull requests apart by their check runs', () => {
@@ -254,5 +271,98 @@ describe('samePullRequest', () => {
     expect(samePullRequest(null, null)).toBe(true)
     expect(samePullRequest(null, a)).toBe(false)
     expect(samePullRequest(a, null)).toBe(false)
+  })
+})
+
+// A pull request numbered `number` on the branch, as parse() builds it.
+const pr = (number: number, extra: Record<string, unknown>) => {
+  const p = parse({ ...extra, number, url: `https://github.com/rquellh/que/pull/${number}` })
+
+  if (!p) throw new Error('fixture did not decode')
+
+  return p
+}
+
+describe('currentPullRequest', () => {
+  it('picks the open one over a newer merged one', () => {
+    const merged = pr(52, { state: 'MERGED', updatedAt: '2026-10-14T05:00:00Z' })
+    const open = pr(51, { state: 'OPEN', updatedAt: '2026-10-14T02:00:00Z' })
+
+    expect(currentPullRequest([merged, open])?.number).toBe(51)
+  })
+
+  it('counts a draft as open', () => {
+    const closed = pr(52, { state: 'CLOSED', updatedAt: '2026-10-14T05:00:00Z' })
+    const draft = pr(50, { state: 'OPEN', isDraft: true, updatedAt: '2026-10-13T20:00:00Z' })
+
+    expect(currentPullRequest([closed, draft])?.number).toBe(50)
+  })
+
+  it('picks the most recently updated when none is open', () => {
+    const closedLater = pr(48, { state: 'CLOSED', updatedAt: '2026-10-14T04:00:00Z' })
+    const merged = pr(49, { state: 'MERGED', updatedAt: '2026-10-14T03:00:00Z' })
+
+    expect(currentPullRequest([merged, closedLater])?.number).toBe(48)
+  })
+
+  it('falls back to the higher number when updatedAt is unknown', () => {
+    expect(
+      currentPullRequest([pr(47, { state: 'MERGED' }), pr(49, { state: 'MERGED' })])?.number
+    ).toBe(49)
+  })
+
+  it('is null without pull requests', () => {
+    expect(currentPullRequest([])).toBeNull()
+  })
+})
+
+describe('pullRequestList', () => {
+  it('orders newest first by number, one entry per number', () => {
+    const list = pullRequestList([
+      pr(12, { state: 'MERGED' }),
+      pr(30, { state: 'OPEN', title: 'From the branch' }),
+      pr(30, { state: 'OPEN', title: 'From the task' }),
+      pr(21, { state: 'CLOSED' })
+    ])
+
+    expect(list.map((p) => [p.number, p.title])).toEqual([
+      [30, 'From the branch'],
+      [21, 'Add retry logic'],
+      [12, 'Add retry logic']
+    ])
+  })
+
+  it('keeps the newest ten', () => {
+    const fifteen = Array.from({ length: 15 }, (_, i) => pr(i + 1, { state: 'CLOSED' }))
+
+    expect(pullRequestList(fifteen).map((p) => p.number)).toEqual([
+      15, 14, 13, 12, 11, 10, 9, 8, 7, 6
+    ])
+  })
+
+  it('leaves its input untouched', () => {
+    const input = [pr(3, { state: 'OPEN' }), pr(9, { state: 'MERGED' })]
+    const before = structuredClone(input)
+
+    const list = pullRequestList(input)
+
+    expect(input).toEqual(before)
+    expect(list).not.toBe(input)
+  })
+})
+
+describe('samePullRequests', () => {
+  const merged = pr(41, { state: 'MERGED' })
+  const open = pr(42, { state: 'OPEN' })
+
+  it('is the same when every entry matches but checkedAt', () => {
+    expect(samePullRequests([open, merged], [{ ...open, checkedAt: 'later' }, merged])).toBe(true)
+    expect(samePullRequests([], [])).toBe(true)
+  })
+
+  it('differs when any entry changes, one is added, or the order moves', () => {
+    expect(samePullRequests([open, merged], [{ ...open, state: 'closed' }, merged])).toBe(false)
+    expect(samePullRequests([merged], [open, merged])).toBe(false)
+    expect(samePullRequests([open, merged], [merged, open])).toBe(false)
   })
 })

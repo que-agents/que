@@ -95,7 +95,7 @@ describe('ReviewPane', () => {
 
       const pane = screen.getByTestId('review-pane')
       expect(pane.parentElement).toBe(screen.getByTestId('app-shell'))
-      expect(within(pane).queryByTestId('topbar')).not.toBeInTheDocument()
+      expect(within(pane).queryByTestId('pane-controls')).not.toBeInTheDocument()
       expect(screen.getByTestId('app-shell')).toHaveStyle({ '--review-width': '320px' })
     })
 

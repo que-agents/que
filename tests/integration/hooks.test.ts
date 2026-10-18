@@ -81,6 +81,35 @@ describe('hook delivery', () => {
     expect(await screen()).toContain('Claude Code v2.1.0 (fake)')
   }, 45_000)
 
+  it('records when a turn ends, announced with workspace.updated, until the app has seen it', async () => {
+    const { d, ws } = await idleWorkspace()
+    const updated = recordEvents(d.client, 'workspace.updated')
+
+    const { id } = await d.client.request('workspace.openTerminal', {
+      id: ws.id,
+      cols: 100,
+      rows: 30
+    })
+
+    await d.client.request('term.write', { id, data: 'claude\r' })
+    await expect
+      .poll(async () => (await d.client.request('workspace.get', { id: ws.id })).sessionId, {
+        timeout: 20_000
+      })
+      .toMatch(/^[0-9a-f-]{36}$/)
+    expect((await d.client.request('workspace.get', { id: ws.id })).finishedAt).toBeNull()
+    await d.client.request('term.write', { id, data: 'hello\r' })
+
+    await expect
+      .poll(async () => (await d.client.request('workspace.get', { id: ws.id })).finishedAt, {
+        timeout: 15_000
+      })
+      .toMatch(/^\d{4}-\d\d-\d\dT/)
+    const after = await d.client.request('workspace.get', { id: ws.id })
+    expect(after).toMatchObject({ status: 'idle', seenAt: null })
+    expect(updated.filter((w) => w.id === ws.id).at(-1)?.finishedAt).toBe(after.finishedAt)
+  }, 45_000)
+
   it('reaches claude through another claude wrapper ahead of it on PATH', async () => {
     // A machine where some other tool's wrapper sits in front of claude: the
     // daemon pins QUE_REAL_CLAUDE to that wrapper, and the wrapper looks past

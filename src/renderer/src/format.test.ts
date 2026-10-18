@@ -67,7 +67,21 @@ describe('prBadge', () => {
     [{ state: 'open', checks: 'passing' }, 'busy', 'PR #41: open, checks passing'],
     [{ state: 'open' }, 'busy', 'PR #41: open']
   ] as const)('%j is %s: "%s"', (overrides, tone, title) => {
-    expect(prBadge(makePullRequest(overrides))).toEqual({ label: '#41', tone, title })
+    expect(prBadge(makePullRequest(overrides))).toMatchObject({ label: '#41', tone, title })
+  })
+
+  it.each([
+    [{ state: 'open', checks: 'passing' }, 'open · checks passing'],
+    [{ state: 'open', checks: 'pending' }, 'open · checks pending'],
+    [{ state: 'open', checks: 'none' }, 'open'],
+    [{ state: 'open', checks: 'failing', review: 'changes_requested' }, 'open · checks failing'],
+    [{ state: 'open', checks: 'passing', review: 'changes_requested' }, 'changes requested'],
+    [{ state: 'open', checks: 'passing', review: 'approved' }, 'open · checks passing'],
+    [{ state: 'draft', checks: 'passing' }, 'draft'],
+    [{ state: 'merged', checks: 'failing' }, 'merged'],
+    [{ state: 'closed', checks: 'passing' }, 'closed']
+  ] as const)('%j reads "%s" on the workspace card', (overrides, text) => {
+    expect(prBadge(makePullRequest(overrides)).text).toBe(text)
   })
 })
 

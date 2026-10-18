@@ -110,6 +110,7 @@ export const decoders: { [M in MethodName]: (p: Params) => ParamsOf<M> } = {
     branch: optString(p, 'branch')
   }),
   'workspace.canRenameBranch': idOnly,
+  'workspace.seen': idOnly,
   'workspace.diff': (p) => ({
     id: str(p, 'id'),
     base: optString(p, 'base'),

@@ -55,7 +55,7 @@ describe('quiet mode in the main window', () => {
   })
 
   describe('status updates', () => {
-    it('brings the terminals back on unlock, with the countdown and Lock now in the top bar', async () => {
+    it('brings the terminals back on unlock, with the countdown and lock now in the sidebar', async () => {
       fakeBridge.setQuietState(locked)
       render(<App now={clock} />)
       await screen.findByTestId('quiet-locked')
@@ -63,28 +63,26 @@ describe('quiet mode in the main window', () => {
       fakeBridge.setQuietState(unlockedFor(14 * 60_000 + 32_000))
 
       expect(await screen.findByRole('tab')).toBeInTheDocument()
-      expect(screen.getByTestId('topbar-unlock-countdown')).toHaveTextContent(
-        'unlocked · 14:32 left'
-      )
-      expect(screen.getByRole('button', { name: 'Lock now' })).toBeEnabled()
+      expect(screen.getByTestId('sidebar-unlock-countdown')).toHaveTextContent('14:32 left')
+      expect(screen.getByRole('button', { name: 'lock now' })).toBeEnabled()
     })
 
     it('goes back to the locked view when the unlock expires', async () => {
       fakeBridge.setQuietState({ ...locked, ...unlockedFor(60_000) })
       render(<App now={clock} />)
-      await screen.findByTestId('topbar-unlock-countdown')
+      await screen.findByTestId('sidebar-unlock-countdown')
 
       fakeBridge.setQuietState({ unlockedUntil: null, locked: true })
 
       expect(await screen.findByTestId('quiet-locked')).toBeInTheDocument()
-      expect(screen.queryByTestId('topbar-unlock-countdown')).not.toBeInTheDocument()
+      expect(screen.queryByTestId('sidebar-unlock-countdown')).not.toBeInTheDocument()
     })
 
     it('shows no countdown in work hours', async () => {
       render(<App now={clock} />)
 
       await screen.findByRole('tab')
-      expect(screen.queryByTestId('topbar-unlock-countdown')).not.toBeInTheDocument()
+      expect(screen.queryByTestId('sidebar-unlock-countdown')).not.toBeInTheDocument()
     })
   })
 
@@ -95,7 +93,7 @@ describe('quiet mode in the main window', () => {
       await window.que.quiet.unlock({ why: 'check the deploy' })
       render(<App now={clock} />)
 
-      await user.click(await screen.findByRole('button', { name: 'Lock now' }))
+      await user.click(await screen.findByRole('button', { name: 'lock now' }))
 
       expect(await screen.findByTestId('quiet-locked')).toBeInTheDocument()
       expect((await window.que.quiet.log())[0]).toMatchObject({
