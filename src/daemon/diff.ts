@@ -253,9 +253,11 @@ export async function workspaceDiff(
 
   // A remembered base can outlive its branch, so one that is not a commit falls back to the
   // default comparison and is reported, letting the caller forget it.
-  const requestedOk = opts.base !== undefined && (await resolveCommit(opts.base)) !== null
-  const base = requestedOk ? (opts.base as string) : chooseBase(ws, project, allRefs)
-  const rejectedBase = opts.base !== undefined && !requestedOk ? opts.base : null
+  const requested =
+    opts.base !== undefined && (await resolveCommit(opts.base)) !== null ? opts.base : null
+
+  const base = requested ?? chooseBase(ws, project, allRefs)
+  const rejectedBase = requested === null && opts.base !== undefined ? opts.base : null
   let commit: string | null = null
 
   if (opts.commit !== undefined) {
