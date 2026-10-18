@@ -108,7 +108,7 @@ describe('Sidebar', () => {
       )
     })
 
-    it('weighs each name: full for needs input, secondary while working, faint once looked at', async () => {
+    it('weighs each name: full for needs input and stuck, secondary while working, faint once looked at', async () => {
       const idle = makeWorkspace({ id: 'ws_01hzx8q3r5tw', name: 'app-1477-signed-urls' })
 
       const exited = makeWorkspace({
@@ -126,7 +126,7 @@ describe('Sidebar', () => {
       expect(row(auth.id)).toHaveClass('weight-fg')
       expect(row(retry.id)).toHaveClass('weight-secondary')
       expect(row(idle.id)).toHaveClass('weight-faint')
-      expect(row(board.id)).toHaveClass('weight-faint')
+      expect(row(board.id)).toHaveClass('weight-fg')
       expect(row(exited.id)).toHaveClass('weight-faint')
       expect(mark(exited.id)).toHaveClass('tone-muted')
     })

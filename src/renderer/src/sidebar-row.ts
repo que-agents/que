@@ -7,7 +7,7 @@ import { unseenDone } from '../../shared/seen'
 import { ACTIVE_STATES } from '../../shared/types'
 import { isLiveTask, prNumberOf, statusBadge, taskBadge, type Tone } from './format'
 
-/** The name's text colour: `--fg`, `--fg-secondary` or `--fg-faint`. */
+/** The name's text colour: `--fg` when it needs you, `--fg-secondary` while working, else `--fg-faint`. */
 export type Weight = 'fg' | 'secondary' | 'faint'
 
 export interface RowTone {
@@ -51,7 +51,10 @@ export function rowTone(ws: Workspace, task?: Task, selected = false): RowTone {
     tone: unseen ? 'good' : statusBadge(ws.status).tone,
     working,
     unseen,
-    weight: nameWeight(selected || unseen || ws.status === 'needs_input', working)
+    weight: nameWeight(
+      selected || unseen || ws.status === 'needs_input' || ws.status === 'stuck',
+      working
+    )
   }
 }
 

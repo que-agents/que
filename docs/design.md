@@ -155,7 +155,7 @@ only under the pointer.
   This is the one place status takes the accent, so `--tone-busy` never appears in the
   sidebar. The quiet board keeps its still blue dots: nothing moves at night.
 - **The weight of a name.** `--fg` when the row needs you (finished since you last
-  looked, or needs input); `--fg-secondary` while it works; `--fg-faint` once you have
+  looked, needs input, or stuck); `--fg-secondary` while it works; `--fg-faint` once you have
   looked and nothing is new, and the same faint for an exited workspace, told apart by
   its `--tone-muted` dot. The selected row reads `--fg` on `--bg-active` whatever its
   state. Most rows sit faint most of the time; the few that need you are two steps

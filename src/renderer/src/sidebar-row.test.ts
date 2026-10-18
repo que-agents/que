@@ -28,12 +28,12 @@ describe('rowTone', () => {
       })
     })
 
-    it('puts needs input at full strength in its tone, and stuck faint in its own', () => {
+    it('puts needs input and stuck at full strength, each in its tone', () => {
       expect(rowTone({ ...idle, status: 'needs_input' })).toMatchObject({
         tone: 'attention',
         weight: 'fg'
       })
-      expect(rowTone({ ...idle, status: 'stuck' })).toMatchObject({ tone: 'bad', weight: 'faint' })
+      expect(rowTone({ ...idle, status: 'stuck' })).toMatchObject({ tone: 'bad', weight: 'fg' })
     })
 
     it('reads an exited workspace faint, told apart by its muted dot', () => {
