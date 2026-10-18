@@ -37,9 +37,13 @@ export class TerminalPage {
     this.tabReattached = (id: string) => page.getByTestId(`terminal-tab-${id}-reattached`)
   }
 
-  // One pane: its container, terminal viewport, xterm input, + button, and its diff tabs.
+  // One pane: its container, its tab strip (a row of the main column) and the split and
+  // review controls when that strip is the top-right one, terminal viewport, xterm input,
+  // + button, and its diff tabs.
   pane(n: number): {
     root: Locator
+    tabbar: Locator
+    controls: Locator
     viewport: Locator
     input: Locator
     newButton: Locator
@@ -50,6 +54,8 @@ export class TerminalPage {
 
     return {
       root,
+      tabbar: this.page.getByTestId(`pane-${n}-tabbar`),
+      controls: root.getByTestId('pane-controls'),
       viewport,
       // xterm renders this textarea; it is the one accepted CSS selector.
       input: viewport.locator('.xterm-helper-textarea'),

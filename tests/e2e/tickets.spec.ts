@@ -16,7 +16,6 @@ import {
 import { makeTempRepo } from '../../src/testing/temp-repo'
 import { SidebarPage } from './pages/SidebarPage'
 import { TicketsPage } from './pages/TicketsPage'
-import { TopBarPage } from './pages/TopBarPage'
 import { type LaunchedApp, launchApp, newQueHome, testEnv, tempDir } from './utils/app'
 import { queJson } from './utils/que'
 
@@ -40,7 +39,6 @@ test('a ticket assigned to me becomes a workspace with claude started on its bri
   let workspace: Workspace
   let sidebar: SidebarPage
   let tickets: TicketsPage
-  let topbar: TopBarPage
 
   await test.step('Register the project with the CLI', async () => {
     project = queJson<Project>(queHome, 'project', 'add', repo, '--json')
@@ -50,7 +48,6 @@ test('a ticket assigned to me becomes a workspace with claude started on its bri
     launched = await launchApp({ queHome })
     sidebar = new SidebarPage(launched.window)
     tickets = new TicketsPage(launched.window)
-    topbar = new TopBarPage(launched.window)
     await sidebar.waitForLoad()
     await expect(tickets.sidebarCount).toHaveText('1')
     await tickets.sidebarEntry.click()
@@ -91,7 +88,7 @@ test('a ticket assigned to me becomes a workspace with claude started on its bri
     ) as Workspace
     expect(workspace.projectId).toBe(project.id)
     await expect(sidebar.workspace(workspace.id)).toBeVisible()
-    await expect(topbar.title).toHaveText(workspace.name)
+    await expect(sidebar.workspaceOpen(workspace.id)).toHaveAttribute('aria-current', 'page')
     expect(existsSync(join(workspace.path, '.que', 'ticket.md'))).toBe(true)
     const brief = readFileSync(join(workspace.path, '.que', 'ticket.md'), 'utf8')
     expect(brief).toContain('# APP-1432')

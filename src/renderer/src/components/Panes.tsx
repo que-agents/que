@@ -232,7 +232,7 @@ function Pane({
       data-active-tab={activeId ?? ''}
       onPointerDownCapture={() => store.focusPane(termKey, index)}
     >
-      <div className="tabbar">
+      <div className="tabbar" data-testid={`pane-${index}-tabbar`}>
         <div className="tabs" role="tablist" aria-label="Tabs">
           {tabs.map((t) => (
             <span

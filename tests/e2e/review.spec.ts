@@ -35,7 +35,7 @@ import { PullRequestPage } from './pages/PullRequestPage'
 import { ReviewPage } from './pages/ReviewPage'
 import { SidebarPage } from './pages/SidebarPage'
 import { TerminalPage } from './pages/TerminalPage'
-import { TopBarPage } from './pages/TopBarPage'
+import { TabRowPage } from './pages/TabRowPage'
 import { type LaunchedApp, launchApp, newQueHome, tempDir } from './utils/app'
 import { queJson } from './utils/que'
 
@@ -55,7 +55,7 @@ test('The review pane lists the changes beside the terminals, opens diffs as tab
   let workspace: Workspace
   let shell: AppShellPage
   let sidebar: SidebarPage
-  let topbar: TopBarPage
+  let tabRow: TabRowPage
   let terminal: TerminalPage
   let review: ReviewPage
   let changes: ChangesPage
@@ -71,7 +71,7 @@ test('The review pane lists the changes beside the terminals, opens diffs as tab
   const pages = (): void => {
     shell = new AppShellPage(launched.window)
     sidebar = new SidebarPage(launched.window)
-    topbar = new TopBarPage(launched.window)
+    tabRow = new TabRowPage(launched.window)
     terminal = new TerminalPage(launched.window)
     review = new ReviewPage(launched.window)
     changes = new ChangesPage(launched.window)
@@ -106,11 +106,11 @@ test('The review pane lists the changes beside the terminals, opens diffs as tab
 
   await test.step('Edit a file; the toggle opens the review pane on Changes beside the terminal', async () => {
     writeFileSync(join(workspace.path, 'README.md'), '# uploader\n\nRetries with backoff.\n')
-    await expect(topbar.reviewToggle).toHaveAttribute('aria-pressed', 'false')
-    await topbar.reviewToggle.click()
+    await expect(tabRow.reviewToggle).toHaveAttribute('aria-pressed', 'false')
+    await tabRow.reviewToggle.click()
     await expect(review.root).toBeVisible()
     await expect(review.root).toHaveAttribute('data-tab', 'changes')
-    await expect(topbar.reviewToggle).toHaveAttribute('aria-pressed', 'true')
+    await expect(tabRow.reviewToggle).toHaveAttribute('aria-pressed', 'true')
     expect(await review.state()).toMatchObject({ open: true, tab: 'changes' })
     await expect(terminal.tab(termId)).toBeVisible()
     await expect(terminal.viewport).toBeVisible()
@@ -135,12 +135,29 @@ test('The review pane lists the changes beside the terminals, opens diffs as tab
     expect(paneBox?.height).toBe(shellBox?.height)
     expect(sidebarBox?.y).toBe(0)
     expect(sidebarBox?.height).toBe(shellBox?.height)
-    // The pane sits at the window's right edge; the top bar ends where it begins.
+    // The pane sits at the window's right edge; the tab row ends where it begins.
     expect((paneBox?.x ?? 0) + (paneBox?.width ?? 0)).toBe(
       (shellBox?.x ?? 0) + (shellBox?.width ?? 0)
     )
-    const topbarBox = await topbar.root.boundingBox()
-    expect((topbarBox?.x ?? 0) + (topbarBox?.width ?? 0)).toBeLessThanOrEqual(paneBox?.x ?? 0)
+    const rowBox = await terminal.pane(0).tabbar.boundingBox()
+    expect((rowBox?.x ?? 0) + (rowBox?.width ?? 0)).toBeLessThanOrEqual(paneBox?.x ?? 0)
+  })
+
+  await test.step('The tab row is the first row: 40px, in line with the review bar, controls at its end', async () => {
+    const rowBox = await terminal.pane(0).tabbar.boundingBox()
+    const barBox = await review.bar.boundingBox()
+    const controlsBox = await terminal.pane(0).controls.boundingBox()
+    expect(rowBox?.y).toBe(0)
+    expect(rowBox?.height).toBe(40)
+    expect(barBox?.y).toBe(rowBox?.y)
+    expect(barBox?.height).toBe(rowBox?.height)
+    // The split and review buttons sit at the row's right end, the main column's top-right corner.
+    await expect(terminal.pane(0).controls).toBeVisible()
+    await expect(tabRow.reviewToggle).toBeVisible()
+    expect((controlsBox?.x ?? 0) + (controlsBox?.width ?? 0)).toBeGreaterThan(
+      (rowBox?.x ?? 0) + (rowBox?.width ?? 0) - 16
+    )
+    await launched.window.screenshot({ path: 'test-results/main-row.png' })
   })
 
   await test.step('Clicking the file opens its diff as a tab beside the terminal tab', async () => {
@@ -337,7 +354,7 @@ test('The review pane lists the changes beside the terminals, opens diffs as tab
     await expect(review.root).toHaveAttribute('data-tab', 'pr')
     await expect(review.tabPr).toHaveAttribute('aria-selected', 'true')
     await expect(review.tabChanges).toHaveAttribute('aria-selected', 'false')
-    await expect(topbar.reviewToggle).toHaveAttribute('aria-pressed', 'true')
+    await expect(tabRow.reviewToggle).toHaveAttribute('aria-pressed', 'true')
     await expect(pr.empty).toHaveText('No pull request yet')
     await expect(pr.create).toHaveText('Create draft PR')
     expect(await review.state()).toMatchObject({ open: true, tab: 'pr' })
@@ -495,20 +512,20 @@ test('The review pane lists the changes beside the terminals, opens diffs as tab
   })
 
   await test.step('The toggle closes the pane and opens it again on the tab it was left on', async () => {
-    await topbar.reviewToggle.click()
+    await tabRow.reviewToggle.click()
     await expect(review.root).toHaveCount(0)
-    await expect(topbar.reviewToggle).toHaveAttribute('aria-pressed', 'false')
-    await topbar.reviewToggle.click()
+    await expect(tabRow.reviewToggle).toHaveAttribute('aria-pressed', 'false')
+    await tabRow.reviewToggle.click()
     await expect(review.root).toHaveAttribute('data-tab', 'pr')
-    await expect(topbar.reviewToggle).toHaveAttribute('aria-pressed', 'true')
+    await expect(tabRow.reviewToggle).toHaveAttribute('aria-pressed', 'true')
   })
 
   await test.step('The close button closes the pane; the toggle opens it again, then Changes', async () => {
     await review.close.click()
     await expect(review.root).toHaveCount(0)
     expect((await review.state()).open).toBe(false)
-    await expect(topbar.reviewToggle).toHaveAttribute('aria-pressed', 'false')
-    await topbar.reviewToggle.click()
+    await expect(tabRow.reviewToggle).toHaveAttribute('aria-pressed', 'false')
+    await tabRow.reviewToggle.click()
     await review.tabChanges.click()
     await expect(review.root).toHaveAttribute('data-tab', 'changes')
     await expect(changes.file(1)).toContainText('README.md')

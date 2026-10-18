@@ -1,6 +1,6 @@
 // A workspace's pull request in the review pane: the header, the checks, the
 // conversation and the footer (Create draft PR without one). The pane's tab
-// itself is ReviewPage.tabPr; its toggle is TopBarPage.reviewToggle.
+// itself is ReviewPage.tabPr; its toggle is TabRowPage.reviewToggle.
 import type { Locator, Page } from '@playwright/test'
 
 export class PullRequestPage {

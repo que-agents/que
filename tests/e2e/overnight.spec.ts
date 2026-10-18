@@ -1,8 +1,8 @@
 // The overnight journey: a task queued and run from the CLI, its workspace
 // appearing in the sidebar while it runs, the task finishing through the fake
 // claude and the finisher's draft PR (fake gh, real push to a bare origin),
-// the sidebar row reading done and unseen with the PR as its word, the top bar's
-// chip following the PR from draft to merged once it is selected, the tray title
+// the sidebar row reading done and unseen with the PR as its word, the review
+// pane's Pull request tab following the PR from draft to merged once it is selected, the tray title
 // settling back to all clear, and the report listing it under done.
 import { join } from 'node:path'
 import { expect, test } from '@playwright/test'
@@ -10,9 +10,11 @@ import type { Project, Task } from '../../src/shared/types'
 import { setFakePullRequest } from '../../src/testing/fakes'
 import { addBareOrigin, makeTempRepo } from '../../src/testing/temp-repo'
 import { AppShellPage } from './pages/AppShellPage'
+import { PullRequestPage } from './pages/PullRequestPage'
 import { ReportPage } from './pages/ReportPage'
+import { ReviewPage } from './pages/ReviewPage'
 import { SidebarPage } from './pages/SidebarPage'
-import { TopBarPage } from './pages/TopBarPage'
+import { TabRowPage } from './pages/TabRowPage'
 import { type LaunchedApp, launchApp, newQueHome, tempDir } from './utils/app'
 import { que, queJson } from './utils/que'
 
@@ -33,7 +35,9 @@ test('a task queued from the CLI runs overnight-style, shows in the sidebar, and
   let sidebar: SidebarPage
   let report: ReportPage
   let shell: AppShellPage
-  let topbar: TopBarPage
+  let tabRow: TabRowPage
+  let review: ReviewPage
+  let pr: PullRequestPage
 
   const task = (): Task | undefined =>
     queJson<Task[]>(queHome, 'task', 'list', '--json').find((t) => t.id === taskId)
@@ -63,7 +67,9 @@ test('a task queued from the CLI runs overnight-style, shows in the sidebar, and
     sidebar = new SidebarPage(launched.window)
     report = new ReportPage(launched.window)
     shell = new AppShellPage(launched.window)
-    topbar = new TopBarPage(launched.window)
+    tabRow = new TabRowPage(launched.window)
+    review = new ReviewPage(launched.window)
+    pr = new PullRequestPage(launched.window)
     await sidebar.waitForLoad()
     await expect(sidebar.project(project.id)).toBeVisible()
   })
@@ -85,21 +91,19 @@ test('a task queued from the CLI runs overnight-style, shows in the sidebar, and
     await expect.poll(() => shell.chimes()).toEqual(['complete'])
   })
 
-  await test.step('Selected, the top bar chip follows the pull request from draft to merged', async () => {
+  await test.step('Selected, the Pull request tab follows the pull request from draft to merged', async () => {
     await sidebar.workspaceOpen(workspaceId).click()
     await expect(sidebar.workspaceStatus(workspaceId)).toHaveAttribute('data-unseen', 'false')
-    await expect(topbar.prLink).toHaveAttribute('href', /\/pull\/\d+$/)
-    await expect(topbar.prLink).toHaveAttribute('data-pr-state', 'draft', {
-      timeout: 15_000
-    })
+    await tabRow.reviewToggle.click()
+    await review.tabPr.click()
+    await expect(pr.headerLink).toHaveAttribute('href', /\/pull\/\d+$/)
+    await expect(pr.headerLink).toHaveText(/^#\d+ · draft · /, { timeout: 15_000 })
     const branch = task()?.branch as string
     setFakePullRequest(join(queHome, 'fake-gh-prs.json'), branch, {
       state: 'MERGED',
       mergedAt: '2026-10-14T03:00:00Z'
     })
-    await expect(topbar.prLink).toHaveAttribute('data-pr-state', 'merged', {
-      timeout: 15_000
-    })
+    await expect(pr.headerLink).toHaveText(/^#\d+ · merged · /, { timeout: 15_000 })
   })
 
   await test.step('The tray title counts nothing working, waiting, or stuck', async () => {
