@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Project, Workspace } from '../../../preload/index.d'
 import { formatCountdown } from '../../../shared/format'
-import { isLocked } from '../../../daemon/quiet-hours'
 import { latestTasks } from '../format'
 import { SCRATCH, usePanes, useQueSelector, useStore } from '../store'
 import { countOpenTickets } from '../ticket-tree'
@@ -100,7 +99,7 @@ export default function Sidebar(): React.JSX.Element {
   const searchOpen = useQueSelector((s) => s.searchOpen)
   const searchFocusNonce = useQueSelector((s) => s.searchFocusNonce)
   const sort = useQueSelector((s) => s.sort)
-  const locked = useQueSelector((s) => isLocked(s.quiet))
+  const locked = useQueSelector((s) => s.quiet?.locked ?? false)
   const dialog = useQueSelector((s) => s.dialog)
   const now = useNow()
   // The workspace card: detail, so never while quiet hours lock the app.
