@@ -188,7 +188,6 @@ export class DaemonServer {
     this.summaries = new Summarizer({
       store: this.store,
       paths: this.paths,
-      emit,
       bus: this.bus,
       config: () => this.configOrDefault(),
       transcriptPath: (id) => this.status.transcriptPath(id),
@@ -214,7 +213,6 @@ export class DaemonServer {
       tasks: this.tasks,
       paths: this.paths,
       bus: this.bus,
-      emit,
       config: () => this.configOrDefault(),
       log: (m) => this.log(m)
     })
