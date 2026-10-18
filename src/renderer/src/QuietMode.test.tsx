@@ -15,7 +15,11 @@ const locked = makeQuietState({
 // A fixed clock inside tonight's window, so countdowns never depend on the wall clock.
 const NOW = new Date(2026, 9, 14, 2, 0).getTime()
 const clock = (): number => NOW
-const unlockedFor = (ms: number) => ({ unlockedUntil: new Date(NOW + ms).toISOString() })
+
+const unlockedFor = (ms: number) => ({
+  unlockedUntil: new Date(NOW + ms).toISOString(),
+  locked: false
+})
 
 const retry = makeWorkspace({ id: 'ws_01hzx3k9c2qf', name: 'app-1432-retry-logic' })
 
@@ -70,7 +74,7 @@ describe('quiet mode in the main window', () => {
       render(<App now={clock} />)
       await screen.findByTestId('topbar-unlock-countdown')
 
-      fakeBridge.setQuietState({ unlockedUntil: null })
+      fakeBridge.setQuietState({ unlockedUntil: null, locked: true })
 
       expect(await screen.findByTestId('quiet-locked')).toBeInTheDocument()
       expect(screen.queryByTestId('topbar-unlock-countdown')).not.toBeInTheDocument()

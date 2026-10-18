@@ -98,11 +98,13 @@ describe('quiet hours', () => {
         windowEnd: new Date(2026, 9, 14, 7, 0).toISOString(),
         nextBoundary: new Date(2026, 9, 14, 7, 0).toISOString(),
         unlockedUntil: null,
-        unlockMinutes: 20
+        unlockMinutes: 20,
+        locked: true
       })
       await expect(d.client.request('term.create', cat)).rejects.toMatchObject(REFUSAL)
 
       const unlocked = await d.client.request('quiet.unlock', { why: 'check the deploy' })
+      expect(unlocked.locked).toBe(false)
       expect(Date.parse(unlocked.unlockedUntil ?? '') - NIGHT.getTime()).toBeGreaterThan(
         19 * 60_000
       )
@@ -111,7 +113,9 @@ describe('quiet hours', () => {
         cols: 80
       })
 
-      expect((await d.client.request('quiet.lock')).unlockedUntil).toBeNull()
+      const relocked = await d.client.request('quiet.lock')
+      expect(relocked.unlockedUntil).toBeNull()
+      expect(relocked.locked).toBe(true)
       await expect(
         d.client.request('term.attach', { id, cols: 80, rows: 24 })
       ).rejects.toMatchObject(REFUSAL)
@@ -149,7 +153,7 @@ describe('quiet hours', () => {
 
       const q = await d.client.request('quiet.unlock', { minutes: 5 })
 
-      expect(q).toMatchObject({ inQuietHours: false, unlockedUntil: null })
+      expect(q).toMatchObject({ inQuietHours: false, unlockedUntil: null, locked: false })
       expect(await d.client.request('quiet.log')).toEqual([])
     })
   })

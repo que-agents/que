@@ -30,7 +30,7 @@ import type {
   WorkspaceFiles,
   WorkspaceStatus
 } from '../../../preload/index.d'
-import { isLocked, quietMessage } from '../../../daemon/quiet-hours'
+import { quietMessage } from '../../../daemon/quiet-hours'
 import { buildReport } from '../../../daemon/report'
 import { titleOf } from '../../../shared/brief'
 import { mergeConfigPatch } from '../../../shared/config-patch.decode'
@@ -132,10 +132,7 @@ class FakeBridge {
             why: p?.why ?? null,
             endedAt: null
           })
-          this.setQuietState({
-            ...this.quiet,
-            unlockedUntil: new Date(now + minutes * 60_000).toISOString()
-          })
+          this.setQuietState({ unlockedUntil: new Date(now + minutes * 60_000).toISOString() })
 
           return { ...this.quiet }
         },
@@ -143,7 +140,7 @@ class FakeBridge {
           const open = this.unlocks.find((u) => u.endedAt === null)
 
           if (open) open.endedAt = new Date().toISOString()
-          this.setQuietState({ ...this.quiet, unlockedUntil: null })
+          this.setQuietState({ unlockedUntil: null })
 
           return { ...this.quiet }
         },
@@ -638,7 +635,11 @@ class FakeBridge {
 
   /** Replaces the quiet state and emits quiet.changed, as the daemon's clock would. */
   setQuietState(q: Partial<QuietState>): void {
-    this.quiet = { ...this.quiet, ...q }
+    const next = { ...this.quiet, ...q }
+
+    // Unless a test sets `locked` itself, it follows the window and the unlock.
+    if (!('locked' in q)) next.locked = next.inQuietHours && !next.unlockedUntil
+    this.quiet = next
     this.emit('quiet.changed', { ...this.quiet })
   }
 
@@ -702,7 +703,7 @@ class FakeBridge {
   private refuseIfQuiet(method: (typeof QUIET_REFUSED_METHODS)[number]): void {
     if (!QUIET_REFUSED_METHODS.includes(method)) return
 
-    if (isLocked(this.quiet)) {
+    if (this.quiet.locked) {
       // A state seeded without a window ends at 07:00, like the fixtures' night.
       const end = this.quiet.windowEnd
         ? Date.parse(this.quiet.windowEnd)
