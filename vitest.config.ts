@@ -19,8 +19,10 @@ export default defineConfig({
     // Root-level only: coverage is one report across both projects.
     coverage: {
       provider: 'v8',
-      // `out/` is outside `src/`, so the built bundles never count.
-      include: ['src/**'],
+      // Only the sources: the renderer's html and css would otherwise be parsed as
+      // JavaScript in the uncovered-files pass. `out/` is outside `src/`, so the
+      // built bundles never count.
+      include: ['src/**/*.{ts,tsx}'],
       // Vitest also drops files matching the root `test.include`; listed here so
       // the intent is readable.
       exclude: [
