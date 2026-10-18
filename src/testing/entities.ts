@@ -27,6 +27,7 @@ export function makeWorkspace(overrides: Partial<Workspace> = {}): Workspace {
     archivedAt: null,
     prUrl: null,
     pr: null,
+    prs: [],
     ...overrides
   }
 }
