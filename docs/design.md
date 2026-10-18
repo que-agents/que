@@ -46,23 +46,24 @@ so the DOM keeps the plain word.
 
 ## Accent and tones
 
-| Token              | Value     | Use                                                                               |
-| ------------------ | --------- | --------------------------------------------------------------------------------- |
-| `--accent`         | `#3fcdb4` | Links, the active tab's underline, focus rings, the cursor, the unlock countdown. |
-| `--accent-hover`   | `#6adcc7` | The accent under the pointer.                                                     |
-| `--inverse`        | `#e6e6e6` | The one primary button on a screen, light on dark.                                |
-| `--tone-busy`      | `#4f8cf5` | working, running, preparing.                                                      |
-| `--tone-attention` | `#f99c00` | needs input, paused.                                                              |
-| `--tone-bad`       | `#fb2c36` | stuck, failed, exited badly; the danger button.                                   |
-| `--tone-good`      | `#34c26b` | done, idle after work.                                                            |
-| `--tone-neutral`   | `#7a7a7a` | idle, queued.                                                                     |
-| `--tone-muted`     | `#5a5a5a` | stopped, exited.                                                                  |
+| Token              | Value     | Use                                                                                                           |
+| ------------------ | --------- | ------------------------------------------------------------------------------------------------------------- |
+| `--accent`         | `#3fcdb4` | Links, the active tab's underline, focus rings, the cursor, the unlock countdown, the sidebar's working mark. |
+| `--accent-hover`   | `#6adcc7` | The accent under the pointer.                                                                                 |
+| `--inverse`        | `#e6e6e6` | The one primary button on a screen, light on dark.                                                            |
+| `--tone-busy`      | `#4f8cf5` | working, running, preparing (outside the sidebar, which draws the working mark).                              |
+| `--tone-attention` | `#f99c00` | needs input, paused.                                                                                          |
+| `--tone-bad`       | `#fb2c36` | stuck, failed, exited badly; the danger button.                                                               |
+| `--tone-good`      | `#34c26b` | done, idle after work: a sidebar row that finished since you last looked at it.                               |
+| `--tone-neutral`   | `#7a7a7a` | idle, queued.                                                                                                 |
+| `--tone-muted`     | `#5a5a5a` | stopped, exited.                                                                                              |
 
 The accent is a teal, apart in hue from both the done green and the working
 blue, and it is used sparingly, so it keeps meaning "this is the thing" (the
 active tab, a link, the cursor, an unlock while it runs). It is the same colour
 in the mark (the icon's dot), the UI and the quiet board. Status is a tone,
-never the accent. A status
+never the accent, with one exception: the sidebar's working mark (see Sidebar),
+since teal already marks the live thing. A status
 badge (`.status.tone-*`) is a 5px dot and a mono word, tinted at 12% with a
 32% border of its tone. It never fills with colour: at a glance the dot tells
 the story, and a wall of filled pills is exactly the noise que exists to
@@ -131,6 +132,57 @@ remove. The quiet board uses the same tones on a dot or a word, never a badge.
   toggle, all icon buttons. The title truncates with an ellipsis before the buttons
   give way. The pull request chip is `PR #n · state`; failing
   checks and a requested change are its tone, and its tooltip spells them out.
+
+## Sidebar
+
+The sidebar is a list you glance at: a dot per row, a word only when asked, controls
+only under the pointer.
+
+- **The rail.** `.sidebar` is padded `40px 6px 0`. Every row is 26px tall with a
+  `0 8px` inset and `--radius`; section heads are 24px with the same inset. Each row
+  starts with a 16px icon column and a 6px gap, so every name sits on one rail, 36px
+  from the edge, and the dots line up under the folders. A project head carries a
+  folder (`--fg-faint`) and its name in sans 12px 500 `--fg-muted` (`--fg-secondary`
+  under the pointer); a session carries `›_` in mono; a workspace carries its dot.
+- **The dot.** A workspace row is a 5px dot in its tone and the name, nothing else:
+  the tone is the live task's state when there is one, else the workspace status. A
+  workspace that is working, or has a task preparing, running or finishing, shows the
+  working mark instead: four 3px `--accent` dots on a 2×2 grid at a 5px pitch, with a
+  diagonal ripple across them (the top-left first, the top-right and bottom-left 120ms
+  later, the bottom-right 120ms after that; each grows over 0.36s, holds 0.3s, shrinks
+  over 0.36s, in a 1.2s loop, so the mark is never empty). It is a CSS animation, no
+  timers, and under `prefers-reduced-motion` the four dots stand still at full size.
+  This is the one place status takes the accent, so `--tone-busy` never appears in the
+  sidebar. The quiet board keeps its still blue dots: nothing moves at night.
+- **The weight of a name.** `--fg` when the row needs you (finished since you last
+  looked, or needs input); `--fg-secondary` while it works; `--fg-faint` once you have
+  looked and nothing is new, and the same faint for an exited workspace, told apart by
+  its `--tone-muted` dot. The selected row reads `--fg` on `--bg-active` whatever its
+  state. Most rows sit faint most of the time; the few that need you are two steps
+  brighter.
+- **Finished, not looked at.** A workspace whose turn ended (working to idle) or whose
+  task finished since the app last had it selected in a focused window shows the done
+  tone, `--tone-good` (the tone table's "idle after work"), on its dot and its name at
+  `--fg`. Selecting it returns it to its own dot and the faint weight. Needs input and
+  stuck keep their tones: orange and red already mean "now", green means "fresh". A
+  collapsed project head counts these before its total, `1 done · 3`, the `done` in
+  `--tone-good`; otherwise it shows its count alone, mono 11px `--fg-faint`. The daemon
+  keeps the two timestamps (`finishedAt`, `seenAt`); the quiet board ignores the state.
+- **Under the pointer** (and on keyboard focus, and while the row's menu is open) a
+  row shows an overlay at its right end, painted on the row's own hover background:
+  the status word in mono 11px `--fg-faint` (its tone for needs input and stuck), then
+  ⋯. For a fresh finish the word is `done · 12m ago`, or the task's ask, `done · draft
+  PR #12` or `done · no changes`. The overlay covers the end of a long name rather
+  than reflowing it, so nothing jumps. A project head under the pointer turns its
+  folder into its chevron and shows `+` and ⋯; the section heads' buttons (Sessions
+  `+`, Projects add and sort) likewise stay at opacity 0 until the head is under the
+  pointer, holds the keyboard focus, or has its menu open. Clicking anywhere on a
+  project head folds it. An exited session reads faint, with `exited` as its word.
+- **The foot.** Report, Tickets and Settings are 26px rows in `--fg-muted`, `--fg`
+  under the pointer. During an unlock a row above them carries the open lock at 12px
+  and `m:ss left` in mono 11px `--accent`, and `lock now` in mono 11px `--fg-faint` at
+  its right end (`--fg-muted` under the pointer), always visible: locking again is the
+  behaviour we want. The row is a `role="status"` region.
 
 ## Quiet board
 
