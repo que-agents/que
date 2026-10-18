@@ -147,7 +147,7 @@ function PullRequestRow({ ws, pr }: { ws: Workspace; pr: PullRequest }): React.J
       >
         <ExternalLinkIcon />
       </a>
-      <span className="pr-title" data-testid={`${id}-title`}>
+      <span className="popout-pr-title" data-testid={`${id}-title`}>
         {pr.title}
       </span>
       {failing && (

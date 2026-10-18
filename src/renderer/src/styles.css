@@ -2579,7 +2579,7 @@ button.changes-pick {
   text-decoration: none;
 }
 
-.workspace-popout-pr .pr-title {
+.workspace-popout-pr .popout-pr-title {
   grid-column: 1 / -1;
   font: 12px / 1.4 var(--sans);
   color: var(--fg-secondary);
