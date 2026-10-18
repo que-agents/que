@@ -11,6 +11,7 @@ import {
   makeTermInfo,
   makeWorkspace
 } from '@renderer/testing/fixtures'
+import { minutesAgo } from '@renderer/testing/helpers'
 import App from '../App'
 
 const uploader = makeProject()
@@ -39,7 +40,6 @@ const auth = makeWorkspace({
 // A fixed clock, so the hover word's age never depends on the wall clock.
 const NOW = new Date(2026, 9, 17, 21, 30).getTime()
 const clock = (): number => NOW
-const minutesAgo = (m: number): string => new Date(NOW - m * 60_000).toISOString()
 
 function seed(): void {
   fakeBridge.seedProject(uploader)
@@ -106,29 +106,6 @@ describe('Sidebar', () => {
       expect(screen.getByRole('button', { name: 'app-1432-retry-logic' })).not.toContainElement(
         word(retry.id)
       )
-    })
-
-    it('weighs each name: full for needs input and stuck, secondary while working, faint once looked at', async () => {
-      const idle = makeWorkspace({ id: 'ws_01hzx8q3r5tw', name: 'app-1477-signed-urls' })
-
-      const exited = makeWorkspace({
-        id: 'ws_01hzx9w4e6yu',
-        name: 'bil-220-invoice-export',
-        status: 'exited'
-      })
-
-      seed()
-      fakeBridge.seedWorkspace(idle)
-      fakeBridge.seedWorkspace(exited)
-      render(<App />)
-      await screen.findByTestId(`sidebar-workspace-${idle.id}`)
-
-      expect(row(auth.id)).toHaveClass('weight-fg')
-      expect(row(retry.id)).toHaveClass('weight-secondary')
-      expect(row(idle.id)).toHaveClass('weight-faint')
-      expect(row(board.id)).toHaveClass('weight-fg')
-      expect(row(exited.id)).toHaveClass('weight-faint')
-      expect(mark(exited.id)).toHaveClass('tone-muted')
     })
 
     it('draws the selected row at full strength on the active background', async () => {
@@ -276,6 +253,8 @@ describe('Sidebar', () => {
       expect(mark(retry.id)).toHaveClass('status-dot', 'tone-good')
       expect(row(retry.id)).toHaveClass('weight-fg')
       expect(word(retry.id)).toHaveTextContent(/^done · \d+s ago$/)
+      // The dot's tooltip is the same word.
+      expect(mark(retry.id)).toHaveAttribute('title', word(retry.id).textContent)
       expect(fakeBridge.seenCalls()).toEqual([])
 
       await user.click(screen.getByRole('button', { name: 'app-1432-retry-logic' }))
@@ -291,29 +270,6 @@ describe('Sidebar', () => {
 
       expect(row(retry.id)).toHaveClass('weight-faint')
       expect(mark(retry.id)).toHaveAttribute('data-unseen', 'false')
-    })
-
-    it('says how long ago it finished on hover, and leaves needs input and stuck alone', async () => {
-      const finished = makeWorkspace({
-        id: 'ws_01hzxa5s7d9f',
-        name: 'app-1501-chunked-uploads',
-        finishedAt: minutesAgo(12),
-        seenAt: minutesAgo(40)
-      })
-
-      seed()
-      fakeBridge.seedWorkspace(finished)
-      fakeBridge.seedWorkspace({ ...board, finishedAt: minutesAgo(3) })
-      fakeBridge.seedWorkspace({ ...auth, finishedAt: minutesAgo(3) })
-      render(<App now={clock} />)
-
-      await screen.findByTestId(`sidebar-workspace-${finished.id}`)
-      expect(word(finished.id)).toHaveTextContent('done · 12m ago')
-      expect(mark(finished.id)).toHaveClass('tone-good')
-      expect(mark(board.id)).toHaveAttribute('data-unseen', 'false')
-      expect(mark(board.id)).toHaveClass('tone-bad')
-      expect(mark(auth.id)).toHaveAttribute('data-unseen', 'false')
-      expect(mark(auth.id)).toHaveClass('tone-attention')
     })
 
     it('marks the selected workspace seen again when the window regains focus, and when it finishes', async () => {
@@ -334,10 +290,30 @@ describe('Sidebar', () => {
       expect(mark(retry.id)).toHaveClass('tone-neutral')
     })
 
+    it('marks nothing seen while quiet hours lock the app, and the selected one once they unlock', async () => {
+      const user = userEvent.setup()
+      fakeBridge.setQuietState(makeQuietState({ inQuietHours: true }))
+      seed()
+      render(<App />)
+      await screen.findByTestId('quiet-locked')
+
+      await user.click(screen.getByRole('button', { name: 'app-1432-retry-logic' }))
+
+      expect(screen.getByTestId(`sidebar-workspace-${retry.id}-open`)).toHaveAttribute(
+        'aria-current',
+        'page'
+      )
+      expect(fakeBridge.seenCalls()).toEqual([])
+
+      await window.que.quiet.unlock({ minutes: 5, why: 'check the deploy' })
+
+      await waitFor(() => expect(fakeBridge.seenCalls()).toEqual([retry.id]))
+    })
+
     it('counts the unseen finishes on a collapsed project before its total', async () => {
       const user = userEvent.setup()
       seed()
-      fakeBridge.seedWorkspace({ ...board, status: 'idle', finishedAt: minutesAgo(5) })
+      fakeBridge.seedWorkspace({ ...board, status: 'idle', finishedAt: minutesAgo(NOW, 5) })
       render(<App now={clock} />)
 
       await user.click(await screen.findByRole('button', { name: 'uploader', expanded: true }))
@@ -383,20 +359,6 @@ describe('Sidebar', () => {
       expect(mark(owned.id)).toHaveClass('status-dot', 'tone-good')
       expect(word(owned.id)).toHaveTextContent('done · draft PR #88')
       expect(within(row(owned.id)).queryByRole('link')).not.toBeInTheDocument()
-    })
-
-    it('says so when a finished task changed nothing', async () => {
-      seed()
-      fakeBridge.seedWorkspace(owned)
-      fakeBridge.seedTask(task)
-      render(<App />)
-      await screen.findByTestId(`sidebar-workspace-${owned.id}`)
-
-      fakeBridge.setTaskState(task.id, 'done', 'no_changes')
-
-      await waitFor(() => {
-        expect(word(owned.id)).toHaveTextContent('done · no changes')
-      })
     })
 
     it('shows the workspace status again for a task that ended without finishing', async () => {

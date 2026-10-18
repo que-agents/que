@@ -78,7 +78,8 @@ remove. The quiet board uses the same tones on a dot or a word, never a badge.
 - Icons are 16px line drawings at a 1.5px stroke, inline SVG from
   `components/icons.tsx`, drawn in the current text colour: faint in a ghost
   button, bright on hover. The button carries the accessible name. No icon
-  font or library.
+  font or library. `button.icon` is 22px square; `button.icon.sm` is the 18px one
+  for a row's own controls.
 - Two panes are divided by a 7px track like the sidebar's: invisible until hover,
   focus or drag, then a 1px accent line. The focused pane's tab strip carries a
   1px accent line at its top; with one pane there is none.

@@ -3,7 +3,6 @@
 // workspace and its newest task; Sidebar.tsx draws them. docs/design.md "Sidebar".
 import type { Task, Workspace } from '../../preload/index.d'
 import { formatAge } from '../../shared/format'
-import { unseenDone } from '../../shared/seen'
 import { ACTIVE_STATES } from '../../shared/types'
 import { isLiveTask, prNumberOf, statusBadge, taskBadge, type Tone } from './format'
 
@@ -20,6 +19,20 @@ export interface RowTone {
   /** Finished since the app last had it selected. */
   unseen: boolean
   weight: Weight
+}
+
+/**
+ * Whether a workspace has something new to look at: it finished (a turn ended, or its task
+ * did) since the app last had it selected in a focused window. True when `finishedAt` is
+ * later than `seenAt` (or it finished and was never seen).
+ */
+export function unseenDone(ws: Pick<Workspace, 'finishedAt' | 'seenAt'>): boolean {
+  const finished = ws.finishedAt ? Date.parse(ws.finishedAt) : Number.NaN
+
+  if (!Number.isFinite(finished)) return false
+  const seen = ws.seenAt ? Date.parse(ws.seenAt) : Number.NaN
+
+  return !Number.isFinite(seen) || finished > seen
 }
 
 /** Statuses that already mean "now": a fresh finish does not paint over them. */
@@ -100,14 +113,4 @@ function finishedAsk(ws: Workspace, task: Task | undefined, now: number): string
   if (byTask && task.reason === 'no_changes') return 'no changes'
 
   return formatAge(ws.finishedAt, now, ' ago')
-}
-
-/** A collapsed project's count: its workspaces, and how many finished unseen. */
-export interface CollapsedCount {
-  done: number
-  total: number
-}
-
-export function collapsedCount(rows: ReadonlyArray<Pick<RowTone, 'unseen'>>): CollapsedCount {
-  return { done: rows.filter((r) => r.unseen).length, total: rows.length }
 }

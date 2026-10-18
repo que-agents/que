@@ -1,21 +1,13 @@
-import { useEffect, useState } from 'react'
 import { formatCountdown } from '../../../shared/format'
-import { useQue, useStore } from '../store'
+import { useQueSelector, useStore } from '../store'
+import { useUnlockCountdown } from '../useUnlockCountdown'
 import { UnlockIcon } from './icons'
 
 /** An open lock, `unlocked · 14:32 left`, and Lock now, while an unlock runs. */
 export default function UnlockStatus(): React.JSX.Element | null {
   const store = useStore()
-  const { quiet, connected } = useQue()
-  const until = quiet?.inQuietHours && quiet.unlockedUntil ? Date.parse(quiet.unlockedUntil) : null
-  const [, tick] = useState(0)
-
-  useEffect(() => {
-    if (until === null) return
-    const t = setInterval(() => tick((n) => n + 1), 1000)
-
-    return () => clearInterval(t)
-  }, [until])
+  const connected = useQueSelector((s) => s.connected)
+  const until = useUnlockCountdown()
 
   if (until === null) return null
 

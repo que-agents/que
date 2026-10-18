@@ -11,6 +11,7 @@ import {
   makeUserConfig,
   makeWorkspace
 } from '@renderer/testing/fixtures'
+import { minutesAgo } from '@renderer/testing/helpers'
 import App from '../App'
 
 // Tonight's window, in local time, and a fixed clock inside it: ages and
@@ -26,8 +27,6 @@ const quiet = makeQuietState({
   windowEnd: windowEnd.toISOString()
 })
 
-const ago = (minutes: number): string => new Date(now - minutes * 60_000).toISOString()
-
 const uploader = makeProject()
 
 const dotfiles = makeProject({
@@ -40,22 +39,22 @@ const retry = makeWorkspace({
   id: 'ws_01hzx3k9c2qf',
   name: 'app-1432-retry-logic',
   status: 'working',
-  lastActivityAt: ago(1)
+  lastActivityAt: minutesAgo(now, 1)
 })
 
 const auth = makeWorkspace({
   id: 'ws_01hzx5t6y2wa',
   name: 'app-1451-token-refresh',
   status: 'needs_input',
-  statusAt: ago(34),
-  lastActivityAt: ago(34)
+  statusAt: minutesAgo(now, 34),
+  lastActivityAt: minutesAgo(now, 34)
 })
 
 const resume = makeWorkspace({
   id: 'ws_01hzx6r8s1uv',
   name: 'app-1460-upload-resume',
   status: 'stuck',
-  lastActivityAt: ago(50)
+  lastActivityAt: minutesAgo(now, 50)
 })
 
 const dotfilesMain = makeWorkspace({
@@ -63,7 +62,7 @@ const dotfilesMain = makeWorkspace({
   projectId: dotfiles.id,
   name: 'main',
   status: 'idle',
-  lastActivityAt: ago(180)
+  lastActivityAt: minutesAgo(now, 180)
 })
 
 const running = makeTask({
@@ -71,12 +70,12 @@ const running = makeTask({
   title: 'Add retry logic to the uploader',
   workspaceId: retry.id,
   state: 'running',
-  startedAt: ago(67),
-  lastActivityAt: ago(2),
+  startedAt: minutesAgo(now, 67),
+  lastActivityAt: minutesAgo(now, 2),
   turns: 14,
   costUsd: 1.82,
-  createdAt: ago(70),
-  updatedAt: ago(2)
+  createdAt: minutesAgo(now, 70),
+  updatedAt: minutesAgo(now, 2)
 })
 
 const paused = makeTask({
@@ -86,9 +85,9 @@ const paused = makeTask({
   state: 'paused',
   reason: 'rate_limit',
   pausedUntil: new Date(2026, 9, 14, 3, 0).toISOString(),
-  lastActivityAt: ago(31),
-  createdAt: ago(60),
-  updatedAt: ago(30)
+  lastActivityAt: minutesAgo(now, 31),
+  createdAt: minutesAgo(now, 60),
+  updatedAt: minutesAgo(now, 30)
 })
 
 const stuck = makeTask({
@@ -97,14 +96,34 @@ const stuck = makeTask({
   workspaceId: null,
   state: 'stuck',
   reason: 'no_heartbeat',
-  updatedAt: ago(60)
+  updatedAt: minutesAgo(now, 60)
 })
 
 const queued = makeTask({ id: 'tsk_01hzy5p8q9vw', title: 'Bump the SDK', state: 'queued' })
-const doneTonight = makeTask({ id: 'tsk_01hzy3k2l6rs', state: 'done', updatedAt: ago(90) })
-const doneYesterday = makeTask({ id: 'tsk_01hzy4m5n7tu', state: 'done', updatedAt: ago(26 * 60) })
-const shell = makeTermInfo({ name: retry.name, workspaceId: retry.id, createdAt: ago(75) })
-const dotShell = makeTermInfo({ name: 'main', workspaceId: dotfilesMain.id, createdAt: ago(200) })
+
+const doneTonight = makeTask({
+  id: 'tsk_01hzy3k2l6rs',
+  state: 'done',
+  updatedAt: minutesAgo(now, 90)
+})
+
+const doneYesterday = makeTask({
+  id: 'tsk_01hzy4m5n7tu',
+  state: 'done',
+  updatedAt: minutesAgo(now, 26 * 60)
+})
+
+const shell = makeTermInfo({
+  name: retry.name,
+  workspaceId: retry.id,
+  createdAt: minutesAgo(now, 75)
+})
+
+const dotShell = makeTermInfo({
+  name: 'main',
+  workspaceId: dotfilesMain.id,
+  createdAt: minutesAgo(now, 200)
+})
 
 function seed(): void {
   fakeBridge.seedProject(uploader)
