@@ -119,7 +119,7 @@ export type {
 
 /** Mirrors the daemon's term.* protocol methods and events. */
 export interface TermApi {
-  create(params: TermCreateParams): Promise<{ id: string }>
+  create(params: TermCreateParams): Promise<TermInfo>
   list(params?: TermListParams): Promise<TermInfo[]>
   attach(params: { id: string; cols: number; rows: number }): Promise<TermAttachResult>
   detach(params: { id: string }): Promise<{ ok: true }>
@@ -177,7 +177,7 @@ export interface WorkspaceApi {
   get(params: { id: string }): Promise<Workspace>
   remove(params: WorkspaceRemoveParams): Promise<{ ok: true }>
   /** Opens a terminal in the worktree with the hooks wrapper on PATH. */
-  openTerminal(params: WorkspaceOpenTerminalParams): Promise<{ id: string }>
+  openTerminal(params: WorkspaceOpenTerminalParams): Promise<TermInfo>
   /** Commits what is uncommitted as `title`, pushes, and opens a draft PR. */
   createPr(params: WorkspaceCreatePrParams): Promise<WorkspaceCreatePrResult>
   /** Types claude with the start prompt into the workspace's first terminal (opened when none) once setup is done. */

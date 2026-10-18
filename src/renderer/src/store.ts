@@ -297,9 +297,13 @@ export class QueStore {
   private boot: Promise<void> | null = null
   /** Terminal keys that already had their first-visit terminal opened. */
   private autoOpened = new Set<string>()
-  /** Terminals being created by this store, which place them themselves. */
+  /**
+   * Terminals this store is creating. The daemon announces them to this window too, and that event can beat the
+   * creator's reply; a tab added before the creator has placed the terminal in a pane would mount in the wrong one.
+   */
   private creating = 0
-  private createdMeanwhile = new Set<string>()
+  /** Announcements that arrived while `creating` was above zero, added once it drops back. */
+  private createdMeanwhile: TermInfo[] = []
   /** Fetches in flight per resource and key, so a pane and a list asking at once share one request. */
   private loads = new Map<string, Promise<void>>()
   /** The latest fetch per resource and key, for those where an older answer is dropped. */
@@ -439,10 +443,9 @@ export class QueStore {
         this.setWith((s) => ({ projects: mergeById(s.projects, [p]) }))
       ),
       project.on('project.removed', ({ id }) => this.setWith((s) => dropProject(s, id))),
-      term.on('term.created', ({ id }) => {
-        // A terminal this store is creating is placed in its pane by the creator.
-        if (this.creating > 0) this.createdMeanwhile.add(id)
-        else void this.addTerminal(id)
+      term.on('term.created', (info) => {
+        if (this.creating > 0) this.createdMeanwhile.push(info)
+        else this.addTab(info)
       }),
       term.on('term.killed', ({ id }) => this.removeTab(id)),
       term.on('term.exit', ({ id }) =>
@@ -550,17 +553,11 @@ export class QueStore {
     }
   }
 
-  private async addTerminal(id: string): Promise<TermTab | null> {
-    const existing = this.state.terminals.find((t) => t.id === id)
-
-    if (existing) return existing
-    const info = (await this.api.term.list()).find((t) => t.id === id)
-
-    if (!info) return null
+  /** Adds the tab for a terminal the daemon reported, unless it already has one (the reply and the event both bring it). */
+  private addTab(info: TermInfo): void {
+    if (this.state.terminals.some((t) => t.id === info.id)) return
     const tab = toTab(info, false)
     this.setWith((s) => ({ terminals: mergeById(s.terminals, [tab]) }))
-
-    return tab
   }
 
   private currentKey(): string | null {
@@ -1011,9 +1008,9 @@ export class QueStore {
       this.showTerminals(result.workspace.id)
     } else {
       // Add the tab before the view shows, so the view does not open a second terminal.
-      await this.addTerminal(result.terminalId)
+      this.addTab(result.terminal)
       this.showTerminals(SCRATCH)
-      this.selectTerminal(SCRATCH, result.terminalId)
+      this.selectTerminal(SCRATCH, result.terminal.id)
     }
   }
 
@@ -1112,39 +1109,37 @@ export class QueStore {
   }
 
   /** Creates a terminal for a key (a workspace's, or a loose one in the active tab's folder). */
-  private async createFor(key: string): Promise<string> {
+  private async createFor(key: string): Promise<TermInfo> {
     if (key === SCRATCH) {
       const cwd = this.activeTab(key)?.cwd ?? (await this.api.app.homedir())
 
-      return (await this.api.term.create({ cwd, cols: DEFAULT_COLS, rows: DEFAULT_ROWS })).id
+      return this.api.term.create({ cwd, cols: DEFAULT_COLS, rows: DEFAULT_ROWS })
     }
 
-    return (
-      await this.api.workspace.openTerminal({ id: key, cols: DEFAULT_COLS, rows: DEFAULT_ROWS })
-    ).id
+    return this.api.workspace.openTerminal({ id: key, cols: DEFAULT_COLS, rows: DEFAULT_ROWS })
   }
 
   /**
    * Creates a terminal and places it in a pane once its id is known, before its
-   * tab appears, so it never mounts in the wrong pane.
+   * tab appears, so it never mounts in the wrong pane (see `creating`).
    */
   private async openIn(key: string, place: (id: string) => void): Promise<void> {
     this.creating++
 
     try {
-      const id = await this.createFor(key)
-      place(id)
-      await this.addTerminal(id)
+      const info = await this.createFor(key)
+      place(info.id)
+      this.addTab(info)
     } catch (err) {
       this.set({ error: errorMessage(err) })
     } finally {
       this.creating--
 
       if (this.creating === 0) {
-        const others = [...this.createdMeanwhile]
-        this.createdMeanwhile.clear()
+        const others = this.createdMeanwhile
+        this.createdMeanwhile = []
 
-        for (const id of others) void this.addTerminal(id)
+        for (const info of others) this.addTab(info)
       }
     }
   }
@@ -1292,10 +1287,10 @@ export class QueStore {
     }
 
     // The workspace exists now: a failure to start goes to the banner, not back to the dialog.
-    let terminalId: string
+    let terminal: TermInfo
 
     try {
-      ;({ terminalId } = await this.api.workspace.start({
+      ;({ terminal } = await this.api.workspace.start({
         id: ws.id,
         cols: DEFAULT_COLS,
         rows: DEFAULT_ROWS
@@ -1307,9 +1302,9 @@ export class QueStore {
       return
     }
 
-    await this.addTerminal(terminalId)
+    this.addTab(terminal)
     this.showTerminals(ws.id)
-    this.selectTerminal(ws.id, terminalId)
+    this.selectTerminal(ws.id, terminal.id)
   }
 
   /** Whether a rename may also rename the workspace's branch (it was never pushed). */

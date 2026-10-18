@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { fakeBridge } from '@renderer/testing/fake-bridge'
 import { openWorkspace } from '@renderer/testing/helpers'
@@ -94,6 +94,19 @@ describe('Panes', () => {
       expect(screen.getByTestId('pane-0')).toHaveAttribute('data-active-term', two.id)
       expect(screen.getByTestId('pane-divider')).toHaveAttribute('aria-orientation', 'vertical')
       expect(await window.que.term.list()).toHaveLength(3)
+    })
+
+    it('shows a terminal another client opened, without asking the daemon for the list again', async () => {
+      seed()
+      render(<App />)
+      await screen.findByTestId(`terminal-tab-${two.id}`)
+      const listed = fakeBridge.termListCount()
+      const elsewhere = makeTermInfo({ name: 'logs', cwd: '/Users/dev/c' })
+
+      act(() => fakeBridge.announceTerminal(elsewhere))
+
+      expect(await screen.findByTestId(`terminal-tab-${elsewhere.id}`)).toBeInTheDocument()
+      expect(fakeBridge.termListCount()).toBe(listed)
     })
 
     it('Cmd+Shift+D splits below', async () => {

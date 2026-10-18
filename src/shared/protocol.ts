@@ -133,8 +133,8 @@ export interface WorkspaceStartParams {
 }
 
 export interface WorkspaceStartResult {
-  /** The workspace terminal claude is typed into (its first, opened when there was none). */
-  terminalId: string
+  /** The workspace terminal claude is typed into (its first, or the one opened when there was none). */
+  terminal: TermInfo
 }
 
 export interface WorkspaceRenameParams {
@@ -285,7 +285,7 @@ export interface TicketsStartParams {
 
 export type TicketsStartResult =
   | { kind: 'workspace'; workspace: Workspace }
-  | { kind: 'session'; terminalId: string }
+  | { kind: 'session'; terminal: TermInfo }
   /** que could not tell which project; the app offers these. */
   | { kind: 'needs_project'; projects: Project[] }
 
@@ -416,7 +416,7 @@ export interface InstructionsSetParams {
 export interface Methods {
   'daemon.ping': { params: Record<string, never> | undefined; result: PingResult }
   'daemon.shutdown': { params: Record<string, never> | undefined; result: Ok }
-  'term.create': { params: TermCreateParams; result: { id: string } }
+  'term.create': { params: TermCreateParams; result: TermInfo }
   'term.list': { params: TermListParams | undefined; result: TermInfo[] }
   'term.attach': { params: TermAttachParams; result: TermAttachResult }
   'term.detach': { params: TermIdParams; result: Ok }
@@ -431,7 +431,7 @@ export interface Methods {
   'workspace.list': { params: WorkspaceListParams | undefined; result: Workspace[] }
   'workspace.get': { params: { id: string }; result: Workspace }
   'workspace.remove': { params: WorkspaceRemoveParams; result: Ok }
-  'workspace.openTerminal': { params: WorkspaceOpenTerminalParams; result: { id: string } }
+  'workspace.openTerminal': { params: WorkspaceOpenTerminalParams; result: TermInfo }
   'workspace.createPr': { params: WorkspaceCreatePrParams; result: WorkspaceCreatePrResult }
   /** Types `claude '<start_prompt>'` into the workspace's first terminal once setup is done. */
   'workspace.start': { params: WorkspaceStartParams; result: WorkspaceStartResult }
@@ -508,7 +508,7 @@ export type ResultOf<M extends MethodName> = Methods[M]['result']
 export interface Events {
   'term.data': { id: string; data: string }
   'term.exit': { id: string; exitCode: number; signal?: number }
-  'term.created': { id: string }
+  'term.created': TermInfo
   'term.killed': { id: string }
   'workspace.created': Workspace
   /** Its pull request (prUrl), title (a rename or a background summary), or branch changed. */

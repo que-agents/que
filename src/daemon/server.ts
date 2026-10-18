@@ -30,7 +30,9 @@ import type {
   ConfigGetResult,
   InstructionsGetResult,
   TaskAddParams,
-  TermCreateParams
+  TermCreateParams,
+  TermInfo,
+  WorkspaceStartResult
 } from '../shared/protocol'
 import { ACTIVE_STATES, type TaskSource, type TaskState, type Workspace } from '../shared/types'
 import { conflict, RpcError } from './errors'
@@ -221,7 +223,7 @@ export class DaemonServer {
       projects: () => this.workspaces.listProjects(),
       createWorkspace: (p) => this.workspaces.create(p),
       openTerminal: async (workspaceId) => this.openWorkspaceTerminal(workspaceId, 120, 30),
-      createSession: async (cwd) => ({ id: this.createTerminal({ cwd, cols: 120, rows: 30 }).id }),
+      createSession: async (cwd) => this.createTerminal({ cwd, cols: 120, rows: 30 }).info(),
       writeTerminal: (id, data) => this.requireTerm(id).write(data),
       learnProject: async (projectKey, projectName) => {
         this.setConfig({ jira: { projects: { [projectKey]: projectName } } }, false)
@@ -357,13 +359,13 @@ export class DaemonServer {
 
     if (extra?.workspaceId) this.termWorkspace.set(t.id, extra.workspaceId)
     this.log(`term ${t.id} created pid=${t.proc.pid} cwd=${t.cwd}`)
-    this.broadcast('term.created', { id: t.id })
+    this.broadcast('term.created', t.info())
 
     return t
   }
 
   /** A shell in the workspace's worktree, carrying its que environment. */
-  private openWorkspaceTerminal(id: string, cols: number, rows: number): { id: string } {
+  private openWorkspaceTerminal(id: string, cols: number, rows: number): TermInfo {
     const ws = this.workspaces.get(id)
 
     const t = this.createTerminal(
@@ -371,7 +373,7 @@ export class DaemonServer {
       { workspaceId: ws.id, env: this.terminalEnv(ws) }
     )
 
-    return { id: t.id }
+    return t.info()
   }
 
   private requireTerm(id: string): HostedTerminal {
@@ -386,7 +388,7 @@ export class DaemonServer {
    * Starts claude on the brief (or the configured start prompt) in the workspace's first terminal (opened when it has
    * none). Answers with the terminal at once; the command is typed once setup has ended.
    */
-  private startWorkspace(id: string, cols = 120, rows = 30): { terminalId: string } {
+  private startWorkspace(id: string, cols = 120, rows = 30): WorkspaceStartResult {
     const ws = this.workspaces.get(id)
 
     const first =
@@ -408,7 +410,7 @@ export class DaemonServer {
       else this.log(`workspace ${ws.id}: terminal ${first.id} is gone; claude not started`)
     })
 
-    return { terminalId: first.id }
+    return { terminal: first.info() }
   }
 
   private killTerminal(id: string): boolean {
@@ -740,7 +742,7 @@ export class DaemonServer {
           args: optStringArray(p, 'args')
         })
 
-        return { id: t.id }
+        return t.info()
       }
 
       case 'term.list': {

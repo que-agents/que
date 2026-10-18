@@ -135,7 +135,7 @@ export function registerTicketCommands(program: Command): void {
           for (const p of r.projects) console.error(`  ${p.name}`)
           process.exitCode = 2
         } else if (r.kind === 'session') {
-          console.log(`session ${r.terminalId}`)
+          console.log(`session ${r.terminal.id}`)
         } else {
           console.log(r.workspace.name)
         }
