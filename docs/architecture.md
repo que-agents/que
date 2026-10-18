@@ -58,7 +58,51 @@ headless xterm as well as to subscribers. Attaching takes a serialized snapshot
 of that mirror (screen, scrollback, modes) and then streams live data, with
 anything that arrives during the snapshot buffered so nothing is lost or
 duplicated. That is what lets a relaunched app, or `que attach` in another
-terminal, pick up exactly where the screen was.
+terminal, pick up exactly where the screen was. A terminal handed over by a
+previous daemon (see below) is an `AdoptedTerminal` over the inherited master
+fd; `PtyHost` holds both kinds behind one interface.
+
+## Upgrading the daemon without ending terminals
+
+A PTY is a file descriptor, so a terminal can change owners without the shell
+noticing. `que daemon upgrade` asks the running daemon for `daemon.handoff`
+(CLI only; the window cannot call it), naming the daemon bundle and runtime of
+the que that runs the command, normally the newly installed app's. The running
+daemon then:
+
+1. stops reading every live terminal at the handle, so what the shells print
+   from then on waits in the kernel, and serializes each mirror;
+2. writes a versioned snapshot under `QUE_HOME` (per terminal: id, workspace,
+   name, cwd, pid, size, its fd index, and the serialized screen and
+   scrollback) and spawns the new bundle detached, as `connectOrStart` would,
+   with `--handoff --snapshot <file>`, the IPC channel at fd 3 and the master
+   fds from fd 4.
+
+The successor deletes the snapshot, adopts each fd (a tty stream for reading,
+direct writes, node-pty's own native binding for resizing, the pid for
+signals, end of stream as exit), rebuilds each mirror from the serialized
+state and answers `adopted`. The old daemon stops its services, drops every
+connection but the caller's and removes the socket, then says `bind`. The
+successor binds the socket, writes the pid file, starts its services, starts
+reading the terminals and answers `ready`. The old daemon answers the caller
+with the new pid and exits without signalling any terminal, leaving the socket
+and pid file to its successor. Clients reconnect and attach to the same
+terminal ids; the attach replays the rebuilt mirror.
+
+Carried over: every live terminal, with its id, shell, screen and scrollback.
+Not carried over: task runs (the old daemon stops them as it lets go of the
+socket, and the successor's queue recovery takes them up as after any
+restart), file watches and pollers (they start fresh), exited terminals, the
+start time (it is a new daemon), and an adopted terminal's exit code (the new
+daemon is not the shell's parent, so an ended terminal reports 0).
+
+Every wait on the successor has a timeout. If it fails, exits or does not
+answer before `adopted`, the old daemon reads its terminals again and answers
+with the error; after it has let go of the socket, it also kills the successor
+(SIGKILL, so no shutdown of its runs), listens again with fresh services and
+then answers. Either way no terminal ends, and the fallback is a hard restart.
+The sender lives in the running daemon, so the first upgrade to a que that has
+this is still a restart.
 
 ## Workspaces and the hooks wrapper
 

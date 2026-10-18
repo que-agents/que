@@ -1,8 +1,12 @@
 // que daemon: owns every PTY so terminals survive app restarts. Runs under the
-// Electron binary as plain Node (ELECTRON_RUN_AS_NODE=1).
+// Electron binary as plain Node (ELECTRON_RUN_AS_NODE=1). With `--handoff
+// --snapshot <file>` it is the successor of a running daemon and takes over
+// its terminals (see handoff.ts).
 import fs from 'node:fs'
 import net from 'node:net'
+import { errorMessage } from '../shared/errors.decode'
 import { ensureDirs, quePaths } from '../shared/paths'
+import { HandoffSender, receiveHandoff } from './handoff'
 import { PtyHost } from './pty-host'
 import { DaemonServer } from './server'
 
@@ -30,10 +34,26 @@ function socketAlive(path: string): Promise<boolean> {
   })
 }
 
+/** The snapshot file of a handoff, when this process is a successor. */
+function handoffSnapshot(argv: string[]): string | null {
+  if (!argv.includes('--handoff')) return null
+  const at = argv.indexOf('--snapshot')
+
+  if (at < 0 || !argv[at + 1]) throw new Error('--handoff needs --snapshot <file>')
+
+  return argv[at + 1]
+}
+
+function exitWith(code: number): void {
+  logStream.end(() => process.exit(code))
+  setTimeout(() => process.exit(code), 1000).unref()
+}
+
 async function main(): Promise<void> {
   if (paths.socketFallback) log(`socket path too long; using ${paths.socket}`)
+  const snapshotPath = handoffSnapshot(process.argv.slice(2))
 
-  if (fs.existsSync(paths.socket)) {
+  if (snapshotPath === null && fs.existsSync(paths.socket)) {
     if (await socketAlive(paths.socket)) {
       // Not a failure: under launchd (KeepAlive on unsuccessful exit) this
       // must not be restarted in a loop.
@@ -49,14 +69,36 @@ async function main(): Promise<void> {
   }
 
   const host = new PtyHost()
+  let server: DaemonServer | null = null
   let shuttingDown = false
+
+  const sender = new HandoffSender({
+    host,
+    paths,
+    log,
+    // A handoff that failed after this daemon let go of the socket: serve
+    // again with fresh services (the released ones are closed for good).
+    relisten: async () => {
+      await serve()
+    }
+  })
 
   const shutdown = (reason: string): void => {
     if (shuttingDown) return
     shuttingDown = true
+
+    if (sender.handedOver) {
+      // The terminals, the socket and the pid file belong to the successor now.
+      log(`exiting after the handoff (${reason}); terminals left running`)
+      exitWith(0)
+
+      return
+    }
+
     log(`shutting down (${reason})`)
     host.killAll()
-    void server.close().finally(() => {
+    const closing = server?.close() ?? Promise.resolve()
+    void closing.finally(() => {
       fs.rmSync(paths.socket, { force: true })
 
       try {
@@ -65,21 +107,58 @@ async function main(): Promise<void> {
         // Pid file already gone.
       }
 
-      logStream.end(() => process.exit(0))
-      setTimeout(() => process.exit(0), 1000).unref()
+      exitWith(0)
     })
   }
 
-  const server = new DaemonServer({
-    host,
-    version: VERSION,
-    log,
-    onShutdown: () => shutdown('daemon.shutdown')
-  })
+  /** A fresh server over the host, bound to the socket, with the pid file written. */
+  const serve = async (): Promise<void> => {
+    const next = new DaemonServer({
+      host,
+      version: VERSION,
+      log,
+      onShutdown: () => shutdown('daemon.shutdown'),
+      handoff: (p, release) => sender.run(p, release),
+      onHandedOff: () => shutdown('handed off')
+    })
 
-  await server.listen(paths.socket)
-  fs.writeFileSync(paths.pid, `${process.pid}\n`)
-  log(`listening on ${paths.socket} (version ${VERSION}, node ${process.version})`)
+    await next.listen(paths.socket)
+    server = next
+    fs.writeFileSync(paths.pid, `${process.pid}\n`)
+  }
+
+  if (snapshotPath === null) {
+    await serve()
+    log(`listening on ${paths.socket} (version ${VERSION}, node ${process.version})`)
+  } else {
+    try {
+      const n = await receiveHandoff({
+        host,
+        snapshotPath,
+        log,
+        serve: async () => {
+          // Normally gone already; left behind if the predecessor died before removing it.
+          if (fs.existsSync(paths.socket) && !(await socketAlive(paths.socket))) {
+            fs.rmSync(paths.socket, { force: true })
+          }
+
+          await serve()
+        }
+      })
+
+      log(
+        `listening on ${paths.socket} (version ${VERSION}, node ${process.version}), ` +
+          `took over ${n} terminal(s)`
+      )
+    } catch (err) {
+      // The predecessor still holds every terminal and serves again; this
+      // process leaves without signalling any of them.
+      log(`handoff failed: ${errorMessage(err)}`)
+      exitWith(1)
+
+      return
+    }
+  }
 
   process.on('SIGTERM', () => shutdown('SIGTERM'))
   process.on('SIGINT', () => shutdown('SIGINT'))

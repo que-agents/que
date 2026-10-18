@@ -1,12 +1,15 @@
 import { randomUUID } from 'node:crypto'
 import { cleanSpawnEnv } from '../shared/env'
 import os from 'node:os'
+import type tty from 'node:tty'
 import * as pty from 'node-pty'
-import { Terminal as HeadlessTerminal } from '@xterm/headless'
-import { SerializeAddon } from '@xterm/addon-serialize'
 import type { TermCreateParams, TermInfo, TermSnapshotResult } from '../shared/protocol'
+import { AdoptedTerminal, type AdoptSpec } from './adopted-terminal'
+import { TerminalMirror } from './mirror'
+import { holdReading, resumeReading } from './pty-fd'
+import { termInfo, type ExitInfo, type Term } from './term'
 
-const SCROLLBACK = 10000
+export type { ExitInfo, Term } from './term'
 
 /** Daemon-internal terminal options that clients cannot set directly. */
 export interface TermExtra {
@@ -15,21 +18,25 @@ export interface TermExtra {
   workspaceId?: string
 }
 
-export interface ExitInfo {
-  exitCode: number
-  signal?: number
+/** What node-pty keeps on a terminal and its typings leave out: the master fd and the stream reading it. */
+interface PtyInternals {
+  fd: number
+  _socket: tty.ReadStream
+}
+
+function internals(proc: pty.IPty): pty.IPty & PtyInternals {
+  return proc as pty.IPty & PtyInternals
 }
 
 /** One PTY plus a headless xterm mirror of everything it has printed. */
-export class HostedTerminal {
+export class HostedTerminal implements Term {
   readonly id: string
   readonly name: string
   readonly cwd: string
   readonly createdAt: string
   readonly proc: pty.IPty
-  readonly mirror: HeadlessTerminal
   readonly workspaceId?: string
-  private serializer: SerializeAddon
+  private readonly mirror: TerminalMirror
   alive = true
   cols: number
   rows: number
@@ -52,16 +59,7 @@ export class HostedTerminal {
     const args = opts.args ?? (opts.file ? [] : ['-l'])
     this.name = opts.name || file.split('/').pop() || 'shell'
 
-    this.mirror = new HeadlessTerminal({
-      cols: this.cols,
-      rows: this.rows,
-      scrollback: SCROLLBACK,
-      allowProposedApi: true
-    })
-    this.serializer = new SerializeAddon()
-    // The serialize addon is typed against the browser Terminal; the headless
-    // terminal implements the same public surface it uses.
-    this.mirror.loadAddon(this.serializer)
+    this.mirror = new TerminalMirror(this.cols, this.rows)
 
     this.proc = pty.spawn(file, args, {
       name: 'xterm-256color',
@@ -78,6 +76,19 @@ export class HostedTerminal {
       this.alive = false
       onExit({ exitCode, signal })
     })
+  }
+
+  get pid(): number {
+    return this.proc.pid
+  }
+
+  get masterFd(): number {
+    return internals(this.proc).fd
+  }
+
+  /** node-pty reads the master through a tty stream it keeps to itself. */
+  private get stream(): tty.ReadStream {
+    return internals(this.proc)._socket
   }
 
   write(data: string): void {
@@ -104,40 +115,20 @@ export class HostedTerminal {
     }
   }
 
-  /**
-   * Serialized screen + scrollback. The mirror's write queue is drained first
-   * so the snapshot reflects every byte received before this call, and no
-   * byte received after it (serialization runs inside the write callback,
-   * before xterm processes any later chunk).
-   */
   snapshot(): Promise<TermSnapshotResult> {
-    return this.atBoundary(() => ({ serialized: this.serialize(), text: this.text() }))
+    return this.mirror.snapshot()
   }
 
-  /** Same boundary guarantee as snapshot(), serialized form only. */
   serializeNow(): Promise<string> {
-    return this.atBoundary(() => this.serialize())
+    return this.mirror.serializeNow()
   }
 
-  private atBoundary<T>(fn: () => T): Promise<T> {
-    return new Promise((resolve) => this.mirror.write('', () => resolve(fn())))
+  holdReading(): void {
+    holdReading(this.stream)
   }
 
-  private serialize(): string {
-    return this.serializer.serialize({ scrollback: SCROLLBACK })
-  }
-
-  private text(): string {
-    const buf = this.mirror.buffer.active
-    const lines: string[] = []
-
-    for (let i = 0; i < buf.length; i++) {
-      lines.push(buf.getLine(i)?.translateToString(true) ?? '')
-    }
-
-    while (lines.length > 0 && lines[lines.length - 1] === '') lines.pop()
-
-    return lines.join('\n')
+  resumeReading(): void {
+    resumeReading(this.stream)
   }
 
   kill(): void {
@@ -158,17 +149,7 @@ export class HostedTerminal {
   }
 
   info(): TermInfo {
-    return {
-      id: this.id,
-      name: this.name,
-      cwd: this.cwd,
-      cols: this.cols,
-      rows: this.rows,
-      pid: this.proc.pid,
-      alive: this.alive,
-      createdAt: this.createdAt,
-      workspaceId: this.workspaceId || undefined
-    }
+    return termInfo(this)
   }
 }
 
@@ -187,7 +168,7 @@ type ExitListener = (id: string, info: ExitInfo) => void
 
 /** Owns every terminal in the daemon; terminals outlive client connections. */
 export class PtyHost {
-  private terms = new Map<string, HostedTerminal>()
+  private terms = new Map<string, Term>()
   private dataListeners = new Set<DataListener>()
   private exitListeners = new Set<ExitListener>()
 
@@ -196,12 +177,8 @@ export class PtyHost {
 
     const t = new HostedTerminal(
       opts,
-      (data) => {
-        for (const l of this.dataListeners) l(id, data)
-      },
-      (info) => {
-        for (const l of this.exitListeners) l(id, info)
-      },
+      (data) => this.emitData(id, data),
+      (info) => this.emitExit(id, info),
       extra
     )
 
@@ -211,11 +188,28 @@ export class PtyHost {
     return t
   }
 
-  get(id: string): HostedTerminal | undefined {
+  /**
+   * Takes over a terminal a predecessor daemon handed over, under its old id.
+   * It does not read until resumeReading(), so nothing is taken from the PTY
+   * before this daemon serves.
+   */
+  adopt(spec: AdoptSpec): AdoptedTerminal {
+    const t = new AdoptedTerminal(
+      spec,
+      (data) => this.emitData(spec.id, data),
+      (info) => this.emitExit(spec.id, info)
+    )
+
+    this.terms.set(t.id, t)
+
+    return t
+  }
+
+  get(id: string): Term | undefined {
     return this.terms.get(id)
   }
 
-  list(): HostedTerminal[] {
+  list(): Term[] {
     return [...this.terms.values()]
   }
 
@@ -244,5 +238,13 @@ export class PtyHost {
     this.exitListeners.add(l)
 
     return () => this.exitListeners.delete(l)
+  }
+
+  private emitData(id: string, data: string): void {
+    for (const l of this.dataListeners) l(id, data)
+  }
+
+  private emitExit(id: string, info: ExitInfo): void {
+    for (const l of this.exitListeners) l(id, info)
   }
 }

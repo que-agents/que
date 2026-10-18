@@ -12,6 +12,7 @@ import { runHook } from './hook'
 import { registerQuietCommands } from './quiet'
 import { registerTaskCommands } from './tasks'
 import { registerTicketCommands } from './tickets'
+import { registerUpgradeCommand } from './upgrade'
 import { registerWorkspaceCommands } from './workspaces'
 import { errorMessage } from '../shared/errors.decode'
 
@@ -139,6 +140,8 @@ async function main(): Promise<void> {
         c.close()
       }
     })
+
+  registerUpgradeCommand(daemon)
 
   const term = program.command('term').description('manage terminals')
   term

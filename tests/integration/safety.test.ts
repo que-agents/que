@@ -201,6 +201,7 @@ const QUIET_POLICY: Record<MethodName, 'refused' | 'allowed'> = {
   'queue.open': 'refused',
   'daemon.ping': 'allowed',
   'daemon.shutdown': 'allowed',
+  'daemon.handoff': 'allowed',
   'term.list': 'allowed',
   'term.detach': 'allowed',
   'term.write': 'allowed',
