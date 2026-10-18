@@ -449,7 +449,7 @@ export default function Sidebar(): React.JSX.Element {
                             {w.title ?? w.name}
                           </span>
                         </button>
-                        <span className="reveal">
+                        <span className="reveal" data-testid={`sidebar-workspace-${w.id}-reveal`}>
                           <span
                             className={word.tone ? `word toned tone-${word.tone}` : 'word'}
                             data-testid={`sidebar-workspace-${w.id}-word`}
