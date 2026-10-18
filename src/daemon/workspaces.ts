@@ -161,19 +161,40 @@ export class WorkspaceManager {
   // ---- projects -------------------------------------------------------------
 
   async addProject(p: ProjectAddParams): Promise<Project> {
-    if (!fs.existsSync(p.path) || !fs.statSync(p.path).isDirectory()) {
-      throw badRequest(`no such directory: ${p.path}`)
+    if ((p.path === undefined) === (p.repo === undefined)) {
+      throw badRequest('path or repo is required, not both')
     }
 
-    const top = await git(p.path, ['rev-parse', '--show-toplevel'])
+    let dir = p.path ?? ''
+    let given = p.name
 
-    if (!top.ok || !top.stdout) throw badRequest(`not a git repository: ${p.path}`)
+    if (p.repo !== undefined) {
+      // A configured name wins over a directory of the same name, as `-r` always has.
+      const named = this.config().repos[p.repo]
+
+      if (named) {
+        dir = named.path
+        given ??= p.repo
+      } else if (fs.existsSync(p.repo) && fs.statSync(p.repo).isDirectory()) {
+        dir = p.repo
+      } else {
+        throw notFound(`no configured repo or directory named ${p.repo}`)
+      }
+    }
+
+    if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) {
+      throw badRequest(`no such directory: ${dir}`)
+    }
+
+    const top = await git(dir, ['rev-parse', '--show-toplevel'])
+
+    if (!top.ok || !top.stdout) throw badRequest(`not a git repository: ${dir}`)
     const path = top.stdout
     const existing = this.opts.store.getProjectByPath(path)
 
     if (existing) return existing
 
-    const name = (p.name ?? basename(path)).trim()
+    const name = (given ?? basename(path)).trim()
 
     if (!name || name.includes('/') || name === '.' || name === '..') {
       throw badRequest(`invalid project name: ${JSON.stringify(name)}`)

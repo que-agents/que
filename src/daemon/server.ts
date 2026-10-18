@@ -808,7 +808,8 @@ export class DaemonServer {
         const before = new Set(this.workspaces.listProjects().map((x) => x.id))
 
         const project = await this.workspaces.addProject({
-          path: str(p, 'path'),
+          path: optString(p, 'path'),
+          repo: optString(p, 'repo'),
           name: optString(p, 'name')
         })
 

@@ -5,7 +5,12 @@ import fs from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { DaemonClient } from '@shared/client'
-import { recordEvents, startTestDaemon, type TestDaemon } from '../../src/testing/daemon-harness'
+import {
+  recordEvents,
+  startTestDaemon,
+  type TestDaemon,
+  withQuietOff
+} from '../../src/testing/daemon-harness'
 import { readFakeLog } from '../../src/testing/fakes'
 import { pidAlive } from '../../src/shared/process'
 import { addBareOrigin, gitIn, makeTempRepo } from '../../src/testing/temp-repo'
@@ -43,6 +48,34 @@ describe('projects', () => {
     const project = await client.request('project.add', { path: join(daemon.home, 'uploader') })
 
     expect(project).toMatchObject({ name: 'uploader', defaultBranch: 'develop' })
+  })
+
+  it('resolves repo through the config registry, then as a directory', async () => {
+    const repo = makeTempRepo(daemon.home)
+    const other = makeTempRepo(daemon.home, { name: 'other-dir' })
+    fs.writeFileSync(daemon.configPath, withQuietOff(`[repos.uploader-api]\npath = "${repo}"\n`))
+
+    const named = await client.request('project.add', { repo: 'uploader-api' })
+    const dir = await client.request('project.add', { repo: other })
+
+    expect(named).toMatchObject({ name: 'uploader-api', path: repo })
+    expect(dir).toMatchObject({ name: 'other-dir', path: other })
+  })
+
+  it('reports a repo that is neither configured nor a directory as not_found', async () => {
+    await expect(client.request('project.add', { repo: 'nope' })).rejects.toMatchObject({
+      code: 'not_found',
+      message: 'no configured repo or directory named nope'
+    })
+  })
+
+  it('needs exactly one of path or repo', async () => {
+    const repo = makeTempRepo(daemon.home)
+
+    await expect(client.request('project.add', {})).rejects.toMatchObject({ code: 'bad_request' })
+    await expect(client.request('project.add', { path: repo, repo })).rejects.toMatchObject({
+      code: 'bad_request'
+    })
   })
 
   it('rejects a directory that is not a git repository', async () => {

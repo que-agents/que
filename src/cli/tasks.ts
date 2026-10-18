@@ -6,13 +6,17 @@ import { dirname, join, resolve } from 'node:path'
 import type { Command } from 'commander'
 import { formatUnlocks } from '../daemon/quiet-hours'
 import { formatReport, parseSince } from '../daemon/report'
-import { type DaemonClient, resolveDaemonScript, resolveRuntime } from '../shared/client'
-import { formatConfigErrors, loadConfig } from '../shared/config'
+import {
+  DaemonError,
+  type DaemonClient,
+  resolveDaemonScript,
+  resolveRuntime
+} from '../shared/client'
 import { formatAge, formatCost } from '../shared/format'
-import { queHome, quePaths } from '../shared/paths'
+import { quePaths } from '../shared/paths'
 import type { QueueState, TaskAddParams } from '../shared/protocol'
 import type { Task } from '../shared/types'
-import { CliError, findWorkspace, printJson, printTable, withClient } from './common'
+import { CliError, findWorkspace, repoRef, printJson, printTable, withClient } from './common'
 import { LAUNCHD_LABEL, plistPath, renderPlist } from './launchd'
 
 /** `-r`: a configured repo name, a repo path, or a workspace id or name. */
@@ -20,17 +24,11 @@ async function resolveTarget(
   c: DaemonClient,
   ref: string
 ): Promise<Pick<TaskAddParams, 'projectId' | 'workspaceId'>> {
-  const config = loadConfig({ queHome: queHome() })
-
-  if (!config.ok) throw new CliError(`invalid config: ${formatConfigErrors(config.errors)}`)
-  const named = config.config.repos[ref]
-
-  if (named)
-    return { projectId: (await c.request('project.add', { path: named.path, name: ref })).id }
-  const path = resolve(ref)
-
-  if (fs.existsSync(path) && fs.statSync(path).isDirectory()) {
-    return { projectId: (await c.request('project.add', { path })).id }
+  try {
+    return { projectId: (await c.request('project.add', { repo: repoRef(ref) })).id }
+  } catch (e) {
+    // Not a repo name or directory: it may still be a workspace id or name.
+    if (!(e instanceof DaemonError) || e.code !== 'not_found') throw e
   }
 
   return { workspaceId: (await findWorkspace(c, ref)).id }
