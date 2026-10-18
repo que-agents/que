@@ -200,7 +200,6 @@ export class DaemonServer {
     this.summaries = new Summarizer({
       store: this.store,
       paths: this.paths,
-      emit,
       bus: this.bus,
       config: () => this.configOrDefault(),
       transcriptPath: (id) => this.status.transcriptPath(id),
@@ -226,7 +225,6 @@ export class DaemonServer {
       tasks: this.tasks,
       paths: this.paths,
       bus: this.bus,
-      emit,
       config: () => this.configOrDefault(),
       log: (m) => this.log(m)
     })
@@ -690,7 +688,8 @@ export class DaemonServer {
 
     const name = method as MethodName
     // Quiet hours: detail is refused here, so every client gets the same answer.
-    this.quiet.check(name)
+
+    if (METHODS[name].quiet) this.quiet.check()
 
     let params: unknown
 

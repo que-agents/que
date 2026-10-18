@@ -22,7 +22,7 @@ import { decodeHeadRef, decodePullRequest, type GhPullRequest } from './pr-state
 import { Poller } from './poller'
 import { jsonPages, parsePrThread } from './pr-thread'
 import { decodeLineComments, decodePrView } from './pr-thread.decode'
-import type { EventBus, Emit } from './bus'
+import type { EventBus } from './bus'
 import type { Store } from './store'
 import type { TaskQueue } from './queue'
 import type { WorkspaceManager } from './workspaces'
@@ -43,7 +43,6 @@ export interface PrServiceOptions {
   paths: Pick<QuePaths, 'workspaceLogsDir'>
   /** The daemon's bus: a finished task refreshes its workspace, a removed one is forgotten. */
   bus: EventBus
-  emit: Emit
   config: () => UserConfig
   log?: (msg: string) => void
 }
@@ -343,7 +342,7 @@ export class PrService {
 
     if (samePullRequest(current.pr, next)) return
     this.opts.store.setWorkspacePr(ws.id, next)
-    this.opts.emit('workspace.updated', { ...current, pr: next })
+    this.opts.bus.emit('workspace.updated', { ...current, pr: next })
   }
 
   /**
@@ -386,7 +385,7 @@ export class PrService {
     }
 
     store.setWorkspacePrUrl(ws.id, result.prUrl)
-    this.opts.emit('workspace.updated', workspaces.get(ws.id))
+    this.opts.bus.emit('workspace.updated', workspaces.get(ws.id))
     void this.refresh(ws.id)
 
     return { prUrl: result.prUrl }
