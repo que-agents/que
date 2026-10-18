@@ -6,6 +6,7 @@
     "out",
     "node_modules",
     "test-results",
+    "coverage",
     "release",
     ".private",
     "tools/oxlint/anti-slop"

@@ -1,5 +1,6 @@
 out
 test-results
+coverage
 release
 .private
 tools/oxlint/anti-slop
