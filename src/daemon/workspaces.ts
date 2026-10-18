@@ -133,8 +133,6 @@ export interface WorkspaceManagerOptions {
 
 export class WorkspaceManager {
   private setups = new Map<string, ChildProcess>()
-  /** Settles when the workspace's setup command ends; absent once it has (or when there is none). */
-  private ready = new Map<string, Promise<void>>()
 
   constructor(private opts: WorkspaceManagerOptions) {}
 
@@ -383,10 +381,9 @@ export class WorkspaceManager {
     if (titleSource) ws.titleSource = titleSource
 
     this.opts.store.insertWorkspace(ws)
-    this.opts.store.insertStatusLog(ws.id, ws.status, null, now)
     this.log(`workspace ${ws.id} created at ${path} on ${branch} from ${base}`)
     this.opts.emit('workspace.created', ws)
-    this.opts.emit('workspace.status', { id: ws.id, status: 'preparing', at: now })
+    this.opts.status.begin(ws)
     this.runSetup(ws, repo.setup)
     this.opts.onCreated?.(ws)
 
@@ -407,11 +404,6 @@ export class WorkspaceManager {
     if (fs.existsSync(path)) return `path already exists: ${path}`
 
     return ''
-  }
-
-  /** Resolves once the workspace's setup command has ended (at once when none is running). */
-  whenReady(id: string): Promise<void> {
-    return this.ready.get(id) ?? Promise.resolve()
   }
 
   /** True when the branch was never pushed: no `origin/<branch>` in the worktree. */
@@ -468,34 +460,23 @@ export class WorkspaceManager {
 
   private runSetup(ws: Workspace, command: string | undefined): void {
     if (!command) {
-      this.opts.status.set(ws.id, 'idle')
+      this.opts.status.apply(ws.id, { kind: 'setup_done' })
 
       return
     }
 
     const child = this.runInWorktree(ws, 'setup', command)
     this.setups.set(ws.id, child)
-    let markReady = (): void => {}
-
-    this.ready.set(
-      ws.id,
-      new Promise<void>((resolve) => {
-        markReady = resolve
-      })
-    )
     let done = false
 
     const finish = (ok: boolean): void => {
       if (done) return
       done = true
-      this.ready.delete(ws.id)
-      markReady()
 
       if (this.setups.get(ws.id) === child) this.setups.delete(ws.id)
       this.log(`workspace ${ws.id} setup ${ok ? 'finished' : 'failed'}`)
 
-      if (ok) this.opts.status.set(ws.id, 'idle', null, 'preparing')
-      else this.opts.status.set(ws.id, 'stuck', 'setup_failed')
+      this.opts.status.apply(ws.id, { kind: ok ? 'setup_done' : 'setup_failed' })
     }
 
     child.once('error', () => finish(false))

@@ -3,6 +3,7 @@
 // gh, the dispatcher's cap, stop, the keep-awake, and recovery after
 // a daemon restart. The transition rules themselves are in task-machine.test.ts.
 import fs from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Events } from '@shared/protocol'
@@ -166,6 +167,27 @@ describe('runner and finisher', () => {
     })
     expect(originBranches(origin)).toEqual(['main'])
     expect(readFakeLog(d.ghLog).filter((c) => c.argv[1] !== 'list')).toEqual([])
+  }, 45_000)
+
+  it('holds a task until its workspace setup ends, then runs it', async () => {
+    const gate = join(tmpdir(), `que-setup-gate-${process.pid}-${Date.now()}`)
+
+    const { d, projectId } = await setup({
+      repo: { queToml: `setup = "until [ -f '${gate}' ]; do sleep 0.05; done"\n` }
+    })
+
+    const task = await d.client.request('task.add', { projectId, brief: 'Add retry logic' })
+    await d.client.request('queue.open')
+    await waitForTaskState(d, task.id, 'preparing')
+    expect(readFakeLog(d.claudeLog)).toEqual([])
+
+    fs.writeFileSync(gate, '')
+
+    try {
+      await waitForTaskState(d, task.id, 'done', 30_000)
+    } finally {
+      fs.rmSync(gate, { force: true })
+    }
   }, 45_000)
 
   it('fails a task whose workspace setup fails', async () => {

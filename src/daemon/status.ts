@@ -5,7 +5,7 @@ import fs from 'node:fs'
 import type { UserConfig } from '../shared/config'
 import { run } from '../shared/exec'
 import type { Events, HookEvent } from '../shared/protocol'
-import type { Workspace, WorkspaceStatus } from '../shared/types'
+import type { Workspace } from '../shared/types'
 import { type AgentEntry, reduce, type StatusInput, type StatusState } from './status-engine'
 import { decodeAgents } from './status.decode'
 import type { Store } from './store'
@@ -43,6 +43,8 @@ function fromRow(w: Workspace): Tracked {
 export class StatusService {
   /** Every unarchived workspace's state, from start(); archiving forgets one. */
   private states = new Map<string, Tracked>()
+  /** Callers of setupDone waiting on a workspace that is still preparing. */
+  private setupWaiters = new Map<string, Set<() => void>>()
   private tickTimer: NodeJS.Timeout | null = null
   private pollTimer: NodeJS.Timeout | null = null
   private polling = false
@@ -71,6 +73,8 @@ export class StatusService {
     this.stopped = true
     this.closed = true
 
+    for (const id of [...this.setupWaiters.keys()]) this.releaseSetupWaiters(id)
+
     if (this.tickTimer) clearInterval(this.tickTimer)
 
     if (this.pollTimer) clearTimeout(this.pollTimer)
@@ -93,21 +97,46 @@ export class StatusService {
   }
 
   /**
-   * Sets a status from outside the engine (workspace setup). With `onlyFrom`,
-   * only while the workspace is still in that status, so a session that
-   * started reporting during setup is not overwritten.
+   * Starts tracking a workspace that was just created in `preparing`: records
+   * its first status log line and announces the status.
    */
-  set(
-    id: string,
-    status: WorkspaceStatus,
-    reason: string | null = null,
-    onlyFrom?: WorkspaceStatus
-  ): void {
-    const prev = this.state(id)
+  begin(ws: Workspace): void {
+    if (this.closed) return
+    this.states.set(ws.id, fromRow(ws))
+    this.opts.store.insertStatusLog(ws.id, ws.status, ws.statusReason, ws.statusAt)
+    this.opts.emit('workspace.status', { id: ws.id, status: ws.status, at: ws.statusAt })
+  }
 
-    if (!prev || (onlyFrom && prev.status !== onlyFrom)) return
-    const now = this.now()
-    this.commit(id, prev, { ...prev, status, reason, statusAt: now })
+  /**
+   * Resolves once the workspace is out of `preparing`: at once when it already
+   * is or is unknown, otherwise at the commit that moves it on, or when it is
+   * forgotten. An aborted `signal` ends the wait early.
+   */
+  setupDone(id: string, signal?: AbortSignal): Promise<void> {
+    if (signal?.aborted || this.state(id)?.status !== 'preparing') return Promise.resolve()
+
+    return new Promise<void>((resolve) => {
+      const waiting = this.setupWaiters.get(id) ?? new Set<() => void>()
+      this.setupWaiters.set(id, waiting)
+
+      const done = (): void => {
+        signal?.removeEventListener('abort', done)
+        waiting.delete(done)
+
+        if (waiting.size === 0 && this.setupWaiters.get(id) === waiting) {
+          this.setupWaiters.delete(id)
+        }
+
+        resolve()
+      }
+
+      waiting.add(done)
+      signal?.addEventListener('abort', done, { once: true })
+    })
+  }
+
+  private releaseSetupWaiters(id: string): void {
+    for (const done of [...(this.setupWaiters.get(id) ?? [])]) done()
   }
 
   /** Feeds one input to the engine for a workspace. */
@@ -141,6 +170,7 @@ export class StatusService {
 
   forget(id: string): void {
     this.states.delete(id)
+    this.releaseSetupWaiters(id)
   }
 
   /** The transcript of the workspace's main session, from its last hook that named one. */
@@ -150,6 +180,8 @@ export class StatusService {
 
   private commit(id: string, prev: Tracked, next: Tracked): void {
     this.states.set(id, next)
+
+    if (next.status !== 'preparing') this.releaseSetupWaiters(id)
     const statusChanged = prev.status !== next.status || prev.reason !== next.reason
     const sessionChanged = prev.sessionId !== next.sessionId
 

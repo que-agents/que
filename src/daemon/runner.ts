@@ -22,10 +22,11 @@ import { finishTask } from './finisher'
 import { StreamParser } from './stream-json'
 import type { TaskEvent } from './task-machine'
 import type { Store } from './store'
+import type { StatusService } from './status'
 import type { WorkspaceManager } from './workspaces'
 import { findOnPath } from './wrapper'
 import { errorMessage } from '../shared/errors.decode'
-import { delay, pidAlive } from '../shared/process'
+import { pidAlive } from '../shared/process'
 
 // ---- prompts (pure) ------------------------------------------------------------
 
@@ -145,6 +146,7 @@ export interface TaskRunnerOptions {
   store: Store
   paths: QuePaths
   workspaces: WorkspaceManager
+  status: StatusService
   config: () => UserConfig
   /** Feeds an event to the task machine; returns the task after it. */
   apply: (id: string, event: TaskEvent) => Task | undefined
@@ -159,6 +161,8 @@ export interface TaskRunnerOptions {
 export class TaskRunner {
   private runs = new Map<string, Run>()
   private finishing = new Set<string>()
+  /** Ends a task's wait for workspace setup when the task stops being `preparing`. */
+  private setupWaits = new Map<string, AbortController>()
   private closed = false
 
   constructor(private o: TaskRunnerOptions) {}
@@ -217,17 +221,20 @@ export class TaskRunner {
     return this.o.workspaces.create(params)
   }
 
-  /** Waits until the workspace's setup command has finished. */
+  /** Waits until the workspace's setup command has finished, or the task stops preparing. */
   private async waitForSetup(id: string, taskId: string): Promise<Workspace | undefined> {
-    for (;;) {
-      const ws = this.o.store.getWorkspace(id)
+    const wait = new AbortController()
+    this.setupWaits.set(taskId, wait)
 
-      if (!ws || ws.archivedAt || ws.status !== 'preparing' || !this.stillPreparing(taskId)) {
-        return ws
-      }
+    if (!this.stillPreparing(taskId)) wait.abort()
 
-      await delay(100)
+    try {
+      await this.o.status.setupDone(id, wait.signal)
+    } finally {
+      if (this.setupWaits.get(taskId) === wait) this.setupWaits.delete(taskId)
     }
+
+    return this.o.store.getWorkspace(id)
   }
 
   private async prepareAndSpawn(task: Task): Promise<void> {
@@ -404,6 +411,8 @@ export class TaskRunner {
   /** Reacts to a state change the machine made. */
   onTransition(prev: Task, next: Task): void {
     if (this.closed || prev.state === next.state) return
+
+    if (prev.state === 'preparing') this.setupWaits.get(next.id)?.abort()
     const run = this.runs.get(next.id)
 
     if (next.state === 'finishing') {
@@ -476,6 +485,8 @@ export class TaskRunner {
   /** Daemon shutdown: stop every run and wait for it (SIGKILL after the grace period). */
   async close(): Promise<void> {
     this.closed = true
+
+    for (const wait of this.setupWaits.values()) wait.abort()
     const runs = [...this.runs.values()]
     await Promise.all(
       runs.map(
