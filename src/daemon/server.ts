@@ -27,7 +27,7 @@ import {
   stringifyConfig,
   type UserConfig
 } from '../shared/config'
-import { ParamsError } from '../shared/methods.decode'
+import { decoders, ParamsError } from '../shared/methods.decode'
 import { ensureDirs, quePaths, type QuePaths } from '../shared/paths'
 import type {
   ConfigGetResult,
@@ -669,7 +669,7 @@ export class DaemonServer {
     let params: unknown
 
     try {
-      params = METHODS[name].decode(p)
+      params = decoders[name](p)
     } catch (e) {
       if (e instanceof ParamsError) throw new RpcError(ErrorCodes.BadRequest, e.message)
 

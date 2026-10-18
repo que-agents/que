@@ -2,8 +2,6 @@
 // Newline-delimited JSON over a unix socket. Requests carry an id; responses
 // echo it. Events are server-pushed and carry no id.
 
-import { HOOK_EVENT_NAMES, type HookEventName } from './hook-events'
-import { decoders } from './methods.decode'
 import type {
   ConfigPatch,
   Project,
@@ -20,8 +18,6 @@ import type {
   Workspace,
   WorkspaceStatus
 } from './types'
-
-export { HOOK_EVENT_NAMES, type HookEventName }
 
 // ---- method types ---------------------------------------------------------
 
@@ -513,120 +509,106 @@ export type ResultOf<M extends MethodName> = Methods[M]['result']
  *   the calls only the daemon's own tooling makes: ping, shutdown, and hook events.
  * - `quiet`: refused with `quiet_hours` while quiet hours are on and not unlocked:
  *   every way to see a terminal, its output, or a report, or to start new work.
- * - `decode`: reads and checks the params a client sent; throws `ParamsError`.
+ *
+ * The decoders for the params are the sibling table in `methods.decode.ts`, keyed the same way.
  */
 export const METHODS: {
   [M in MethodName]: {
     renderer: boolean
     quiet: boolean
-    decode: (p: Record<string, unknown> | undefined) => ParamsOf<M>
   }
 } = {
-  'daemon.ping': { renderer: false, quiet: false, decode: decoders['daemon.ping'] },
+  'daemon.ping': { renderer: false, quiet: false },
   'daemon.shutdown': {
     renderer: false,
-    quiet: false,
-    decode: decoders['daemon.shutdown']
+    quiet: false
   },
-  'term.create': { renderer: true, quiet: true, decode: decoders['term.create'] },
-  'term.list': { renderer: true, quiet: false, decode: decoders['term.list'] },
-  'term.attach': { renderer: true, quiet: true, decode: decoders['term.attach'] },
-  'term.detach': { renderer: true, quiet: false, decode: decoders['term.detach'] },
-  'term.write': { renderer: true, quiet: false, decode: decoders['term.write'] },
-  'term.resize': { renderer: true, quiet: false, decode: decoders['term.resize'] },
-  'term.kill': { renderer: true, quiet: false, decode: decoders['term.kill'] },
-  'term.snapshot': { renderer: true, quiet: true, decode: decoders['term.snapshot'] },
-  'project.add': { renderer: true, quiet: false, decode: decoders['project.add'] },
-  'project.list': { renderer: true, quiet: false, decode: decoders['project.list'] },
-  'project.remove': { renderer: true, quiet: false, decode: decoders['project.remove'] },
+  'term.create': { renderer: true, quiet: true },
+  'term.list': { renderer: true, quiet: false },
+  'term.attach': { renderer: true, quiet: true },
+  'term.detach': { renderer: true, quiet: false },
+  'term.write': { renderer: true, quiet: false },
+  'term.resize': { renderer: true, quiet: false },
+  'term.kill': { renderer: true, quiet: false },
+  'term.snapshot': { renderer: true, quiet: true },
+  'project.add': { renderer: true, quiet: false },
+  'project.list': { renderer: true, quiet: false },
+  'project.remove': { renderer: true, quiet: false },
   'workspace.create': {
     renderer: true,
-    quiet: false,
-    decode: decoders['workspace.create']
+    quiet: false
   },
-  'workspace.list': { renderer: true, quiet: false, decode: decoders['workspace.list'] },
-  'workspace.get': { renderer: true, quiet: false, decode: decoders['workspace.get'] },
+  'workspace.list': { renderer: true, quiet: false },
+  'workspace.get': { renderer: true, quiet: false },
   'workspace.remove': {
     renderer: true,
-    quiet: false,
-    decode: decoders['workspace.remove']
+    quiet: false
   },
   'workspace.openTerminal': {
     renderer: true,
-    quiet: true,
-    decode: decoders['workspace.openTerminal']
+    quiet: true
   },
   'workspace.createPr': {
     renderer: true,
-    quiet: true,
-    decode: decoders['workspace.createPr']
+    quiet: true
   },
-  'workspace.start': { renderer: true, quiet: true, decode: decoders['workspace.start'] },
+  'workspace.start': { renderer: true, quiet: true },
   'workspace.rename': {
     renderer: true,
-    quiet: false,
-    decode: decoders['workspace.rename']
+    quiet: false
   },
   'workspace.canRenameBranch': {
     renderer: true,
-    quiet: false,
-    decode: decoders['workspace.canRenameBranch']
+    quiet: false
   },
-  'workspace.diff': { renderer: true, quiet: true, decode: decoders['workspace.diff'] },
+  'workspace.diff': { renderer: true, quiet: true },
   'workspace.prThread': {
     renderer: true,
-    quiet: true,
-    decode: decoders['workspace.prThread']
+    quiet: true
   },
-  'workspace.files': { renderer: true, quiet: true, decode: decoders['workspace.files'] },
+  'workspace.files': { renderer: true, quiet: true },
   'workspace.readFile': {
     renderer: true,
-    quiet: true,
-    decode: decoders['workspace.readFile']
+    quiet: true
   },
   'workspace.watch': {
     renderer: true,
-    quiet: false,
-    decode: decoders['workspace.watch']
+    quiet: false
   },
   'workspace.unwatch': {
     renderer: true,
-    quiet: false,
-    decode: decoders['workspace.unwatch']
+    quiet: false
   },
-  'hook.event': { renderer: false, quiet: false, decode: decoders['hook.event'] },
-  'task.add': { renderer: true, quiet: true, decode: decoders['task.add'] },
-  'task.list': { renderer: true, quiet: false, decode: decoders['task.list'] },
-  'task.get': { renderer: true, quiet: false, decode: decoders['task.get'] },
-  'task.stop': { renderer: true, quiet: false, decode: decoders['task.stop'] },
-  'task.remove': { renderer: true, quiet: false, decode: decoders['task.remove'] },
-  'queue.open': { renderer: true, quiet: true, decode: decoders['queue.open'] },
-  'queue.close': { renderer: true, quiet: false, decode: decoders['queue.close'] },
-  'queue.state': { renderer: true, quiet: false, decode: decoders['queue.state'] },
-  'report.get': { renderer: true, quiet: true, decode: decoders['report.get'] },
-  'quiet.state': { renderer: true, quiet: false, decode: decoders['quiet.state'] },
-  'quiet.unlock': { renderer: true, quiet: false, decode: decoders['quiet.unlock'] },
-  'quiet.lock': { renderer: true, quiet: false, decode: decoders['quiet.lock'] },
-  'quiet.log': { renderer: true, quiet: false, decode: decoders['quiet.log'] },
-  'config.get': { renderer: true, quiet: false, decode: decoders['config.get'] },
-  'config.set': { renderer: true, quiet: false, decode: decoders['config.set'] },
+  'hook.event': { renderer: false, quiet: false },
+  'task.add': { renderer: true, quiet: true },
+  'task.list': { renderer: true, quiet: false },
+  'task.get': { renderer: true, quiet: false },
+  'task.stop': { renderer: true, quiet: false },
+  'task.remove': { renderer: true, quiet: false },
+  'queue.open': { renderer: true, quiet: true },
+  'queue.close': { renderer: true, quiet: false },
+  'queue.state': { renderer: true, quiet: false },
+  'report.get': { renderer: true, quiet: true },
+  'quiet.state': { renderer: true, quiet: false },
+  'quiet.unlock': { renderer: true, quiet: false },
+  'quiet.lock': { renderer: true, quiet: false },
+  'quiet.log': { renderer: true, quiet: false },
+  'config.get': { renderer: true, quiet: false },
+  'config.set': { renderer: true, quiet: false },
   'instructions.get': {
     renderer: true,
-    quiet: false,
-    decode: decoders['instructions.get']
+    quiet: false
   },
   'instructions.set': {
     renderer: true,
-    quiet: false,
-    decode: decoders['instructions.set']
+    quiet: false
   },
-  'tickets.list': { renderer: true, quiet: false, decode: decoders['tickets.list'] },
-  'tickets.sync': { renderer: true, quiet: false, decode: decoders['tickets.sync'] },
-  'tickets.start': { renderer: true, quiet: true, decode: decoders['tickets.start'] },
+  'tickets.list': { renderer: true, quiet: false },
+  'tickets.sync': { renderer: true, quiet: false },
+  'tickets.start': { renderer: true, quiet: true },
   'tickets.projectFor': {
     renderer: true,
-    quiet: false,
-    decode: decoders['tickets.projectFor']
+    quiet: false
   }
 }
 
@@ -825,6 +807,24 @@ export function isEvent(msg: ServerMessage): msg is EventMessage {
 // ---- Claude Code payloads -------------------------------------------------
 // Shapes que receives from Claude Code: hook JSON on stdin and the final
 // stream-json `result` line of a headless run.
+
+export const HOOK_EVENT_NAMES = [
+  'SessionStart',
+  'SessionEnd',
+  'UserPromptSubmit',
+  'PreToolUse',
+  'PostToolUse',
+  'PostToolUseFailure',
+  'Stop',
+  'StopFailure',
+  'Notification',
+  'PermissionRequest',
+  'PreCompact',
+  'SubagentStart',
+  'SubagentStop'
+] as const
+
+export type HookEventName = (typeof HOOK_EVENT_NAMES)[number]
 
 export interface HookEvent {
   hook_event_name: HookEventName
