@@ -21,6 +21,7 @@ import {
   writeFakeTickets
 } from '../../src/testing/fakes'
 import {
+  recordStatuses,
   startTestDaemon,
   type TestDaemon,
   type TestDaemonOptions
@@ -349,7 +350,7 @@ describe('sidebar title summaries', () => {
 
     it('never summarises a ticket workspace, even after its session completes a turn', async () => {
       const { d, projectId } = await start({ config: '[jira]\npoll_minutes = 0.002\n' })
-      const statuses = record(d.client, 'workspace.status')
+      const statuses = recordStatuses(d.client)
       writeFakeTickets(d.acliTickets, [makeFakeIssue()])
       await expect
         .poll(async () => (await d.client.request('tickets.list', {})).tickets.length, opts)

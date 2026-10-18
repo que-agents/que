@@ -1,6 +1,6 @@
 // Runs the status engine for every workspace: feeds it hook events, terminal
 // exits, a clock tick, and `claude agents --json`; persists transitions and
-// emits workspace.status.
+// emits workspace.updated with the full row.
 import fs from 'node:fs'
 import type { UserConfig } from '../shared/config'
 import { run } from '../shared/exec'
@@ -104,7 +104,6 @@ export class StatusService {
     if (this.closed) return
     this.states.set(ws.id, fromRow(ws))
     this.opts.store.insertStatusLog(ws.id, ws.status, ws.statusReason, ws.statusAt)
-    this.opts.emit('workspace.status', { id: ws.id, status: ws.status, at: ws.statusAt })
   }
 
   /**
@@ -204,19 +203,11 @@ export class StatusService {
       this.opts.log?.(
         `workspace ${id} ${prev.status} -> ${next.status}${next.reason ? ` (${next.reason})` : ''}`
       )
-      this.opts.emit('workspace.status', {
-        id,
-        status: next.status,
-        reason: next.reason || undefined,
-        at: new Date(next.statusAt).toISOString()
-      })
     }
 
-    if (sessionChanged) {
-      const ws = this.opts.store.getWorkspace(id)
+    const row = this.opts.store.getWorkspace(id)
 
-      if (ws) this.opts.emit('workspace.updated', ws)
-    }
+    if (row) this.opts.emit('workspace.updated', row)
   }
 
   /** Stall check; a transcript written since the last hook counts as activity. */

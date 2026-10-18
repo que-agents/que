@@ -34,7 +34,13 @@ import type {
   TermInfo,
   WorkspaceStartResult
 } from '../shared/protocol'
-import { ACTIVE_STATES, type TaskSource, type TaskState, type Workspace } from '../shared/types'
+import {
+  ACTIVE_STATES,
+  type Task,
+  type TaskSource,
+  type TaskState,
+  type Workspace
+} from '../shared/types'
 import { conflict, RpcError } from './errors'
 import { finishTask, isProtectedBranch } from './finisher'
 import type { HostedTerminal, PtyHost, TermExtra } from './pty-host'
@@ -199,8 +205,8 @@ export class DaemonServer {
       emit: ((event, data) => {
         emit(event, data)
 
-        if (event === 'task.status' && (data as { state: string }).state === 'done') {
-          const wsId = this.store.getTask((data as { id: string }).id)?.workspaceId
+        if (event === 'task.updated' && (data as Task).state === 'done') {
+          const wsId = (data as Task).workspaceId
 
           if (wsId) void this.prs.refresh(wsId)
         }

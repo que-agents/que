@@ -27,7 +27,6 @@ import type {
   WorkspaceDigest,
   TaskAddParams,
   TaskListParams,
-  TaskStatusEvent,
   TermAttachResult,
   TermCreateParams,
   TermInfo,
@@ -48,8 +47,7 @@ import type {
   WorkspaceRemoveParams,
   WorkspaceRenameParams,
   WorkspaceStartParams,
-  WorkspaceStartResult,
-  WorkspaceStatusEvent
+  WorkspaceStartResult
 } from '../shared/protocol'
 import type {
   NotificationsConfig,
@@ -96,7 +94,6 @@ export type {
   Task,
   TaskAddParams,
   TaskState,
-  TaskStatusEvent,
   TermAttachResult,
   TermCreateParams,
   TermInfo,
@@ -113,8 +110,7 @@ export type {
   ReviewState,
   PrThreadEntry,
   PrThread,
-  WorkspaceStatus,
-  WorkspaceStatusEvent
+  WorkspaceStatus
 }
 
 /** Mirrors the daemon's term.* protocol methods and events. */
@@ -165,7 +161,6 @@ export type WorkspaceEventName =
   | 'workspace.created'
   | 'workspace.updated'
   | 'workspace.removed'
-  | 'workspace.status'
   | 'workspace.changed'
 
 export type WorkspaceEvents = Pick<Events, WorkspaceEventName>
@@ -201,7 +196,7 @@ export interface WorkspaceApi {
   on<E extends WorkspaceEventName>(event: E, cb: (data: Events[E]) => void): () => void
 }
 
-export type TaskEventName = 'task.created' | 'task.status' | 'task.updated'
+export type TaskEventName = 'task.created' | 'task.updated' | 'task.removed'
 
 /** Mirrors the daemon's task.* methods and events. */
 export interface TaskApi {

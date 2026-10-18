@@ -1,12 +1,14 @@
 // The menu-bar item: a template icon titled with the workspace counts
 // (`● working ▸ needs input ✕ stuck`; `● working ✕ stuck` while quiet hours are
-// locked), recomputed from the daemon on every status change, led by the
+// locked), recomputed from rows the daemon's events keep current, led by the
 // unlock countdown while one runs. Clicking it
 // brings the window forward (the quiet board during quiet hours).
 import { Menu, nativeImage, Tray } from 'electron'
 import { quietTrayTitle, summarize, traySummary } from '../daemon/status-engine'
 import type { DaemonClient } from '../shared/client'
+import type { Events } from '../shared/protocol'
 import type { QuietState, StatusSummary } from '../shared/types'
+import { applyTrayEvent, rowsFromLists, type TrayEventName, type TrayRows } from './tray-rows'
 
 /** A 32×32 (16pt @2x) monochrome "q": a ring with a descender, as raw BGRA. */
 function iconBitmap(): Buffer {
@@ -30,8 +32,10 @@ function iconBitmap(): Buffer {
 
 export interface QueTray {
   title(): string
-  /** Recomputes the title from the daemon; overlapping calls coalesce. */
-  refresh(client: DaemonClient): void
+  /** Lists the daemon's rows afresh (on connect and reconnect); events that arrive meanwhile apply on top. */
+  seed(client: DaemonClient): void
+  /** Patches the rows with one daemon event and recomputes the title. */
+  apply<E extends TrayEventName>(event: E, data: Events[E]): void
   /** The daemon's quiet state changed. */
   setQuiet(q: QuietState | null): void
   destroy(): void
@@ -57,8 +61,9 @@ export function createTray(opts: TrayOptions): QueTray {
   let quiet: QuietState | null = null
   let countdown: NodeJS.Timeout | null = null
   let title = quietTrayTitle(summary, quiet, Date.now())
-  let running = false
-  let again: DaemonClient | null = null
+  let rows: TrayRows = rowsFromLists([], [])
+  // Events that arrive while a list is in flight, replayed on top of it.
+  let held: Array<(r: TrayRows) => TrayRows> | null = null
 
   const menu = (): Menu =>
     Menu.buildFromTemplate([
@@ -93,29 +98,38 @@ export function createTray(opts: TrayOptions): QueTray {
   tray.on('right-click', () => tray.popUpContextMenu(menu()))
   render()
 
-  const refresh = (client: DaemonClient): void => {
-    if (running) {
-      again = client
+  const recount = (): void => {
+    summary = traySummary([...rows.workspaces.values()], [...rows.tasks.values()])
+    render()
+  }
+
+  const seed = (client: DaemonClient): void => {
+    const mine: Array<(r: TrayRows) => TrayRows> = []
+    held = mine
+    void Promise.all([client.request('workspace.list'), client.request('task.list')])
+      .then(([workspaces, tasks]) => {
+        if (held !== mine) return
+        rows = mine.reduce((r, patch) => patch(r), rowsFromLists(workspaces, tasks))
+        held = null
+        recount()
+      })
+      .catch(() => {
+        // The daemon went away; the next connect seeds again.
+        if (held === mine) held = null
+      })
+  }
+
+  const apply = <E extends TrayEventName>(event: E, data: Events[E]): void => {
+    const patch = (r: TrayRows): TrayRows => applyTrayEvent(r, event, data)
+
+    if (held) {
+      held.push(patch)
 
       return
     }
 
-    running = true
-    void Promise.all([client.request('workspace.list'), client.request('task.list')])
-      .then(([workspaces, tasks]) => {
-        summary = traySummary(workspaces, tasks)
-        render()
-      })
-      .catch(() => {
-        // The daemon went away; the next status event retries.
-      })
-      .finally(() => {
-        running = false
-        const next = again
-        again = null
-
-        if (next) refresh(next)
-      })
+    rows = patch(rows)
+    recount()
   }
 
   const setQuiet = (q: QuietState | null): void => {
@@ -135,7 +149,8 @@ export function createTray(opts: TrayOptions): QueTray {
 
   return {
     title: () => title,
-    refresh,
+    seed,
+    apply,
     setQuiet,
     destroy: () => {
       if (countdown) clearInterval(countdown)

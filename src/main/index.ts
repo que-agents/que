@@ -12,6 +12,7 @@ import { createBoardWindow } from './board'
 import { decodeAbsolutePath } from './ipc.decode'
 import { installMenu } from './menu'
 import { createTray, type QueTray } from './tray'
+import { TRAY_EVENTS } from './tray-rows'
 import { checkForUpdate } from './update-check'
 import { errorCode, errorMessage } from '../shared/errors.decode'
 
@@ -100,26 +101,16 @@ const FORWARDED_EVENTS: EventName[] = [
   'workspace.created',
   'workspace.updated',
   'workspace.removed',
-  'workspace.status',
   'workspace.changed',
   'task.created',
-  'task.status',
   'task.updated',
+  'task.removed',
   'queue.state',
   'project.added',
   'project.removed',
   'quiet.changed',
   'config.changed',
   'tickets.synced'
-]
-
-/** Events after which the tray title is recomputed. */
-const TRAY_EVENTS: EventName[] = [
-  'workspace.created',
-  'workspace.status',
-  'workspace.removed',
-  'task.created',
-  'task.status'
 ]
 
 function getClient(): Promise<DaemonClient> {
@@ -134,8 +125,8 @@ function getClient(): Promise<DaemonClient> {
           c.on(ev, (data) => sendToRenderer('que:event', ev, data))
         }
 
-        for (const ev of TRAY_EVENTS) c.on(ev, () => tray?.refresh(c))
-        tray?.refresh(c)
+        for (const ev of TRAY_EVENTS) c.on(ev, (data) => tray?.apply(ev, data as never))
+        tray?.seed(c)
         c.on('quiet.changed', (q) => applyQuiet(q))
         c.on('quiet.morningSummary', ({ report }) => morningSummary(report))
         void c.request('quiet.state').then(applyQuiet, () => {})

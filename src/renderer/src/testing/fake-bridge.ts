@@ -730,18 +730,20 @@ class FakeBridge {
     this.projects.set(project.id, { ...project })
   }
 
-  /** Updates a workspace's status and emits workspace.status, as the status engine would. */
   /** The daemon noticed the worktree change on disk: fires workspace.changed for the workspace. */
   changeWorkspace(id: string): void {
     this.workspace(id)
     this.emit('workspace.changed', { id })
   }
 
+  /** Updates a workspace's status and emits workspace.updated with the row, as the status engine would. */
   setStatus(id: string, status: WorkspaceStatus, reason?: string): void {
     const ws = this.workspace(id)
     const at = new Date().toISOString()
-    this.workspaces.set(id, { ...ws, status, statusReason: reason ?? null, statusAt: at })
-    this.emit('workspace.status', { id, status, reason: reason || undefined, at })
+    const next = { ...ws, status, statusReason: reason ?? null, statusAt: at }
+
+    this.workspaces.set(id, next)
+    this.emit('workspace.updated', { ...next })
   }
 
   /** Sets (or clears) the workspace's pull request, as a daemon refresh would. */
@@ -762,19 +764,22 @@ class FakeBridge {
     this.tasks.set(task.id, { ...task })
   }
 
-  /** Moves a task to a state and emits task.status, as the task machine would. */
+  /** Moves a task to a state and emits task.updated with the row, as the task machine would. */
   setTaskState(id: string, state: TaskState, reason?: string): void {
     const t = this.task(id)
     const at = new Date().toISOString()
     const terminal = !LIVE_STATES.has(state)
-    this.tasks.set(id, {
+
+    const next = {
       ...t,
       state,
       reason: reason ?? null,
       updatedAt: at,
       finishedAt: terminal ? at : null
-    })
-    this.emit('task.status', { id, state, reason: reason || undefined, at })
+    }
+
+    this.tasks.set(id, next)
+    this.emit('task.updated', { ...next })
   }
 
   getTask(id: string): Task | undefined {

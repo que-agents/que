@@ -175,7 +175,9 @@ export class TaskQueue {
     for (const id of this.dirty) {
       const t = this.live.get(id)
 
-      if (t) this.o.store.updateTask(t)
+      if (!t) continue
+      this.o.store.updateTask(t)
+      this.o.emit('task.updated', t)
     }
 
     this.dirty.clear()
@@ -226,35 +228,18 @@ export class TaskQueue {
 
     this.dirty.delete(next.id)
     this.o.store.updateTask(next)
+    this.o.emit('task.updated', next)
     const statusChanged = prev.state !== next.state || prev.reason !== next.reason
 
     if (statusChanged) {
       this.o.log(
         `task ${next.id} ${prev.state} -> ${next.state}${next.reason ? ` (${next.reason})` : ''}`
       )
-      this.o.emit('task.status', {
-        id: next.id,
-        state: next.state,
-        reason: next.reason || undefined,
-        at: next.updatedAt
-      })
       this.runner.onTransition(prev, next)
       this.emitState()
       this.keepAwake()
       this.kick()
     }
-
-    const updated: Array<keyof Task> = [
-      'costUsd',
-      'turns',
-      'prUrl',
-      'sessionId',
-      'branch',
-      'workspaceId',
-      'pid'
-    ]
-
-    if (updated.some((k) => prev[k] !== next[k])) this.o.emit('task.updated', next)
   }
 
   // ---- dispatcher -------------------------------------------------------------
@@ -459,6 +444,7 @@ export class TaskQueue {
 
     if (LIVE_STATES.has(t.state)) throw conflict(`task ${id} is ${t.state}; stop it first`)
     this.o.store.deleteTask(id)
+    this.o.emit('task.removed', { id })
     this.emitState()
   }
 
