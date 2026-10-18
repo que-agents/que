@@ -178,6 +178,24 @@ only under the pointer.
   `+`, Projects add and sort) likewise stay at opacity 0 until the head is under the
   pointer, holds the keyboard focus, or has its menu open. Clicking anywhere on a
   project head folds it. An exited session reads faint, with `exited` as its word.
+- **The card.** When the pointer rests on a workspace row for 500ms (or on ⌘I for the
+  selected one) a 340px card opens beside it, over the main area, its top level with the
+  row's: `--bg-raised`, a 1px `--border-strong`, `--radius` and the menu's shadow. It
+  replaces the row's tooltip, stays while the pointer is on the row or the card, and
+  closes 150ms after it leaves both, on Escape, on a press elsewhere, and when the row's
+  ⋯ menu opens; never on a session row, and not while quiet hours lock the app. It holds
+  the name (sans 13px 600 `--fg`, wrapping); `[ WORKTREE ]`, then the path in mono 12px
+  `--fg-secondary` (`~` for home, clipped from the left) and `branch <name>` in mono 11px,
+  the word `--fg-faint`; the status line in mono 11px `--fg-faint` (the dot in its tone,
+  the word, a reason, `since HH:MM`, the last activity); a hairline; and `[ PULL REQUESTS
+  ]`, newest first: `#n` in `--fg-secondary`, the state in its tone, `+added −removed` in
+  `--tone-good` and `--tone-bad` at the right, then the title in sans 12px
+  `--fg-secondary` over at most two lines and a failing check's name in `--fg-faint`
+  (`no pull request` when there is none). The copy icons (path, branch) sit right after
+  their text and wait for the pointer on their line; the editor icon at the path's far end
+  and each pull request's link in its 18px column always show, the link `--accent` under
+  the pointer. Every action sits on the line it belongs to, and the card never holds a
+  destructive one: Remove… stays in the ⋯ menu.
 - **The foot.** Report, Tickets and Settings are 26px rows in `--fg-muted`, `--fg`
   under the pointer. During an unlock a row above them carries the open lock at 12px
   and `m:ss left` in mono 11px `--accent`, and `lock now` in mono 11px `--fg-faint` at
