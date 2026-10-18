@@ -2,18 +2,30 @@
 // workspace's branch, stores what changed, and emits workspace.updated.
 // Also answers workspace.prThread: the conversation is fetched on demand and
 // cached until the tracker sees the pull request's updatedAt move.
+import fs from 'node:fs'
+import { join } from 'node:path'
 import type { UserConfig } from '../shared/config'
 import { firstLine, run } from '../shared/exec'
-import type { JsonValue, Project, PrThread, PullRequest, Workspace } from '../shared/types'
-import { ghFailed, notFound } from './errors'
-import { isProtectedBranch } from './finisher'
+import { ErrorCodes, type WorkspaceCreatePrResult } from '../shared/protocol'
+import type { QuePaths } from '../shared/paths'
+import {
+  ACTIVE_STATES,
+  type JsonValue,
+  type PrThread,
+  type PullRequest,
+  type Workspace
+} from '../shared/types'
+import { conflict, ghFailed, notFound, RpcError } from './errors'
+import { finishTask, isProtectedBranch } from './finisher'
 import { parsePullRequest, samePullRequest } from './pr-state'
 import { decodeHeadRef, decodePullRequest, type GhPullRequest } from './pr-state.decode'
 import { Poller } from './poller'
 import { jsonPages, parsePrThread } from './pr-thread'
 import { decodeLineComments, decodePrView } from './pr-thread.decode'
-import type { Emit } from './status'
+import type { EventBus, Emit } from './bus'
 import type { Store } from './store'
+import type { TaskQueue } from './queue'
+import type { WorkspaceManager } from './workspaces'
 import { errorMessage } from '../shared/errors.decode'
 
 const FIELDS = 'number,url,title,state,isDraft,reviewDecision,statusCheckRollup,mergedAt,updatedAt'
@@ -26,7 +38,11 @@ const SETTLED_EVERY = 5
 
 export interface PrServiceOptions {
   store: Store
-  projectOf: (ws: Workspace) => Project
+  workspaces: Pick<WorkspaceManager, 'get' | 'project'>
+  tasks: Pick<TaskQueue, 'list'>
+  paths: Pick<QuePaths, 'workspaceLogsDir'>
+  /** The daemon's bus: a finished task refreshes its workspace, a removed one is forgotten. */
+  bus: EventBus
   emit: Emit
   config: () => UserConfig
   log?: (msg: string) => void
@@ -109,7 +125,14 @@ export class PrService {
     tick: () => this.tick()
   })
 
-  constructor(private opts: PrServiceOptions) {}
+  constructor(private opts: PrServiceOptions) {
+    opts.bus.on('task.status', ({ id, state }) => {
+      const wsId = state === 'done' ? opts.store.getTask(id)?.workspaceId : undefined
+
+      if (wsId) void this.refresh(wsId)
+    })
+    opts.bus.on('workspace.removed', ({ id }) => this.forget(id))
+  }
 
   start(): void {
     this.poller.start()
@@ -241,7 +264,7 @@ export class PrService {
 
   /** The workspaces whose branch que may ask about (never a protected one). */
   private checkable(list: Workspace[]): Workspace[] {
-    const project = this.opts.projectOf(list[0])
+    const project = this.opts.workspaces.project(list[0].projectId)
     const { protectedBranches } = this.opts.config()
 
     return list.filter(
@@ -321,5 +344,51 @@ export class PrService {
     if (samePullRequest(current.pr, next)) return
     this.opts.store.setWorkspacePr(ws.id, next)
     this.opts.emit('workspace.updated', { ...current, pr: next })
+  }
+
+  /**
+   * Opens a draft pull request from an interactive workspace with the
+   * finisher: commits what is uncommitted as `title`, pushes, and runs gh.
+   */
+  async create(id: string, rawTitle: string): Promise<WorkspaceCreatePrResult> {
+    const { workspaces, tasks, store, paths } = this.opts
+    const ws = workspaces.get(id)
+    const title = rawTitle.trim()
+
+    if (!title) throw new RpcError(ErrorCodes.BadRequest, 'title is required')
+    const busy = tasks.list().some((t) => t.workspaceId === id && ACTIVE_STATES.has(t.state))
+
+    if (busy) throw conflict(`a task is running in workspace ${ws.name}`)
+    const lines: string[] = []
+    fs.mkdirSync(paths.workspaceLogsDir, { recursive: true, mode: 0o700 })
+
+    const result = await finishTask({
+      task: { title, resultText: null },
+      workspace: ws,
+      project: workspaces.project(ws.projectId),
+      protectedBranches: this.opts.config().protectedBranches,
+      bodyFile: join(paths.workspaceLogsDir, `${ws.id}.pr.md`),
+      log: (line) => {
+        lines.push(line)
+        this.opts.log?.(`workspace ${ws.id} ${line}`)
+      }
+    })
+
+    if (!result.ok) {
+      const detail = lines.at(-1) ?? `${result.step} failed`
+
+      if (result.step === 'protected_branch') throw conflict(detail)
+      throw new RpcError(ErrorCodes.Internal, detail)
+    }
+
+    if (!result.prUrl) {
+      throw conflict(`${ws.branch} has no commits ahead of its base; nothing to open a PR for`)
+    }
+
+    store.setWorkspacePrUrl(ws.id, result.prUrl)
+    this.opts.emit('workspace.updated', workspaces.get(ws.id))
+    void this.refresh(ws.id)
+
+    return { prUrl: result.prUrl }
   }
 }

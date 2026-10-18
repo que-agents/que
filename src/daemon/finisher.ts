@@ -62,6 +62,14 @@ export async function finishTask(o: FinishOptions): Promise<FinishResult> {
     return { ok: false, step }
   }
 
+  // Checked before anything is committed: a protected branch is never written to.
+  if (isProtectedBranch(branch, o.project.defaultBranch, o.protectedBranches)) {
+    return fail(
+      'protected_branch',
+      `refusing to open a pull request from protected branch ${branch}`
+    )
+  }
+
   const status = await git(cwd, ['status', '--porcelain'])
 
   if (!status.ok) return fail('status', status.stderr)
@@ -91,10 +99,6 @@ export async function finishTask(o: FinishOptions): Promise<FinishResult> {
     o.log(`finisher: no commits ahead of ${base}; nothing to push`)
 
     return { ok: true, prUrl: null }
-  }
-
-  if (isProtectedBranch(branch, def, o.protectedBranches)) {
-    return fail('protected_branch', `refusing to push protected branch ${branch}`)
   }
 
   const pushed = await git(cwd, ['push', '-u', 'origin', branch], 300_000)
