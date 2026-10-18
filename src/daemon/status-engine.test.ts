@@ -182,6 +182,35 @@ describe('reduce', () => {
     })
   })
 
+  describe('workspace setup', () => {
+    const preparing = initialState(T0)
+
+    const at = (state: StatusState, kind: 'setup_done' | 'setup_failed') =>
+      reduce(state, { kind }, T0 + 1_000)
+
+    it('moves a preparing workspace to idle when setup succeeds', () => {
+      expect(at(preparing, 'setup_done')).toMatchObject({
+        status: 'idle',
+        reason: null,
+        statusAt: T0 + 1_000
+      })
+    })
+
+    it('leaves a workspace whose session already reported alone when setup succeeds', () => {
+      expect(at(working, 'setup_done')).toEqual(working)
+    })
+
+    it('marks the workspace stuck with setup_failed whatever it was doing', () => {
+      for (const state of [preparing, working]) {
+        expect(at(state, 'setup_failed')).toMatchObject({
+          status: 'stuck',
+          reason: 'setup_failed',
+          statusAt: T0 + 1_000
+        })
+      }
+    })
+  })
+
   describe('purity', () => {
     it('returns a new state and never mutates its input', () => {
       const before = structuredClone(working)

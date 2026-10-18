@@ -20,7 +20,7 @@ import { buildWorkspaceDigest, sortDigests } from './digest'
 import { badRequest, conflict, notFound } from './errors'
 import { buildReport, reportSince } from './report'
 import { reapOrphan, TaskRunner } from './runner'
-import type { Emit } from './status'
+import type { Emit, StatusService } from './status'
 import { newId, type Store } from './store'
 import {
   ACTIVE_STATES,
@@ -69,6 +69,7 @@ export interface TaskQueueOptions {
   store: Store
   paths: QuePaths
   workspaces: WorkspaceManager
+  status: StatusService
   emit: Emit
   config: () => UserConfig
   killTerminals: (workspaceId: string) => number
@@ -98,6 +99,7 @@ export class TaskQueue {
       store: o.store,
       paths: o.paths,
       workspaces: o.workspaces,
+      status: o.status,
       config: o.config,
       apply: (id, event) => this.apply(id, event),
       patch: (id, fields) => this.patch(id, fields),

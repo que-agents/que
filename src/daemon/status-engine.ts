@@ -41,6 +41,8 @@ export type StatusInput =
   | { kind: 'terminal_exit' }
   | { kind: 'tick' }
   | { kind: 'agents_json'; entry: AgentEntry }
+  | { kind: 'setup_done' }
+  | { kind: 'setup_failed' }
 
 export interface ReduceOptions {
   stallTimeoutMs: number
@@ -162,6 +164,13 @@ export function reduce(
 
     case 'agents_json':
       return onAgentsEntry(state, input.entry, now)
+    case 'setup_done':
+      // A session that started reporting during setup already moved the workspace on; leave it.
+      if (state.status !== 'preparing') return { ...state }
+
+      return transition(state, 'idle', null, now)
+    case 'setup_failed':
+      return transition(state, 'stuck', 'setup_failed', now)
   }
 }
 

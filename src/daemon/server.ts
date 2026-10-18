@@ -190,6 +190,7 @@ export class DaemonServer {
       store: this.store,
       paths: this.paths,
       workspaces: this.workspaces,
+      status: this.status,
       emit: ((event, data) => {
         emit(event, data)
 
@@ -401,7 +402,7 @@ export class DaemonServer {
       ws.brief ? join(ws.path, '.que', 'brief.md') : null
     )
 
-    void this.workspaces.whenReady(ws.id).then(() => {
+    void this.status.setupDone(ws.id).then(() => {
       const t = this.opts.host.get(first.id)
 
       if (t?.alive) t.write(command)
