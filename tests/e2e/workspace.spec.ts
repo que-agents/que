@@ -214,10 +214,13 @@ test('a resting pointer on a workspace row opens its card with the branch and th
     expect(workspace.branch).toBe(branch)
   })
 
-  await test.step('Launch the app on that home', async () => {
+  await test.step('Launch the app on that home; its first session settles the rows', async () => {
     launched = await launchApp({ queHome })
     sidebar = new SidebarPage(launched.window)
     await sidebar.waitForLoad()
+    // The first session's row lands above the projects: wait for it, so the workspace row
+    // stays put under the pointer.
+    await new TerminalPage(launched.window).waitForActiveTerminal()
     await expect(sidebar.workspace(workspace.id)).toBeVisible()
   })
 
