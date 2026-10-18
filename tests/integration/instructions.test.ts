@@ -39,7 +39,7 @@ describe('instructions', () => {
   it('writes the configured file, creating its directory, and reads it back', async () => {
     const d = await start()
     const path = join(d.home, 'notes', 'que', 'delegation.md')
-    await d.client.request('config.set', { patch: { instructions_file: path } })
+    await d.client.request('config.set', { patch: { instructionsFile: path } })
     expect(await d.client.request('instructions.get')).toEqual({
       path,
       exists: false,

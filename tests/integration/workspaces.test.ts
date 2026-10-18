@@ -62,6 +62,23 @@ describe('projects', () => {
     expect(dir).toMatchObject({ name: 'other-dir', path: other })
   })
 
+  it('refuses to add a project while the config file is invalid, but keeps answering other requests', async () => {
+    const repo = makeTempRepo(daemon.home)
+    const before = await client.request('config.get')
+    fs.writeFileSync(daemon.configPath, 'concurrency = "many"\n')
+
+    await expect(client.request('project.add', { path: repo })).rejects.toMatchObject({
+      code: 'bad_request',
+      message: 'invalid que config: concurrency: must be a positive number'
+    })
+    expect(await client.request('workspace.list')).toEqual([])
+    expect((await client.request('config.get')).config).toEqual(before.config)
+
+    fs.writeFileSync(daemon.configPath, withQuietOff())
+
+    expect(await client.request('project.add', { path: repo })).toMatchObject({ path: repo })
+  })
+
   it('prefers a configured name over a directory of that name under cwd', async () => {
     const repo = makeTempRepo(daemon.home)
     const shadow = join(daemon.home, 'shadow-parent')
@@ -383,7 +400,7 @@ describe('workspace.start', () => {
 
     const instructions = join(daemon.home, 'instructions.md')
     fs.writeFileSync(instructions, 'Delegate broad searches to a smaller model.\n')
-    await client.request('config.set', { patch: { instructions_file: instructions } })
+    await client.request('config.set', { patch: { instructionsFile: instructions } })
     const project = await client.request('project.add', { path: repo })
 
     const brief =
@@ -411,7 +428,7 @@ describe('workspace.start', () => {
 
   it('sends a configured start prompt instead of the brief', async () => {
     await client.request('config.set', {
-      patch: { start_prompt: "Read .que/brief.md, then say what you'd do first." }
+      patch: { startPrompt: "Read .que/brief.md, then say what you'd do first." }
     })
     const project = await client.request('project.add', { path: makeTempRepo(daemon.home) })
 

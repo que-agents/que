@@ -139,7 +139,7 @@ interface FieldSpec {
   take: (from: Form, into: Form) => Form
   /** What is wrong with this field's value in a form, or null. */
   check?: (f: Form) => string | null
-  /** The config.set patch (the file's snake_case keys) for this field alone; `null` removes. */
+  /** The config.set patch for this field alone; `null` clears the setting. */
   patch: (f: Form) => ConfigPatch
   /** A quiet-hours write, which may end tonight's window early and so asks first. */
   quiet?: true
@@ -147,7 +147,7 @@ interface FieldSpec {
    * The config key this field writes when another field writes it too. Such fields write on one
    * chain, and each write carries the latest values of all of them.
    */
-  shared?: 'quiet_hours.default' | 'start_prompt'
+  shared?: 'quietHours.default' | 'startPrompt'
 }
 
 /** Copies one key of `from` into `to`. */
@@ -165,7 +165,9 @@ const own =
     return next
   }
 
-const quietPatch = (q: ConfigPatch): ConfigPatch => ({ quiet_hours: q })
+const quietPatch = (q: NonNullable<ConfigPatch['quietHours']>): ConfigPatch => ({
+  quietHours: q
+})
 
 function daySpec(d: Weekday): FieldSpec {
   return {
@@ -176,7 +178,14 @@ function daySpec(d: Weekday): FieldSpec {
       const day = f.days[d]
 
       return quietPatch({
-        [d]: day.mode === 'inherit' ? null : day.mode === 'none' ? 'none' : [day.start, day.end]
+        days: {
+          [d]:
+            day.mode === 'inherit'
+              ? null
+              : day.mode === 'none'
+                ? 'none'
+                : { start: day.start, end: day.end }
+        }
       })
     },
     quiet: true
@@ -190,8 +199,8 @@ const startPromptSpec: FieldSpec = {
     f.useStartPrompt
       ? filled(f.workspacePrompt, 'The workspace start prompt cannot be empty')
       : null,
-  patch: (f) => ({ start_prompt: f.useStartPrompt ? f.workspacePrompt : null }),
-  shared: 'start_prompt'
+  patch: (f) => ({ startPrompt: f.useStartPrompt ? f.workspacePrompt : null }),
+  shared: 'startPrompt'
 }
 
 const DAY_SPECS = Object.fromEntries(WEEKDAYS.map((d) => [`day-${d}`, daySpec(d)])) as Record<
@@ -208,35 +217,35 @@ const SPECS = {
   'quiet-start': {
     take: own('start'),
     check: (f) => windowProblem(f.start, f.end),
-    patch: (f) => quietPatch({ default: [f.start, f.end] }),
+    patch: (f) => quietPatch({ default: { start: f.start, end: f.end } }),
     quiet: true,
-    shared: 'quiet_hours.default'
+    shared: 'quietHours.default'
   },
   'quiet-end': {
     take: own('end'),
     check: (f) => windowProblem(f.start, f.end),
-    patch: (f) => quietPatch({ default: [f.start, f.end] }),
+    patch: (f) => quietPatch({ default: { start: f.start, end: f.end } }),
     quiet: true,
-    shared: 'quiet_hours.default'
+    shared: 'quietHours.default'
   },
   'unlock-minutes': {
     take: own('unlockMinutes'),
     check: (f) => positive(f.unlockMinutes, 'Unlock minutes must be a positive number'),
-    patch: (f) => quietPatch({ unlock_minutes: Number(f.unlockMinutes) }),
+    patch: (f) => quietPatch({ unlockMinutes: Number(f.unlockMinutes) }),
     quiet: true
   },
   ...DAY_SPECS,
   'chime-complete': {
     take: own('chimeComplete'),
-    patch: (f) => ({ notifications: { chime_on_complete: f.chimeComplete } })
+    patch: (f) => ({ notifications: { chimeOnComplete: f.chimeComplete } })
   },
   'chime-needs-input': {
     take: own('chimeNeedsInput'),
-    patch: (f) => ({ notifications: { chime_on_needs_input: f.chimeNeedsInput } })
+    patch: (f) => ({ notifications: { chimeOnNeedsInput: f.chimeNeedsInput } })
   },
   'morning-summary': {
     take: own('morningSummary'),
-    patch: (f) => ({ notifications: { morning_summary: f.morningSummary } })
+    patch: (f) => ({ notifications: { morningSummary: f.morningSummary } })
   },
   'tickets-jql': {
     take: own('jql'),
@@ -249,12 +258,12 @@ const SPECS = {
   'tickets-poll': {
     take: own('pollMinutes'),
     check: (f) => positive(f.pollMinutes, 'Sync minutes must be a positive number'),
-    patch: (f) => ({ jira: { poll_minutes: Number(f.pollMinutes) } })
+    patch: (f) => ({ jira: { pollMinutes: Number(f.pollMinutes) } })
   },
   'tickets-prompt': {
     take: own('startPrompt'),
     check: (f) => filled(f.startPrompt, 'The start prompt cannot be empty'),
-    patch: (f) => ({ jira: { start_prompt: f.startPrompt } })
+    patch: (f) => ({ jira: { startPrompt: f.startPrompt } })
   },
   'start-prompt-enabled': startPromptSpec,
   'workspace-prompt': startPromptSpec,
@@ -265,7 +274,7 @@ const SPECS = {
   'summary-model': {
     take: own('summaryModel'),
     check: (f) => filled(f.summaryModel, 'The summary model cannot be empty'),
-    patch: (f) => ({ summary_model: f.summaryModel.trim() })
+    patch: (f) => ({ summaryModel: f.summaryModel.trim() })
   },
   'summary-interval': {
     take: own('summaryInterval'),
@@ -279,7 +288,7 @@ const SPECS = {
         ? `Summary minutes must be a whole number from 1 to ${MAX_SUMMARY_INTERVAL_MINUTES}`
         : null
     },
-    patch: (f) => ({ summary_interval_minutes: Number(f.summaryInterval) })
+    patch: (f) => ({ summaryIntervalMinutes: Number(f.summaryInterval) })
   },
   'instructions-file': {
     take: own('instructionsFile'),
@@ -291,13 +300,13 @@ const SPECS = {
         : null
     },
     patch: (f) => ({
-      instructions_file: f.instructionsFile.trim() === '' ? null : f.instructionsFile.trim()
+      instructionsFile: f.instructionsFile.trim() === '' ? null : f.instructionsFile.trim()
     })
   },
   'protected-branches': {
     take: own('protectedBranches'),
     patch: (f) => ({
-      protected_branches: f.protectedBranches
+      protectedBranches: f.protectedBranches
         .split(',')
         .map((b) => b.trim())
         .filter((b) => b !== '')

@@ -368,9 +368,44 @@ export type JsonValue =
   | { [key: string]: JsonValue }
 
 /**
- * A `config.set` patch: a table of the config file's snake_case keys, deep-merged
- * into the file; `null` removes a key.
+ * A `config.set` patch: the parts of a `UserConfig` to change, in its camelCase
+ * shape. Sections merge key by key, so a patch names only what it sets. A
+ * `null` clears a setting back to its default (or removes a weekday override,
+ * a ticket project, a configured repo). Mapping to the file's own key names
+ * happens in `shared/config-keys.decode.ts`; nothing on the wire knows them.
  */
 export interface ConfigPatch {
-  [key: string]: JsonValue
+  worktreeRoot?: string | null
+  stallTimeoutMinutes?: number | null
+  statusPollSeconds?: number | null
+  prPollSeconds?: number | null
+  /** A configured repo by name; `null` removes it. */
+  repos?: Record<string, { path?: string | null; defaultBranch?: string | null } | null>
+  concurrency?: number | null
+  maxTurns?: number | null
+  maxBudgetUsd?: number | null
+  defaultPermissionMode?: PermissionMode | null
+  allowBypassPermissions?: boolean | null
+  protectedBranches?: string[] | null
+  instructionsFile?: string | null
+  quietHours?: {
+    enabled?: boolean | null
+    default?: QuietWindow | null
+    /** A weekday's override; `null` removes it so the default window applies. */
+    days?: Partial<Record<Weekday, DayWindow | null>>
+    unlockMinutes?: number | null
+  }
+  notifications?: Partial<Record<keyof NotificationsConfig, boolean | null>>
+  jira?: {
+    jql?: string | null
+    pollMinutes?: number | null
+    site?: string | null
+    startPrompt?: string | null
+    /** Tracker project key to que project name; `null` forgets a key. */
+    projects?: Record<string, string | null>
+  }
+  startPrompt?: string | null
+  summaries?: boolean | null
+  summaryModel?: string | null
+  summaryIntervalMinutes?: number | null
 }

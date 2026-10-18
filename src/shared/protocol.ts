@@ -402,12 +402,10 @@ export interface ConfigGetResult {
   /** The config file (QUE_CONFIG or ~/.config/que/config.toml). */
   path: string
   config: UserConfig
-  /** The file as a TOML table (snake_case keys), the shape config.set patches. */
-  raw: Record<string, unknown>
 }
 
 export interface ConfigSetParams {
-  /** Deep-merged into the file's table; `null` removes a key. */
+  /** Merged into the file; `null` clears a setting. */
   patch: ConfigPatch
   /** Let a change that shortens or removes tonight's window apply now. */
   applyTonight?: boolean
