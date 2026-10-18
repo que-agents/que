@@ -153,7 +153,7 @@ export class DaemonServer {
   private config: UserConfig
   private configStamp = ''
   private configCheckedAt = Number.NEGATIVE_INFINITY
-  /** Watches the worktrees of workspaces with an attached terminal (workspace.changed). */
+  /** Watches the worktrees of the workspaces clients asked for with workspace.watch (workspace.changed). */
   readonly watcher = new WorktreeWatcher((id) => this.bus.emit('workspace.changed', { id }), {
     log: (m) => this.log(m)
   })
