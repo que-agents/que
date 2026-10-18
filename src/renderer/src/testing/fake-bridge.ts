@@ -747,7 +747,7 @@ class FakeBridge {
 
   /** Sets (or clears) the workspace's pull request, as a daemon refresh would. */
   setWorkspacePr(id: string, pr: PullRequest | null): void {
-    const ws = { ...this.workspace(id), pr }
+    const ws = { ...this.workspace(id), pr, prs: pr ? [pr] : [] }
     this.workspaces.set(id, ws)
     this.emit('workspace.updated', { ...ws })
   }

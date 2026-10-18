@@ -80,19 +80,19 @@ a logged-in account; `gh pr create ...` prints
 already in the log. Everything else exits 0 silently.
 
 **Pull requests.** `$QUE_FAKE_GH_PRS` names a JSON file keyed by head branch name (a
-missing file means no pull requests). A branch's entry is one pull request object, or an
-array of them when the branch carries several (one merged and a newer one open, say). When
+missing file means no pull requests). A branch's entry is a list of its pull request
+objects (one merged and a newer one open, say). When
 it is set, `gh pr create` records `{ number, url, title, state: "OPEN", isDraft,
 headRefName, reviewDecision: "", statusCheckRollup: [], mergedAt: null, updatedAt }`
 (`updatedAt` now) under the current branch of its cwd: it replaces the branch's open pull
-request, and otherwise joins its merged and closed ones in an array. `gh pr list --head
+request, and otherwise joins its merged and closed ones in the list. `gh pr list --head
 <branch> --state all --limit <n> --json <fields>` prints a JSON array of that branch's pull
 requests, newest first by number, with only the requested fields (`additions` and
 `deletions` among them when the entry has them), or `[]`; without `--head` it prints every
 branch's, up to `--limit` (default 30). With `$QUE_FAKE_GH_FAIL` set, `pr list` exits 1
 printing `gh: failed (fake)` on stderr. Tests edit the file with `setFakePullRequest()`
-(merges into the branch's pull request; for an array, the one with the patch's `number`,
-else the newest) and `addFakePullRequest()` (adds another to the branch, numbered one past
+(merges into the branch's pull request with the patch's `number`, else the newest,
+creating one when the branch has none) and `addFakePullRequest()` (adds another to the branch, numbered one past
 the highest in the file unless told), and read it with `readFakePullRequests()`, all from
 `src/testing/fakes.ts`.
 **The conversation.** `gh pr view <n> --json <fields>` finds the pull request (in any branch's entry) whose `number` is
