@@ -367,13 +367,6 @@ export type JsonValue =
   | JsonValue[]
   | { [key: string]: JsonValue }
 
-/**
- * A `config.set` patch: the parts of a `UserConfig` to change, in its camelCase
- * shape. Sections merge key by key, so a patch names only what it sets. A
- * `null` clears a setting back to its default (or removes a weekday override,
- * a ticket project, a configured repo). Mapping to the file's own key names
- * happens in `shared/config-keys.decode.ts`; nothing on the wire knows them.
- */
 /** `T` as a patch: every key optional, scalars and lists clearable with `null`, nested objects patched in turn. */
 type Patch<T> = {
   [K in keyof T]?: T[K] extends readonly unknown[]
@@ -383,6 +376,13 @@ type Patch<T> = {
       : T[K] | null
 }
 
+/**
+ * A `config.set` patch: the parts of a `UserConfig` to change, in its camelCase
+ * shape. Sections merge key by key, so a patch names only what it sets. A
+ * `null` clears a setting back to its default (or removes a weekday override,
+ * a ticket project, a configured repo). Mapping to the file's own key names
+ * happens in `shared/config-keys.decode.ts`; nothing on the wire knows them.
+ */
 export type ConfigPatch = Patch<Omit<UserConfig, 'repos' | 'quietHours' | 'jira'>> & {
   /** A configured repo by name; `null` removes it. */
   repos?: Record<string, Patch<RepoEntry> | null>
