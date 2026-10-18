@@ -13,6 +13,15 @@ const base = {
   focusable: false
 } as const
 
+/** A folder: a project in the sidebar. */
+export function FolderIcon(): React.JSX.Element {
+  return (
+    <svg {...base} aria-hidden="true" className="folder">
+      <path d="M1.75 4.5a1 1 0 0 1 1-1h3.85l1.5 1.75h5.15a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H2.75a1 1 0 0 1-1-1z" />
+    </svg>
+  )
+}
+
 /** A folder with a plus on its bottom-right corner: add a repository. */
 export function FolderPlusIcon(): React.JSX.Element {
   return (
