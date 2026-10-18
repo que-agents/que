@@ -348,7 +348,8 @@ export class WorkspaceManager {
       createdAt: now,
       archivedAt: null,
       prUrl: null,
-      pr: null
+      pr: null,
+      prs: []
     }
 
     if (title) ws.title = title

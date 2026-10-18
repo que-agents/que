@@ -478,7 +478,8 @@ class FakeBridge {
             createdAt: now,
             archivedAt: null,
             prUrl: null,
-            pr: null
+            pr: null,
+            prs: []
           }
 
           if (title) {

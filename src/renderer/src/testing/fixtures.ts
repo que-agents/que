@@ -72,6 +72,8 @@ export function makePullRequest(overrides: Partial<PullRequest> = {}): PullReque
     review: null,
     checkRuns: [],
     updatedAt: null,
+    additions: null,
+    deletions: null,
     checkedAt: '2026-10-14T01:00:00.000Z',
     ...overrides
   }

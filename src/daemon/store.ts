@@ -128,7 +128,8 @@ const MIGRATIONS: string[] = [
   `ALTER TABLE tickets ADD COLUMN parent_checked_at TEXT;`,
   `ALTER TABLE workspaces ADD COLUMN title TEXT;
    ALTER TABLE workspaces ADD COLUMN brief TEXT;`,
-  `ALTER TABLE workspaces ADD COLUMN title_source TEXT;`
+  `ALTER TABLE workspaces ADD COLUMN title_source TEXT;`,
+  `ALTER TABLE workspaces ADD COLUMN prs_json TEXT;`
 ]
 
 const STATUS_LOG_RETENTION_MS = 30 * 24 * 3_600_000
@@ -228,6 +229,7 @@ interface WorkspaceRow {
   archived_at: string | null
   pr_url: string | null
   pr_json: string | null
+  prs_json: string | null
   title: string | null
   brief: string | null
   title_source: string | null
@@ -298,19 +300,50 @@ function toProject(r: ProjectRow): Project {
   }
 }
 
-function parsePr(json: string | null): PullRequest | null {
+/** A stored pull request; one stored before line counts were kept reads them as null. */
+function storedPr(v: unknown): PullRequest | null {
+  return v && typeof v === 'object' && !Array.isArray(v)
+    ? {
+        ...(v as PullRequest),
+        additions: (v as PullRequest).additions ?? null,
+        deletions: (v as PullRequest).deletions ?? null
+      }
+    : null
+}
+
+/** A stored pull request (pr_json) or list of them (prs_json); null when missing or not JSON. */
+function readPrJson(json: string | null): PullRequest | PullRequest[] | null {
   if (!json) return null
 
   try {
     const v = JSON.parse(json) as unknown
 
-    return v && typeof v === 'object' ? (v as PullRequest) : null
+    if (Array.isArray(v)) return v.flatMap((item) => storedPr(item) ?? [])
+
+    return storedPr(v)
   } catch {
     return null
   }
 }
 
+function parsePr(json: string | null): PullRequest | null {
+  const v = readPrJson(json)
+
+  return Array.isArray(v) ? null : v
+}
+
+/** The stored list; before it was kept, the one stored pull request (if any). */
+function parsePrs(json: string | null, pr: PullRequest | null): PullRequest[] {
+  const v = readPrJson(json)
+
+  if (Array.isArray(v)) return v
+
+  return pr ? [pr] : []
+}
+
 function toWorkspace(r: WorkspaceRow): Workspace {
+  const pr = parsePr(r.pr_json)
+
   const ws: Workspace = {
     id: r.id,
     projectId: r.project_id,
@@ -326,7 +359,8 @@ function toWorkspace(r: WorkspaceRow): Workspace {
     createdAt: r.created_at,
     archivedAt: r.archived_at,
     prUrl: r.pr_url ?? null,
-    pr: parsePr(r.pr_json)
+    pr,
+    prs: parsePrs(r.prs_json ?? null, pr)
   }
 
   if (r.title) ws.title = r.title
@@ -475,8 +509,8 @@ export class Store {
     this.run(
       `INSERT INTO workspaces (id, project_id, name, branch, path, base_ref, status, status_reason,
            status_at, last_activity_at, session_id, created_at, archived_at, pr_url, pr_json,
-           title, brief, title_source)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           prs_json, title, brief, title_source)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       w.id,
       w.projectId,
       w.name,
@@ -492,6 +526,7 @@ export class Store {
       w.archivedAt,
       w.prUrl,
       w.pr ? JSON.stringify(w.pr) : null,
+      JSON.stringify(w.prs),
       w.title ?? null,
       w.brief ?? null,
       w.titleSource ?? null
@@ -553,8 +588,14 @@ export class Store {
     this.run('UPDATE workspaces SET pr_url = ? WHERE id = ?', prUrl, id)
   }
 
-  setWorkspacePr(id: string, pr: PullRequest | null): void {
-    this.run('UPDATE workspaces SET pr_json = ? WHERE id = ?', pr ? JSON.stringify(pr) : null, id)
+  /** Stores the workspace's current pull request and the list it was chosen from. */
+  setWorkspacePrs(id: string, pr: PullRequest | null, prs: PullRequest[]): void {
+    this.run(
+      'UPDATE workspaces SET pr_json = ?, prs_json = ? WHERE id = ?',
+      pr ? JSON.stringify(pr) : null,
+      JSON.stringify(prs),
+      id
+    )
   }
 
   archiveWorkspace(id: string, at: string): void {
@@ -678,6 +719,14 @@ export class Store {
         : this.rows<Task>(`${SELECT_TASK} ORDER BY created_at, rowid`)
 
     return rows.map(toTask)
+  }
+
+  /** The pull request URLs this workspace's tasks recorded, oldest task first. */
+  listTaskPrUrls(workspaceId: string): string[] {
+    return this.rows<{ pr_url: string }>(
+      'SELECT pr_url FROM tasks WHERE workspace_id = ? AND pr_url IS NOT NULL ORDER BY created_at, rowid',
+      workspaceId
+    ).map((r) => r.pr_url)
   }
 
   deleteTask(id: string): void {
