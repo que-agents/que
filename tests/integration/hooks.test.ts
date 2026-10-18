@@ -5,11 +5,12 @@
 import fs from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { Events } from '@shared/protocol'
 import type { Workspace } from '@shared/types'
 import { runCli, runCliWith } from '../../src/testing/cli'
 import { FAKE_WRAPPERS, FAKES_BIN, readFakeLog, readWrapperLog } from '../../src/testing/fakes'
 import {
+  recordStatuses,
+  type StatusChange,
   recordEvents,
   startTestDaemon,
   type TestDaemon,
@@ -29,10 +30,10 @@ afterEach(async () => {
 /** A daemon plus one idle workspace in a fresh repo. */
 async function idleWorkspace(
   opts: TestDaemonOptions = {}
-): Promise<{ d: TestDaemon; ws: Workspace; statuses: Events['workspace.status'][] }> {
+): Promise<{ d: TestDaemon; ws: Workspace; statuses: StatusChange[] }> {
   const d = await startTestDaemon(opts)
   daemon = d
-  const statuses = recordEvents(d.client, 'workspace.status')
+  const statuses = recordStatuses(d.client)
   const project = await d.client.request('project.add', { path: makeTempRepo(d.home) })
 
   const ws = await d.client.request('workspace.create', {
@@ -45,7 +46,7 @@ async function idleWorkspace(
   return { d, ws, statuses }
 }
 
-const statusesOf = (all: Events['workspace.status'][], id: string) =>
+const statusesOf = (all: StatusChange[], id: string) =>
   all.flatMap((s) => (s.id === id ? [s.status] : []))
 
 describe('hook delivery', () => {
@@ -238,6 +239,23 @@ describe('status engine wiring', () => {
       payload: makeHookEvent('PostToolUse', { cwd: ws.path, tool_name: 'Bash' })
     })
     expect((await d.client.request('workspace.get', { id: ws.id })).status).toBe('working')
+  }, 30_000)
+
+  it('announces a hook-driven change as one workspace.updated carrying the whole row', async () => {
+    const { d, ws } = await idleWorkspace()
+    const updated = recordEvents(d.client, 'workspace.updated')
+
+    await d.client.request('hook.event', {
+      workspaceId: ws.id,
+      payload: makeHookEvent('UserPromptSubmit', { cwd: ws.path })
+    })
+
+    await expect.poll(() => updated.length).toBe(1)
+    const stored = await d.client.request('workspace.get', { id: ws.id })
+    expect(updated[0]).toEqual(stored)
+    expect(updated[0]).toMatchObject({ id: ws.id, status: 'working', statusReason: null })
+    expect(updated[0].statusAt).not.toBe(ws.statusAt)
+    expect(updated[0].lastActivityAt).not.toBeNull()
   }, 30_000)
 
   it('takes needs input from `claude agents --json` for a workspace with no hooks', async () => {

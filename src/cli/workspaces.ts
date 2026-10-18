@@ -6,12 +6,7 @@ import { summarize, trayTitle } from '../daemon/status-engine'
 import type { DaemonClient } from '../shared/client'
 import { formatAge, formatDuration, spanMs } from '../shared/format'
 import { quePaths } from '../shared/paths'
-import type {
-  DiffFile,
-  WorkspaceDiff,
-  WorkspaceFiles,
-  WorkspaceStatusEvent
-} from '../shared/protocol'
+import type { DiffFile, WorkspaceDiff, WorkspaceFiles } from '../shared/protocol'
 import type {
   PrCheck,
   PrThread,
@@ -151,11 +146,7 @@ function openInEditor(path: string): Promise<void> {
 }
 
 /** Waits until a workspace leaves `preparing` (its setup command finished). */
-async function waitForSetup(
-  c: DaemonClient,
-  ws: Workspace,
-  seen: WorkspaceStatusEvent[]
-): Promise<Workspace> {
+async function waitForSetup(c: DaemonClient, ws: Workspace, seen: Workspace[]): Promise<Workspace> {
   const settled = (): boolean => seen.some((e) => e.id === ws.id && e.status !== 'preparing')
 
   if (!settled()) {
@@ -164,7 +155,7 @@ async function waitForSetup(
     if (now.status !== 'preparing') return now
     process.stderr.write(`que: running setup for ${ws.name}…\n`)
     await new Promise<void>((done) => {
-      const off = c.on('workspace.status', (e) => {
+      const off = c.on('workspace.updated', (e) => {
         if (e.id === ws.id && e.status !== 'preparing') {
           off()
           done()
@@ -268,8 +259,8 @@ export function registerWorkspaceCommands(program: Command): void {
 
         return withClient(async (c) => {
           const p = await c.request('project.add', { repo: opts.repo, cwd: process.cwd() })
-          const seen: WorkspaceStatusEvent[] = []
-          c.on('workspace.status', (e) => seen.push(e))
+          const seen: Workspace[] = []
+          c.on('workspace.updated', (e) => seen.push(e))
 
           const created = await c.request('workspace.create', {
             projectId: p.id,

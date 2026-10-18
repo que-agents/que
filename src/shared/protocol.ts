@@ -372,20 +372,6 @@ export interface Report {
   }
 }
 
-export interface TaskStatusEvent {
-  id: string
-  state: TaskState
-  reason?: string
-  at: string
-}
-
-export interface WorkspaceStatusEvent {
-  id: string
-  status: WorkspaceStatus
-  reason?: string
-  at: string
-}
-
 export interface QuietUnlockParams {
   /** Defaults to quiet_hours.unlock_minutes. */
   minutes?: number
@@ -635,16 +621,15 @@ export interface Events {
   'term.created': TermInfo
   'term.killed': { id: string }
   'workspace.created': Workspace
-  /** Its pull request (prUrl), title (a rename or a background summary), or branch changed. */
+  /** The row after any commit: status, reason, activity, session, title, branch, pull request. */
   'workspace.updated': Workspace
   'workspace.removed': { id: string }
-  'workspace.status': WorkspaceStatusEvent
   /** Its worktree changed on disk (a write, a commit): the daemon computes nothing until asked. */
   'workspace.changed': { id: string }
   'task.created': Task
-  'task.status': TaskStatusEvent
-  /** Cost, turns, session, branch, or PR changed. */
+  /** The row after any commit; a run's activity stamps arrive once per flush, not per chunk. */
   'task.updated': Task
+  'task.removed': { id: string }
   'queue.state': QueueState
   'project.added': Project
   'project.removed': { id: string }
@@ -672,11 +657,10 @@ export const EVENTS: { [E in EventName]: { renderer: boolean } } = {
   'workspace.created': { renderer: true },
   'workspace.updated': { renderer: true },
   'workspace.removed': { renderer: true },
-  'workspace.status': { renderer: true },
   'workspace.changed': { renderer: true },
   'task.created': { renderer: true },
-  'task.status': { renderer: true },
   'task.updated': { renderer: true },
+  'task.removed': { renderer: true },
   'queue.state': { renderer: true },
   'project.added': { renderer: true },
   'project.removed': { renderer: true },

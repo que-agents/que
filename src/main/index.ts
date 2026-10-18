@@ -9,7 +9,6 @@ import { queHome } from '../shared/paths'
 import {
   RENDERER_EVENTS,
   RENDERER_METHODS,
-  type EventName,
   type MethodName,
   type ParamsOf,
   type Report
@@ -48,15 +47,6 @@ app.setPath('userData', join(queHome(), 'app'))
 /** A newer release, once the update check has found one. */
 let update: UpdateInfo | null = null
 
-/** Events after which the tray title is recomputed. */
-const TRAY_EVENTS: EventName[] = [
-  'workspace.created',
-  'workspace.status',
-  'workspace.removed',
-  'task.created',
-  'task.status'
-]
-
 function getClient(): Promise<DaemonClient> {
   if (client?.connected) return Promise.resolve(client)
 
@@ -69,8 +59,13 @@ function getClient(): Promise<DaemonClient> {
           c.on(ev, (data) => sendToRenderer('que:event', ev, data))
         }
 
-        for (const ev of TRAY_EVENTS) c.on(ev, () => tray?.refresh(c))
-        tray?.refresh(c)
+        c.on('workspace.created', (w) => tray?.putWorkspace(w))
+        c.on('workspace.updated', (w) => tray?.putWorkspace(w))
+        c.on('workspace.removed', ({ id }) => tray?.dropWorkspace(id))
+        c.on('task.created', (t) => tray?.putTask(t))
+        c.on('task.updated', (t) => tray?.putTask(t))
+        c.on('task.removed', ({ id }) => tray?.dropTask(id))
+        tray?.seed(c)
         c.on('quiet.changed', (q) => applyQuiet(q))
         c.on('quiet.morningSummary', ({ report }) => morningSummary(report))
         void c.request('quiet.state').then(applyQuiet, () => {})

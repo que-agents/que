@@ -6,8 +6,9 @@ import fs from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { Events } from '@shared/protocol'
 import {
+  recordTaskStates,
+  type StateChange,
   recordEvents,
   startTestDaemon,
   type TestDaemon,
@@ -64,13 +65,13 @@ const originBranches = (origin: string) =>
     .split('\n')
     .filter(Boolean)
 
-const statesOf = (all: Events['task.status'][], id: string) =>
+const statesOf = (all: StateChange[], id: string) =>
   all.flatMap((s) => (s.id === id ? [s.state] : []))
 
 describe('runner and finisher', () => {
   it('success: runs claude in a new workspace, commits what it left, pushes, and opens a draft PR', async () => {
     const { d, origin, projectId } = await setup()
-    const statuses = recordEvents(d.client, 'task.status')
+    const statuses = recordTaskStates(d.client)
     const brief = 'Add retry logic to the uploader\nUse exponential backoff.'
 
     const task = await d.client.request('task.add', { projectId, brief })
@@ -257,7 +258,7 @@ describe('runner against the failure scenarios', () => {
     vi.stubEnv('QUE_FAKE_CLAUDE_SCENARIO', 'rate_limit')
     vi.stubEnv('QUE_FAKE_CLAUDE_RESET_SECONDS', '1')
     vi.stubEnv('QUE_FAKE_CLAUDE_RESUME_OK', '1')
-    const statuses = recordEvents(d.client, 'task.status')
+    const statuses = recordTaskStates(d.client)
 
     const task = await d.client.request('task.add', { projectId, brief: 'Refactor the queue' })
     await d.client.request('queue.open')
@@ -412,8 +413,10 @@ describe('queue', () => {
       code: 'conflict'
     })
     await d.client.request('task.stop', { id: task.id })
+    const removed = recordEvents(d.client, 'task.removed')
     expect(await d.client.request('task.remove', { id: task.id })).toEqual({ ok: true })
     expect(await d.client.request('task.list')).toEqual([])
+    await expect.poll(() => removed).toEqual([{ id: task.id }])
   }, 30_000)
 })
 

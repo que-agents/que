@@ -137,12 +137,17 @@ export class PrService {
     tick: () => this.tick()
   })
 
-  constructor(private opts: PrServiceOptions) {
-    opts.bus.on('task.status', ({ id, state }) => {
-      const wsId = state === 'done' ? opts.store.getTask(id)?.workspaceId : undefined
+  private refreshedDone = new Set<string>()
 
-      if (wsId) void this.refresh(wsId)
+  constructor(private opts: PrServiceOptions) {
+    // Rows carry state as a level, so the set turns "done" into an edge: refresh once per task.
+    opts.bus.on('task.updated', ({ id, state, workspaceId }) => {
+      if (state !== 'done' || this.refreshedDone.has(id)) return
+      this.refreshedDone.add(id)
+
+      if (workspaceId) void this.refresh(workspaceId)
     })
+    opts.bus.on('task.removed', ({ id }) => this.refreshedDone.delete(id))
     opts.bus.on('workspace.removed', ({ id }) => this.forget(id))
   }
 

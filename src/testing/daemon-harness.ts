@@ -158,6 +158,58 @@ export function recordEvents<E extends keyof Events>(client: DaemonClient, event
   return seen
 }
 
+export interface StatusChange {
+  id: string
+  status: WorkspaceStatus
+  reason: string | null
+}
+
+/** Records a row's projection each time it differs from the last one recorded for that id. */
+function recordChanges<R extends { id: string }, C extends { id: string }>(
+  events: Array<(cb: (row: R) => void) => void>,
+  project: (row: R) => C
+): C[] {
+  const seen: C[] = []
+
+  const note = (row: R): void => {
+    const next = project(row)
+    const last = seen.findLast((c) => c.id === next.id)
+
+    if (last && Object.entries(next).every(([k, v]) => last[k as keyof C] === v)) return
+    seen.push(next)
+  }
+
+  for (const subscribe of events) subscribe(note)
+
+  return seen
+}
+
+/**
+ * The status each workspace moves through, from its created row and every
+ * update after it. An update that leaves status and reason as they were (a
+ * new activity stamp, a rename) adds nothing.
+ */
+export function recordStatuses(client: DaemonClient): StatusChange[] {
+  return recordChanges<Events['workspace.updated'], StatusChange>(
+    [(cb) => client.on('workspace.created', cb), (cb) => client.on('workspace.updated', cb)],
+    (w) => ({ id: w.id, status: w.status, reason: w.statusReason })
+  )
+}
+
+export interface StateChange {
+  id: string
+  state: TaskState
+  reason: string | null
+}
+
+/** The state each task moves through, from its updates; one that changes neither state nor reason adds nothing. */
+export function recordTaskStates(client: DaemonClient): StateChange[] {
+  return recordChanges<Events['task.updated'], StateChange>(
+    [(cb) => client.on('task.updated', cb)],
+    (t) => ({ id: t.id, state: t.state, reason: t.reason })
+  )
+}
+
 /** Polls workspace.get until the workspace's status is `status`. */
 export async function waitForStatus(
   d: TestDaemon,

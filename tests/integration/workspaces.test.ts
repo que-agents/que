@@ -6,6 +6,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { DaemonClient } from '@shared/client'
 import {
+  recordStatuses,
   recordEvents,
   startTestDaemon,
   type TestDaemon,
@@ -140,7 +141,7 @@ worktree_include = ["config/local", "missing.json"]
       fs.writeFileSync(join(repo, '.worktreeinclude'), '.env\n')
       const mainHead = gitIn(repo, 'rev-parse', 'HEAD')
       const created = recordEvents(client, 'workspace.created')
-      const statuses = recordEvents(client, 'workspace.status')
+      const statuses = recordStatuses(client)
       const project = await client.request('project.add', { path: repo })
 
       const ws = await client.request('workspace.create', {

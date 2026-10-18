@@ -479,7 +479,19 @@ export class QueStore {
       ),
       term.onDisconnect(() => this.set({ connected: false })),
       workspace.on('workspace.created', (ws) => this.upsertWorkspace(ws)),
-      workspace.on('workspace.updated', (ws) => this.upsertWorkspace(ws)),
+      workspace.on('workspace.updated', (ws) => {
+        const prev = this.state.workspaces[ws.id]?.status
+        this.upsertWorkspace(ws)
+        // A live task's workspace never chimes on its own: its session ends a turn before the
+        // task finishes, and asks for input as the task does; the task's own status chimes.
+        const owned = latestTasks(this.state.tasks).get(ws.id)
+
+        if (owned && isLiveTask(owned.state)) return
+
+        if (prev !== ws.status) {
+          this.maybeChime({ state: ws.status, reason: ws.statusReason, prev })
+        }
+      }),
       workspace.on('workspace.changed', ({ id }) => this.followChange(id)),
       workspace.on('workspace.removed', ({ id }) => {
         if (id in this.state.diffScopes) rememberDiffBase(id, null)
@@ -489,48 +501,16 @@ export class QueStore {
           view: viewWithout(s.view, [id])
         }))
       }),
-      workspace.on('workspace.status', (e) => {
-        const prev = this.state.workspaces[e.id]?.status
-        this.setWith((s) => {
-          const ws = s.workspaces[e.id]
-
-          if (!ws) return {}
-          const next = { ...ws, status: e.status, statusReason: e.reason ?? null, statusAt: e.at }
-
-          return { workspaces: { ...s.workspaces, [e.id]: next } }
-        })
-        // A live task's workspace never chimes on its own: its session ends a turn before the
-        // task finishes, and asks for input as the task does; the task's own status chimes.
-        const owned = latestTasks(this.state.tasks).get(e.id)
-
-        if (owned && isLiveTask(owned.state)) return
-
-        if (prev !== e.status) this.maybeChime({ state: e.status, reason: e.reason, prev })
-      }),
       task.on('task.created', (t) => this.upsertTask(t)),
-      task.on('task.updated', (t) => this.upsertTask(t)),
-      task.on('task.status', (e) => {
-        const prev = this.state.tasks[e.id]
+      task.on('task.updated', (t) => {
+        const prev = this.state.tasks[t.id]
+        this.upsertTask(t)
 
-        if (prev?.state !== e.state || prev?.reason !== (e.reason ?? null)) {
-          this.maybeChime({ state: e.state, reason: e.reason })
+        if (prev?.state !== t.state || prev?.reason !== t.reason) {
+          this.maybeChime({ state: t.state, reason: t.reason })
         }
-
-        this.setWith((s) => {
-          const t = s.tasks[e.id]
-
-          if (!t) return {}
-
-          return {
-            tasks: { ...s.tasks, [e.id]: { ...t, state: e.state, reason: e.reason ?? null } }
-          }
-        })
-        // The status event carries no workspace, branch, or PR; re-read the task.
-        void this.api.task.get({ id: e.id }).then(
-          (t) => this.upsertTask(t),
-          () => {}
-        )
-      })
+      }),
+      task.on('task.removed', ({ id }) => this.setWith((s) => ({ tasks: without(s.tasks, id) })))
     )
   }
 
