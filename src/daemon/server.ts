@@ -810,6 +810,7 @@ export class DaemonServer {
         const project = await this.workspaces.addProject({
           path: optString(p, 'path'),
           repo: optString(p, 'repo'),
+          cwd: optString(p, 'cwd'),
           name: optString(p, 'name')
         })
 

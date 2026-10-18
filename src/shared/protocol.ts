@@ -105,6 +105,8 @@ export interface ProjectAddParams {
    */
   path?: string
   repo?: string
+  /** The directory a relative `repo` path is resolved against (the caller's); ignored with `path`. */
+  cwd?: string
   name?: string
 }
 

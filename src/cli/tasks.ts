@@ -16,7 +16,7 @@ import { formatAge, formatCost } from '../shared/format'
 import { quePaths } from '../shared/paths'
 import type { QueueState, TaskAddParams } from '../shared/protocol'
 import type { Task } from '../shared/types'
-import { CliError, findWorkspace, repoRef, printJson, printTable, withClient } from './common'
+import { CliError, findWorkspace, printJson, printTable, withClient } from './common'
 import { LAUNCHD_LABEL, plistPath, renderPlist } from './launchd'
 
 /** `-r`: a configured repo name, a repo path, or a workspace id or name. */
@@ -25,7 +25,7 @@ async function resolveTarget(
   ref: string
 ): Promise<Pick<TaskAddParams, 'projectId' | 'workspaceId'>> {
   try {
-    return { projectId: (await c.request('project.add', { repo: repoRef(ref) })).id }
+    return { projectId: (await c.request('project.add', { repo: ref, cwd: process.cwd() })).id }
   } catch (e) {
     // Not a repo name or directory: it may still be a workspace id or name.
     if (!(e instanceof DaemonError) || e.code !== 'not_found') throw e

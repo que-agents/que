@@ -28,7 +28,6 @@ import {
   findWorkspace,
   printJson,
   printTable,
-  repoRef,
   withClient
 } from './common'
 import { describeQuietState } from './quiet'
@@ -268,7 +267,7 @@ export function registerWorkspaceCommands(program: Command): void {
         }
 
         return withClient(async (c) => {
-          const p = await c.request('project.add', { repo: repoRef(opts.repo) })
+          const p = await c.request('project.add', { repo: opts.repo, cwd: process.cwd() })
           const seen: WorkspaceStatusEvent[] = []
           c.on('workspace.status', (e) => seen.push(e))
 

@@ -175,10 +175,14 @@ export class WorkspaceManager {
       if (named) {
         dir = named.path
         given ??= p.repo
-      } else if (fs.existsSync(p.repo) && fs.statSync(p.repo).isDirectory()) {
-        dir = p.repo
       } else {
-        throw notFound(`no configured repo or directory named ${p.repo}`)
+        const abs = resolve(p.cwd ?? '.', p.repo)
+
+        if (!fs.existsSync(abs) || !fs.statSync(abs).isDirectory()) {
+          throw notFound(`no configured repo or directory named ${p.repo}`)
+        }
+
+        dir = abs
       }
     }
 

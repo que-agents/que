@@ -1,20 +1,7 @@
 // Shared CLI helpers: daemon connection, tables, and id-or-name lookups.
-import fs from 'node:fs'
-import { resolve } from 'node:path'
 import { isLocked, quietMessage } from '../daemon/quiet-hours'
 import { DaemonClient, DaemonError } from '../shared/client'
 import type { Project, Workspace } from '../shared/types'
-
-/**
- * What `-r` sends as `project.add`'s `repo`. A directory is made absolute here,
- * because the daemon's working directory is not the shell's; anything else
- * (a configured repo name, a workspace ref) goes through untouched.
- */
-export function repoRef(ref: string): string {
-  const path = resolve(ref)
-
-  return fs.existsSync(path) && fs.statSync(path).isDirectory() ? path : ref
-}
 
 export class CliError extends Error {}
 

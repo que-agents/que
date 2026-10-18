@@ -62,6 +62,28 @@ describe('projects', () => {
     expect(dir).toMatchObject({ name: 'other-dir', path: other })
   })
 
+  it('prefers a configured name over a directory of that name under cwd', async () => {
+    const repo = makeTempRepo(daemon.home)
+    const shadow = join(daemon.home, 'shadow-parent')
+    fs.mkdirSync(join(shadow, 'uploader-api'), { recursive: true })
+    fs.writeFileSync(daemon.configPath, withQuietOff(`[repos.uploader-api]\npath = "${repo}"\n`))
+
+    const project = await client.request('project.add', { repo: 'uploader-api', cwd: shadow })
+
+    expect(project).toMatchObject({ name: 'uploader-api', path: repo })
+  })
+
+  it('resolves a relative repo directory against cwd', async () => {
+    const repo = makeTempRepo(daemon.home)
+
+    const project = await client.request('project.add', {
+      repo: 'uploader',
+      cwd: join(repo, '..')
+    })
+
+    expect(project.path).toBe(repo)
+  })
+
   it('reports a repo that is neither configured nor a directory as not_found', async () => {
     await expect(client.request('project.add', { repo: 'nope' })).rejects.toMatchObject({
       code: 'not_found',
