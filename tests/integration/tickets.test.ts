@@ -213,7 +213,7 @@ describe('starting a ticket', () => {
     expect(r.kind).toBe('session')
 
     if (r.kind !== 'session') return
-    expect(r.terminalId).toMatch(/\S/)
+    expect(r.terminal.id).toMatch(/\S/)
     const file = join(daemon.home, 'tickets', 'APP-1432.md')
     expect(fs.readFileSync(file, 'utf8')).toContain('# APP-1432')
     expect(await client.request('workspace.list', {})).toEqual([])

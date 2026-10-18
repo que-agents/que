@@ -100,6 +100,7 @@ class FakeBridge {
   private prCalls: Array<{ id: string; title: string }> = []
   private createCallLog: WorkspaceCreateParams[] = []
   private startCallLog: string[] = []
+  private termListCalls = 0
   private renameCallLog: WorkspaceRenameParams[] = []
   private pushedBranches = new Set<string>()
   private quiet: QuietState = makeQuietState()
@@ -204,10 +205,13 @@ class FakeBridge {
 
           return this.createTerminal(p)
         },
-        list: async (p) =>
-          [...this.terminals.values()].flatMap((t) =>
+        list: async (p) => {
+          this.termListCalls++
+
+          return [...this.terminals.values()].flatMap((t) =>
             !p?.workspaceId || t.workspaceId === p.workspaceId ? [toInfo(t)] : []
-          ),
+          )
+        },
         attach: async ({ id, cols, rows }) => {
           this.refuseIfQuiet('term.attach')
           const t = this.terminal(id)
@@ -411,7 +415,7 @@ class FakeBridge {
           if (session) {
             const t = await this.api.term.create({ cwd: '/Users/dev', cols: 80, rows: 24 })
 
-            return { kind: 'session', terminalId: t.id }
+            return { kind: 'session', terminal: t }
           }
 
           const target = projectId ?? this.ticketProjects.get(ticket.projectKey) ?? null
@@ -597,14 +601,14 @@ class FakeBridge {
           this.startCallLog.push(id)
           const first = [...this.terminals.values()].find((t) => t.workspaceId === id && t.alive)
 
-          const terminalId =
-            first?.id ??
-            this.createTerminal(
-              { cwd: ws.path, cols: cols ?? 120, rows: rows ?? 30, name: ws.name },
-              ws.id
-            ).id
+          const terminal = first
+            ? toInfo(first)
+            : this.createTerminal(
+                { cwd: ws.path, cols: cols ?? 120, rows: rows ?? 30, name: ws.name },
+                ws.id
+              )
 
-          return { terminalId }
+          return { terminal }
         },
         rename: async (p) => {
           const { id, title } = p
@@ -792,6 +796,17 @@ class FakeBridge {
   /** Puts a running terminal in the book silently, as if created before launch. */
   seedTerminal(info: TermInfo, screen = ''): void {
     this.terminals.set(info.id, { ...info, input: '', screen })
+  }
+
+  /** Adds a terminal and emits term.created with its row, as the daemon does when another client opens one. */
+  announceTerminal(info: TermInfo): void {
+    this.terminals.set(info.id, { ...info, input: '', screen: '' })
+    this.emit('term.created', { ...info })
+  }
+
+  /** How many times term.list was called. */
+  termListCount(): number {
+    return this.termListCalls
   }
 
   /** Marks a terminal exited and emits term.exit, as the daemon would. */
@@ -1013,6 +1028,7 @@ class FakeBridge {
     this.prCalls = []
     this.createCallLog = []
     this.startCallLog = []
+    this.termListCalls = 0
     this.renameCallLog = []
     this.pushedBranches.clear()
     this.quiet = makeQuietState()
@@ -1073,10 +1089,11 @@ class FakeBridge {
   private createTerminal(
     p: { cwd?: string; cols: number; rows: number; name?: string; file?: string },
     workspaceId?: string
-  ): { id: string } {
+  ): TermInfo {
     const id = crypto.randomUUID()
     const file = p.file ?? '/bin/zsh'
-    this.terminals.set(id, {
+
+    const created: FakeTerminal = {
       id,
       name: p.name || file.split('/').pop() || 'shell',
       cwd: p.cwd ?? this.home,
@@ -1088,10 +1105,15 @@ class FakeBridge {
       workspaceId: workspaceId || undefined,
       input: '',
       screen: ''
-    })
-    this.emit('term.created', { id })
+    }
 
-    return { id }
+    this.terminals.set(id, created)
+
+    const info = toInfo(created)
+
+    this.emit('term.created', { ...info })
+
+    return info
   }
 
   private terminal(id: string): FakeTerminal {

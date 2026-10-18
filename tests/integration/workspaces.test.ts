@@ -254,6 +254,8 @@ worktree_include = ["config/local", "missing.json"]
         name: 'app-1470-cleanup'
       })
 
+      const created = recordEvents(client, 'term.created')
+
       const { id: termId } = await client.request('workspace.openTerminal', {
         id: ws.id,
         cols: 80,
@@ -261,6 +263,7 @@ worktree_include = ["config/local", "missing.json"]
       })
 
       const [term] = await client.request('term.list', { workspaceId: ws.id })
+      await expect.poll(() => created).toEqual([term])
       expect(term).toMatchObject({ id: termId, workspaceId: ws.id, cwd: ws.path, alive: true })
       const killed = recordEvents(client, 'term.killed')
       const removed = recordEvents(client, 'workspace.removed')
@@ -388,10 +391,10 @@ describe('workspace.start', () => {
 
     const ws = await client.request('workspace.create', { projectId: project.id, brief })
 
-    const { terminalId } = await client.request('workspace.start', { id: ws.id })
+    const { terminal } = await client.request('workspace.start', { id: ws.id })
 
     expect(await client.request('term.list', { workspaceId: ws.id })).toMatchObject([
-      { id: terminalId, cwd: ws.path, alive: true }
+      { id: terminal.id, cwd: ws.path, alive: true }
     ])
     expect((await client.request('workspace.get', { id: ws.id })).status).toBe('preparing')
     expect(readFakeLog(daemon.claudeLog)).toEqual([])
@@ -402,7 +405,7 @@ describe('workspace.start', () => {
     expect(started.argv.at(-1)).toBe(brief)
     expect(started.argv[started.argv.indexOf('--append-system-prompt-file') + 1]).toBe(instructions)
     const again = await client.request('workspace.start', { id: ws.id })
-    expect(again.terminalId).toBe(terminalId)
+    expect(again.terminal.id).toBe(terminal.id)
     expect(await client.request('term.list', { workspaceId: ws.id })).toHaveLength(1)
   }, 30_000)
 

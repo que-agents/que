@@ -11,6 +11,7 @@ import { ErrorCodes } from '../shared/protocol'
 import type {
   TicketsListResult,
   TicketsStartParams,
+  TermInfo,
   TicketsStartResult,
   WorkspaceCreateParams
 } from '../shared/protocol'
@@ -117,8 +118,8 @@ export interface TicketServiceOptions {
   home: string
   projects: () => Project[]
   createWorkspace: (p: WorkspaceCreateParams) => Promise<Workspace>
-  openTerminal: (workspaceId: string) => Promise<{ id: string }>
-  createSession: (cwd: string) => Promise<{ id: string }>
+  openTerminal: (workspaceId: string) => Promise<TermInfo>
+  createSession: (cwd: string) => Promise<TermInfo>
   writeTerminal: (id: string, data: string) => void
   /** Records `tracker key = que project name` in the config file. */
   learnProject: (projectKey: string, projectName: string) => Promise<void>
@@ -456,7 +457,7 @@ export class TicketService {
       const prompt = `Read ${file}, the ticket I am working on. Restate the goal in a sentence, then propose a plan before changing anything.`
       this.opts.writeTerminal(t.id, claudeCommand(prompt))
 
-      return { kind: 'session', terminalId: t.id }
+      return { kind: 'session', terminal: t }
     }
 
     const mapped = this.mappedProject(ticket)

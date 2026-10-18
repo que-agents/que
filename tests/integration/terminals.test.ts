@@ -160,12 +160,29 @@ describe('terminals', () => {
     }, 20_000)
   })
 
+  describe('create', () => {
+    it('announces the terminal with the same row the reply and the list carry', async () => {
+      const created = recordEvents(client, 'term.created')
+
+      const reply = await client.request('term.create', {
+        cwd: daemon.home,
+        file: '/bin/cat',
+        cols: 80,
+        rows: 24
+      })
+
+      await expect.poll(() => created, { timeout: 5_000 }).toHaveLength(1)
+      const listed = (await client.request('term.list')).find((t) => t.id === reply.id)
+      expect(reply).toMatchObject({ cwd: daemon.home, alive: true })
+      expect(created[0]).toEqual(reply)
+      expect(created[0]).toEqual(listed)
+    }, 20_000)
+  })
+
   describe('kill', () => {
     it('kills a terminal, announces it, and drops it from the list', async () => {
-      const created = recordEvents(client, 'term.created')
       const killed = recordEvents(client, 'term.killed')
       const { id } = await client.request('term.create', { file: '/bin/cat', cols: 80, rows: 24 })
-      await expect.poll(() => created, { timeout: 5_000 }).toContainEqual({ id })
 
       await client.request('term.kill', { id })
 
