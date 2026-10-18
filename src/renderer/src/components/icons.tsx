@@ -137,6 +137,16 @@ export function ExternalLinkIcon(): React.JSX.Element {
   )
 }
 
+/** Two overlapping rounded squares: copy to the clipboard. */
+export function CopyIcon(): React.JSX.Element {
+  return (
+    <svg {...base} aria-hidden="true">
+      <rect x="5.75" y="5.75" width="7.5" height="7.5" rx="1.25" />
+      <path d="M10.25 3.75v-.5a1 1 0 0 0-1-1h-5.5a1 1 0 0 0-1 1v5.5a1 1 0 0 0 1 1h.5" />
+    </svg>
+  )
+}
+
 /** Two crossed lines: close. */
 export function CloseIcon(): React.JSX.Element {
   return (
