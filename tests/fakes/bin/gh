@@ -45,12 +45,27 @@ const VIEW_FIELDS = [
   'statusCheckRollup',
   'mergedAt',
   'updatedAt',
+  'additions',
+  'deletions',
+  'headRefName',
   'comments',
   'reviews'
 ]
 
+/** A branch's entry as a list: an entry is one pull request or an array of them. */
+function entriesOf(entry) {
+  return (Array.isArray(entry) ? entry : [entry]).filter(Boolean)
+}
+
+/** Every pull request in the file, newest first by number, as `gh pr list` orders them. */
+function allPrs(prs) {
+  return Object.values(prs)
+    .flatMap(entriesOf)
+    .sort((a, b) => (b.number ?? 0) - (a.number ?? 0))
+}
+
 function prByNumber(n) {
-  return Object.values(readPrs()).find((pr) => pr && pr.number === n)
+  return allPrs(readPrs()).find((pr) => pr.number === n)
 }
 
 function failIfAsked() {
@@ -92,7 +107,7 @@ if (cmd === 'auth' && sub === 'status') {
     }).stdout.trim()
     if (head) {
       const prs = readPrs()
-      prs[head] = {
+      const created = {
         number: prNumber,
         url,
         title: flag('--title') ?? '',
@@ -104,6 +119,10 @@ if (cmd === 'auth' && sub === 'status') {
         mergedAt: null,
         updatedAt: new Date().toISOString()
       }
+      // Like GitHub, a branch holds one open pull request: a new one replaces it,
+      // and otherwise joins the branch's merged and closed ones.
+      const kept = entriesOf(prs[head]).filter((pr) => pr.state !== 'OPEN')
+      prs[head] = kept.length === 0 ? created : [...kept, created]
       fs.writeFileSync(prsFile, JSON.stringify(prs, null, 2))
     }
   }
@@ -115,7 +134,7 @@ if (cmd === 'auth' && sub === 'status') {
   }
   const head = flag('--head')
   const prs = readPrs()
-  const entries = (head === undefined ? Object.values(prs) : [prs[head]]).filter(Boolean)
+  const entries = head === undefined ? allPrs(prs) : allPrs({ [head]: prs[head] })
   const limit = Number(flag('--limit') ?? 30)
   const fields = (flag('--json') ?? '').split(',').filter(Boolean)
   const out = entries
