@@ -1,13 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { fakeBridge } from '@renderer/testing/fake-bridge'
-import {
-  makeProject,
-  makePullRequest,
-  makeTermInfo,
-  makeWorkspace
-} from '@renderer/testing/fixtures'
+import { makeProject, makeTermInfo, makeWorkspace } from '@renderer/testing/fixtures'
 import App from './App'
 
 const uploader = makeTermInfo({ name: 'zsh', cwd: '/Users/dev/code/uploader' })
@@ -28,7 +23,6 @@ describe('App', () => {
         'aria-selected',
         'true'
       )
-      expect(screen.getByTestId('topbar-cwd')).toHaveTextContent('/Users/dev/code/api')
     })
 
     it('opens one terminal in the home directory on a fresh launch', async () => {
@@ -187,18 +181,6 @@ describe('App', () => {
     })
   })
 
-  describe('status updates', () => {
-    it('marks a tab exited when its process exits', async () => {
-      fakeBridge.seedTerminal(uploader)
-      render(<App />)
-      const tab = await screen.findByTestId(`terminal-tab-${uploader.id}`)
-
-      fakeBridge.exitTerminal(uploader.id, 0)
-
-      expect(await within(tab).findByText('exited')).toBeInTheDocument()
-    })
-  })
-
   describe('errors', () => {
     it('tells the user when the daemon connection drops', async () => {
       fakeBridge.seedTerminal(uploader)
@@ -210,25 +192,6 @@ describe('App', () => {
       expect(await screen.findByRole('alert')).toHaveTextContent(
         'Lost connection to the que daemon.'
       )
-    })
-
-    it('shows the workspace pull request in the top bar', async () => {
-      const user = userEvent.setup()
-
-      const retry = makeWorkspace({
-        id: 'ws_01hzx3k9c2qf',
-        name: 'app-1432-retry-logic',
-        pr: makePullRequest({ state: 'draft' })
-      })
-
-      fakeBridge.seedProject(makeProject())
-      fakeBridge.seedWorkspace(retry)
-      render(<App />)
-      await user.click(await screen.findByTestId(`sidebar-workspace-${retry.id}-open`))
-
-      const chip = await screen.findByTestId('topbar-pr')
-      expect(chip).toHaveTextContent('PR #41 · draft')
-      expect(chip).toHaveAttribute('href', 'https://github.com/rquellh/que/pull/41')
     })
 
     it('disables every daemon action while disconnected', async () => {

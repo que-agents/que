@@ -64,6 +64,9 @@ export interface FakePr {
   mergedAt: string | null
   /** When the pull request last changed (ISO); `pr create` stores the current time. */
   updatedAt?: string
+  /** Lines added and removed; gh prints them only when the entry has them. */
+  additions?: number
+  deletions?: number
   /** Issue comments, in the GitHub CLI's `pr view --json comments,reviews` shapes. */
   comments?: unknown[]
   /** Reviews, in the GitHub CLI's `pr view --json comments,reviews` shapes. */
@@ -72,30 +75,54 @@ export interface FakePr {
   lineComments?: unknown[]
 }
 
-/** Reads the fake gh's pull requests, keyed by head branch; {} when there are none. */
-export function readFakePullRequests(file: string): Record<string, FakePr> {
+/** Reads the fake gh's pull requests: a list per head branch; {} when there are none. */
+export function readFakePullRequests(file: string): Record<string, FakePr[]> {
   if (!fs.existsSync(file)) return {}
 
-  return JSON.parse(fs.readFileSync(file, 'utf8')) as Record<string, FakePr>
+  return JSON.parse(fs.readFileSync(file, 'utf8')) as Record<string, FakePr[]>
 }
 
-/** Merges `patch` into the branch's fake pull request, creating it with defaults first. */
+const fakePrDefaults = (branch: string, number: number): FakePr => ({
+  number,
+  url: `https://github.com/rquellh/que/pull/${number}`,
+  title: 'Add retry logic',
+  state: 'OPEN',
+  isDraft: true,
+  headRefName: branch,
+  reviewDecision: '',
+  statusCheckRollup: [],
+  mergedAt: null
+})
+
+/**
+ * Merges `patch` into one of the branch's fake pull requests: the one whose number is
+ * `patch.number`, else the newest. A branch with none gets one, with defaults first.
+ */
 export function setFakePullRequest(file: string, branch: string, patch: Partial<FakePr>): void {
   const all = readFakePullRequests(file)
-  const existing: Partial<FakePr> = all[branch] ?? {}
-  all[branch] = {
-    number: 1,
-    url: 'https://github.com/rquellh/que/pull/1',
-    title: 'Add retry logic',
-    state: 'OPEN',
-    isDraft: true,
-    headRefName: branch,
-    reviewDecision: '',
-    statusCheckRollup: [],
-    mergedAt: null,
-    ...existing,
-    ...patch
+  const list = all[branch] ?? []
+
+  if (list.length === 0) {
+    all[branch] = [{ ...fakePrDefaults(branch, 1), ...patch }]
+  } else {
+    const newest = list.reduce((a, b) => (b.number > a.number ? b : a))
+    const target = list.find((pr) => pr.number === patch.number) ?? newest
+    all[branch] = list.map((pr) => (pr === target ? { ...pr, ...patch } : pr))
   }
+
+  fs.writeFileSync(file, JSON.stringify(all, null, 2))
+}
+
+/**
+ * Adds another pull request to the branch, with defaults first; its number is one past
+ * the highest in the file unless `patch` says.
+ */
+export function addFakePullRequest(file: string, branch: string, patch: Partial<FakePr>): void {
+  const all = readFakePullRequests(file)
+  const numbers = Object.values(all).flatMap((list) => list.map((pr) => pr.number))
+  const number = patch.number ?? Math.max(0, ...numbers) + 1
+
+  all[branch] = [...(all[branch] ?? []), { ...fakePrDefaults(branch, number), ...patch }]
   fs.writeFileSync(file, JSON.stringify(all, null, 2))
 }
 

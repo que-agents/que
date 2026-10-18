@@ -7,6 +7,7 @@ import {
   RATIO_DEFAULT,
   RATIO_MAX,
   RATIO_MIN,
+  SCRATCH,
   usePanes,
   useQueSelector,
   useStore
@@ -14,7 +15,15 @@ import {
 import { setPaneSource } from '../testHook'
 import DiffView from './DiffView'
 import FileView from './FileView'
-import { DiffIcon, FileIcon, PlusIcon } from './icons'
+import {
+  DiffIcon,
+  FileIcon,
+  JoinPanesIcon,
+  PanelRightIcon,
+  PlusIcon,
+  SplitBelowIcon,
+  SplitBesideIcon
+} from './icons'
 import Terminal from './Terminal'
 
 const STEP = 0.05
@@ -124,7 +133,85 @@ export function PaneDivider({
   )
 }
 
-function Pane({ termKey, index }: { termKey: string; index: 0 | 1 }): React.JSX.Element {
+/**
+ * Split or join, then the review pane toggle (workspaces only): the main column's
+ * top-right corner, at the right end of the top-right pane's tab strip.
+ */
+function PaneControls({ termKey }: { termKey: string }): React.JSX.Element {
+  const store = usePanes(termKey)
+  const connected = useQueSelector((s) => s.connected)
+  const review = useQueSelector((s) => s.review)
+  const workspace = useQueSelector((s) => termKey !== SCRATCH && termKey in s.workspaces)
+  const split = Boolean(store.layout(termKey).split)
+
+  return (
+    <div className="pane-controls" data-testid="pane-controls">
+      {split ? (
+        <button
+          type="button"
+          className="ghost icon"
+          aria-label="Join panes"
+          title="Join panes: the second pane's tabs move to the first"
+          data-testid="topbar-join"
+          disabled={!connected}
+          onClick={() => store.joinPanes(termKey)}
+        >
+          <JoinPanesIcon />
+        </button>
+      ) : (
+        <>
+          <button
+            type="button"
+            className="ghost icon"
+            aria-label="Split beside"
+            title="Split beside (⌘D)"
+            data-testid="topbar-split-beside"
+            disabled={!connected}
+            onClick={() => void store.splitPane(termKey, 'row')}
+          >
+            <SplitBesideIcon />
+          </button>
+          <button
+            type="button"
+            className="ghost icon"
+            aria-label="Split below"
+            title="Split below (⌘⇧D)"
+            data-testid="topbar-split-below"
+            disabled={!connected}
+            onClick={() => void store.splitPane(termKey, 'column')}
+          >
+            <SplitBelowIcon />
+          </button>
+        </>
+      )}
+      {workspace && (
+        <button
+          type="button"
+          className="ghost icon"
+          aria-label="Review pane"
+          aria-pressed={review.open}
+          title="Review pane: changes and pull request (⌘B)"
+          data-testid="topbar-review"
+          disabled={!connected}
+          onClick={() => store.toggleReview()}
+        >
+          <PanelRightIcon filled={review.open} />
+        </button>
+      )}
+    </div>
+  )
+}
+
+function Pane({
+  termKey,
+  index,
+  controls
+}: {
+  termKey: string
+  index: 0 | 1
+  /** This pane's strip is the main column's top-right corner, so the split and review buttons go here. */
+  controls: boolean
+}): React.JSX.Element {
   const store = usePanes(termKey)
   const connected = useQueSelector((s) => s.connected)
   const error = useQueSelector((s) => s.error)
@@ -145,12 +232,12 @@ function Pane({ termKey, index }: { termKey: string; index: 0 | 1 }): React.JSX.
       data-active-tab={activeId ?? ''}
       onPointerDownCapture={() => store.focusPane(termKey, index)}
     >
-      <div className="tabbar">
+      <div className="tabbar" data-testid={`pane-${index}-tabbar`}>
         <div className="tabs" role="tablist" aria-label="Tabs">
           {tabs.map((t) => (
             <span
               key={t.id}
-              className={`tab${t.id === active?.id ? ' active' : ''}`}
+              className={`tab${t.id === active?.id ? ' active' : ''}${t.alive ? '' : ' exited'}`}
               data-testid={`terminal-tab-${t.id}`}
             >
               <button
@@ -162,12 +249,14 @@ function Pane({ termKey, index }: { termKey: string; index: 0 | 1 }): React.JSX.
                 title={t.cwd}
                 onClick={() => store.selectTerminal(termKey, t.id)}
               >
-                {t.name} <span className="short-id">{t.id.slice(0, 4)}</span>
-                {!t.alive && (
-                  <span className="badge exited" data-testid={`terminal-tab-${t.id}-exited`}>
-                    exited
-                  </span>
-                )}
+                {/* An exited terminal's name reads faint; the testid marks it for the specs. */}
+                <span
+                  className="tab-name"
+                  data-testid={t.alive ? undefined : `terminal-tab-${t.id}-exited`}
+                >
+                  {t.name}
+                </span>{' '}
+                <span className="short-id">{t.id.slice(0, 4)}</span>
                 {t.reattached && (
                   <span className="badge" data-testid={`terminal-tab-${t.id}-reattached`}>
                     reattached
@@ -240,6 +329,7 @@ function Pane({ termKey, index }: { termKey: string; index: 0 | 1 }): React.JSX.
         >
           <PlusIcon />
         </button>
+        {controls && <PaneControls termKey={termKey} />}
       </div>
       {activeDiff !== null ? (
         <DiffView termKey={termKey} path={activeDiff} />
@@ -296,7 +386,8 @@ export default function Panes({ termKey }: { termKey: string }): React.JSX.Eleme
       data-ratio={split?.ratio}
       style={style}
     >
-      <Pane termKey={termKey} index={0} />
+      {/* Beside, the second pane's strip is the top-right one; below (or alone), the first's. */}
+      <Pane termKey={termKey} index={0} controls={split?.direction !== 'row'} />
       {split && (
         <>
           <PaneDivider
@@ -304,7 +395,7 @@ export default function Panes({ termKey }: { termKey: string }): React.JSX.Eleme
             ratio={split.ratio}
             onChange={(r) => store.setRatio(termKey, r)}
           />
-          <Pane termKey={termKey} index={1} />
+          <Pane termKey={termKey} index={1} controls={split.direction === 'row'} />
         </>
       )}
     </div>

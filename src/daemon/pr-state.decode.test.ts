@@ -3,10 +3,14 @@ import fs from 'node:fs'
 import os from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { FAKES_BIN, fakeCheckRun, fakeStatusContext, setFakePullRequest } from '../testing/fakes'
-import { decodeCheckRollup, decodePullRequest } from './pr-state.decode'
-
-const FIELDS = 'number,url,title,state,isDraft,reviewDecision,statusCheckRollup,mergedAt,updatedAt'
+import {
+  addFakePullRequest,
+  FAKES_BIN,
+  fakeCheckRun,
+  fakeStatusContext,
+  setFakePullRequest
+} from '../testing/fakes'
+import { decodeCheckRollup, decodePullRequest, decodePullRequests, FIELDS } from './pr-state.decode'
 
 describe('decodePullRequest', () => {
   let dir: string
@@ -37,6 +41,8 @@ describe('decodePullRequest', () => {
       isDraft: false,
       reviewDecision: 'CHANGES_REQUESTED',
       updatedAt: '2026-10-14T03:30:00Z',
+      additions: 128,
+      deletions: 17,
       statusCheckRollup: [
         fakeCheckRun({
           name: 'unit tests',
@@ -58,6 +64,8 @@ describe('decodePullRequest', () => {
       mergedAt: null,
       reviewDecision: 'CHANGES_REQUESTED',
       updatedAt: '2026-10-14T03:30:00Z',
+      additions: 128,
+      deletions: 17,
       checks: [
         {
           kind: 'run',
@@ -90,8 +98,21 @@ describe('decodePullRequest', () => {
       mergedAt: null,
       reviewDecision: '',
       updatedAt: null,
+      additions: null,
+      deletions: null,
       checks: []
     })
+  })
+
+  it('reads mistyped line counts as unknown', () => {
+    const raw = decodePullRequest({
+      number: 7,
+      url: 'https://github.com/rquellh/que/pull/7',
+      additions: '12',
+      deletions: null
+    })
+
+    expect(raw).toMatchObject({ additions: null, deletions: null })
   })
 
   it.each([
@@ -104,6 +125,75 @@ describe('decodePullRequest', () => {
     [{ number: '1', url: 'https://github.com/rquellh/que/pull/1' }]
   ])('drops %j', (raw) => {
     expect(decodePullRequest(raw)).toBeNull()
+  })
+})
+
+describe('decodePullRequests', () => {
+  let dir: string
+  let prsFile: string
+
+  beforeEach(() => {
+    dir = fs.mkdtempSync(join(os.tmpdir(), 'que-pr-decode-'))
+    prsFile = join(dir, 'prs.json')
+  })
+
+  afterEach(() => {
+    fs.rmSync(dir, { recursive: true, force: true })
+  })
+
+  it('decodes every pull request gh prints for a branch that carries two', () => {
+    setFakePullRequest(prsFile, 'APP-1432-retry-logic', {
+      number: 41,
+      url: 'https://github.com/rquellh/que/pull/41',
+      state: 'MERGED',
+      isDraft: false,
+      mergedAt: '2026-10-13T22:10:00Z',
+      additions: 40,
+      deletions: 3
+    })
+    addFakePullRequest(prsFile, 'APP-1432-retry-logic', {
+      title: 'Retry the uploader on 503',
+      isDraft: false,
+      additions: 9,
+      deletions: 1
+    })
+
+    const printed = execFileSync(
+      process.execPath,
+      [join(FAKES_BIN, 'gh'), 'pr', 'list', '--head', 'APP-1432-retry-logic', '--json', FIELDS],
+      { encoding: 'utf8', env: { ...process.env, QUE_FAKE_GH_PRS: prsFile } }
+    )
+
+    expect(decodePullRequests(JSON.parse(printed))).toMatchObject([
+      {
+        number: 42,
+        url: 'https://github.com/rquellh/que/pull/42',
+        title: 'Retry the uploader on 503',
+        state: 'OPEN',
+        additions: 9,
+        deletions: 1
+      },
+      {
+        number: 41,
+        state: 'MERGED',
+        mergedAt: '2026-10-13T22:10:00Z',
+        additions: 40,
+        deletions: 3
+      }
+    ])
+  })
+
+  it.each([[null], ['text'], [{ number: 7 }]])('reads %j as no pull requests', (raw) => {
+    expect(decodePullRequests(raw)).toEqual([])
+  })
+
+  it('drops the items it cannot decode and keeps the rest', () => {
+    expect(
+      decodePullRequests([
+        { number: 7 },
+        { number: 8, url: 'https://github.com/rquellh/que/pull/8' }
+      ])
+    ).toMatchObject([{ number: 8 }])
   })
 })
 

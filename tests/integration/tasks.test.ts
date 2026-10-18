@@ -102,7 +102,10 @@ describe('runner and finisher', () => {
       name: branch,
       title: 'Add retry logic to the uploader',
       titleSource: 'brief',
-      brief
+      brief,
+      // A finished task leaves its workspace something new to look at.
+      finishedAt: done.finishedAt,
+      seenAt: null
     })
     expect(fs.readFileSync(join(ws.path, '.que', 'brief.md'), 'utf8')).toBe(brief)
     expect(gitIn(ws.path, 'status', '--porcelain')).toBe('')

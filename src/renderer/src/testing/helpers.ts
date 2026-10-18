@@ -16,3 +16,8 @@ export async function openWorkspace(
 
   return pane.dataset.activeTerm as string
 }
+
+/** The ISO time `minutes` before `now`: a fixture's `finishedAt`, `seenAt` or `at`. */
+export function minutesAgo(now: number, minutes: number): string {
+  return new Date(now - minutes * 60_000).toISOString()
+}
