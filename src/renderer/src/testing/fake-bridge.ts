@@ -33,6 +33,7 @@ import type {
 import { quietMessage } from '../../../daemon/quiet-hours'
 import { buildReport } from '../../../daemon/report'
 import { titleOf } from '../../../shared/brief'
+import { patchToToml } from '../../../shared/config-keys.decode'
 import { mergeConfigPatch } from '../../../shared/config-patch.decode'
 import { randomWorkspaceName } from '../../../shared/names'
 import {
@@ -108,6 +109,8 @@ class FakeBridge {
   private unlocks: QuietUnlock[] = []
   private unlockRequests: Array<{ minutes?: number; why?: string }> = []
   private configBook: ConfigGetResult = defaultConfigBook()
+  /** The config file's table, as the daemon would hold it: what config.set patches end up as. */
+  private configRaw: Record<string, unknown> = {}
   private configSets: ConfigSetParams[] = []
   /** The daemon's refusal of the next config.set, if one is set. */
   private configRefusal: string | null = null
@@ -162,13 +165,10 @@ class FakeBridge {
           }
 
           this.configSets.push(structuredClone(p))
-          this.configBook = {
-            ...this.configBook,
-            raw: mergeConfigPatch(this.configBook.raw, p.patch)
-          }
+          this.configRaw = mergeConfigPatch(this.configRaw, patchToToml(p.patch))
 
-          if ('instructions_file' in p.patch) {
-            const file = p.patch.instructions_file
+          if ('instructionsFile' in p.patch) {
+            const file = p.patch.instructionsFile
             this.configBook.config = {
               ...this.configBook.config,
               instructionsFile: typeof file === 'string' && file !== '' ? file : undefined
@@ -667,7 +667,13 @@ class FakeBridge {
 
   /** Puts a config in the book silently (what config.get answers). Call before render(). */
   setConfig(config: Partial<UserConfig>, raw: Record<string, unknown> = {}): void {
-    this.configBook = { ...this.configBook, config: makeUserConfig(config), raw }
+    this.configBook = { ...this.configBook, config: makeUserConfig(config) }
+    this.configRaw = raw
+  }
+
+  /** The config file's table after the config.set calls so far (the file's own key names). */
+  configFile(): Record<string, unknown> {
+    return structuredClone(this.configRaw)
   }
 
   /** The instructions file's text (instructions.get); null means it does not exist yet. */
@@ -1090,6 +1096,7 @@ class FakeBridge {
     this.unlocks = []
     this.unlockRequests = []
     this.configBook = defaultConfigBook()
+    this.configRaw = {}
     this.configSets = []
     this.configRefusal = null
     this.configHeld = null
@@ -1202,7 +1209,7 @@ function toInfo({ input: _input, screen: _screen, ...info }: FakeTerminal): Term
 }
 
 function defaultConfigBook(): ConfigGetResult {
-  return { path: '/Users/dev/.config/que/config.toml', config: makeUserConfig(), raw: {} }
+  return { path: '/Users/dev/.config/que/config.toml', config: makeUserConfig() }
 }
 
 function closedQueue(): QueueState {

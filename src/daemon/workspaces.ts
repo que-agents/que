@@ -7,7 +7,6 @@ import { basename, dirname, isAbsolute, join, normalize, resolve } from 'node:pa
 import { titleOf } from '../shared/brief'
 import {
   formatConfigErrors,
-  loadConfig,
   loadRepoConfig,
   type RepoConfig,
   resolvePermissionMode,
@@ -123,6 +122,8 @@ export interface WorkspaceManagerOptions {
   emit: Emit
   /** Kills (and announces) every terminal of a workspace. */
   killTerminals: (workspaceId: string) => void
+  /** The user config; throws bad_request when the file cannot be read. */
+  config: () => UserConfig
   log?: (msg: string) => void
   /** Draws a name for a workspace created without one (default: randomWorkspaceName). */
   randomName?: () => string
@@ -135,14 +136,6 @@ export class WorkspaceManager {
 
   private log(msg: string): void {
     this.opts.log?.(msg)
-  }
-
-  config(): UserConfig {
-    const r = loadConfig({ queHome: this.opts.paths.home })
-
-    if (!r.ok) throw badRequest(`invalid que config: ${formatConfigErrors(r.errors)}`)
-
-    return r.config
   }
 
   private repoConfig(repo: string): RepoConfig {
@@ -165,7 +158,7 @@ export class WorkspaceManager {
 
     if (p.repo !== undefined) {
       // A configured name wins over a directory of the same name, as `-r` always has.
-      const named = this.config().repos[p.repo]
+      const named = this.opts.config().repos[p.repo]
 
       if (named) {
         dir = named.path
@@ -199,7 +192,7 @@ export class WorkspaceManager {
       throw badRequest(`invalid project name: ${JSON.stringify(name)}`)
     }
 
-    const configured = Object.values(this.config().repos).find((r) => r.path === path)
+    const configured = Object.values(this.opts.config().repos).find((r) => r.path === path)
 
     const defaultBranch =
       this.repoConfig(path).defaultBranch ??
@@ -298,7 +291,7 @@ export class WorkspaceManager {
       throw badRequest(`invalid branch name ${JSON.stringify(wanted)}`)
     }
 
-    const config = this.config()
+    const config = this.opts.config()
     const repo = this.repoConfig(project.path)
 
     // The first free name: only the given one for an explicit name, else up to 50 draws.

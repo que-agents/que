@@ -101,7 +101,7 @@ describe('SettingsView', () => {
 
       await waitFor(() => {
         expect(fakeBridge.configSetCalls()).toEqual([
-          { patch: { notifications: { chime_on_complete: false } }, applyTonight: false }
+          { patch: { notifications: { chimeOnComplete: false } }, applyTonight: false }
         ])
       })
       expect(await screen.findByTestId('settings-chime-complete-saved')).toHaveTextContent('Saved')
@@ -123,7 +123,7 @@ describe('SettingsView', () => {
 
       await waitFor(() => {
         expect(fakeBridge.configSetCalls()).toEqual([
-          { patch: { quiet_hours: { unlock_minutes: 30 } }, applyTonight: false }
+          { patch: { quietHours: { unlockMinutes: 30 } }, applyTonight: false }
         ])
       })
       expect(await screen.findByTestId('settings-unlock-minutes-saved')).toBeInTheDocument()
@@ -139,7 +139,7 @@ describe('SettingsView', () => {
 
       await waitFor(() => {
         expect(fakeBridge.configSetCalls()).toEqual([
-          { patch: { jira: { poll_minutes: 10 } }, applyTonight: false }
+          { patch: { jira: { pollMinutes: 10 } }, applyTonight: false }
         ])
       })
       expect(poll).toHaveFocus()
@@ -159,7 +159,7 @@ describe('SettingsView', () => {
 
       await waitFor(() => {
         expect(fakeBridge.configSetCalls()).toEqual([
-          { patch: { jira: { start_prompt: 'Plan first.\nThen ask.' } }, applyTonight: false }
+          { patch: { jira: { startPrompt: 'Plan first.\nThen ask.' } }, applyTonight: false }
         ])
       })
     })
@@ -177,7 +177,7 @@ describe('SettingsView', () => {
 
       await waitFor(() => {
         expect(fakeBridge.configSetCalls()).toEqual([
-          { patch: { protected_branches: ['main', 'release', 'hotfix'] }, applyTonight: false }
+          { patch: { protectedBranches: ['main', 'release', 'hotfix'] }, applyTonight: false }
         ])
       })
     })
@@ -192,7 +192,7 @@ describe('SettingsView', () => {
 
       await waitFor(() => expect(fakeBridge.configSetCalls()).toHaveLength(1))
       expect(fakeBridge.configSetCalls()[0].patch).toEqual({
-        notifications: { chime_on_needs_input: true }
+        notifications: { chimeOnNeedsInput: true }
       })
     })
 
@@ -233,10 +233,10 @@ describe('SettingsView', () => {
 
       await waitFor(() => expect(fakeBridge.configSetCalls()).toHaveLength(4))
       expect(fakeBridge.configSetCalls().map((c) => c.patch)).toEqual([
-        { quiet_hours: { default: ['20:00', '07:00'] } },
-        { quiet_hours: { saturday: null } },
-        { quiet_hours: { monday: ['19:00', '07:00'] } },
-        { quiet_hours: { monday: ['19:00', '06:30'] } }
+        { quietHours: { default: { start: '20:00', end: '07:00' } } },
+        { quietHours: { days: { saturday: null } } },
+        { quietHours: { days: { monday: { start: '19:00', end: '07:00' } } } },
+        { quietHours: { days: { monday: { start: '19:00', end: '06:30' } } } }
       ])
       expect(await screen.findByTestId('settings-day-monday-saved')).toBeInTheDocument()
     })
@@ -263,14 +263,14 @@ describe('SettingsView', () => {
       await user.click(screen.getByTestId('settings-morning-summary'))
       await waitFor(() => {
         expect(fakeBridge.configSetCalls()).toEqual([
-          { patch: { notifications: { morning_summary: true } }, applyTonight: false }
+          { patch: { notifications: { morningSummary: true } }, applyTonight: false }
         ])
       })
 
       await retype(user, unlock, '25')
       await user.tab()
       await waitFor(() => expect(fakeBridge.configSetCalls()).toHaveLength(2))
-      expect(fakeBridge.configSetCalls()[1].patch).toEqual({ quiet_hours: { unlock_minutes: 25 } })
+      expect(fakeBridge.configSetCalls()[1].patch).toEqual({ quietHours: { unlockMinutes: 25 } })
       expect(screen.queryByTestId('settings-unlock-minutes-error')).not.toBeInTheDocument()
     })
 
@@ -318,8 +318,8 @@ describe('SettingsView', () => {
 
       await waitFor(() => expect(fakeBridge.configSetCalls()).toHaveLength(2))
       expect(fakeBridge.configSetCalls().map((c) => c.patch)).toEqual([
-        { jira: { poll_minutes: 10 } },
-        { jira: { poll_minutes: 12 } }
+        { jira: { pollMinutes: 10 } },
+        { jira: { pollMinutes: 12 } }
       ])
       expect(poll).toHaveValue(12)
     })
@@ -347,10 +347,10 @@ describe('SettingsView', () => {
 
       await waitFor(() => expect(fakeBridge.configSetCalls()).toHaveLength(2))
       expect(fakeBridge.configSetCalls().map((c) => c.patch)).toEqual([
-        { quiet_hours: { default: ['21:15', '07:00'] } },
-        { quiet_hours: { default: ['21:15', '06:30'] } }
+        { quietHours: { default: { start: '21:15', end: '07:00' } } },
+        { quietHours: { default: { start: '21:15', end: '06:30' } } }
       ])
-      expect((await fakeBridge.api.config.get()).raw).toEqual({
+      expect(fakeBridge.configFile()).toEqual({
         quiet_hours: { default: ['21:15', '06:30'] }
       })
       expect(screen.getByTestId('settings-quiet-start')).toHaveValue('21:15')
@@ -382,7 +382,7 @@ describe('SettingsView', () => {
 
       await waitFor(() => {
         expect(fakeBridge.configSetCalls()).toEqual([
-          { patch: { quiet_hours: { enabled: false } }, applyTonight: true }
+          { patch: { quietHours: { enabled: false } }, applyTonight: true }
         ])
       })
       expect(screen.queryByTestId('settings-apply-tonight-confirm')).not.toBeInTheDocument()
@@ -408,7 +408,7 @@ describe('SettingsView', () => {
 
       await waitFor(() => {
         expect(fakeBridge.configSetCalls()).toEqual([
-          { patch: { quiet_hours: { enabled: false } }, applyTonight: false }
+          { patch: { quietHours: { enabled: false } }, applyTonight: false }
         ])
       })
     })
@@ -462,8 +462,8 @@ describe('SettingsView new workspaces', () => {
 
     await waitFor(() => expect(fakeBridge.configSetCalls()).toHaveLength(2))
     expect(fakeBridge.configSetCalls().map((c) => c.patch)).toEqual([
-      { start_prompt: suggestion },
-      { start_prompt: 'Read .que/brief.md and ask before editing.' }
+      { startPrompt: suggestion },
+      { startPrompt: 'Read .que/brief.md and ask before editing.' }
     ])
   })
 
@@ -482,17 +482,17 @@ describe('SettingsView new workspaces', () => {
 
     await waitFor(() => {
       expect(fakeBridge.configSetCalls().at(-1)?.patch).toEqual({
-        start_prompt: 'Plan from .que/brief.md first.'
+        startPrompt: 'Plan from .que/brief.md first.'
       })
     })
     expect(fakeBridge.configSetCalls().map((c) => c.patch)).toEqual([
       {
-        start_prompt:
+        startPrompt:
           'Read .que/brief.md. Restate the goal, read the relevant code, and propose a plan before editing anything.'
       },
-      { start_prompt: 'Plan from .que/brief.md first.' }
+      { startPrompt: 'Plan from .que/brief.md first.' }
     ])
-    expect((await fakeBridge.api.config.get()).raw).toEqual({
+    expect(fakeBridge.configFile()).toEqual({
       start_prompt: 'Plan from .que/brief.md first.'
     })
   })
@@ -511,7 +511,7 @@ describe('SettingsView new workspaces', () => {
 
     await waitFor(() => {
       expect(fakeBridge.configSetCalls()).toEqual([
-        { patch: { start_prompt: null }, applyTonight: false }
+        { patch: { startPrompt: null }, applyTonight: false }
       ])
     })
     expect(await screen.findByTestId('settings-start-prompt-enabled-saved')).toBeInTheDocument()
@@ -656,7 +656,7 @@ describe('SettingsView instructions', () => {
 
     await waitFor(() => {
       expect(fakeBridge.configSetCalls()).toEqual([
-        { patch: { instructions_file: '~/notes/delegation.md' }, applyTonight: false }
+        { patch: { instructionsFile: '~/notes/delegation.md' }, applyTonight: false }
       ])
     })
     await waitFor(() => expect(content).toBeEnabled())
@@ -690,7 +690,7 @@ describe('SettingsView instructions', () => {
 
     await waitFor(() => {
       expect(fakeBridge.configSetCalls()).toEqual([
-        { patch: { instructions_file: null }, applyTonight: false }
+        { patch: { instructionsFile: null }, applyTonight: false }
       ])
     })
     await waitFor(() => {
@@ -724,8 +724,8 @@ describe('SettingsView sidebar titles', () => {
     await waitFor(() => expect(fakeBridge.configSetCalls()).toHaveLength(3))
     expect(fakeBridge.configSetCalls().map((c) => c.patch)).toEqual([
       { summaries: false },
-      { summary_model: 'sonnet' },
-      { summary_interval_minutes: 15 }
+      { summaryModel: 'sonnet' },
+      { summaryIntervalMinutes: 15 }
     ])
   })
 

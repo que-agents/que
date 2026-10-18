@@ -8,7 +8,6 @@ import {
   type ConfigPatch,
   HHMM,
   type JiraConfig,
-  type JsonValue,
   WEEKDAYS,
   type DayWindow,
   type NotificationsConfig,
@@ -37,7 +36,10 @@ export {
   MAX_SUMMARY_INTERVAL_MINUTES
 } from './config-defaults'
 
-import { isTable } from './config-patch.decode'
+import { patchPathOf } from './config-keys.decode'
+import { mergeConfigPatch } from './config-patch.decode'
+
+export { patchToToml } from './config-keys.decode'
 
 export { mergeConfigPatch } from './config-patch.decode'
 
@@ -456,24 +458,19 @@ export function stringifyConfig(raw: Record<string, unknown>): string {
   return stringifyToml(raw)
 }
 
-/** Combines two patches (the later wins, tables combine key by key), keeping `null` (a removal) as a value. */
+/** Combines two patches (the later wins, sections combine key by key), keeping `null` (a clear) as a value. */
 export function combineConfigPatches(a: ConfigPatch, b: ConfigPatch): ConfigPatch {
-  const out = { ...a }
-
-  for (const [k, v] of Object.entries(b)) {
-    const prev = out[k]
-    out[k] = isTable(prev) && isTable(v) ? combineConfigPatches(prev, v) : v
-  }
-
-  return out
+  return mergeConfigPatch(a, b, true) as ConfigPatch
 }
 
 /** Keys whose value is a list even when `que config set` is given one item. */
 const LIST_KEYS = new Set(['protected_branches', 'quiet_hours.default'])
 
 /**
- * `que config set key=value`: a dotted key into a nested patch, the value read
- * as a boolean, a number, `null` (remove), a comma list, or else a string.
+ * `que config set key=value`: the key as the config file spells it (dotted, e.g.
+ * `quiet_hours.unlock_minutes`) mapped to a typed patch, the value read as a
+ * boolean, a number, `null` (clear), a comma list, or else a string. A quiet
+ * hours window is written `start,end`; a weekday may also be `none`.
  */
 export function parseConfigAssignment(arg: string): ConfigPatch {
   const eq = arg.indexOf('=')
@@ -481,9 +478,8 @@ export function parseConfigAssignment(arg: string): ConfigPatch {
   if (eq <= 0) throw new Error(`expected key=value, got ${JSON.stringify(arg)}`)
   const key = arg.slice(0, eq).trim()
   const text = arg.slice(eq + 1).trim()
-  const parts = key.split('.')
 
-  if (parts.some((p) => p === '')) throw new Error(`invalid key ${JSON.stringify(key)}`)
+  if (key.split('.').some((p) => p === '')) throw new Error(`invalid key ${JSON.stringify(key)}`)
 
   const scalar = (s: string): boolean | number | string => {
     if (s === 'true') return true
@@ -495,24 +491,32 @@ export function parseConfigAssignment(arg: string): ConfigPatch {
     return s
   }
 
-  let value: JsonValue
+  let value: unknown
 
   if (text === 'null') value = null
   else if (text.includes(',')) value = text.split(',').map((x) => x.trim())
   else if (LIST_KEYS.has(key)) value = [text]
   else value = scalar(text)
-  const patch: ConfigPatch = {}
+  const { path, window } = patchPathOf(key)
+
+  // The CLI only turns `a,b` into a window; the daemon refuses a bad one when it reads the file.
+  if (window && Array.isArray(value)) {
+    if (value.length !== 2) throw new Error(`${key}: must be ["HH:MM", "HH:MM"] (start, end)`)
+    value = { start: String(value[0]), end: String(value[1]) }
+  }
+
+  const patch: Record<string, unknown> = {}
   let at = patch
 
-  for (const p of parts.slice(0, -1)) {
-    const next: ConfigPatch = {}
+  for (const p of path.slice(0, -1)) {
+    const next: Record<string, unknown> = {}
     at[p] = next
     at = next
   }
 
-  at[parts[parts.length - 1]] = value
+  at[path[path.length - 1]] = value
 
-  return patch
+  return patch as ConfigPatch
 }
 
 /** A one-line summary of the quiet-hours config for `que doctor` and `que quiet status`. */

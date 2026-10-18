@@ -23,6 +23,7 @@ import {
   loadRepoConfig,
   mergeConfigPatch,
   parseConfig,
+  patchToToml,
   readRawConfig,
   stringifyConfig,
   type UserConfig
@@ -36,7 +37,7 @@ import type {
   TermInfo,
   WorkspaceStartResult
 } from '../shared/protocol'
-import type { Workspace } from '../shared/types'
+import type { ConfigPatch, Workspace } from '../shared/types'
 import { EventBus } from './bus'
 import { RpcError } from './errors'
 import type { HostedTerminal, PtyHost, TermExtra } from './pty-host'
@@ -160,6 +161,8 @@ export class DaemonServer {
   /** The last good user config, the file stamp it was read at, and when the file was last statted. */
   private config: UserConfig
   private configStamp = ''
+  /** Why the file's last read failed, or null when it read cleanly. */
+  private configError: string | null = null
   private configCheckedAt = Number.NEGATIVE_INFINITY
   /** Watches the worktrees of the workspaces clients asked for with workspace.watch (workspace.changed). */
   readonly watcher = new WorktreeWatcher((id) => this.bus.emit('workspace.changed', { id }), {
@@ -191,7 +194,8 @@ export class DaemonServer {
       emit,
       killTerminals: (id) => this.killWorkspaceTerminals(id),
       log: (m) => this.log(m),
-      randomName: opts.randomWorkspaceName
+      randomName: opts.randomWorkspaceName,
+      config: () => this.strictConfig()
     })
     this.summaries = new Summarizer({
       store: this.store,
@@ -284,9 +288,16 @@ export class DaemonServer {
    * file keeps the last good config.
    */
   private configOrDefault(): UserConfig {
+    return this.readConfig().config
+  }
+
+  /** The config and the error of the file as last read (null when it read). `fresh` skips the once-a-second throttle. */
+  private readConfig(fresh = false): { config: UserConfig; error: string | null } {
     const now = performance.now()
 
-    if (now - this.configCheckedAt < CONFIG_RECHECK_MS) return this.config
+    if (!fresh && now - this.configCheckedAt < CONFIG_RECHECK_MS) {
+      return { config: this.config, error: this.configError }
+    }
 
     this.configCheckedAt = now
     const path = configPath()
@@ -303,29 +314,37 @@ export class DaemonServer {
       this.configStamp = stamp
       const r = loadConfig({ queHome: this.paths.home }, path)
 
-      if (r.ok) this.config = r.config
-      else
-        this.log(
-          `config ${path} is invalid; keeping the last good one: ${formatConfigErrors(r.errors)}`
-        )
+      if (r.ok) {
+        this.config = r.config
+        this.configError = null
+      } else {
+        this.configError = formatConfigErrors(r.errors)
+        this.log(`config ${path} is invalid; keeping the last good one: ${this.configError}`)
+      }
     }
 
-    return this.config
+    return { config: this.config, error: this.configError }
+  }
+
+  /**
+   * The config for creating a project or workspace, which refuses a file that
+   * does not read rather than carry on with the last good one. The file is
+   * checked now, so a fix is seen at once.
+   */
+  private strictConfig(): UserConfig {
+    const { config, error } = this.readConfig(true)
+
+    if (error !== null) throw new RpcError(ErrorCodes.BadRequest, `invalid que config: ${error}`)
+
+    return config
   }
 
   private getConfig(): ConfigGetResult {
-    const path = configPath()
-    const raw = readRawConfig(path)
-
-    return { path, config: this.configOrDefault(), raw: raw.ok ? raw.config : {} }
+    return { path: configPath(), config: this.configOrDefault() }
   }
 
   /** Merges a patch into the config file, validates, writes, and reloads it. */
-  private setConfig(patch: unknown, applyTonight: boolean): ConfigGetResult {
-    if (typeof patch !== 'object' || patch === null || Array.isArray(patch)) {
-      throw new RpcError(ErrorCodes.BadRequest, 'patch must be an object')
-    }
-
+  private setConfig(patch: ConfigPatch, applyTonight: boolean): ConfigGetResult {
     const path = configPath()
     const raw = readRawConfig(path)
 
@@ -333,7 +352,15 @@ export class DaemonServer {
       throw new RpcError(ErrorCodes.BadRequest, `${path}: ${formatConfigErrors(raw.errors)}`)
     }
 
-    const merged = mergeConfigPatch(raw.config, patch as Record<string, unknown>)
+    let changes: Record<string, unknown>
+
+    try {
+      changes = patchToToml(patch)
+    } catch (err) {
+      throw new RpcError(ErrorCodes.BadRequest, errorMessage(err))
+    }
+
+    const merged = mergeConfigPatch(raw.config, changes)
     // smol-toml writes the table back without the file's comments.
     const text = stringifyConfig(merged)
     const parsed = parseConfig(text, { queHome: this.paths.home })
@@ -350,8 +377,7 @@ export class DaemonServer {
     fs.writeFileSync(tmp, text.endsWith('\n') ? text : `${text}\n`)
     fs.renameSync(tmp, path)
     this.configStamp = ''
-    this.configCheckedAt = Number.NEGATIVE_INFINITY
-    this.configOrDefault()
+    this.readConfig(true)
     this.log(`config ${path} updated${applyTonight ? ' (apply tonight)' : ''}`)
     this.quiet.configChanged(applyTonight)
     this.tasks.kick()

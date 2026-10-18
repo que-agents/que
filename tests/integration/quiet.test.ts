@@ -195,7 +195,6 @@ describe('quiet hours', () => {
       const r = await d.client.request('config.set', { patch: { concurrency: 3 } })
 
       expect(r.config.concurrency).toBe(3)
-      expect(r.raw).toMatchObject({ concurrency: 3, quiet_hours: { enabled: true } })
       expect((await d.client.request('queue.state')).concurrency).toBe(3)
       await expect.poll(() => changed.length).toBe(1)
       expect(changed[0].path).toBe(d.configPath)
@@ -205,7 +204,9 @@ describe('quiet hours', () => {
       const d = await start(QUIET(), new Date(2026, 9, 14, 12, 0))
 
       await expect(
-        d.client.request('config.set', { patch: { quiet_hours: { default: ['19:00', '19:00'] } } })
+        d.client.request('config.set', {
+          patch: { quietHours: { default: { start: '19:00', end: '19:00' } } }
+        })
       ).rejects.toMatchObject({
         code: 'bad_request',
         message: 'invalid config: quiet_hours.default: start and end must differ'
@@ -218,7 +219,7 @@ describe('quiet hours', () => {
 
     it("keeps tonight's window when an edit would end it early, unless applyTonight", async () => {
       const d = await start(QUIET(), NIGHT)
-      const shorter = { quiet_hours: { default: ['19:00', '01:00'] } }
+      const shorter = { quietHours: { default: { start: '19:00', end: '01:00' } } }
 
       const saved = await d.client.request('config.set', { patch: shorter })
 

@@ -2,11 +2,13 @@ import os from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
+  combineConfigPatches,
   defaultJira,
   mergeConfigPatch,
   parseConfig,
   parseConfigAssignment,
   parseRepoConfig,
+  patchToToml,
   parseWorktreeInclude,
   resolvePermissionMode,
   stringifyConfig
@@ -241,14 +243,19 @@ start_prompt = 3
 
     it('round-trips through a `que config set` patch', () => {
       const patch = parseConfigAssignment('instructions_file=~/notes/delegation.md')
-      expect(patch).toEqual({ instructions_file: '~/notes/delegation.md' })
+      expect(patch).toEqual({ instructionsFile: '~/notes/delegation.md' })
 
-      const merged = mergeConfigPatch({ concurrency: 3 }, patch)
+      const merged = mergeConfigPatch({ concurrency: 3 }, patchToToml(patch))
       expect(parseConfig(stringifyConfig(merged), env)).toMatchObject({
         ok: true,
         config: { concurrency: 3, instructionsFile: join(os.homedir(), 'notes/delegation.md') }
       })
-      const removed = mergeConfigPatch(merged, parseConfigAssignment('instructions_file=null'))
+
+      const removed = mergeConfigPatch(
+        merged,
+        patchToToml(parseConfigAssignment('instructions_file=null'))
+      )
+
       expect(removed).toEqual({ concurrency: 3 })
     })
   })
@@ -425,23 +432,197 @@ describe('config patches', () => {
 
   it('reads `que config set` assignments: dotted keys, booleans, numbers, lists and null', () => {
     expect(parseConfigAssignment('quiet_hours.default=19:30,07:15')).toEqual({
-      quiet_hours: { default: ['19:30', '07:15'] }
+      quietHours: { default: { start: '19:30', end: '07:15' } }
     })
     expect(parseConfigAssignment('notifications.chime_on_complete=false')).toEqual({
-      notifications: { chime_on_complete: false }
+      notifications: { chimeOnComplete: false }
     })
     expect(parseConfigAssignment('quiet_hours.unlock_minutes=0.5')).toEqual({
-      quiet_hours: { unlock_minutes: 0.5 }
+      quietHours: { unlockMinutes: 0.5 }
     })
     expect(parseConfigAssignment('protected_branches=production')).toEqual({
-      protected_branches: ['production']
+      protectedBranches: ['production']
     })
     expect(parseConfigAssignment('quiet_hours.saturday=none')).toEqual({
-      quiet_hours: { saturday: 'none' }
+      quietHours: { days: { saturday: 'none' } }
     })
     expect(parseConfigAssignment('quiet_hours.saturday=null')).toEqual({
-      quiet_hours: { saturday: null }
+      quietHours: { days: { saturday: null } }
+    })
+    expect(parseConfigAssignment('quiet_hours.monday=21:00,06:30')).toEqual({
+      quietHours: { days: { monday: { start: '21:00', end: '06:30' } } }
+    })
+    expect(parseConfigAssignment('jira.projects.APP=uploader')).toEqual({
+      jira: { projects: { APP: 'uploader' } }
+    })
+    expect(parseConfigAssignment('repos.uploader.default_branch=develop')).toEqual({
+      repos: { uploader: { defaultBranch: 'develop' } }
     })
     expect(() => parseConfigAssignment('concurrency')).toThrow('expected key=value')
+  })
+
+  it('refuses an assignment to a key the config does not have, or a window of the wrong shape', () => {
+    expect(() => parseConfigAssignment('concurency=3')).toThrow('unknown config key "concurency"')
+    expect(() => parseConfigAssignment('quiet_hours.nope=3')).toThrow(
+      'unknown config key "quiet_hours.nope"'
+    )
+    expect(() => parseConfigAssignment('quiet_hours.default=19:00')).toThrow(
+      'quiet_hours.default: must be ["HH:MM", "HH:MM"] (start, end)'
+    )
+  })
+
+  it('combines assignments, the later winning key by key', () => {
+    const patch = [
+      'quiet_hours.unlock_minutes=15',
+      'quiet_hours.enabled=false',
+      'quiet_hours.unlock_minutes=30'
+    ]
+      .map(parseConfigAssignment)
+      .reduce(combineConfigPatches)
+
+    expect(patch).toEqual({ quietHours: { unlockMinutes: 30, enabled: false } })
+  })
+})
+
+describe('patchToToml', () => {
+  it('writes top-level settings under the file key names', () => {
+    expect(
+      patchToToml({
+        stallTimeoutMinutes: 8,
+        protectedBranches: ['main', 'hotfix'],
+        instructionsFile: '~/notes/delegation.md',
+        startPrompt: 'Plan first.',
+        summaryModel: 'sonnet',
+        summaryIntervalMinutes: 15,
+        allowBypassPermissions: true
+      })
+    ).toEqual({
+      stall_timeout_minutes: 8,
+      protected_branches: ['main', 'hotfix'],
+      instructions_file: '~/notes/delegation.md',
+      start_prompt: 'Plan first.',
+      summary_model: 'sonnet',
+      summary_interval_minutes: 15,
+      allow_bypass_permissions: true
+    })
+  })
+
+  it('writes quiet hours with windows as [start, end] and weekday overrides beside them', () => {
+    expect(
+      patchToToml({
+        quietHours: {
+          enabled: false,
+          default: { start: '20:00', end: '06:00' },
+          unlockMinutes: 30,
+          days: { saturday: 'none', monday: { start: '21:00', end: '06:30' }, friday: null }
+        }
+      })
+    ).toEqual({
+      quiet_hours: {
+        enabled: false,
+        default: ['20:00', '06:00'],
+        unlock_minutes: 30,
+        saturday: 'none',
+        monday: ['21:00', '06:30'],
+        friday: null
+      }
+    })
+  })
+
+  it('writes notifications and the ticket settings', () => {
+    expect(
+      patchToToml({
+        notifications: { chimeOnComplete: false, chimeOnNeedsInput: true, morningSummary: false },
+        jira: {
+          jql: 'assignee = currentUser()',
+          pollMinutes: 10,
+          site: null,
+          startPrompt: 'Read .que/ticket.md',
+          projects: { APP: 'uploader', OLD: null }
+        }
+      })
+    ).toEqual({
+      notifications: {
+        chime_on_complete: false,
+        chime_on_needs_input: true,
+        morning_summary: false
+      },
+      jira: {
+        jql: 'assignee = currentUser()',
+        poll_minutes: 10,
+        site: null,
+        start_prompt: 'Read .que/ticket.md',
+        projects: { APP: 'uploader', OLD: null }
+      }
+    })
+  })
+
+  it('writes a repo entry, and a removed entry as null', () => {
+    expect(
+      patchToToml({
+        repos: {
+          uploader: { path: '/Users/dev/code/uploader', defaultBranch: 'develop' },
+          old: null
+        }
+      })
+    ).toEqual({
+      repos: {
+        uploader: { path: '/Users/dev/code/uploader', default_branch: 'develop' },
+        old: null
+      }
+    })
+  })
+
+  it('keeps null as a removal when merged into the file, and leaves other keys alone', () => {
+    const file = {
+      concurrency: 2,
+      instructions_file: '/Users/dev/notes.md',
+      quiet_hours: { enabled: true, saturday: 'none' },
+      repos: { uploader: { path: '/Users/dev/code/uploader' }, old: { path: '/Users/dev/old' } }
+    }
+
+    const merged = mergeConfigPatch(
+      file,
+      patchToToml({
+        instructionsFile: null,
+        quietHours: { days: { saturday: null } },
+        repos: { old: null }
+      })
+    )
+
+    expect(merged).toEqual({
+      concurrency: 2,
+      quiet_hours: { enabled: true },
+      repos: { uploader: { path: '/Users/dev/code/uploader' } }
+    })
+  })
+
+  it('names a key a patch does not have', () => {
+    expect(() => patchToToml({ concurency: 3 } as never)).toThrow('unknown config key "concurency"')
+    expect(() => patchToToml({ jira: { jqll: 'x' } } as never)).toThrow(
+      'unknown config key "jira.jqll"'
+    )
+    expect(() => patchToToml({ quietHours: { days: { someday: 'none' } } } as never)).toThrow(
+      'unknown config key "quietHours.days.someday"'
+    )
+  })
+
+  it('produces a file that reads back as the config the patch described', () => {
+    const file = patchToToml({
+      concurrency: 4,
+      quietHours: { default: { start: '20:00', end: '06:00' }, days: { monday: 'none' } },
+      jira: { projects: { APP: 'uploader' } },
+      repos: { uploader: { path: '/Users/dev/code/uploader', defaultBranch: 'develop' } }
+    })
+
+    expect(parseConfig(stringifyConfig(file), env)).toMatchObject({
+      ok: true,
+      config: {
+        concurrency: 4,
+        quietHours: { default: { start: '20:00', end: '06:00' }, days: { monday: 'none' } },
+        jira: { projects: { APP: 'uploader' } },
+        repos: { uploader: { path: '/Users/dev/code/uploader', defaultBranch: 'develop' } }
+      }
+    })
   })
 })
