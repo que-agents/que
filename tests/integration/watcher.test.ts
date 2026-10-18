@@ -1,7 +1,7 @@
 // The worktree watcher on the in-process daemon against real linked worktrees
 // of a temp repo: a workspace is watched while a client asks to watch it
-// (workspace.watch) or is attached to one of its terminals, and a change in its worktree or a commit sends one
-// workspace.changed. Exactness is shown with a sentinel: a second watched
+// (workspace.watch), whatever terminals are attached, and a change in its
+// worktree or a commit sends one workspace.changed. Exactness is shown with a sentinel: a second watched
 // workspace's change is written after the first one's, so its event arrives
 // after any event the first change could still produce.
 import fs from 'node:fs'
@@ -71,9 +71,8 @@ async function sentinel(ws: Workspace, file: string): Promise<void> {
 }
 
 /**
- * Watches `ws` and `other` (by attaching to a terminal of each unless told
- * another way), then settles. The system starts a new watch
- * asynchronously, so a write right after the attach can go unseen: the
+ * Watches `ws` and `other` with workspace.watch, then settles. The system
+ * starts a new watch asynchronously, so a write right after the watch can go unseen: the
  * sentinel file is rewritten on every poll until `other` reports a change,
  * which shows the watches (started before it, on the same event stream) are
  * live and that events from writes made earlier (setup, staging) have
@@ -82,7 +81,7 @@ async function sentinel(ws: Workspace, file: string): Promise<void> {
 async function watchBoth(
   ws: Workspace,
   other: Workspace,
-  start: (w: Workspace) => Promise<string> | Promise<void> = attach
+  start: (w: Workspace) => Promise<void> = watch
 ): Promise<number> {
   await start(ws)
   await start(other)
@@ -157,7 +156,7 @@ describe('worktree watcher', () => {
     it('watches a workspace with no terminal attached and sends one event for a write', async () => {
       const ws = await createWorkspace('app-1611-watch-shown')
       const other = await createWorkspace('app-1612-sentinel')
-      const base = await watchBoth(ws, other, watch)
+      const base = await watchBoth(ws, other)
       expect(daemon.server.watcher.watching().sort()).toEqual([ws.id, other.id].sort())
 
       fs.writeFileSync(join(ws.path, 'notes.txt'), 'retry on 503\n')
@@ -177,14 +176,19 @@ describe('worktree watcher', () => {
       expect(daemon.server.watcher.watching()).toEqual([])
     }, 30_000)
 
-    it('keeps watching while a terminal is attached after workspace.unwatch', async () => {
+    it('stops watching after workspace.unwatch even while a terminal is attached', async () => {
       const ws = await createWorkspace('app-1614-watch-both')
-      await watch(ws)
+      const other = await createWorkspace('app-1616-sentinel')
       await attach(ws)
+      await watchBoth(ws, other)
 
       await daemon.client.request('workspace.unwatch', { id: ws.id })
+      expect(daemon.server.watcher.watching()).toEqual([other.id])
+      const base = count(ws.id)
+      fs.writeFileSync(join(ws.path, 'notes.txt'), 'retry on 503\n')
 
-      expect(daemon.server.watcher.watching()).toEqual([ws.id])
+      await sentinel(other, 'one.txt')
+      expect(count(ws.id)).toBe(base)
     }, 30_000)
 
     it('stops watching when the watching connection closes', async () => {
@@ -208,27 +212,34 @@ describe('worktree watcher', () => {
   })
 
   describe('lifecycle', () => {
-    it('watches only while a terminal of the workspace is attached', async () => {
-      const ws = await createWorkspace('app-1607-watch-detach')
-      expect(daemon.server.watcher.watching()).toEqual([])
+    it('does not watch a workspace just because a terminal of it is attached', async () => {
+      const ws = await createWorkspace('app-1607-watch-attach')
+      const other = await createWorkspace('app-1617-sentinel')
+      await attach(ws)
+      await watch(other)
+      expect(daemon.server.watcher.watching()).toEqual([other.id])
 
-      const termId = await attach(ws)
-      expect(daemon.server.watcher.watching()).toEqual([ws.id])
+      fs.writeFileSync(join(ws.path, 'notes.txt'), 'retry on 503\n')
 
-      await daemon.client.request('term.detach', { id: termId })
-      expect(daemon.server.watcher.watching()).toEqual([])
+      // The watch on `other` starts asynchronously: rewrite its file until an
+      // event arrives, which comes after anything the write above could cause.
+      let nudge = 0
+      await expect
+        .poll(
+          () => {
+            nudge += 1
+            fs.writeFileSync(join(other.path, 'settle.txt'), `settle ${nudge}\n`)
+
+            return count(other.id)
+          },
+          { timeout: 10_000, interval: 200 }
+        )
+        .toBeGreaterThan(0)
+      await sentinel(other, 'one.txt')
+      expect(count(ws.id)).toBe(0)
     }, 30_000)
 
-    it('stops watching when the attached terminal is killed', async () => {
-      const ws = await createWorkspace('app-1608-watch-kill')
-      const termId = await attach(ws)
-
-      await daemon.client.request('term.kill', { id: termId })
-
-      expect(daemon.server.watcher.watching()).toEqual([])
-    }, 30_000)
-
-    it('stops watching when the attached connection closes', async () => {
+    it('stops watching when the watching connection closes after a terminal attach', async () => {
       const ws = await createWorkspace('app-1610-watch-close')
 
       const { id: termId } = await daemon.client.request('workspace.openTerminal', {
@@ -240,6 +251,7 @@ describe('worktree watcher', () => {
       const window = new DaemonClient(daemon.socket)
       await window.connect()
       await window.request('term.attach', { id: termId, cols: 80, rows: 24 })
+      await window.request('workspace.watch', { id: ws.id })
       expect(daemon.server.watcher.watching()).toEqual([ws.id])
 
       window.close()
@@ -247,9 +259,10 @@ describe('worktree watcher', () => {
       await expect.poll(() => daemon.server.watcher.watching(), { timeout: 10_000 }).toEqual([])
     }, 30_000)
 
-    it('stops watching when the workspace is removed while attached', async () => {
+    it('stops watching when the workspace is removed', async () => {
       const ws = await createWorkspace('app-1609-watch-remove')
-      await attach(ws)
+      await watch(ws)
+      expect(daemon.server.watcher.watching()).toEqual([ws.id])
 
       await daemon.client.request('workspace.remove', { id: ws.id })
 

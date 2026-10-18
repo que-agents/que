@@ -91,7 +91,10 @@ type AfterSend = (fn: () => void) => void
 
 class Connection {
   readonly subs = new Map<string, Subscription>()
-  /** The workspaces this connection asked to watch with workspace.watch. */
+  /**
+   * The workspaces this connection asked to watch with workspace.watch. This
+   * is the only input to worktree watching, and it goes away with the connection.
+   */
   readonly watches = new Set<string>()
   private decoder: MessageDecoder<Request>
 
@@ -233,7 +236,6 @@ export class DaemonServer {
       config: () => this.configOrDefault(),
       detachAll: () => {
         for (const c of this.conns) c.subs.clear()
-        this.syncWatches()
       },
       report: (since) => this.tasks.report(since),
       log: (m) => this.log(m),
@@ -262,8 +264,6 @@ export class DaemonServer {
 
           if (!live) this.status.apply(wsId, { kind: 'terminal_exit' })
         }
-
-        this.syncWatches()
       })
     )
   }
@@ -416,7 +416,6 @@ export class DaemonServer {
     this.log(`term ${id} killed`)
 
     for (const c of this.conns) c.subs.delete(id)
-    this.syncWatches()
     this.broadcast('term.killed', { id })
 
     return true
@@ -629,7 +628,10 @@ export class DaemonServer {
 
   /**
    * Watches the worktree of every workspace some connection asked to watch
-   * (workspace.watch) or has a live terminal attached in, and nothing else.
+   * with workspace.watch, and nothing else. Terminals do not matter here: a
+   * client that wants a workspace watched says so, and its watches end when it
+   * unwatches or its connection closes. Call this when that set changes or a
+   * watched workspace goes away.
    */
   private syncWatches(): void {
     if (this.closed) {
@@ -642,12 +644,6 @@ export class DaemonServer {
 
     for (const c of this.conns) {
       for (const id of c.watches) ids.add(id)
-
-      for (const termId of c.subs.keys()) {
-        const t = this.opts.host.get(termId)
-
-        if (t?.alive && t.workspaceId) ids.add(t.workspaceId)
-      }
     }
 
     const wanted = new Map<string, string>()
@@ -765,19 +761,16 @@ export class DaemonServer {
           t.resize(cols, rows)
           const snapshot = await t.serializeNow()
           afterSend(() => flushPending(conn, t.id, sub))
-          this.syncWatches()
 
           return { snapshot, cols: t.cols, rows: t.rows }
         } catch (e) {
           if (conn.subs.get(t.id) === sub) conn.subs.delete(t.id)
-          this.syncWatches()
           throw e
         }
       }
 
       case 'term.detach': {
         conn.subs.delete(str(p, 'id'))
-        this.syncWatches()
 
         return { ok: true }
       }
@@ -850,7 +843,6 @@ export class DaemonServer {
       case 'workspace.remove':
         this.tasks.stopWorkspace(str(p, 'id'))
         await this.workspaces.remove({ id: str(p, 'id'), deleteBranch: optBool(p, 'deleteBranch') })
-        this.syncWatches()
 
         return { ok: true }
       case 'workspace.openTerminal':

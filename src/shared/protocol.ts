@@ -448,7 +448,12 @@ export interface Methods {
   'workspace.prThread': { params: { id: string; refresh?: boolean }; result: PrThread | null }
   'workspace.files': { params: { id: string }; result: WorkspaceFiles }
   'workspace.readFile': { params: { id: string; path: string }; result: WorkspaceFile }
-  /** Watch this workspace's worktree for this connection (`workspace.changed`). */
+  /**
+   * Watch this workspace's worktree for this connection (`workspace.changed`).
+   * The daemon watches exactly what clients ask for here, whatever terminals
+   * they attach to; a connection's watches end with `workspace.unwatch` or when
+   * it closes.
+   */
   'workspace.watch': { params: { id: string }; result: Ok }
   'workspace.unwatch': { params: { id: string }; result: Ok }
   'hook.event': { params: HookEventParams; result: Ok }
