@@ -775,6 +775,7 @@ export class DaemonServer {
     'workspace.canRenameBranch': async (p) => ({
       allowed: await this.workspaces.canRenameBranch(p.id)
     }),
+    'workspace.seen': (p) => this.workspaces.seen(p.id),
     'workspace.diff': (p) => {
       const ws = this.workspaces.get(p.id)
 

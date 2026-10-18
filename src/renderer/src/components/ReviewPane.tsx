@@ -17,7 +17,7 @@ export default function ReviewPane({ termKey }: { termKey: string }): React.JSX.
 
   return (
     <aside className="review" data-testid="review-pane" data-tab={review.tab} aria-label="Review">
-      <div className="review-bar">
+      <div className="review-bar" data-testid="review-bar">
         <div className="review-tabs" role="tablist" aria-label="Review">
           {TABS.map(({ tab, label }) => (
             <button

@@ -129,7 +129,9 @@ describe('TicketsView', () => {
       await user.selectOptions(select, 'uploader')
       await user.click(within(dialog).getByRole('button', { name: 'Start' }))
 
-      expect(await screen.findByTestId('topbar-title')).toHaveTextContent(WS_NAME)
+      expect(
+        await screen.findByRole('button', { current: 'page', name: new RegExp(WS_NAME) })
+      ).toHaveAttribute('data-testid', expect.stringMatching(/^sidebar-workspace-/))
       const sidebar = screen.getByTestId('sidebar')
       expect(within(sidebar).getByText(WS_NAME)).toBeInTheDocument()
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
@@ -149,7 +151,9 @@ describe('TicketsView', () => {
 
       await user.click(screen.getByTestId('ticket-APP-1432-start'))
 
-      expect(await screen.findByTestId('topbar-title')).toHaveTextContent(WS_NAME)
+      expect(
+        await screen.findByRole('button', { current: 'page', name: new RegExp(WS_NAME) })
+      ).toHaveAttribute('data-testid', expect.stringMatching(/^sidebar-workspace-/))
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     })
 
@@ -169,7 +173,7 @@ describe('TicketsView', () => {
       )
       await user.click(within(dialog).getByRole('button', { name: 'Start' }))
 
-      expect(await screen.findByTestId('topbar-title')).toHaveTextContent('Sessions')
+      expect(await within(sessions).findByRole('button', { current: 'page' })).toBeInTheDocument()
       await waitFor(() =>
         expect(within(sessions).getAllByTestId(/^sidebar-session-.+-open$/)).toHaveLength(
           before + 1

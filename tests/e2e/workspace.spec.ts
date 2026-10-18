@@ -3,12 +3,15 @@
 // a Claude Code session typed into it (the fake, through que's hooks wrapper)
 // reports needs input back to `que status`, and the report lists the workspace
 // as waiting. And a workspace made from a brief in the dialog: under a random
-// three-word name, titled in the sidebar by the background summary of the session (the brief
-// on hover), and claude started on the brief itself in its only terminal.
+// three-word name, titled in the sidebar by the background summary of the session, and
+// claude started on the brief itself in its only terminal. And the card a workspace row
+// opens under a resting pointer: its branch and its pull requests from the fake gh.
 import { expect, test } from '@playwright/test'
 import type { StatusJson } from '../../src/cli/workspaces'
+import { join } from 'node:path'
 import type { TermInfo } from '../../src/shared/protocol'
 import type { Project, Workspace } from '../../src/shared/types'
+import { addFakePullRequest } from '../../src/testing/fakes'
 import { makeTempRepo } from '../../src/testing/temp-repo'
 import { AppShellPage } from './pages/AppShellPage'
 import { ReportPage } from './pages/ReportPage'
@@ -148,12 +151,8 @@ test('a workspace described in a brief gets a random name, a summarised title, a
     workspace = created as Workspace
   })
 
-  await test.step('The sidebar title becomes the summary of the session, the brief on hover', async () => {
+  await test.step('The sidebar title becomes the summary of the session', async () => {
     await expect(sidebar.workspaceName(workspace.id)).toHaveText(summary, { timeout: 15_000 })
-    await expect(sidebar.workspaceOpen(workspace.id)).toHaveAttribute(
-      'title',
-      `${brief}\n${workspace.path}`
-    )
   })
 
   await test.step('Claude starts on the brief itself in the only terminal', async () => {
@@ -171,5 +170,86 @@ test('a workspace described in a brief gets a random name, a summarised title, a
     expect(terms).toHaveLength(1)
     await expect.poll(() => terminal.activeTermId()).toBe(terms[0].id)
     await launched.window.screenshot({ path: 'test-results/workspace-from-brief.png' })
+  })
+})
+
+test('a resting pointer on a workspace row opens its card with the branch and the pull requests', async () => {
+  const repo = makeTempRepo(tempDir('que-e2e-repo-'))
+  // The tracker polls every second here, so the seeded pull requests show up right away.
+  const queHome = newQueHome('pr_poll_seconds = 1\n[quiet_hours]\nenabled = false\n')
+  const prsFile = join(queHome, 'fake-gh-prs.json')
+  const branch = 'app-1432-retry-logic'
+  let workspace: Workspace
+  let sidebar: SidebarPage
+
+  await test.step('Seed two pull requests on the branch, then create the workspace with the CLI', async () => {
+    addFakePullRequest(prsFile, branch, {
+      number: 1,
+      url: 'https://github.com/rquellh/que/pull/1',
+      title: 'Fix the flaky upload test',
+      state: 'MERGED',
+      isDraft: false,
+      mergedAt: '2026-10-14T03:00:00Z',
+      additions: 12,
+      deletions: 4
+    })
+    addFakePullRequest(prsFile, branch, {
+      number: 3,
+      url: 'https://github.com/rquellh/que/pull/3',
+      title: 'Add retry logic to the uploader, with backoff and a cap on attempts',
+      isDraft: false,
+      additions: 214,
+      deletions: 38
+    })
+    queJson<Project>(queHome, 'project', 'add', repo, '--json')
+    workspace = queJson<Workspace>(
+      queHome,
+      'work',
+      '--name',
+      'APP-1432 retry logic',
+      '-r',
+      repo,
+      '--json'
+    )
+    expect(workspace.branch).toBe(branch)
+  })
+
+  await test.step('Launch the app on that home; its first session settles the rows', async () => {
+    launched = await launchApp({ queHome })
+    sidebar = new SidebarPage(launched.window)
+    await sidebar.waitForLoad()
+    // The first session's row lands above the projects: wait for it, so the workspace row
+    // stays put under the pointer.
+    await new TerminalPage(launched.window).waitForActiveTerminal()
+    await expect(sidebar.workspace(workspace.id)).toBeVisible()
+  })
+
+  await test.step('Rest the pointer on the row: the card opens beside it', async () => {
+    await sidebar.workspace(workspace.id).hover()
+    await expect(sidebar.workspacePopout(workspace.id)).toBeVisible()
+    await expect(sidebar.workspacePopoutBranch(workspace.id)).toHaveText(`branch ${branch}`)
+    await expect(sidebar.workspacePopoutPath(workspace.id)).toContainText(workspace.name)
+  })
+
+  await test.step('It lists both pull requests, newest first, with their state and counts', async () => {
+    await expect(sidebar.workspacePopoutPrState(workspace.id, 3)).toHaveText('open', {
+      timeout: 15_000
+    })
+    await expect(sidebar.workspacePopoutPrDiff(workspace.id, 3)).toHaveText('+214 −38')
+    await expect(sidebar.workspacePopoutPrTitle(workspace.id, 3)).toHaveText(
+      'Add retry logic to the uploader, with backoff and a cap on attempts'
+    )
+    await expect(sidebar.workspacePopoutPrLink(workspace.id, 3)).toHaveAttribute(
+      'href',
+      'https://github.com/rquellh/que/pull/3'
+    )
+    await expect(sidebar.workspacePopoutPrState(workspace.id, 1)).toHaveText('merged')
+    await expect(sidebar.workspacePopoutPrDiff(workspace.id, 1)).toHaveText('+12 −4')
+    await launched.window.screenshot({ path: 'test-results/workspace-popout.png' })
+  })
+
+  await test.step('Moving the pointer off the row and the card closes it', async () => {
+    await sidebar.reportButton.hover()
+    await expect(sidebar.workspacePopout(workspace.id)).toHaveCount(0)
   })
 })

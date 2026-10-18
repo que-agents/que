@@ -142,7 +142,9 @@ describe('work-mode dialogs', () => {
         expect(screen.getAllByRole('tab')).toHaveLength(1)
       })
       expect(fakeBridge.startCalls()).toEqual([])
-      expect(screen.getByTestId('topbar-title')).toHaveTextContent('fix-flaky-upload')
+      expect(
+        screen.getByRole('button', { current: 'page', name: /fix-flaky-upload/ })
+      ).toHaveAttribute('data-testid', expect.stringMatching(/^sidebar-workspace-/))
     })
 
     it('returns focus to the opener when cancelled with Escape', async () => {
@@ -174,7 +176,7 @@ describe('work-mode dialogs', () => {
       const link = await within(dialog).findByRole('link', { name: /pull\/41$/ })
       expect(link).toHaveAttribute('href', 'https://github.com/rquellh/que/pull/41')
       expect(fakeBridge.createPrCalls()).toEqual([{ id: retry.id, title: 'Add retry logic' }])
-      expect(screen.getByTestId('topbar-pr')).toHaveTextContent('PR #41')
+      expect(await screen.findByTestId('pr-footer-link')).toHaveTextContent('#41 on GitHub')
     })
   })
 })

@@ -220,6 +220,8 @@ describe('buildReport', () => {
       review: null,
       checkRuns: [],
       updatedAt: null,
+      additions: null,
+      deletions: null,
       checkedAt: '2026-10-14T02:00:00.000Z'
     }
 

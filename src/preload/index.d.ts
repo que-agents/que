@@ -186,6 +186,8 @@ export interface WorkspaceApi {
   rename(params: WorkspaceRenameParams): Promise<Workspace>
   /** Whether rename may also rename the branch (it was never pushed). */
   canRenameBranch(params: { id: string }): Promise<{ allowed: boolean }>
+  /** The workspace is selected in a focused window: records it as seen (seenAt). */
+  seen(params: { id: string }): Promise<Workspace>
   /** What the workspace changed against its base, file by file. Refused in quiet hours. */
   diff(params: { id: string; base?: string; commit?: string }): Promise<WorkspaceDiff>
   /** The pull request's conversation: comments, reviews, line comments. Null without a PR. Refused in quiet hours. */

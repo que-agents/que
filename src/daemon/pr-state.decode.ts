@@ -1,8 +1,12 @@
-// Decodes one item of `gh pr list --json number,url,title,state,isDraft,
-// reviewDecision,statusCheckRollup,mergedAt,updatedAt` into typed fields.
+// Decodes one item of `gh pr list --json <FIELDS>` (or `gh pr view <n> --json
+// <FIELDS>`) into typed fields.
 // Missing or mistyped fields read as empty; pr-state.ts maps the result onto
 // the PullRequest que keeps.
-import { isObj, type Obj, strOrEmpty, strOrNull } from '../shared/json.decode'
+import { isObj, numOrNull, type Obj, strOrEmpty, strOrNull } from '../shared/json.decode'
+
+/** The fields que asks `gh pr list` / `gh pr view` for: the contract decodePullRequest reads. */
+export const FIELDS =
+  'number,url,title,state,isDraft,reviewDecision,statusCheckRollup,mergedAt,updatedAt,additions,deletions'
 
 /** A check run in the rollup (GitHub Actions and other apps). */
 export interface GhCheckRun {
@@ -41,6 +45,9 @@ export interface GhPullRequest {
   /** APPROVED, CHANGES_REQUESTED, REVIEW_REQUIRED; empty when there is none. */
   reviewDecision: string
   updatedAt: string | null
+  /** Lines added and removed; null when gh did not print them. */
+  additions: number | null
+  deletions: number | null
   checks: GhCheck[]
 }
 
@@ -90,12 +97,12 @@ export function decodeCheckRollup(v: unknown): GhCheck[] {
   return checks
 }
 
-/** One `gh pr list` item; null when it has no number or url. */
 /** The head branch of one `gh pr list` item (asked for with `headRefName`); null without one. */
 export function decodeHeadRef(v: unknown): string | null {
   return isObj(v) ? strOrNull(v.headRefName) : null
 }
 
+/** One `gh pr list` item; null when it has no number or url. */
 export function decodePullRequest(v: unknown): GhPullRequest | null {
   if (!isObj(v)) return null
 
@@ -110,6 +117,22 @@ export function decodePullRequest(v: unknown): GhPullRequest | null {
     mergedAt: strOrNull(v.mergedAt),
     reviewDecision: strOrEmpty(v.reviewDecision),
     updatedAt: typeof v.updatedAt === 'string' ? v.updatedAt : null,
+    additions: numOrNull(v.additions),
+    deletions: numOrNull(v.deletions),
     checks: decodeCheckRollup(v.statusCheckRollup)
   }
+}
+
+/** Every pull request in what `gh pr list` printed; items without a number or url are dropped. */
+export function decodePullRequests(v: unknown): GhPullRequest[] {
+  if (!Array.isArray(v)) return []
+  const out: GhPullRequest[] = []
+
+  for (const item of v) {
+    const pr = decodePullRequest(item)
+
+    if (pr) out.push(pr)
+  }
+
+  return out
 }

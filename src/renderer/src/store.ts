@@ -233,7 +233,19 @@ export interface StoreOptions {
   board?: boolean
   /** The clock for ages, countdowns and windows. Default Date.now. */
   now?: () => number
+  /**
+   * The workspace popout's delays in ms: how long the pointer rests on a row before it opens,
+   * and how long after the pointer leaves the row and the card it closes. Default 500 and 150.
+   */
+  popoutDelays?: PopoutDelays
 }
+
+export interface PopoutDelays {
+  open: number
+  close: number
+}
+
+const POPOUT_DELAYS: PopoutDelays = { open: 500, close: 150 }
 
 const SORT_KEY = 'que.sidebarSort'
 
@@ -324,6 +336,14 @@ export class QueStore {
 
   /** The current time, from the injected clock. */
   now = (): number => (this.options.now ?? Date.now)()
+
+  /** The workspace popout's open and close delays, injectable like the clock. */
+  popoutDelays = (): PopoutDelays => this.options.popoutDelays ?? POPOUT_DELAYS
+
+  private home: Promise<string> | null = null
+
+  /** The user's home directory (asked once), so paths can read `~/…`. */
+  homedir = (): Promise<string> => (this.home ??= this.api.app.homedir())
 
   // ---- app update ----------------------------------------------------------
 
@@ -1106,7 +1126,7 @@ export class QueStore {
   /** Creates a terminal for a key (a workspace's, or a loose one in the active tab's folder). */
   private async createFor(key: string): Promise<TermInfo> {
     if (key === SCRATCH) {
-      const cwd = this.activeTab(key)?.cwd ?? (await this.api.app.homedir())
+      const cwd = this.activeTab(key)?.cwd ?? (await this.homedir())
 
       return this.api.term.create({ cwd, cols: DEFAULT_COLS, rows: DEFAULT_ROWS })
     }
@@ -1305,6 +1325,19 @@ export class QueStore {
   /** Whether a rename may also rename the workspace's branch (it was never pushed). */
   async canRenameBranch(id: string): Promise<boolean> {
     return (await this.api.workspace.canRenameBranch({ id })).allowed
+  }
+
+  /**
+   * Tells the daemon the workspace is selected in a focused window, so a finish it shows
+   * no longer reads as new. Errors (a dropped connection, a workspace just removed) are
+   * dropped: the next selection or focus asks again.
+   */
+  async markSeen(id: string): Promise<void> {
+    try {
+      this.upsertWorkspace(await this.api.workspace.seen({ id }))
+    } catch {
+      // nothing to show; see above
+    }
   }
 
   /** Sets a workspace's title (and branch, when asked). Throws for the dialog. */
