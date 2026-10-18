@@ -164,25 +164,36 @@ export interface StatusChange {
   reason: string | null
 }
 
+/** Records a row's projection each time it differs from the last one recorded for that id. */
+function recordChanges<R extends { id: string }, C extends { id: string }>(
+  events: Array<(cb: (row: R) => void) => void>,
+  project: (row: R) => C
+): C[] {
+  const seen: C[] = []
+
+  const note = (row: R): void => {
+    const next = project(row)
+    const last = seen.findLast((c) => c.id === next.id)
+
+    if (last && Object.entries(next).every(([k, v]) => last[k as keyof C] === v)) return
+    seen.push(next)
+  }
+
+  for (const subscribe of events) subscribe(note)
+
+  return seen
+}
+
 /**
  * The status each workspace moves through, from its created row and every
  * update after it. An update that leaves status and reason as they were (a
  * new activity stamp, a rename) adds nothing.
  */
 export function recordStatuses(client: DaemonClient): StatusChange[] {
-  const seen: StatusChange[] = []
-
-  const note = (w: Events['workspace.updated']): void => {
-    const last = seen.findLast((c) => c.id === w.id)
-
-    if (last?.status === w.status && last.reason === w.statusReason) return
-    seen.push({ id: w.id, status: w.status, reason: w.statusReason })
-  }
-
-  client.on('workspace.created', note)
-  client.on('workspace.updated', note)
-
-  return seen
+  return recordChanges<Events['workspace.updated'], StatusChange>(
+    [(cb) => client.on('workspace.created', cb), (cb) => client.on('workspace.updated', cb)],
+    (w) => ({ id: w.id, status: w.status, reason: w.statusReason })
+  )
 }
 
 export interface StateChange {
@@ -193,15 +204,10 @@ export interface StateChange {
 
 /** The state each task moves through, from its updates; one that changes neither state nor reason adds nothing. */
 export function recordTaskStates(client: DaemonClient): StateChange[] {
-  const seen: StateChange[] = []
-  client.on('task.updated', (t) => {
-    const last = seen.findLast((c) => c.id === t.id)
-
-    if (last?.state === t.state && last.reason === t.reason) return
-    seen.push({ id: t.id, state: t.state, reason: t.reason })
-  })
-
-  return seen
+  return recordChanges<Events['task.updated'], StateChange>(
+    [(cb) => client.on('task.updated', cb)],
+    (t) => ({ id: t.id, state: t.state, reason: t.reason })
+  )
 }
 
 /** Polls workspace.get until the workspace's status is `status`. */

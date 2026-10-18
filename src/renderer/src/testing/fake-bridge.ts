@@ -742,15 +742,17 @@ class FakeBridge {
     const at = new Date().toISOString()
     const next = { ...ws, status, statusReason: reason ?? null, statusAt: at }
 
-    this.workspaces.set(id, next)
-    this.emit('workspace.updated', { ...next })
+    this.putWorkspace(next)
+  }
+
+  private putWorkspace(w: Workspace): void {
+    this.workspaces.set(w.id, w)
+    this.emit('workspace.updated', { ...w })
   }
 
   /** Sets (or clears) the workspace's pull request, as a daemon refresh would. */
   setWorkspacePr(id: string, pr: PullRequest | null): void {
-    const ws = { ...this.workspace(id), pr }
-    this.workspaces.set(id, ws)
-    this.emit('workspace.updated', { ...ws })
+    this.putWorkspace({ ...this.workspace(id), pr })
   }
 
   getWorkspace(id: string): Workspace | undefined {

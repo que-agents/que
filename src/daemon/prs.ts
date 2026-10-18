@@ -125,11 +125,17 @@ export class PrService {
     tick: () => this.tick()
   })
 
+  private refreshedDone = new Set<string>()
+
   constructor(private opts: PrServiceOptions) {
-    // Every row of a done task refreshes, so a later write to it refreshes again; that is cheap and harmless.
-    opts.bus.on('task.updated', ({ state, workspaceId }) => {
-      if (state === 'done' && workspaceId) void this.refresh(workspaceId)
+    // Rows carry state as a level, so the set turns "done" into an edge: refresh once per task.
+    opts.bus.on('task.updated', ({ id, state, workspaceId }) => {
+      if (state !== 'done' || this.refreshedDone.has(id)) return
+      this.refreshedDone.add(id)
+
+      if (workspaceId) void this.refresh(workspaceId)
     })
+    opts.bus.on('task.removed', ({ id }) => this.refreshedDone.delete(id))
     opts.bus.on('workspace.removed', ({ id }) => this.forget(id))
   }
 

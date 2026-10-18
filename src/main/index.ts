@@ -18,7 +18,6 @@ import { createBoardWindow } from './board'
 import { decodeAbsolutePath } from './ipc.decode'
 import { installMenu } from './menu'
 import { createTray, type QueTray } from './tray'
-import { TRAY_EVENTS, type TrayEventName } from './tray-rows'
 import { checkForUpdate } from './update-check'
 import { errorCode, errorMessage } from '../shared/errors.decode'
 
@@ -60,11 +59,12 @@ function getClient(): Promise<DaemonClient> {
           c.on(ev, (data) => sendToRenderer('que:event', ev, data))
         }
 
-        const trayEvent = <E extends TrayEventName>(ev: E): void => {
-          c.on(ev, (data) => tray?.apply(ev, data))
-        }
-
-        TRAY_EVENTS.forEach(trayEvent)
+        c.on('workspace.created', (w) => tray?.putWorkspace(w))
+        c.on('workspace.updated', (w) => tray?.putWorkspace(w))
+        c.on('workspace.removed', ({ id }) => tray?.dropWorkspace(id))
+        c.on('task.created', (t) => tray?.putTask(t))
+        c.on('task.updated', (t) => tray?.putTask(t))
+        c.on('task.removed', ({ id }) => tray?.dropTask(id))
         tray?.seed(c)
         c.on('quiet.changed', (q) => applyQuiet(q))
         c.on('quiet.morningSummary', ({ report }) => morningSummary(report))
