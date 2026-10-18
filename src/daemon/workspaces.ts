@@ -257,6 +257,16 @@ export class WorkspaceManager {
     return ws
   }
 
+  /** Records that the app had the workspace selected in a focused window. */
+  seen(id: string): Workspace {
+    this.get(id)
+    this.opts.store.setWorkspaceSeen(id, new Date().toISOString())
+    const next = this.get(id)
+    this.opts.emit('workspace.updated', next)
+
+    return next
+  }
+
   list(projectId?: string): Workspace[] {
     return this.opts.store.listWorkspaces(projectId)
   }
@@ -372,7 +382,9 @@ export class WorkspaceManager {
       archivedAt: null,
       prUrl: null,
       pr: null,
-      prs: []
+      prs: [],
+      finishedAt: null,
+      seenAt: null
     }
 
     if (title) ws.title = title

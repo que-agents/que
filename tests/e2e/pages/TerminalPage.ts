@@ -80,6 +80,11 @@ export class TerminalPage {
       .toBe(true)
   }
 
+  // Types into a terminal through the bridge, as its xterm would: for one that is not on screen.
+  async writeTo(termId: string, data: string): Promise<void> {
+    await this.page.evaluate(([id, d]) => window.que.term.write({ id, data: d }), [termId, data])
+  }
+
   async activeTermId(): Promise<string | null> {
     return this.page.evaluate(() => window.__que?.activeTermId() ?? null)
   }

@@ -189,7 +189,8 @@ describe('ReportView', () => {
       fakeBridge.seedDigest(quietOne)
       await openReport(user)
 
-      await user.click(await screen.findByRole('button', { name: 'app-1432-retry-logic' }))
+      const workspaces = await screen.findByTestId('report-workspaces')
+      await user.click(within(workspaces).getByRole('button', { name: 'app-1432-retry-logic' }))
 
       expect(await screen.findByTestId('topbar-title')).toHaveTextContent('app-1432-retry-logic')
     })

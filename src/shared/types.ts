@@ -41,6 +41,10 @@ export interface Workspace {
    * task of it recorded as its `prUrl`. Newest first by number, at most 10.
    */
   prs: PullRequest[]
+  /** When its last turn ended (working to idle) or its task finished; null before either. */
+  finishedAt: string | null
+  /** When the app last had it selected in a focused window (workspace.seen); null before. */
+  seenAt: string | null
   /** What the work is, in a line (shown instead of the name); absent for a workspace made from a name. */
   title?: string
   /** The description the workspace was made from (written to `.que/brief.md`). */

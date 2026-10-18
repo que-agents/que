@@ -1,9 +1,9 @@
 // The overnight journey: a task queued and run from the CLI, its workspace
 // appearing in the sidebar while it runs, the task finishing through the fake
 // claude and the finisher's draft PR (fake gh, real push to a bare origin),
-// the sidebar showing done with the PR and following the PR from draft to
-// merged, the tray title settling back to all clear, and the report listing it
-// under done.
+// the sidebar row reading done and unseen with the PR as its word, the top bar's
+// chip following the PR from draft to merged once it is selected, the tray title
+// settling back to all clear, and the report listing it under done.
 import { join } from 'node:path'
 import { expect, test } from '@playwright/test'
 import type { Project, Task } from '../../src/shared/types'
@@ -12,6 +12,7 @@ import { addBareOrigin, makeTempRepo } from '../../src/testing/temp-repo'
 import { AppShellPage } from './pages/AppShellPage'
 import { ReportPage } from './pages/ReportPage'
 import { SidebarPage } from './pages/SidebarPage'
+import { TopBarPage } from './pages/TopBarPage'
 import { type LaunchedApp, launchApp, newQueHome, tempDir } from './utils/app'
 import { que, queJson } from './utils/que'
 
@@ -32,6 +33,7 @@ test('a task queued from the CLI runs overnight-style, shows in the sidebar, and
   let sidebar: SidebarPage
   let report: ReportPage
   let shell: AppShellPage
+  let topbar: TopBarPage
 
   const task = (): Task | undefined =>
     queJson<Task[]>(queHome, 'task', 'list', '--json').find((t) => t.id === taskId)
@@ -61,6 +63,7 @@ test('a task queued from the CLI runs overnight-style, shows in the sidebar, and
     sidebar = new SidebarPage(launched.window)
     report = new ReportPage(launched.window)
     shell = new AppShellPage(launched.window)
+    topbar = new TopBarPage(launched.window)
     await sidebar.waitForLoad()
     await expect(sidebar.project(project.id)).toBeVisible()
   })
@@ -72,16 +75,21 @@ test('a task queued from the CLI runs overnight-style, shows in the sidebar, and
     await expect(sidebar.workspace(workspaceId)).toBeVisible()
   })
 
-  await test.step('The task finishes with a draft PR, shown on its workspace', async () => {
+  await test.step('The task finishes with a draft PR, unseen on its workspace', async () => {
     await sidebar.waitForWorkspaceStatus(workspaceId, 'done', 60_000)
-    await expect(sidebar.workspacePr(workspaceId)).toHaveAttribute('href', /\/pull\/\d+$/)
+    await expect(sidebar.workspaceStatus(workspaceId)).toHaveAttribute('data-unseen', 'true')
+    await sidebar.workspace(workspaceId).hover()
+    await expect(sidebar.workspaceWord(workspaceId)).toHaveText(/^done · draft PR #\d+$/)
     expect(launched.ghCalls()).toContainEqual(expect.arrayContaining(['pr', 'create', '--draft']))
     // One chime for the whole run: on done, not when the task's session ended its turn.
     await expect.poll(() => shell.chimes()).toEqual(['complete'])
   })
 
-  await test.step('The sidebar chip follows the pull request from draft to merged', async () => {
-    await expect(sidebar.workspacePr(workspaceId)).toHaveAttribute('data-pr-state', 'draft', {
+  await test.step('Selected, the top bar chip follows the pull request from draft to merged', async () => {
+    await sidebar.workspaceOpen(workspaceId).click()
+    await expect(sidebar.workspaceStatus(workspaceId)).toHaveAttribute('data-unseen', 'false')
+    await expect(topbar.prLink).toHaveAttribute('href', /\/pull\/\d+$/)
+    await expect(topbar.prLink).toHaveAttribute('data-pr-state', 'draft', {
       timeout: 15_000
     })
     const branch = task()?.branch as string
@@ -89,7 +97,7 @@ test('a task queued from the CLI runs overnight-style, shows in the sidebar, and
       state: 'MERGED',
       mergedAt: '2026-10-14T03:00:00Z'
     })
-    await expect(sidebar.workspacePr(workspaceId)).toHaveAttribute('data-pr-state', 'merged', {
+    await expect(topbar.prLink).toHaveAttribute('data-pr-state', 'merged', {
       timeout: 15_000
     })
   })

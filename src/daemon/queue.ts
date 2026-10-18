@@ -239,6 +239,7 @@ export class TaskQueue {
         at: next.updatedAt
       })
       this.runner.onTransition(prev, next)
+      this.markFinished(next)
       this.emitState()
       this.keepAwake()
       this.kick()
@@ -255,6 +256,15 @@ export class TaskQueue {
     ]
 
     if (updated.some((k) => prev[k] !== next[k])) this.o.emit('task.updated', next)
+  }
+
+  /** A task that reached done leaves its workspace something to look at. */
+  private markFinished(task: Task): void {
+    if (task.state !== 'done' || !task.workspaceId) return
+    this.o.store.setWorkspaceFinished(task.workspaceId, task.finishedAt ?? task.updatedAt)
+    const ws = this.o.store.getWorkspace(task.workspaceId)
+
+    if (ws) this.o.emit('workspace.updated', ws)
   }
 
   // ---- dispatcher -------------------------------------------------------------

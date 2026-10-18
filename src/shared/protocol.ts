@@ -453,6 +453,8 @@ export interface Methods {
   'workspace.rename': { params: WorkspaceRenameParams; result: Workspace }
   /** Whether workspace.rename may rename the branch: it has no `origin/<branch>`. */
   'workspace.canRenameBranch': { params: { id: string }; result: { allowed: boolean } }
+  /** The app had it selected in a focused window: sets seenAt; emits workspace.updated. */
+  'workspace.seen': { params: { id: string }; result: Workspace }
   /** What the workspace changed against its base: committed and uncommitted, file by file. */
   'workspace.diff': {
     params: { id: string; base?: string; commit?: string }

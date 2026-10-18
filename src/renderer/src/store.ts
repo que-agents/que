@@ -1307,6 +1307,19 @@ export class QueStore {
     return (await this.api.workspace.canRenameBranch({ id })).allowed
   }
 
+  /**
+   * Tells the daemon the workspace is selected in a focused window, so a finish it shows
+   * no longer reads as new. Errors (a dropped connection, a workspace just removed) are
+   * dropped: the next selection or focus asks again.
+   */
+  async markSeen(id: string): Promise<void> {
+    try {
+      this.upsertWorkspace(await this.api.workspace.seen({ id }))
+    } catch {
+      // nothing to show; see above
+    }
+  }
+
   /** Sets a workspace's title (and branch, when asked). Throws for the dialog. */
   async renameWorkspace(id: string, title: string, branch?: string): Promise<void> {
     const ws = await this.api.workspace.rename({ id, title, branch })

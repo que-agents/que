@@ -1,7 +1,8 @@
 // Work mode end to end: a project registered with the CLI, a workspace made
 // from the sidebar dialog, its terminal opened automatically, a claude session
 // in it finishing a turn with one chime (recorded, never played, under e2e) and
-// reaching needs input on the sidebar badge (and in `que status`), Open
+// reaching needs input on the sidebar's dot (and in `que status`), a turn finishing
+// while another row is selected reading as unseen until the workspace is selected, Open
 // in editor (in the review pane's Changes) launching the editor on the worktree, and the project removed from
 // its context menu with the workspace and its worktree.
 import fs from 'node:fs'
@@ -131,11 +132,34 @@ test('a workspace made in the sidebar runs claude, shows needs input, opens in t
     await launched.window.keyboard.type('/needs-input')
     await launched.window.keyboard.press('Enter')
     await sidebar.waitForWorkspaceStatus(workspace.id, 'needs_input')
-    await expect(sidebar.workspaceStatus(workspace.id)).toHaveText('needs input')
+    // The word shows only under the pointer.
+    await sidebar.workspace(workspace.id).hover()
+    await expect(sidebar.workspaceReveal(workspace.id)).toHaveCSS('opacity', '1')
+    await expect(sidebar.workspaceWord(workspace.id)).toHaveText('needs input')
     await expect(topbar.status).toHaveAttribute('data-status', 'needs_input')
     expect(statusOf()?.status).toBe('needs_input')
     // The needs-input chime is off by default.
     expect(await shell.chimes()).toEqual(['complete'])
+  })
+
+  await test.step('A turn that ends while a session is selected reads unseen until the workspace is', async () => {
+    await sidebar.sessionsAdd.click()
+    await expect(sidebar.workspaceOpen(workspace.id)).not.toHaveAttribute('aria-current', 'page')
+    await expect(sidebar.workspaceStatus(workspace.id)).toHaveAttribute('data-unseen', 'false')
+    // Grant the permission in the workspace's terminal, now off screen: the turn ends.
+    await terminal.writeTo(termId, 'y\r')
+    await sidebar.waitForWorkspaceStatus(workspace.id, 'idle')
+    await expect(sidebar.workspaceStatus(workspace.id)).toHaveAttribute('data-unseen', 'true')
+    await sidebar.workspace(workspace.id).hover()
+    await expect(sidebar.workspaceReveal(workspace.id)).toHaveCSS('opacity', '1')
+    await expect(sidebar.workspaceWord(workspace.id)).toHaveText(/^done · \d+s ago$/)
+    // At rest again (the pointer off the rows): the green dot and the full-strength name.
+    await sidebar.root.hover({ position: { x: 120, y: 300 } })
+    await expect(sidebar.workspaceReveal(workspace.id)).toHaveCSS('opacity', '0')
+    await sidebar.root.screenshot({ path: 'test-results/sidebar.png' })
+    await sidebar.workspaceOpen(workspace.id).click()
+    await expect(sidebar.workspaceStatus(workspace.id)).toHaveAttribute('data-unseen', 'false')
+    await expect(sidebar.workspaceStatus(workspace.id)).toHaveAttribute('data-status', 'idle')
   })
 
   await test.step('Drag the divider; the sidebar widens by the same amount', async () => {

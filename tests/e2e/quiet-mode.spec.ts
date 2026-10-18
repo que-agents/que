@@ -2,14 +2,14 @@
 // CLI, then quiet hours turned on (with `que config set`) around the current
 // time. Launched inside them, the board is the only window shown, with the
 // workspace counted as idle and its row; the CLI's attach is refused (exit 3);
-// Unlock brings the main window back with its countdown, and when the
+// Unlock brings the main window back with its countdown in the sidebar's foot, and when the
 // (six-second) unlock runs out the board returns on its own.
 import { expect, test } from '@playwright/test'
 import { hhmm } from '../../src/shared/format'
 import type { Workspace } from '../../src/shared/types'
 import { makeTempRepo } from '../../src/testing/temp-repo'
 import { QuietBoardPage } from './pages/QuietBoardPage'
-import { TopBarPage } from './pages/TopBarPage'
+import { SidebarPage } from './pages/SidebarPage'
 import {
   findWindow,
   type LaunchedApp,
@@ -92,10 +92,11 @@ test('quiet hours show only the board; an unlock brings detail back until it run
   await test.step('Unlock: the main window comes back with the countdown', async () => {
     await board.unlockButton.click()
     const main = await findWindow(launched.app, false)
-    const topbar = new TopBarPage(main)
+    const sidebar = new SidebarPage(main)
     await expect.poll(() => windowStates(launched.app)).toEqual([{ board: false, visible: true }])
-    await expect(topbar.unlockCountdown).toHaveText(/^unlocked · 0:0\d left$/)
-    await expect(topbar.lockButton).toBeVisible()
+    await expect(sidebar.unlockCountdown).toHaveText(/^0:0\d left$/)
+    await expect(sidebar.lockButton).toHaveText('lock now')
+    await expect(sidebar.lockButton).toBeVisible()
   })
 
   await test.step('When the unlock runs out, the board returns with no prompt', async () => {

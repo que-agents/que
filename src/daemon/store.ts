@@ -130,7 +130,9 @@ const MIGRATIONS: string[] = [
   `ALTER TABLE workspaces ADD COLUMN title TEXT;
    ALTER TABLE workspaces ADD COLUMN brief TEXT;`,
   `ALTER TABLE workspaces ADD COLUMN title_source TEXT;`,
-  `ALTER TABLE workspaces ADD COLUMN prs_json TEXT;`
+  `ALTER TABLE workspaces ADD COLUMN prs_json TEXT;`,
+  `ALTER TABLE workspaces ADD COLUMN finished_at TEXT;
+   ALTER TABLE workspaces ADD COLUMN seen_at TEXT;`
 ]
 
 const STATUS_LOG_RETENTION_MS = 30 * 24 * 3_600_000
@@ -234,6 +236,8 @@ interface WorkspaceRow {
   title: string | null
   brief: string | null
   title_source: string | null
+  finished_at: string | null
+  seen_at: string | null
 }
 
 /** Task field → column, in insert order. */
@@ -357,7 +361,9 @@ function toWorkspace(r: WorkspaceRow): Workspace {
     archivedAt: r.archived_at,
     prUrl: r.pr_url ?? null,
     pr: currentPullRequest(prs),
-    prs
+    prs,
+    finishedAt: r.finished_at ?? null,
+    seenAt: r.seen_at ?? null
   }
 
   if (r.title) ws.title = r.title
@@ -506,8 +512,8 @@ export class Store {
     this.run(
       `INSERT INTO workspaces (id, project_id, name, branch, path, base_ref, status, status_reason,
            status_at, last_activity_at, session_id, created_at, archived_at, pr_url, pr_json,
-           prs_json, title, brief, title_source)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           prs_json, title, brief, title_source, finished_at, seen_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       w.id,
       w.projectId,
       w.name,
@@ -527,7 +533,9 @@ export class Store {
       JSON.stringify(w.prs),
       w.title ?? null,
       w.brief ?? null,
-      w.titleSource ?? null
+      w.titleSource ?? null,
+      w.finishedAt,
+      w.seenAt
     )
   }
 
@@ -580,6 +588,16 @@ export class Store {
       u.sessionId,
       id
     )
+  }
+
+  /** A turn ended or the workspace's task finished: it has something new to look at. */
+  setWorkspaceFinished(id: string, at: string): void {
+    this.run('UPDATE workspaces SET finished_at = ? WHERE id = ?', at, id)
+  }
+
+  /** The app had the workspace selected in a focused window. */
+  setWorkspaceSeen(id: string, at: string): void {
+    this.run('UPDATE workspaces SET seen_at = ? WHERE id = ?', at, id)
   }
 
   setWorkspacePrUrl(id: string, prUrl: string): void {
