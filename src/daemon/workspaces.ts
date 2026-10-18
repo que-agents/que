@@ -24,7 +24,8 @@ import { randomWorkspaceName } from '../shared/names'
 import { workspaceSlug } from '../shared/slug'
 import type { Project, Workspace } from '../shared/types'
 import { badRequest, conflict, notFound } from './errors'
-import type { Emit, StatusService } from './status'
+import type { Emit } from './bus'
+import type { StatusService } from './status'
 import { newId, type Store } from './store'
 import { findOnPath, zshDir } from './wrapper'
 
@@ -126,10 +127,6 @@ export interface WorkspaceManagerOptions {
   log?: (msg: string) => void
   /** Draws a name for a workspace created without one (default: randomWorkspaceName). */
   randomName?: () => string
-  /** Called after a workspace is created and announced (the summariser queues it). */
-  onCreated?: (ws: Workspace) => void
-  /** Called after a workspace is archived (the summariser drops it). */
-  onRemoved?: (id: string) => void
 }
 
 export class WorkspaceManager {
@@ -378,7 +375,6 @@ export class WorkspaceManager {
     this.opts.emit('workspace.created', ws)
     this.opts.status.begin(ws)
     this.runSetup(ws, repo.setup)
-    this.opts.onCreated?.(ws)
 
     return ws
   }
@@ -534,7 +530,6 @@ export class WorkspaceManager {
 
     this.opts.store.archiveWorkspace(ws.id, new Date().toISOString())
     this.opts.status.forget(ws.id)
-    this.opts.onRemoved?.(ws.id)
     this.log(`workspace ${ws.id} removed`)
     this.opts.emit('workspace.removed', { id: ws.id })
   }

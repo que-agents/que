@@ -1,7 +1,8 @@
 // Decodes the hook JSON Claude Code writes to a hook command's stdin. Shared
 // by `que hook` (which decodes before forwarding) and the daemon (which
 // decodes the `hook.event` payload once as it arrives on the socket).
-import { HOOK_EVENT_NAMES, type HookEvent, type HookEventName } from './protocol'
+import { HOOK_EVENT_NAMES, type HookEventName } from './hook-events'
+import type { HookEvent } from './protocol'
 import { isObj, type Obj, str } from './json.decode'
 
 type OptionalFields = Omit<HookEvent, 'hook_event_name' | 'session_id' | 'cwd' | 'transcript_path'>
