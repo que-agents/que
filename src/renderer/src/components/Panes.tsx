@@ -239,7 +239,6 @@ function Pane({
               key={t.id}
               className={`tab${t.id === active?.id ? ' active' : ''}${t.alive ? '' : ' exited'}`}
               data-testid={`terminal-tab-${t.id}`}
-              data-exited={t.alive ? undefined : 'true'}
             >
               <button
                 type="button"

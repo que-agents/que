@@ -775,15 +775,6 @@ h2 {
   background: var(--tone);
 }
 
-.pr-chip {
-  text-decoration: none;
-}
-
-.pr-chip:hover {
-  text-decoration: none;
-  background: color-mix(in srgb, var(--tone) 20%, transparent);
-}
-
 .tone-neutral {
   --tone: var(--tone-neutral);
 }
@@ -873,11 +864,14 @@ body.resizing {
 .topbar button,
 .topbar a,
 .topbar input,
-.topbar select {
+.topbar select,
+.tabbar button {
   -webkit-app-region: no-drag;
 }
 
-.topbar::after {
+.topbar::after,
+.tabbar::after,
+.report-row::after {
   content: '';
   position: absolute;
   left: 0;
@@ -926,20 +920,6 @@ body.resizing {
   padding: 0 8px;
   flex: none;
   -webkit-app-region: drag;
-}
-
-.tabbar button {
-  -webkit-app-region: no-drag;
-}
-
-.tabbar::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 1px;
-  background: var(--dash);
 }
 
 .tabs {
@@ -1117,16 +1097,6 @@ body.resizing {
   align-items: center;
   gap: 10px;
   padding: 6px 0;
-}
-
-.report-row::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 1px;
-  background: var(--dash);
 }
 
 .report-row .name {

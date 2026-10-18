@@ -102,6 +102,15 @@ test('a split survives quitting the app and comes back with both terminals', asy
     await expect.poll(async () => (await terminal.panes()).length).toBe(1)
   })
 
+  await test.step("An inactive tab's × is invisible until the tab is hovered, and keeps its width", async () => {
+    const active = (await terminal.panes())[0]?.activeTermId
+    const inactive = active === firstId ? secondId : firstId
+    await expect(terminal.tabClose(inactive)).toBeVisible()
+    await expect(terminal.tabClose(inactive)).toHaveCSS('opacity', '0')
+    await terminal.tabSelect(inactive).hover()
+    await expect(terminal.tabClose(inactive)).toHaveCSS('opacity', '0.5')
+  })
+
   await test.step('Split below from the tab row; the controls stay in the top strip, the first', async () => {
     await expect(terminal.pane(0).controls).toBeVisible()
     await tabRow.splitBelowButton.click()

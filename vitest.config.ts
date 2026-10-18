@@ -60,10 +60,7 @@ export default defineConfig({
           name: 'renderer',
           environment: 'jsdom',
           include: ['src/renderer/**/*.test.{ts,tsx}'],
-          setupFiles: ['src/renderer/src/testing/setup.ts'],
-          // The app's stylesheet reaches a test that imports it `?raw` (to check what an element
-          // computes to); every other CSS import stays empty.
-          css: { include: [/src\/renderer\/src\/styles\.css/] }
+          setupFiles: ['src/renderer/src/testing/setup.ts']
         }
       }
     ]
