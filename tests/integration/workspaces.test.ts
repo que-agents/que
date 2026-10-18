@@ -484,6 +484,30 @@ describe('workspace.rename', () => {
   }, 20_000)
 })
 
+describe('workspace.seen', () => {
+  it('records when the app had it selected, announces it, and keeps it', async () => {
+    const repo = makeTempRepo(daemon.home)
+    const project = await client.request('project.add', { path: repo })
+
+    const ws = await client.request('workspace.create', {
+      projectId: project.id,
+      name: 'app-1501-chunked-uploads'
+    })
+
+    expect(ws).toMatchObject({ finishedAt: null, seenAt: null })
+    const updated = recordEvents(client, 'workspace.updated')
+
+    const seen = await client.request('workspace.seen', { id: ws.id })
+
+    expect(seen.seenAt).toMatch(/^\d{4}-\d\d-\d\dT/)
+    expect(updated).toEqual([seen])
+    expect((await client.request('workspace.get', { id: ws.id })).seenAt).toBe(seen.seenAt)
+    await expect(client.request('workspace.seen', { id: 'ws_01hzxnope000' })).rejects.toMatchObject(
+      { code: 'not_found' }
+    )
+  }, 20_000)
+})
+
 describe('workspace.createPr', () => {
   async function workspaceWithOrigin(branch?: string) {
     const repo = makeTempRepo(daemon.home)

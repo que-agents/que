@@ -28,6 +28,8 @@ export function makeWorkspace(overrides: Partial<Workspace> = {}): Workspace {
     prUrl: null,
     pr: null,
     prs: [],
+    finishedAt: null,
+    seenAt: null,
     ...overrides
   }
 }

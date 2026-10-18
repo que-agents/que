@@ -101,6 +101,7 @@ class FakeBridge {
   private createCallLog: WorkspaceCreateParams[] = []
   private startCallLog: string[] = []
   private renameCallLog: WorkspaceRenameParams[] = []
+  private seenCallLog: string[] = []
   private pushedBranches = new Set<string>()
   private quiet: QuietState = makeQuietState()
   private unlocks: QuietUnlock[] = []
@@ -479,7 +480,9 @@ class FakeBridge {
             archivedAt: null,
             prUrl: null,
             pr: null,
-            prs: []
+            prs: [],
+            finishedAt: null,
+            seenAt: null
           }
 
           if (title) {
@@ -626,6 +629,15 @@ class FakeBridge {
 
           return { ...next }
         },
+        seen: async ({ id }) => {
+          const ws = this.workspace(id)
+          this.seenCallLog.push(id)
+          const next: Workspace = { ...ws, seenAt: new Date().toISOString() }
+          this.workspaces.set(id, next)
+          this.emit('workspace.updated', { ...next })
+
+          return { ...next }
+        },
         canRenameBranch: async ({ id }) => {
           this.workspace(id)
 
@@ -741,8 +753,21 @@ class FakeBridge {
   setStatus(id: string, status: WorkspaceStatus, reason?: string): void {
     const ws = this.workspace(id)
     const at = new Date().toISOString()
-    this.workspaces.set(id, { ...ws, status, statusReason: reason ?? null, statusAt: at })
+    // A turn that ends (working to idle) leaves something to look at, as the daemon records.
+    const finished = ws.status === 'working' && status === 'idle'
+
+    const next = {
+      ...ws,
+      status,
+      statusReason: reason ?? null,
+      statusAt: at,
+      finishedAt: finished ? at : ws.finishedAt
+    }
+
+    this.workspaces.set(id, next)
     this.emit('workspace.status', { id, status, reason: reason || undefined, at })
+
+    if (finished) this.emit('workspace.updated', { ...next })
   }
 
   /** Sets (or clears) the workspace's pull request, as a daemon refresh would. */
@@ -776,6 +801,13 @@ class FakeBridge {
       finishedAt: terminal ? at : null
     })
     this.emit('task.status', { id, state, reason: reason || undefined, at })
+    const ws = state === 'done' && t.workspaceId ? this.workspaces.get(t.workspaceId) : undefined
+
+    if (ws) {
+      const next = { ...ws, finishedAt: at }
+      this.workspaces.set(ws.id, next)
+      this.emit('workspace.updated', { ...next })
+    }
   }
 
   getTask(id: string): Task | undefined {
@@ -850,6 +882,11 @@ class FakeBridge {
   /** The workspace id of every workspace.start call, in order. */
   startCalls(): string[] {
     return [...this.startCallLog]
+  }
+
+  /** Every workspace.seen call's workspace id, in order. */
+  seenCalls(): string[] {
+    return [...this.seenCallLog]
   }
 
   /** Every workspace.rename call, in order. */
@@ -1015,6 +1052,7 @@ class FakeBridge {
     this.createCallLog = []
     this.startCallLog = []
     this.renameCallLog = []
+    this.seenCallLog = []
     this.pushedBranches.clear()
     this.quiet = makeQuietState()
     this.unlocks = []

@@ -59,6 +59,7 @@ const ALLOWED: ReadonlySet<MethodName> = new Set<MethodName>([
   'workspace.start',
   'workspace.rename',
   'workspace.canRenameBranch',
+  'workspace.seen',
   'workspace.diff',
   'workspace.prThread',
   'workspace.files',

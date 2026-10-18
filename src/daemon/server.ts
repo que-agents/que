@@ -843,6 +843,8 @@ export class DaemonServer {
         })
       case 'workspace.canRenameBranch':
         return { allowed: await this.workspaces.canRenameBranch(str(p, 'id')) }
+      case 'workspace.seen':
+        return this.workspaces.seen(str(p, 'id'))
       case 'workspace.list':
         return this.workspaces.list(optString(p, 'projectId'))
       case 'workspace.get':

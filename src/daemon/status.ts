@@ -180,7 +180,14 @@ export class StatusService {
       })
     }
 
-    if (sessionChanged) {
+    // A turn that ended leaves something to look at, until the app has the workspace selected.
+    const finished = prev.status === 'working' && next.status === 'idle'
+
+    if (finished) {
+      this.opts.store.setWorkspaceFinished(id, new Date(next.statusAt).toISOString())
+    }
+
+    if (sessionChanged || finished) {
       const ws = this.opts.store.getWorkspace(id)
 
       if (ws) this.opts.emit('workspace.updated', ws)
