@@ -2,6 +2,7 @@
 // Newline-delimited JSON over a unix socket. Requests carry an id; responses
 // echo it. Events are server-pushed and carry no id.
 
+import { HOOK_EVENT_NAMES, type HookEventName } from './hook-events'
 import { decoders } from './methods.decode'
 import type {
   ConfigPatch,
@@ -19,6 +20,8 @@ import type {
   Workspace,
   WorkspaceStatus
 } from './types'
+
+export { HOOK_EVENT_NAMES, type HookEventName }
 
 // ---- method types ---------------------------------------------------------
 
@@ -511,8 +514,6 @@ export type ResultOf<M extends MethodName> = Methods[M]['result']
  * - `quiet`: refused with `quiet_hours` while quiet hours are on and not unlocked:
  *   every way to see a terminal, its output, or a report, or to start new work.
  * - `decode`: reads and checks the params a client sent; throws `ParamsError`.
- *   Each entry looks its decoder up when called, not when this file loads, because
- *   methods.decode.ts reaches back here through hook.decode.ts and either may load first.
  */
 export const METHODS: {
   [M in MethodName]: {
@@ -521,111 +522,111 @@ export const METHODS: {
     decode: (p: Record<string, unknown> | undefined) => ParamsOf<M>
   }
 } = {
-  'daemon.ping': { renderer: false, quiet: false, decode: (p) => decoders['daemon.ping'](p) },
+  'daemon.ping': { renderer: false, quiet: false, decode: decoders['daemon.ping'] },
   'daemon.shutdown': {
     renderer: false,
     quiet: false,
-    decode: (p) => decoders['daemon.shutdown'](p)
+    decode: decoders['daemon.shutdown']
   },
-  'term.create': { renderer: true, quiet: true, decode: (p) => decoders['term.create'](p) },
-  'term.list': { renderer: true, quiet: false, decode: (p) => decoders['term.list'](p) },
-  'term.attach': { renderer: true, quiet: true, decode: (p) => decoders['term.attach'](p) },
-  'term.detach': { renderer: true, quiet: false, decode: (p) => decoders['term.detach'](p) },
-  'term.write': { renderer: true, quiet: false, decode: (p) => decoders['term.write'](p) },
-  'term.resize': { renderer: true, quiet: false, decode: (p) => decoders['term.resize'](p) },
-  'term.kill': { renderer: true, quiet: false, decode: (p) => decoders['term.kill'](p) },
-  'term.snapshot': { renderer: true, quiet: true, decode: (p) => decoders['term.snapshot'](p) },
-  'project.add': { renderer: true, quiet: false, decode: (p) => decoders['project.add'](p) },
-  'project.list': { renderer: true, quiet: false, decode: (p) => decoders['project.list'](p) },
-  'project.remove': { renderer: true, quiet: false, decode: (p) => decoders['project.remove'](p) },
+  'term.create': { renderer: true, quiet: true, decode: decoders['term.create'] },
+  'term.list': { renderer: true, quiet: false, decode: decoders['term.list'] },
+  'term.attach': { renderer: true, quiet: true, decode: decoders['term.attach'] },
+  'term.detach': { renderer: true, quiet: false, decode: decoders['term.detach'] },
+  'term.write': { renderer: true, quiet: false, decode: decoders['term.write'] },
+  'term.resize': { renderer: true, quiet: false, decode: decoders['term.resize'] },
+  'term.kill': { renderer: true, quiet: false, decode: decoders['term.kill'] },
+  'term.snapshot': { renderer: true, quiet: true, decode: decoders['term.snapshot'] },
+  'project.add': { renderer: true, quiet: false, decode: decoders['project.add'] },
+  'project.list': { renderer: true, quiet: false, decode: decoders['project.list'] },
+  'project.remove': { renderer: true, quiet: false, decode: decoders['project.remove'] },
   'workspace.create': {
     renderer: true,
     quiet: false,
-    decode: (p) => decoders['workspace.create'](p)
+    decode: decoders['workspace.create']
   },
-  'workspace.list': { renderer: true, quiet: false, decode: (p) => decoders['workspace.list'](p) },
-  'workspace.get': { renderer: true, quiet: false, decode: (p) => decoders['workspace.get'](p) },
+  'workspace.list': { renderer: true, quiet: false, decode: decoders['workspace.list'] },
+  'workspace.get': { renderer: true, quiet: false, decode: decoders['workspace.get'] },
   'workspace.remove': {
     renderer: true,
     quiet: false,
-    decode: (p) => decoders['workspace.remove'](p)
+    decode: decoders['workspace.remove']
   },
   'workspace.openTerminal': {
     renderer: true,
     quiet: true,
-    decode: (p) => decoders['workspace.openTerminal'](p)
+    decode: decoders['workspace.openTerminal']
   },
   'workspace.createPr': {
     renderer: true,
     quiet: true,
-    decode: (p) => decoders['workspace.createPr'](p)
+    decode: decoders['workspace.createPr']
   },
-  'workspace.start': { renderer: true, quiet: true, decode: (p) => decoders['workspace.start'](p) },
+  'workspace.start': { renderer: true, quiet: true, decode: decoders['workspace.start'] },
   'workspace.rename': {
     renderer: true,
     quiet: false,
-    decode: (p) => decoders['workspace.rename'](p)
+    decode: decoders['workspace.rename']
   },
   'workspace.canRenameBranch': {
     renderer: true,
     quiet: false,
-    decode: (p) => decoders['workspace.canRenameBranch'](p)
+    decode: decoders['workspace.canRenameBranch']
   },
-  'workspace.diff': { renderer: true, quiet: true, decode: (p) => decoders['workspace.diff'](p) },
+  'workspace.diff': { renderer: true, quiet: true, decode: decoders['workspace.diff'] },
   'workspace.prThread': {
     renderer: true,
     quiet: true,
-    decode: (p) => decoders['workspace.prThread'](p)
+    decode: decoders['workspace.prThread']
   },
-  'workspace.files': { renderer: true, quiet: true, decode: (p) => decoders['workspace.files'](p) },
+  'workspace.files': { renderer: true, quiet: true, decode: decoders['workspace.files'] },
   'workspace.readFile': {
     renderer: true,
     quiet: true,
-    decode: (p) => decoders['workspace.readFile'](p)
+    decode: decoders['workspace.readFile']
   },
   'workspace.watch': {
     renderer: true,
     quiet: false,
-    decode: (p) => decoders['workspace.watch'](p)
+    decode: decoders['workspace.watch']
   },
   'workspace.unwatch': {
     renderer: true,
     quiet: false,
-    decode: (p) => decoders['workspace.unwatch'](p)
+    decode: decoders['workspace.unwatch']
   },
-  'hook.event': { renderer: false, quiet: false, decode: (p) => decoders['hook.event'](p) },
-  'task.add': { renderer: true, quiet: true, decode: (p) => decoders['task.add'](p) },
-  'task.list': { renderer: true, quiet: false, decode: (p) => decoders['task.list'](p) },
-  'task.get': { renderer: true, quiet: false, decode: (p) => decoders['task.get'](p) },
-  'task.stop': { renderer: true, quiet: false, decode: (p) => decoders['task.stop'](p) },
-  'task.remove': { renderer: true, quiet: false, decode: (p) => decoders['task.remove'](p) },
-  'queue.open': { renderer: true, quiet: true, decode: (p) => decoders['queue.open'](p) },
-  'queue.close': { renderer: true, quiet: false, decode: (p) => decoders['queue.close'](p) },
-  'queue.state': { renderer: true, quiet: false, decode: (p) => decoders['queue.state'](p) },
-  'report.get': { renderer: true, quiet: true, decode: (p) => decoders['report.get'](p) },
-  'quiet.state': { renderer: true, quiet: false, decode: (p) => decoders['quiet.state'](p) },
-  'quiet.unlock': { renderer: true, quiet: false, decode: (p) => decoders['quiet.unlock'](p) },
-  'quiet.lock': { renderer: true, quiet: false, decode: (p) => decoders['quiet.lock'](p) },
-  'quiet.log': { renderer: true, quiet: false, decode: (p) => decoders['quiet.log'](p) },
-  'config.get': { renderer: true, quiet: false, decode: (p) => decoders['config.get'](p) },
-  'config.set': { renderer: true, quiet: false, decode: (p) => decoders['config.set'](p) },
+  'hook.event': { renderer: false, quiet: false, decode: decoders['hook.event'] },
+  'task.add': { renderer: true, quiet: true, decode: decoders['task.add'] },
+  'task.list': { renderer: true, quiet: false, decode: decoders['task.list'] },
+  'task.get': { renderer: true, quiet: false, decode: decoders['task.get'] },
+  'task.stop': { renderer: true, quiet: false, decode: decoders['task.stop'] },
+  'task.remove': { renderer: true, quiet: false, decode: decoders['task.remove'] },
+  'queue.open': { renderer: true, quiet: true, decode: decoders['queue.open'] },
+  'queue.close': { renderer: true, quiet: false, decode: decoders['queue.close'] },
+  'queue.state': { renderer: true, quiet: false, decode: decoders['queue.state'] },
+  'report.get': { renderer: true, quiet: true, decode: decoders['report.get'] },
+  'quiet.state': { renderer: true, quiet: false, decode: decoders['quiet.state'] },
+  'quiet.unlock': { renderer: true, quiet: false, decode: decoders['quiet.unlock'] },
+  'quiet.lock': { renderer: true, quiet: false, decode: decoders['quiet.lock'] },
+  'quiet.log': { renderer: true, quiet: false, decode: decoders['quiet.log'] },
+  'config.get': { renderer: true, quiet: false, decode: decoders['config.get'] },
+  'config.set': { renderer: true, quiet: false, decode: decoders['config.set'] },
   'instructions.get': {
     renderer: true,
     quiet: false,
-    decode: (p) => decoders['instructions.get'](p)
+    decode: decoders['instructions.get']
   },
   'instructions.set': {
     renderer: true,
     quiet: false,
-    decode: (p) => decoders['instructions.set'](p)
+    decode: decoders['instructions.set']
   },
-  'tickets.list': { renderer: true, quiet: false, decode: (p) => decoders['tickets.list'](p) },
-  'tickets.sync': { renderer: true, quiet: false, decode: (p) => decoders['tickets.sync'](p) },
-  'tickets.start': { renderer: true, quiet: true, decode: (p) => decoders['tickets.start'](p) },
+  'tickets.list': { renderer: true, quiet: false, decode: decoders['tickets.list'] },
+  'tickets.sync': { renderer: true, quiet: false, decode: decoders['tickets.sync'] },
+  'tickets.start': { renderer: true, quiet: true, decode: decoders['tickets.start'] },
   'tickets.projectFor': {
     renderer: true,
     quiet: false,
-    decode: (p) => decoders['tickets.projectFor'](p)
+    decode: decoders['tickets.projectFor']
   }
 }
 
@@ -824,24 +825,6 @@ export function isEvent(msg: ServerMessage): msg is EventMessage {
 // ---- Claude Code payloads -------------------------------------------------
 // Shapes que receives from Claude Code: hook JSON on stdin and the final
 // stream-json `result` line of a headless run.
-
-export const HOOK_EVENT_NAMES = [
-  'SessionStart',
-  'SessionEnd',
-  'UserPromptSubmit',
-  'PreToolUse',
-  'PostToolUse',
-  'PostToolUseFailure',
-  'Stop',
-  'StopFailure',
-  'Notification',
-  'PermissionRequest',
-  'PreCompact',
-  'SubagentStart',
-  'SubagentStop'
-] as const
-
-export type HookEventName = (typeof HOOK_EVENT_NAMES)[number]
 
 export interface HookEvent {
   hook_event_name: HookEventName
