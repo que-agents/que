@@ -18,7 +18,6 @@ import SidebarResizer, { useSidebarWidth } from './components/SidebarResizer'
 import Panes from './components/Panes'
 import ReviewPane from './components/ReviewPane'
 import ReviewResizer from './components/ReviewResizer'
-import TopBar from './components/TopBar'
 import UpdateBanner from './components/UpdateBanner'
 import { QueStore, StoreContext, useQue, useQueSelector, useStore } from './store'
 import { setReviewSource } from './testHook'
@@ -186,10 +185,7 @@ function Shell(): React.JSX.Element {
         {locked ? (
           <Locked />
         ) : termKey !== null ? (
-          <>
-            <TopBar termKey={termKey} />
-            <Panes termKey={termKey} />
-          </>
+          <Panes termKey={termKey} />
         ) : view.kind === 'settings' ? (
           <SettingsView />
         ) : view.kind === 'tickets' ? (

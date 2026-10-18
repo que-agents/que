@@ -264,7 +264,7 @@ h2 {
 }
 
 /* The window has no title bar. The traffic lights sit in the strip above the
- * sidebar's content; that strip and the top bar's empty space drag the window. */
+ * sidebar's content; that strip and the tab row's empty space drag the window. */
 .window-drag {
   position: absolute;
   top: 0;
@@ -897,27 +897,6 @@ body.resizing {
   text-overflow: ellipsis;
 }
 
-.crumb {
-  color: var(--fg-faint);
-  white-space: nowrap;
-  /* The project name gives way first (the sidebar shows it anyway), then the title, so the
-   * chips and buttons stay in view. */
-  flex-shrink: 8;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.crumb-sep {
-  color: var(--fg-faint);
-  margin: 0 -2px;
-}
-
-.branch {
-  font: 11px var(--mono);
-  color: var(--fg-muted);
-}
-
 .cwd {
   flex: 1;
   min-width: 0;
@@ -934,13 +913,33 @@ body.resizing {
   flex: none;
 }
 
+/* The main column's first row: a pane's tab strip, 40px like the sidebar's title strip and
+ * the review pane's bar, over the dashed guide. Its empty space drags the window; the top-right
+ * strip ends in the split and review buttons (`.pane-controls`). */
 .tabbar {
+  position: relative;
+  box-sizing: border-box;
   display: flex;
-  align-items: center;
+  align-items: stretch;
   gap: 2px;
+  min-height: 40px;
   padding: 0 8px;
-  border-bottom: 1px solid var(--border);
   flex: none;
+  -webkit-app-region: drag;
+}
+
+.tabbar button {
+  -webkit-app-region: no-drag;
+}
+
+.tabbar::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 1px;
+  background: var(--dash);
 }
 
 .tabs {
@@ -950,11 +949,13 @@ body.resizing {
   overflow-x: auto;
 }
 
+/* Above the guide, so the active tab's underline covers it. */
 .tab {
+  position: relative;
+  z-index: 1;
   display: inline-flex;
-  align-items: center;
+  align-items: stretch;
   flex: none;
-  margin-bottom: -1px;
   border-bottom: 2px solid transparent;
   color: var(--fg-muted);
 }
@@ -981,8 +982,15 @@ body.resizing {
   color: inherit;
 }
 
+/* The × waits for the pointer, the keyboard or the active tab; opacity, so the tab keeps its width. */
 .tab .close {
   padding: 6px 8px 6px 0;
+  opacity: 0;
+}
+
+.tab:hover .close,
+.tab:focus-within .close,
+.tab.active .close {
   opacity: 0.5;
 }
 
@@ -990,8 +998,23 @@ body.resizing {
   opacity: 1;
 }
 
+/* An exited terminal: its name reads faint, no badge. */
+.tab.exited .tab-name {
+  color: var(--fg-faint);
+}
+
 .new-tab {
-  margin: 3px 0 3px 4px;
+  align-self: center;
+  margin-left: 4px;
+}
+
+.pane-controls {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: none;
+  margin-left: auto;
+  padding-left: 6px;
 }
 
 .short-id {
@@ -1008,11 +1031,6 @@ body.resizing {
   text-transform: uppercase;
   background: var(--bg-active);
   color: var(--fg-muted);
-}
-
-.badge.exited {
-  background: color-mix(in srgb, var(--tone-bad) 16%, transparent);
-  color: #ff7079;
 }
 
 .terminal {
@@ -1246,15 +1264,6 @@ body.resizing {
 }
 
 /* ---- quiet hours -------------------------------------------------------- */
-
-.unlock-status {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font: 11px var(--mono);
-  color: var(--accent);
-  white-space: nowrap;
-}
 
 .locked {
   flex: 1;
@@ -1723,7 +1732,7 @@ body.resizing .pane-divider::after {
 }
 
 /* Its tab strip, drawn like a pane's: the active tab carries the accent underline. It lines up
- * with the top bar and, like it, drags the window from its empty space. */
+ * with the tab row and, like it, drags the window from its empty space. */
 .review-bar {
   box-sizing: border-box;
   display: flex;
