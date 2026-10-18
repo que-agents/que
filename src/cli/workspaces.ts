@@ -1,13 +1,11 @@
 // Projects, workspaces, and status commands.
 import { execFile } from 'node:child_process'
-import fs from 'node:fs'
 import { join, resolve } from 'node:path'
 import type { Command } from 'commander'
 import { summarize, trayTitle } from '../daemon/status-engine'
 import type { DaemonClient } from '../shared/client'
-import { formatConfigErrors, loadConfig } from '../shared/config'
 import { formatAge, formatDuration, spanMs } from '../shared/format'
-import { queHome, quePaths } from '../shared/paths'
+import { quePaths } from '../shared/paths'
 import type {
   DiffFile,
   WorkspaceDiff,
@@ -152,21 +150,6 @@ function openInEditor(path: string): Promise<void> {
   })
 }
 
-/** `-r` takes a configured repo name or a path. */
-function resolveRepo(ref: string) {
-  const config = loadConfig({ queHome: queHome() })
-
-  if (!config.ok) throw new CliError(`invalid config: ${formatConfigErrors(config.errors)}`)
-  const named = config.config.repos[ref]
-
-  if (named) return { path: named.path, name: ref }
-  const path = resolve(ref)
-
-  if (!fs.existsSync(path)) throw new CliError(`no configured repo or directory named ${ref}`)
-
-  return { path }
-}
-
 /** Waits until a workspace leaves `preparing` (its setup command finished). */
 async function waitForSetup(
   c: DaemonClient,
@@ -284,8 +267,7 @@ export function registerWorkspaceCommands(program: Command): void {
         }
 
         return withClient(async (c) => {
-          const repo = resolveRepo(opts.repo)
-          const p = await c.request('project.add', { path: repo.path, name: repo.name })
+          const p = await c.request('project.add', { repo: opts.repo, cwd: process.cwd() })
           const seen: WorkspaceStatusEvent[] = []
           c.on('workspace.status', (e) => seen.push(e))
 

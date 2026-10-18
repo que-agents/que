@@ -97,8 +97,16 @@ export interface Ok {
 }
 
 export interface ProjectAddParams {
-  /** Any path inside the repository; the git toplevel is registered. */
-  path: string
+  /**
+   * Exactly one of `path` or `repo` is required.
+   * `path`: any path inside the repository; the toplevel is registered.
+   * `repo`: what `-r` takes, a repo name from `[repos.<name>]` in the user
+   * config (registered under that name) or an existing directory.
+   */
+  path?: string
+  repo?: string
+  /** The directory a relative `repo` path is resolved against (the caller's); ignored with `path`. */
+  cwd?: string
   name?: string
 }
 

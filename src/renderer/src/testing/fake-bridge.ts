@@ -269,7 +269,7 @@ class FakeBridge {
         e2e: false
       },
       project: {
-        add: async ({ path, name }) => {
+        add: async ({ path = '', name }) => {
           const existing = [...this.projects.values()].find((p) => p.path === path)
 
           if (existing) return { ...existing }
