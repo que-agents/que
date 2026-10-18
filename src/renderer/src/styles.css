@@ -159,6 +159,13 @@ button.icon:focus-visible {
   color: var(--fg);
 }
 
+/* The small one, 18px, for a row's own controls (a sidebar row's ⋯). */
+button.icon.sm {
+  width: 18px;
+  height: 18px;
+  border-radius: 2px;
+}
+
 /* A toggle that is on (the review pane open) reads at full strength. */
 button.ghost.icon[aria-pressed='true'] {
   color: var(--fg);
@@ -355,19 +362,21 @@ h2 {
   border-radius: var(--radius);
 }
 
-/* A head's buttons stay out of sight until the head is under the pointer, holds the
+/* A section head's buttons (Sessions +, Projects folder-plus and sort) always show. A
+ * project head's stay out of sight until the head is under the pointer, holds the
  * keyboard focus, or has its menu open. */
 .head-actions {
   display: flex;
   align-items: center;
   gap: 2px;
   margin-left: auto;
+}
+
+.project-head .head-actions {
   opacity: 0;
   transition: opacity 0.12s;
 }
 
-.section-head:hover .head-actions,
-.section-head:has(:focus-visible) .head-actions,
 .project-head:hover .head-actions,
 .project-head:has(:focus-visible) .head-actions,
 .project-head:has([aria-haspopup][aria-expanded='true']) .head-actions {
@@ -503,16 +512,8 @@ h2 {
 }
 
 .sidebar .more {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 18px;
-  height: 18px;
-  padding: 0;
-  border-radius: 2px;
   font: 13px / 1 var(--sans);
   letter-spacing: 0.5px;
-  color: var(--fg-faint);
 }
 
 .sidebar .more:hover:not(:disabled) {
@@ -538,13 +539,19 @@ h2 {
   color: var(--fg);
 }
 
-/* Status at rest: a 5px dot in its tone, centred in the icon column. */
-.status-dot {
-  --tone: var(--tone-neutral);
+/* Status at rest: a 5px dot in its tone, centred in the icon column. A pull request
+ * check's dot is the same, taking its tone from its row. */
+.status-dot,
+.pr-dot {
+  flex: none;
   width: 5px;
   height: 5px;
   border-radius: 50%;
   background: var(--tone);
+}
+
+.status-dot {
+  --tone: var(--tone-neutral);
 }
 
 /* Working: four accent dots on a 2×2 grid at a 5px pitch, and a diagonal ripple across
@@ -1120,13 +1127,6 @@ body.resizing {
 
 .report-row .name {
   font-weight: 500;
-}
-
-.pr-link {
-  margin-left: 22px;
-  font: 11px var(--mono);
-  color: var(--accent);
-  white-space: nowrap;
 }
 
 /* ---- dialogs ------------------------------------------------------------ */
@@ -2233,14 +2233,6 @@ button.changes-pick {
 
 .pr-check:hover {
   background: var(--bg-hover);
-}
-
-.pr-dot {
-  flex: none;
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--tone);
 }
 
 .pr-check-name {

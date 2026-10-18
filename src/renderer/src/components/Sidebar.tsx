@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { Project, Task, Workspace } from '../../../preload/index.d'
-import { isLocked } from '../../../daemon/quiet-hours'
+import type { Project, Workspace } from '../../../preload/index.d'
 import { formatCountdown } from '../../../shared/format'
-import { latestTasks, statusBadge, taskBadge } from '../format'
+import { isLocked } from '../../../daemon/quiet-hours'
+import { latestTasks } from '../format'
 import { SCRATCH, usePanes, useQueSelector, useStore } from '../store'
 import { countOpenTickets } from '../ticket-tree'
 import { filterSidebar, matches, sortProjects, sortWorkspaces } from '../sidebar-order'
-import { collapsedCount, hoverWord, type RowTone, rowTone } from '../sidebar-row'
+import { hoverWord, type RowTone, rowTone } from '../sidebar-row'
 import { useNow } from '../useNow'
+import { useUnlockCountdown } from '../useUnlockCountdown'
 import {
   ChevronIcon,
   FolderIcon,
@@ -23,37 +24,25 @@ import WorkspacePopout, { usePopout } from './WorkspacePopout'
 /** Which row's menu is open, and where: under its ⋯ button, or at the pointer. */
 type OpenMenu = { kind: 'project' | 'workspace'; id: string; at?: Point }
 
-/** The dot's tooltip: the status word, and why when the workspace is stuck. */
-function markTitle(w: Workspace, task: Task | undefined, look: RowTone): string {
-  if (look.unseen) return 'done'
-
-  if (look.status === w.status) {
-    const { label } = statusBadge(w.status)
-
-    return w.statusReason ? `${label}: ${w.statusReason}` : label
-  }
-
-  return look.status === 'done' || !task ? look.status : taskBadge(task.state).label
-}
-
 /**
  * A workspace's status at rest: a 5px dot in its tone, or, while it works, four accent
- * dots rippling (CSS only). It carries `data-status` and `data-unseen` for tests.
+ * dots rippling (CSS only). Its tooltip is the hover word, and why when the workspace is
+ * stuck. It carries `data-status` and `data-unseen` for tests.
  */
 function StatusMark({
   w,
-  task,
-  look
+  look,
+  word
 }: {
   w: Workspace
-  task?: Task
   look: RowTone
+  word: string
 }): React.JSX.Element {
   const common = {
     'data-testid': `sidebar-workspace-${w.id}-status`,
     'data-status': look.status,
     'data-unseen': look.unseen ? 'true' : 'false',
-    title: markTitle(w, task, look)
+    title: w.statusReason && look.status === w.status ? `${word}: ${w.statusReason}` : word
   }
 
   if (look.working) {
@@ -73,17 +62,8 @@ function StatusMark({
 /** During an unlock: the countdown, and `lock now`, always shown. */
 function UnlockRow(): React.JSX.Element | null {
   const store = useStore()
-  const quiet = useQueSelector((s) => s.quiet)
   const connected = useQueSelector((s) => s.connected)
-  const until = quiet?.inQuietHours && quiet.unlockedUntil ? Date.parse(quiet.unlockedUntil) : null
-  const [, tick] = useState(0)
-
-  useEffect(() => {
-    if (until === null) return
-    const t = setInterval(() => tick((n) => n + 1), 1000)
-
-    return () => clearInterval(t)
-  }, [until])
+  const until = useUnlockCountdown()
 
   if (until === null) return null
 
@@ -120,11 +100,11 @@ export default function Sidebar(): React.JSX.Element {
   const searchOpen = useQueSelector((s) => s.searchOpen)
   const searchFocusNonce = useQueSelector((s) => s.searchFocusNonce)
   const sort = useQueSelector((s) => s.sort)
-  const quiet = useQueSelector((s) => s.quiet)
+  const locked = useQueSelector((s) => isLocked(s.quiet))
   const dialog = useQueSelector((s) => s.dialog)
   const now = useNow()
   // The workspace card: detail, so never while quiet hours lock the app.
-  const popout = usePopout(!isLocked(quiet))
+  const popout = usePopout(!locked)
   const rows = useRef(new Map<string, HTMLLIElement>())
   const showPopout = popout.show
 
@@ -149,19 +129,20 @@ export default function Sidebar(): React.JSX.Element {
   const activeSession = selected === SCRATCH ? store.activeTab(SCRATCH) : null
 
   // The selected workspace has been looked at: when it becomes the selected one in a
-  // focused window, when it finishes while selected, and when the window regains focus.
+  // focused window, when it finishes while selected, when the window regains focus, and
+  // when quiet hours unlock on it. Never while they lock it: nothing of it shows.
   const seenId = selected !== null && selected in workspaces ? selected : null
   const seenFinishedAt = seenId ? workspaces[seenId]?.finishedAt : null
 
   useEffect(() => {
-    if (!seenId) return
+    if (!seenId || locked) return
 
     if (document.hasFocus()) void store.markSeen(seenId)
     const onFocus = (): void => void store.markSeen(seenId)
     window.addEventListener('focus', onFocus)
 
     return () => window.removeEventListener('focus', onFocus)
-  }, [store, seenId, seenFinishedAt])
+  }, [store, seenId, seenFinishedAt, locked])
 
   const toggle = (id: string): void =>
     setCollapsed((prev) => {
@@ -384,7 +365,7 @@ export default function Sidebar(): React.JSX.Element {
           const open = filtering || !collapsed.has(p.id)
           const list = sortWorkspaces(narrowed.workspacesOf(p.id), sort)
           const looks = list.map((w) => rowTone(w, owned.get(w.id), selected === w.id))
-          const count = collapsedCount(looks)
+          const unseenCount = looks.filter((l) => l.unseen).length
           const projectMenu = menuFor('project', p.id)
 
           return (
@@ -407,12 +388,12 @@ export default function Sidebar(): React.JSX.Element {
                 </button>
                 {!open && (
                   <span className="count" data-testid={`sidebar-project-${p.id}-count`}>
-                    {count.done > 0 && (
+                    {unseenCount > 0 && (
                       <>
-                        <span className="done">{count.done} done</span> ·{' '}
+                        <span className="done">{unseenCount} done</span> ·{' '}
                       </>
                     )}
-                    {count.total}
+                    {looks.length}
                   </span>
                 )}
                 <div className="head-actions">
@@ -429,7 +410,7 @@ export default function Sidebar(): React.JSX.Element {
                   </button>
                   <button
                     type="button"
-                    className="ghost more"
+                    className="ghost icon sm more"
                     data-testid={`sidebar-project-${p.id}-menu`}
                     aria-label={`More actions for ${p.name}`}
                     aria-haspopup="menu"
@@ -479,7 +460,7 @@ export default function Sidebar(): React.JSX.Element {
                           onClick={() => store.showTerminals(w.id)}
                         >
                           <span className="ico" aria-hidden="true">
-                            <StatusMark w={w} task={task} look={look} />
+                            <StatusMark w={w} look={look} word={word.word} />
                           </span>
                           <span className="name" data-testid={`sidebar-workspace-${w.id}-name`}>
                             {w.title ?? w.name}
@@ -494,7 +475,7 @@ export default function Sidebar(): React.JSX.Element {
                           </span>
                           <button
                             type="button"
-                            className="ghost more"
+                            className="ghost icon sm more"
                             data-testid={`sidebar-workspace-${w.id}-menu`}
                             aria-label={`More actions for ${w.title ?? w.name}`}
                             aria-haspopup="menu"

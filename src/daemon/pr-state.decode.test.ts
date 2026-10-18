@@ -10,15 +10,7 @@ import {
   fakeStatusContext,
   setFakePullRequest
 } from '../testing/fakes'
-import {
-  decodeCheckRollup,
-  decodePrUrlNumber,
-  decodePullRequest,
-  decodePullRequests
-} from './pr-state.decode'
-
-const FIELDS =
-  'number,url,title,state,isDraft,reviewDecision,statusCheckRollup,mergedAt,updatedAt,additions,deletions'
+import { decodeCheckRollup, decodePullRequest, decodePullRequests, FIELDS } from './pr-state.decode'
 
 describe('decodePullRequest', () => {
   let dir: string
@@ -202,18 +194,6 @@ describe('decodePullRequests', () => {
         { number: 8, url: 'https://github.com/rquellh/que/pull/8' }
       ])
     ).toMatchObject([{ number: 8 }])
-  })
-})
-
-describe('decodePrUrlNumber', () => {
-  it.each([
-    ['https://github.com/rquellh/que/pull/88', 88],
-    ['https://github.com/rquellh/que/pull/88/', 88],
-    ['https://github.com/rquellh/que/issues/88', null],
-    ['https://github.com/rquellh/que/pull/', null],
-    ['', null]
-  ])('reads %j as %j', (url, n) => {
-    expect(decodePrUrlNumber(url)).toBe(n)
   })
 })
 

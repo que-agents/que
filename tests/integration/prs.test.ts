@@ -14,7 +14,6 @@ import {
 } from '../../src/testing/daemon-harness'
 import {
   addFakePullRequest,
-  type FakePr,
   readFakeLog,
   readFakePullRequests,
   setFakePullRequest
@@ -201,12 +200,12 @@ describe('pull request tracking', () => {
 
     // It is merged from another head, and a new one is opened from the branch.
     const all = readFakePullRequests(daemon.ghPrs)
-    all['APP-1432-old-head'] = {
-      ...(all[branch] as FakePr),
+    all['APP-1432-old-head'] = all[branch].map((pr) => ({
+      ...pr,
       headRefName: 'APP-1432-old-head',
-      state: 'MERGED',
+      state: 'MERGED' as const,
       mergedAt: '2026-10-14T03:00:00Z'
-    }
+    }))
     delete all[branch]
     fs.writeFileSync(daemon.ghPrs, JSON.stringify(all))
     addFakePullRequest(daemon.ghPrs, branch, { number: 2, isDraft: false })

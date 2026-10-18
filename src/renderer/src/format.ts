@@ -1,6 +1,7 @@
 // Pure display rules for the renderer: badge labels and tones, and the order
 // things are listed in. Money and durations are in shared/format.
 import type { PullRequest, Task, TaskState, WorkspaceStatus } from '../../preload/index.d'
+import { prUrlNumber } from '../../shared/pr-url'
 import { LIVE_STATES } from '../../shared/types'
 
 export type Tone = 'neutral' | 'busy' | 'attention' | 'bad' | 'good' | 'muted'
@@ -102,5 +103,7 @@ export function prBadge(pr: PullRequest) {
 
 /** A pull request's number from its URL (`…/pull/<n>`); undefined without a URL. */
 export function prNumberOf(prUrl: string | null | undefined): string | undefined {
-  return prUrl ? prUrl.split('/').pop() : undefined
+  const n = prUrlNumber(prUrl)
+
+  return n === null ? undefined : String(n)
 }
