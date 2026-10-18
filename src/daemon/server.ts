@@ -34,9 +34,9 @@ import type {
   TermInfo,
   WorkspaceStartResult
 } from '../shared/protocol'
-import { ACTIVE_STATES, type TaskSource, type TaskState, type Workspace } from '../shared/types'
-import { conflict, RpcError } from './errors'
-import { finishTask, isProtectedBranch } from './finisher'
+import { type TaskSource, type TaskState, type Workspace } from '../shared/types'
+import { EventBus } from './bus'
+import { RpcError } from './errors'
 import type { HostedTerminal, PtyHost, TermExtra } from './pty-host'
 import { QuietService } from './quiet'
 import { TaskQueue } from './queue'
@@ -137,6 +137,8 @@ export class DaemonServer {
   private closed = false
   /** Workspace of each workspace terminal, kept past the terminal's removal. */
   private termWorkspace = new Map<string, string>()
+  /** Every service reports events here; the server sends them on to the connections. */
+  readonly bus = new EventBus({ log: (m) => this.log(m) })
   readonly startedAt: string
   readonly paths: QuePaths
   readonly store: Store
@@ -151,8 +153,8 @@ export class DaemonServer {
   private config: UserConfig
   private configStamp = ''
   private configCheckedAt = Number.NEGATIVE_INFINITY
-  /** Watches the worktrees of workspaces with an attached terminal (workspace.changed). */
-  readonly watcher = new WorktreeWatcher((id) => this.broadcast('workspace.changed', { id }), {
+  /** Watches the worktrees of the workspaces clients asked for with workspace.watch (workspace.changed). */
+  readonly watcher = new WorktreeWatcher((id) => this.bus.emit('workspace.changed', { id }), {
     log: (m) => this.log(m)
   })
 
@@ -162,7 +164,11 @@ export class DaemonServer {
     this.paths = ensureDirs(opts.paths ?? quePaths())
     this.store = new Store(this.paths.db)
     this.config = defaultConfig({ queHome: this.paths.home })
-    const emit = this.broadcast.bind(this) as DaemonServer['broadcast']
+    const { emit } = this.bus
+    this.bus.onAny((event, data) => {
+      for (const c of this.conns) c.sendEvent(event, data)
+    })
+    this.bus.on('workspace.removed', () => this.syncWatches())
     this.status = new StatusService({
       store: this.store,
       emit,
@@ -177,14 +183,12 @@ export class DaemonServer {
       emit,
       killTerminals: (id) => this.killWorkspaceTerminals(id),
       log: (m) => this.log(m),
-      randomName: opts.randomWorkspaceName,
-      onCreated: (ws) => this.summaries.created(ws),
-      onRemoved: (id) => this.summaries.forget(id)
+      randomName: opts.randomWorkspaceName
     })
     this.summaries = new Summarizer({
       store: this.store,
       paths: this.paths,
-      emit,
+      bus: this.bus,
       config: () => this.configOrDefault(),
       transcriptPath: (id) => this.status.transcriptPath(id),
       log: (m) => this.log(m),
@@ -196,15 +200,7 @@ export class DaemonServer {
       paths: this.paths,
       workspaces: this.workspaces,
       status: this.status,
-      emit: ((event, data) => {
-        emit(event, data)
-
-        if (event === 'task.status' && (data as { state: string }).state === 'done') {
-          const wsId = this.store.getTask((data as { id: string }).id)?.workspaceId
-
-          if (wsId) void this.prs.refresh(wsId)
-        }
-      }) as DaemonServer['broadcast'],
+      emit,
       config: () => this.configOrDefault(),
       killTerminals: (id) => this.killWorkspaceTerminals(id),
       socket: () => this.socketPath,
@@ -213,8 +209,10 @@ export class DaemonServer {
     })
     this.prs = new PrService({
       store: this.store,
-      projectOf: (ws) => this.workspaces.project(ws.projectId),
-      emit,
+      workspaces: this.workspaces,
+      tasks: this.tasks,
+      paths: this.paths,
+      bus: this.bus,
       config: () => this.configOrDefault(),
       log: (m) => this.log(m)
     })
@@ -258,7 +256,7 @@ export class DaemonServer {
       }),
       host.onExit((id, info) => {
         this.log(`term ${id} exited code=${info.exitCode} signal=${info.signal ?? ''}`)
-        this.broadcast('term.exit', { id, exitCode: info.exitCode, signal: info.signal })
+        this.bus.emit('term.exit', { id, exitCode: info.exitCode, signal: info.signal })
         const wsId = this.termWorkspace.get(id)
 
         if (wsId) {
@@ -350,7 +348,7 @@ export class DaemonServer {
     this.quiet.configChanged(applyTonight)
     this.tasks.kick()
     const result = this.getConfig()
-    this.broadcast('config.changed', result)
+    this.bus.emit('config.changed', result)
 
     return result
   }
@@ -360,7 +358,7 @@ export class DaemonServer {
 
     if (extra?.workspaceId) this.termWorkspace.set(t.id, extra.workspaceId)
     this.log(`term ${t.id} created pid=${t.proc.pid} cwd=${t.cwd}`)
-    this.broadcast('term.created', t.info())
+    this.bus.emit('term.created', t.info())
 
     return t
   }
@@ -421,7 +419,7 @@ export class DaemonServer {
     this.log(`term ${id} killed`)
 
     for (const c of this.conns) c.subs.delete(id)
-    this.broadcast('term.killed', { id })
+    this.bus.emit('term.killed', { id })
 
     return true
   }
@@ -489,59 +487,6 @@ export class DaemonServer {
 
   log(msg: string): void {
     this.opts.log?.(msg)
-  }
-
-  /**
-   * Opens a draft pull request from an interactive workspace with the
-   * finisher: commits what is uncommitted as `title`, pushes, and runs gh.
-   */
-  private async createPr(id: string, rawTitle: string): Promise<{ prUrl: string }> {
-    const ws = this.workspaces.get(id)
-    const title = rawTitle.trim()
-
-    if (!title) throw new RpcError(ErrorCodes.BadRequest, 'title is required')
-    const project = this.workspaces.project(ws.projectId)
-    const { protectedBranches } = this.configOrDefault()
-
-    if (isProtectedBranch(ws.branch, project.defaultBranch, protectedBranches)) {
-      throw conflict(`refusing to open a pull request from protected branch ${ws.branch}`)
-    }
-
-    const busy = this.tasks.list().some((t) => t.workspaceId === id && ACTIVE_STATES.has(t.state))
-
-    if (busy) throw conflict(`a task is running in workspace ${ws.name}`)
-
-    const lines: string[] = []
-    fs.mkdirSync(this.paths.workspaceLogsDir, { recursive: true, mode: 0o700 })
-
-    const result = await finishTask({
-      task: { title, resultText: null },
-      workspace: ws,
-      project,
-      protectedBranches,
-      bodyFile: join(this.paths.workspaceLogsDir, `${ws.id}.pr.md`),
-      log: (line) => {
-        lines.push(line)
-        this.log(`workspace ${ws.id} ${line}`)
-      }
-    })
-
-    if (!result.ok) {
-      const detail = lines.at(-1) ?? `${result.step} failed`
-
-      if (result.step === 'protected_branch') throw conflict(detail)
-      throw new RpcError(ErrorCodes.Internal, detail)
-    }
-
-    if (!result.prUrl) {
-      throw conflict(`${ws.branch} has no commits ahead of its base; nothing to open a PR for`)
-    }
-
-    this.store.setWorkspacePrUrl(ws.id, result.prUrl)
-    this.broadcast('workspace.updated', this.workspaces.get(ws.id))
-    void this.prs.refresh(ws.id)
-
-    return { prUrl: result.prUrl }
   }
 
   listen(socketPath: string): Promise<void> {
@@ -660,15 +605,6 @@ export class DaemonServer {
     }
 
     this.watcher.sync(wanted)
-  }
-
-  broadcast<E extends EventName>(event: E, data: Events[E]): void {
-    if (event === 'workspace.removed') {
-      this.prs?.forget((data as Events['workspace.removed']).id)
-      this.syncWatches()
-    }
-
-    for (const c of this.conns) c.sendEvent(event, data)
   }
 
   async dispatch(conn: Connection, req: Request): Promise<void> {
@@ -812,7 +748,7 @@ export class DaemonServer {
           name: optString(p, 'name')
         })
 
-        if (!before.has(project.id)) this.broadcast('project.added', project)
+        if (!before.has(project.id)) this.bus.emit('project.added', project)
 
         return project
       }
@@ -821,7 +757,7 @@ export class DaemonServer {
         return this.workspaces.listProjects()
       case 'project.remove':
         await this.workspaces.removeProject(str(p, 'id'), optBool(p, 'force'))
-        this.broadcast('project.removed', { id: str(p, 'id') })
+        this.bus.emit('project.removed', { id: str(p, 'id') })
 
         return { ok: true }
       case 'workspace.create':
@@ -887,7 +823,7 @@ export class DaemonServer {
       }
 
       case 'workspace.createPr':
-        return this.createPr(str(p, 'id'), str(p, 'title'))
+        return this.prs.create(str(p, 'id'), str(p, 'title'))
       case 'hook.event': {
         const ws = this.workspaces.get(str(p, 'workspaceId'))
         const payload = decodeHookEvent(p.payload)

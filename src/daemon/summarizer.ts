@@ -14,7 +14,7 @@ import { firstLine, run } from '../shared/exec'
 import type { QuePaths } from '../shared/paths'
 import type { Workspace } from '../shared/types'
 import { resolveClaude } from './runner'
-import type { Emit } from './status'
+import type { EventBus } from './bus'
 import type { Store } from './store'
 import { decodeAssistantText } from './transcript.decode'
 
@@ -253,7 +253,8 @@ export class SummaryThrottle {
 export interface SummarizerOptions {
   store: Store
   paths: QuePaths
-  emit: Emit
+  /** The daemon's bus: a created workspace is queued, a removed one is dropped. */
+  bus: EventBus
   config: () => UserConfig
   /** The transcript the status engine last saw for a workspace's session. */
   transcriptPath: (id: string) => string | undefined
@@ -285,6 +286,8 @@ export class Summarizer {
       () => opts.config().summaryIntervalMinutes * 60_000,
       opts.now ?? Date.now
     )
+    opts.bus.on('workspace.created', (ws) => this.created(ws))
+    opts.bus.on('workspace.removed', ({ id }) => this.forget(id))
   }
 
   private log(msg: string): void {
@@ -420,7 +423,7 @@ export class Summarizer {
     const next = this.opts.store.getWorkspace(id)
     this.log(`workspace ${id} summarised as ${JSON.stringify(title)}`)
 
-    if (next) this.opts.emit('workspace.updated', next)
+    if (next) this.opts.bus.emit('workspace.updated', next)
 
     return done
   }

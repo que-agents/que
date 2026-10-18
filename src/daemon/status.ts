@@ -4,13 +4,12 @@
 import fs from 'node:fs'
 import type { UserConfig } from '../shared/config'
 import { run } from '../shared/exec'
-import type { Events, HookEvent } from '../shared/protocol'
+import type { HookEvent } from '../shared/protocol'
 import type { Workspace } from '../shared/types'
 import { type AgentEntry, reduce, type StatusInput, type StatusState } from './status-engine'
 import { decodeAgents } from './status.decode'
+import type { Emit } from './bus'
 import type { Store } from './store'
-
-export type Emit = <E extends keyof Events>(event: E, data: Events[E]) => void
 
 export interface StatusServiceOptions {
   store: Store

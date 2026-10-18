@@ -20,7 +20,8 @@ import { buildWorkspaceDigest, sortDigests } from './digest'
 import { badRequest, conflict, notFound } from './errors'
 import { buildReport, reportSince } from './report'
 import { reapOrphan, TaskRunner } from './runner'
-import type { Emit, StatusService } from './status'
+import type { Emit } from './bus'
+import type { StatusService } from './status'
 import { newId, type Store } from './store'
 import {
   ACTIVE_STATES,
