@@ -13,6 +13,15 @@ const base = {
   focusable: false
 } as const
 
+/** A folder: a project in the sidebar. */
+export function FolderIcon(): React.JSX.Element {
+  return (
+    <svg {...base} aria-hidden="true" className="folder">
+      <path d="M1.75 4.5a1 1 0 0 1 1-1h3.85l1.5 1.75h5.15a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H2.75a1 1 0 0 1-1-1z" />
+    </svg>
+  )
+}
+
 /** A folder with a plus on its bottom-right corner: add a repository. */
 export function FolderPlusIcon(): React.JSX.Element {
   return (
@@ -124,6 +133,16 @@ export function ExternalLinkIcon(): React.JSX.Element {
     <svg {...base} aria-hidden="true">
       <path d="M12.25 9v3.25a1 1 0 0 1-1 1h-7.5a1 1 0 0 1-1-1v-7.5a1 1 0 0 1 1-1H7" />
       <path d="M9.5 2.75h3.75v3.75M13.25 2.75 7.5 8.5" />
+    </svg>
+  )
+}
+
+/** Two overlapping rounded squares: copy to the clipboard. */
+export function CopyIcon(): React.JSX.Element {
+  return (
+    <svg {...base} aria-hidden="true">
+      <rect x="5.75" y="5.75" width="7.5" height="7.5" rx="1.25" />
+      <path d="M10.25 3.75v-.5a1 1 0 0 0-1-1h-5.5a1 1 0 0 0-1 1v5.5a1 1 0 0 0 1 1h.5" />
     </svg>
   )
 }

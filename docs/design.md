@@ -24,7 +24,7 @@ them; nothing sets a colour, font, or radius inline.
 
 Surfaces step up by one token per layer: the sidebar is darker than the main
 area, raised things (menus, dialogs) sit one step above it. Regions are divided
-by a 1px hairline; the top bar uses the dashed
+by a 1px hairline; the tab row uses the dashed
 guide (`--dash`, 6px on, 6px off) instead, so the eye reads them as sections of
 one drawing rather than separate panels. The sidebar's bottom group (Report, Tickets, Settings) is pinned to
 the window's bottom edge above a solid hairline.
@@ -46,23 +46,24 @@ so the DOM keeps the plain word.
 
 ## Accent and tones
 
-| Token              | Value     | Use                                                                               |
-| ------------------ | --------- | --------------------------------------------------------------------------------- |
-| `--accent`         | `#3fcdb4` | Links, the active tab's underline, focus rings, the cursor, the unlock countdown. |
-| `--accent-hover`   | `#6adcc7` | The accent under the pointer.                                                     |
-| `--inverse`        | `#e6e6e6` | The one primary button on a screen, light on dark.                                |
-| `--tone-busy`      | `#4f8cf5` | working, running, preparing.                                                      |
-| `--tone-attention` | `#f99c00` | needs input, paused.                                                              |
-| `--tone-bad`       | `#fb2c36` | stuck, failed, exited badly; the danger button.                                   |
-| `--tone-good`      | `#34c26b` | done, idle after work.                                                            |
-| `--tone-neutral`   | `#7a7a7a` | idle, queued.                                                                     |
-| `--tone-muted`     | `#5a5a5a` | stopped, exited.                                                                  |
+| Token              | Value     | Use                                                                                                           |
+| ------------------ | --------- | ------------------------------------------------------------------------------------------------------------- |
+| `--accent`         | `#3fcdb4` | Links, the active tab's underline, focus rings, the cursor, the unlock countdown, the sidebar's working mark. |
+| `--accent-hover`   | `#6adcc7` | The accent under the pointer.                                                                                 |
+| `--inverse`        | `#e6e6e6` | The one primary button on a screen, light on dark.                                                            |
+| `--tone-busy`      | `#4f8cf5` | working, running, preparing (outside the sidebar, which draws the working mark).                              |
+| `--tone-attention` | `#f99c00` | needs input, paused.                                                                                          |
+| `--tone-bad`       | `#fb2c36` | stuck, failed, exited badly; the danger button.                                                               |
+| `--tone-good`      | `#34c26b` | done, idle after work: a sidebar row that finished since you last looked at it.                               |
+| `--tone-neutral`   | `#7a7a7a` | idle, queued.                                                                                                 |
+| `--tone-muted`     | `#5a5a5a` | stopped, exited.                                                                                              |
 
 The accent is a teal, apart in hue from both the done green and the working
 blue, and it is used sparingly, so it keeps meaning "this is the thing" (the
 active tab, a link, the cursor, an unlock while it runs). It is the same colour
 in the mark (the icon's dot), the UI and the quiet board. Status is a tone,
-never the accent. A status
+never the accent, with one exception: the sidebar's working mark (see Sidebar),
+since teal already marks the live thing. A status
 badge (`.status.tone-*`) is a 5px dot and a mono word, tinted at 12% with a
 32% border of its tone. It never fills with colour: at a glance the dot tells
 the story, and a wall of filled pills is exactly the noise que exists to
@@ -77,18 +78,19 @@ remove. The quiet board uses the same tones on a dot or a word, never a badge.
 - Icons are 16px line drawings at a 1.5px stroke, inline SVG from
   `components/icons.tsx`, drawn in the current text colour: faint in a ghost
   button, bright on hover. The button carries the accessible name. No icon
-  font or library.
+  font or library. `button.icon` is 22px square; `button.icon.sm` is the 18px one
+  for a row's own controls.
 - Two panes are divided by a 7px track like the sidebar's: invisible until hover,
   focus or drag, then a 1px accent line. The focused pane's tab strip carries a
   1px accent line at its top; with one pane there is none.
 - The review pane is a full-height column at the right of the window, the sidebar's
   mirror: it runs from the window's top edge to the bottom on `--bg-side` behind a 1px
-  hairline, and the top bar spans only the middle column. It is 320px wide, dragged
+  hairline, and the tab row spans only the middle column. It is 320px wide, dragged
   between 240 and 520px on a 7px track like the sidebar's (double-click resets, arrow
   keys move it), and remembered with its tab. Its strip is 40px tall, lined up with the
-  top bar above a solid hairline, and holds three tabs, Changes, Files and Pull request,
+  tab row above a solid hairline, and holds three tabs, Changes, Files and Pull request,
   drawn like a pane's tabs, and a close button at the right end. One icon button at the right
-  end of the top bar (a frame with a divider toward its right edge, filled while open)
+  end of the tab row (a frame with a divider toward its right edge, filled while open)
   toggles the pane on its remembered tab, and so does ⌘B. The Changes header is one
   line, `Commits n vs base` (the count and `vs` muted, the full counts in its tooltip),
   with refresh and open-in-editor icon buttons at its right end. Each half of the line
@@ -114,8 +116,8 @@ remove. The quiet board uses the same tones on a dot or a word, never a badge.
   the terminals.
 - Row actions (the ⋯ button) show on hover, focus, or while their menu is open.
 - The window has no native title bar. The traffic lights sit in the 40px strip
-  above the sidebar's content; that strip, the top bar's empty space and the review
-  pane strip's empty space drag the window.
+  above the sidebar's content; that strip, the tab row's empty space and the review
+  pane strip's empty space drag the window (every button in them is excluded).
 - The sidebar's divider drags between 180 and 520px, double-click resets it, and
   the arrow keys move it when it has focus; the width is remembered.
 - Search is an icon in the title strip (`button.ghost.icon`, a magnifier), in line
@@ -125,12 +127,88 @@ remove. The quiet board uses the same tones on a dot or a word, never a badge.
   empty, folds it away and clears the narrowing; text keeps it open. The Projects head
   carries a sort toggle (`button.ghost.icon`, three lines of decreasing length)
   between name and last activity; the choice is remembered.
-- The top bar reads `project / workspace`, with the branch after it only when
-  the branch is not the workspace's own name, then the status, the pull request chip
-  and the working directory; at its right end, split or join and the review pane
-  toggle, all icon buttons. The title truncates with an ellipsis before the buttons
-  give way. The pull request chip is `PR #n · state`; failing
-  checks and a requested change are its tone, and its tooltip spells them out.
+- There is no top bar. The main column's first row is the tab strip, 40px tall like
+  the sidebar's title strip and the review pane's bar, so one line runs across the
+  window, with the dashed guide under it. With two panes beside each other each pane
+  has its strip in that row; split below, the second pane's strip sits under the first
+  pane. At the right end of the top-right strip (the second pane's beside, the first's
+  below) sit split beside and split below, or join while split, then the review pane
+  toggle for a workspace, all `button.ghost.icon`; the Sessions view has the same row
+  without the toggle. The `+` after the last tab is always visible; a tab's × waits at
+  opacity 0 until the tab is under the pointer, holds the keyboard focus, or is the
+  active one, so the tab keeps its width. An exited terminal's name reads `--fg-faint`,
+  with no badge; `reattached` is a small mono badge. A tab's tooltip is its folder.
+  The workspace's name lives in the sidebar's selected row and the tab, its status in
+  the row's dot, and the error and update banners sit above the row.
+
+## Sidebar
+
+The sidebar is a list you glance at: a dot per row, a word only when asked, controls
+only under the pointer.
+
+- **The rail.** `.sidebar` is padded `40px 6px 0`. Every row is 26px tall with a
+  `0 8px` inset and `--radius`; section heads are 24px with the same inset. Each row
+  starts with a 16px icon column and a 6px gap, so every name sits on one rail, 36px
+  from the edge, and the dots line up under the folders. A project head carries a
+  folder (`--fg-faint`) and its name in sans 12px 500 `--fg-muted` (`--fg-secondary`
+  under the pointer); a session carries `›_` in mono; a workspace carries its dot.
+- **The dot.** A workspace row is a 5px dot in its tone and the name, nothing else:
+  the tone is the live task's state when there is one, else the workspace status. A
+  workspace that is working, or has a task preparing, running or finishing, shows the
+  working mark instead: four 3px `--accent` dots on a 2×2 grid at a 5px pitch, with a
+  diagonal ripple across them (the top-left first, the top-right and bottom-left 120ms
+  later, the bottom-right 120ms after that; each grows over 0.36s, holds 0.3s, shrinks
+  over 0.36s, in a 1.2s loop, so the mark is never empty). It is a CSS animation, no
+  timers, and under `prefers-reduced-motion` the four dots stand still at full size.
+  This is the one place status takes the accent, so `--tone-busy` never appears in the
+  sidebar. The quiet board keeps its still blue dots: nothing moves at night.
+- **The weight of a name.** `--fg` when the row needs you (finished since you last
+  looked, needs input, or stuck); `--fg-secondary` while it works; `--fg-faint` once you have
+  looked and nothing is new, and the same faint for an exited workspace, told apart by
+  its `--tone-muted` dot. The selected row reads `--fg` on `--bg-active` whatever its
+  state. Most rows sit faint most of the time; the few that need you are two steps
+  brighter.
+- **Finished, not looked at.** A workspace whose turn ended (working to idle) or whose
+  task finished since the app last had it selected in a focused window shows the done
+  tone, `--tone-good` (the tone table's "idle after work"), on its dot and its name at
+  `--fg`. Selecting it returns it to its own dot and the faint weight. Needs input and
+  stuck keep their tones: orange and red already mean "now", green means "fresh". A
+  collapsed project head counts these before its total, `1 done · 3`, the `done` in
+  `--tone-good`; otherwise it shows its count alone, mono 11px `--fg-faint`. The daemon
+  keeps the two timestamps (`finishedAt`, `seenAt`); the quiet board ignores the state.
+- **Under the pointer** (and on keyboard focus, and while the row's menu is open) a
+  row shows an overlay at its right end, painted on the row's own hover background:
+  the status word in mono 11px `--fg-faint` (its tone for needs input and stuck), then
+  ⋯. For a fresh finish the word is `done · 12m ago`, or the task's ask, `done · draft
+  PR #12` or `done · no changes`. The overlay covers the end of a long name rather
+  than reflowing it, so nothing jumps. A project head under the pointer turns its
+  folder into its chevron and shows `+` and ⋯, which stay at opacity 0 until the head
+  is under the pointer, holds the keyboard focus, or has its menu open; the section
+  heads' buttons (Sessions `+`, Projects add and sort) always show, since the two heads
+  are the way in. Clicking anywhere on a project head folds it. An exited session reads faint, with `exited` as its word.
+- **The card.** When the pointer rests on a workspace row for 500ms (or on ⌘I for the
+  selected one) a 340px card opens beside it, over the main area, its top level with the
+  row's: `--bg-raised`, a 1px `--border-strong`, `--radius` and the menu's shadow. It
+  replaces the row's tooltip, stays while the pointer is on the row or the card, and
+  closes 150ms after it leaves both, on Escape, on a press elsewhere, and when the row's
+  ⋯ menu opens; never on a session row, and not while quiet hours lock the app. It holds
+  the name (sans 13px 600 `--fg`, wrapping); `[ WORKTREE ]`, then the path in mono 12px
+  `--fg-secondary` (`~` for home, clipped from the left) and `branch <name>` in mono 11px,
+  the word `--fg-faint`; the status line in mono 11px `--fg-faint` (the dot in its tone,
+  the word, a reason, `since HH:MM`, the last activity); a hairline; and `[ PULL REQUESTS
+  ]`, newest first: `#n` in `--fg-secondary`, the state in its tone, `+added −removed` in
+  `--tone-good` and `--tone-bad` at the right, then the title in sans 12px
+  `--fg-secondary` over at most two lines and a failing check's name in `--fg-faint`
+  (`no pull request` when there is none). The copy icons (path, branch) sit right after
+  their text and wait for the pointer on their line; the editor icon at the path's far end
+  and each pull request's link in its 18px column always show, the link `--accent` under
+  the pointer. Every action sits on the line it belongs to, and the card never holds a
+  destructive one: Remove… stays in the ⋯ menu.
+- **The foot.** Report, Tickets and Settings are 26px rows in `--fg-muted`, `--fg`
+  under the pointer. During an unlock a row above them carries the open lock at 12px
+  and `m:ss left` in mono 11px `--accent`, and `lock now` in mono 11px `--fg-faint` at
+  its right end (`--fg-muted` under the pointer), always visible: locking again is the
+  behaviour we want. The row is a `role="status"` region.
 
 ## Quiet board
 

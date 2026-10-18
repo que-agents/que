@@ -5,11 +5,13 @@ import { fakeBridge } from '@renderer/testing/fake-bridge'
 import {
   makeProject,
   makePullRequest,
+  makeQuietState,
   makeTask,
   makeTicket,
   makeTermInfo,
   makeWorkspace
 } from '@renderer/testing/fixtures'
+import { minutesAgo } from '@renderer/testing/helpers'
 import App from '../App'
 
 const uploader = makeProject()
@@ -35,6 +37,10 @@ const auth = makeWorkspace({
   status: 'needs_input'
 })
 
+// A fixed clock, so the hover word's age never depends on the wall clock.
+const NOW = new Date(2026, 9, 17, 21, 30).getTime()
+const clock = (): number => NOW
+
 function seed(): void {
   fakeBridge.seedProject(uploader)
   fakeBridge.seedProject(api)
@@ -43,9 +49,13 @@ function seed(): void {
   fakeBridge.seedWorkspace(auth)
 }
 
+const mark = (id: string): HTMLElement => screen.getByTestId(`sidebar-workspace-${id}-status`)
+const word = (id: string): HTMLElement => screen.getByTestId(`sidebar-workspace-${id}-word`)
+const row = (id: string): HTMLElement => screen.getByTestId(`sidebar-workspace-${id}`)
+
 describe('Sidebar', () => {
   describe('rendering', () => {
-    it('lists each workspace under its project with a status badge', async () => {
+    it('lists each workspace under its project with a dot in its tone, and no word at rest', async () => {
       seed()
       render(<App />)
 
@@ -56,18 +66,65 @@ describe('Sidebar', () => {
       expect(
         within(screen.getByTestId(`sidebar-project-${api.id}`)).getByText('app-1451-token-refresh')
       ).toBeInTheDocument()
-      expect(screen.getByTestId(`sidebar-workspace-${retry.id}-status`)).toHaveTextContent(
-        'working'
-      )
-      expect(screen.getByTestId(`sidebar-workspace-${auth.id}-status`)).toHaveTextContent(
-        'needs input'
-      )
-      const stuck = screen.getByTestId(`sidebar-workspace-${board.id}-status`)
-      expect(stuck).toHaveTextContent('stuck')
-      expect(stuck).toHaveAttribute('title', 'stuck: no_heartbeat')
+      expect(mark(auth.id)).toHaveAttribute('data-status', 'needs_input')
+      expect(mark(auth.id)).toHaveClass('status-dot', 'tone-attention')
+      expect(mark(auth.id)).toBeEmptyDOMElement()
+      expect(mark(board.id)).toHaveAttribute('data-status', 'stuck')
+      expect(mark(board.id)).toHaveClass('status-dot', 'tone-bad')
+      expect(mark(board.id)).toHaveAttribute('title', 'stuck: no_heartbeat')
     })
 
-    it('shows the title instead of the name, with the brief then the path on hover', async () => {
+    it('draws a working workspace with the working mark: four dots, a CSS animation, no tone', async () => {
+      seed()
+      render(<App />)
+
+      const working = await screen.findByTestId(`sidebar-workspace-${retry.id}-status`)
+      expect(working).toHaveAttribute('data-status', 'working')
+      expect(working).toHaveClass('working-mark')
+      expect(working).not.toHaveClass('status-dot')
+      expect(working.querySelectorAll('i')).toHaveLength(4)
+      expect(working.className).not.toMatch(/tone-/)
+    })
+
+    it('keeps the status word and ⋯ in the row overlay the pointer and keyboard focus reveal', async () => {
+      seed()
+      render(<App />)
+      await screen.findByTestId(`sidebar-workspace-${retry.id}`)
+
+      const overlay = word(retry.id).parentElement as HTMLElement
+      expect(overlay).toHaveClass('reveal')
+      expect(word(retry.id)).toHaveTextContent('working')
+      expect(word(retry.id)).not.toHaveClass('toned')
+      expect(
+        within(overlay).getByRole('button', { name: 'More actions for app-1432-retry-logic' })
+      ).toBeInTheDocument()
+      expect(word(auth.id)).toHaveTextContent('needs input')
+      expect(word(auth.id)).toHaveClass('toned', 'tone-attention')
+      expect(word(board.id)).toHaveTextContent('stuck')
+      expect(word(board.id)).toHaveClass('toned', 'tone-bad')
+      // The overlay sits beside the row's button, so its name is the workspace's alone.
+      expect(screen.getByRole('button', { name: 'app-1432-retry-logic' })).not.toContainElement(
+        word(retry.id)
+      )
+    })
+
+    it('draws the selected row at full strength on the active background', async () => {
+      const user = userEvent.setup()
+      const idle = makeWorkspace({ id: 'ws_01hzx8q3r5tw', name: 'app-1477-signed-urls' })
+      fakeBridge.seedProject(uploader)
+      fakeBridge.seedWorkspace(idle)
+      render(<App />)
+
+      await user.click(await screen.findByRole('button', { name: 'app-1477-signed-urls' }))
+
+      expect(row(idle.id)).toHaveClass('weight-fg')
+      expect(screen.getByTestId(`sidebar-workspace-${idle.id}-open`)).toHaveAttribute(
+        'aria-current',
+        'page'
+      )
+    })
+
+    it('shows the title instead of the name, with no tooltip on the row: the card replaces it', async () => {
       const briefed = makeWorkspace({
         id: 'ws_01hzx7b2n4qe',
         name: 'speed-up-the-diff-view-for-large-change',
@@ -83,21 +140,54 @@ describe('Sidebar', () => {
         'Speed up the diff view for large changesets'
       )
       expect(screen.queryByText(briefed.name)).not.toBeInTheDocument()
-      expect(screen.getByTestId(`sidebar-workspace-${briefed.id}-open`)).toHaveAttribute(
-        'title',
-        `Speed up the diff view for large changesets\n\nVirtualize the file list.\n${briefed.path}`
+      expect(screen.getByTestId(`sidebar-workspace-${briefed.id}-open`)).not.toHaveAttribute(
+        'title'
       )
     })
 
-    it('collapses a project', async () => {
+    it('collapses a project from anywhere on its head, turning its chevron and counting its rows', async () => {
       const user = userEvent.setup()
       seed()
       render(<App />)
+      const head = await screen.findByRole('button', { name: 'uploader', expanded: true })
+      expect(head.querySelector('.folder')).toBeInTheDocument()
+      expect(head.querySelector('.chevron')).toHaveClass('open')
+      expect(screen.queryByTestId(`sidebar-project-${uploader.id}-count`)).not.toBeInTheDocument()
 
-      await user.click(await screen.findByRole('button', { name: 'api', expanded: true }))
+      await user.click(within(head).getByText('uploader'))
 
-      expect(screen.queryByText('app-1451-token-refresh')).not.toBeInTheDocument()
-      expect(screen.getByRole('button', { name: 'api', expanded: false })).toBeInTheDocument()
+      expect(screen.queryByText('app-1432-retry-logic')).not.toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'uploader', expanded: false })).toBe(head)
+      expect(head.querySelector('.chevron')).not.toHaveClass('open')
+      expect(screen.getByTestId(`sidebar-project-${uploader.id}-count`)).toHaveTextContent(/^2$/)
+    })
+
+    it("keeps the section heads' buttons in view, and a project head's in the actions its hover, focus or open menu reveal", async () => {
+      seed()
+      render(<App />)
+      await screen.findByTestId(`sidebar-project-${uploader.id}`)
+
+      for (const name of ['New session', 'Add project', 'Sorted by name']) {
+        const actions = screen.getByRole('button', { name }).closest('.head-actions')
+        expect(actions?.closest('.section-head')).not.toBeNull()
+        expect(actions?.closest('.project-head')).toBeNull()
+      }
+
+      for (const name of ['New workspace in uploader', 'More actions for uploader']) {
+        expect(
+          screen.getByRole('button', { name }).closest('.project-head .head-actions')
+        ).not.toBeNull()
+      }
+    })
+
+    it('shows no pull request mark on a workspace that has one', async () => {
+      seed()
+      fakeBridge.seedWorkspace({ ...retry, pr: makePullRequest({ state: 'draft' }) })
+      render(<App />)
+
+      await screen.findByTestId(`sidebar-workspace-${retry.id}`)
+      expect(within(row(retry.id)).queryByRole('link')).not.toBeInTheDocument()
+      expect(row(retry.id)).not.toHaveTextContent('#41')
     })
 
     it('invites adding a repository when there are no projects', async () => {
@@ -110,17 +200,19 @@ describe('Sidebar', () => {
   })
 
   describe('status updates', () => {
-    it('moves the badge when the status engine says so', async () => {
+    it('moves the dot and the word when the status engine says so', async () => {
       seed()
       render(<App />)
-      const badge = await screen.findByTestId(`sidebar-workspace-${retry.id}-status`)
+      await screen.findByTestId(`sidebar-workspace-${board.id}`)
 
-      fakeBridge.setStatus(retry.id, 'needs_input')
+      fakeBridge.setStatus(board.id, 'needs_input')
 
       await waitFor(() => {
-        expect(badge).toHaveTextContent('needs input')
+        expect(mark(board.id)).toHaveAttribute('data-status', 'needs_input')
       })
-      expect(badge).toHaveAttribute('data-status', 'needs_input')
+      expect(mark(board.id)).toHaveClass('tone-attention')
+      expect(word(board.id)).toHaveTextContent('needs input')
+      expect(row(board.id)).toHaveClass('weight-fg')
     })
 
     it('shows a workspace created elsewhere while it prepares, and drops a removed one', async () => {
@@ -135,10 +227,99 @@ describe('Sidebar', () => {
 
       await window.que.workspace.remove({ id: board.id })
 
-      expect(await screen.findByTestId(`sidebar-workspace-${created.id}-status`)).toHaveTextContent(
+      expect(await screen.findByTestId(`sidebar-workspace-${created.id}-status`)).toHaveAttribute(
+        'data-status',
         'preparing'
       )
       expect(screen.queryByTestId(`sidebar-workspace-${board.id}`)).not.toBeInTheDocument()
+    })
+  })
+
+  describe('finished, not looked at', () => {
+    it('turns green with its name at full strength when a turn ends unseen, and greys once selected', async () => {
+      const user = userEvent.setup()
+      seed()
+      render(<App now={clock} />)
+      await screen.findByTestId(`sidebar-workspace-${retry.id}`)
+      expect(mark(retry.id)).toHaveAttribute('data-unseen', 'false')
+
+      fakeBridge.setStatus(retry.id, 'idle')
+
+      await waitFor(() => {
+        expect(mark(retry.id)).toHaveAttribute('data-unseen', 'true')
+      })
+      expect(mark(retry.id)).toHaveAttribute('data-status', 'idle')
+      expect(mark(retry.id)).toHaveClass('status-dot', 'tone-good')
+      expect(row(retry.id)).toHaveClass('weight-fg')
+      expect(word(retry.id)).toHaveTextContent(/^done · \d+s ago$/)
+      // The dot's tooltip is the same word.
+      expect(mark(retry.id)).toHaveAttribute('title', word(retry.id).textContent)
+      expect(fakeBridge.seenCalls()).toEqual([])
+
+      await user.click(screen.getByRole('button', { name: 'app-1432-retry-logic' }))
+
+      await waitFor(() => {
+        expect(fakeBridge.seenCalls()).toEqual([retry.id])
+      })
+      expect(fakeBridge.getWorkspace(retry.id)?.seenAt).not.toBeNull()
+      expect(mark(retry.id)).toHaveAttribute('data-unseen', 'false')
+      expect(mark(retry.id)).toHaveClass('tone-neutral')
+
+      await user.click(screen.getByRole('button', { name: 'app-1440-quiet-board' }))
+
+      expect(row(retry.id)).toHaveClass('weight-faint')
+      expect(mark(retry.id)).toHaveAttribute('data-unseen', 'false')
+    })
+
+    it('marks the selected workspace seen again when the window regains focus, and when it finishes', async () => {
+      const user = userEvent.setup()
+      seed()
+      render(<App />)
+      await user.click(await screen.findByRole('button', { name: 'app-1432-retry-logic' }))
+      await waitFor(() => expect(fakeBridge.seenCalls()).toEqual([retry.id]))
+
+      window.dispatchEvent(new FocusEvent('focus'))
+
+      await waitFor(() => expect(fakeBridge.seenCalls()).toEqual([retry.id, retry.id]))
+
+      fakeBridge.setStatus(retry.id, 'idle')
+
+      await waitFor(() => expect(fakeBridge.seenCalls()).toEqual([retry.id, retry.id, retry.id]))
+      expect(mark(retry.id)).toHaveAttribute('data-unseen', 'false')
+      expect(mark(retry.id)).toHaveClass('tone-neutral')
+    })
+
+    it('marks nothing seen while quiet hours lock the app, and the selected one once they unlock', async () => {
+      const user = userEvent.setup()
+      fakeBridge.setQuietState(makeQuietState({ inQuietHours: true }))
+      seed()
+      render(<App />)
+      await screen.findByTestId('quiet-locked')
+
+      await user.click(screen.getByRole('button', { name: 'app-1432-retry-logic' }))
+
+      expect(screen.getByTestId(`sidebar-workspace-${retry.id}-open`)).toHaveAttribute(
+        'aria-current',
+        'page'
+      )
+      expect(fakeBridge.seenCalls()).toEqual([])
+
+      await window.que.quiet.unlock({ minutes: 5, why: 'check the deploy' })
+
+      await waitFor(() => expect(fakeBridge.seenCalls()).toEqual([retry.id]))
+    })
+
+    it('counts the unseen finishes on a collapsed project before its total', async () => {
+      const user = userEvent.setup()
+      seed()
+      fakeBridge.seedWorkspace({ ...board, status: 'idle', finishedAt: minutesAgo(NOW, 5) })
+      render(<App now={clock} />)
+
+      await user.click(await screen.findByRole('button', { name: 'uploader', expanded: true }))
+
+      const count = screen.getByTestId(`sidebar-project-${uploader.id}-count`)
+      expect(count).toHaveTextContent(/^1 done · 2$/)
+      expect(within(count).getByText('1 done')).toHaveClass('done')
     })
   })
 
@@ -156,25 +337,27 @@ describe('Sidebar', () => {
       state: 'running'
     })
 
-    it("shows the task's state on its workspace while it runs, then done with the PR", async () => {
+    it('ripples while its task runs, then reads done with its pull request until looked at', async () => {
       seed()
       fakeBridge.seedWorkspace(owned)
       fakeBridge.seedTask(task)
       render(<App />)
-      const badge = await screen.findByTestId(`sidebar-workspace-${owned.id}-status`)
-      expect(badge).toHaveAttribute('data-status', 'running')
-      expect(badge).toHaveTextContent('running')
+      await screen.findByTestId(`sidebar-workspace-${owned.id}`)
+      expect(mark(owned.id)).toHaveAttribute('data-status', 'running')
+      expect(mark(owned.id)).toHaveClass('working-mark')
+      expect(word(owned.id)).toHaveTextContent('running')
+      expect(row(owned.id)).toHaveClass('weight-secondary')
 
       fakeBridge.updateTask(task.id, { prUrl: 'https://github.com/rquellh/que/pull/88' })
       fakeBridge.setTaskState(task.id, 'done')
 
       await waitFor(() => {
-        expect(badge).toHaveAttribute('data-status', 'done')
+        expect(mark(owned.id)).toHaveAttribute('data-status', 'done')
       })
-      expect(screen.getByTestId(`sidebar-workspace-${owned.id}-pr`)).toHaveAttribute(
-        'href',
-        'https://github.com/rquellh/que/pull/88'
-      )
+      expect(mark(owned.id)).toHaveAttribute('data-unseen', 'true')
+      expect(mark(owned.id)).toHaveClass('status-dot', 'tone-good')
+      expect(word(owned.id)).toHaveTextContent('done · draft PR #88')
+      expect(within(row(owned.id)).queryByRole('link')).not.toBeInTheDocument()
     })
 
     it('shows the workspace status again for a task that ended without finishing', async () => {
@@ -183,57 +366,41 @@ describe('Sidebar', () => {
       fakeBridge.seedTask({ ...task, state: 'failed', reason: 'crashed' })
       render(<App />)
 
-      const badge = await screen.findByTestId(`sidebar-workspace-${owned.id}-status`)
-      expect(badge).toHaveAttribute('data-status', 'exited')
-      expect(screen.queryByTestId(`sidebar-workspace-${owned.id}-pr`)).not.toBeInTheDocument()
+      await screen.findByTestId(`sidebar-workspace-${owned.id}`)
+      expect(mark(owned.id)).toHaveAttribute('data-status', 'exited')
+      expect(word(owned.id)).toHaveTextContent('exited')
     })
   })
 
-  describe('pull requests', () => {
-    it('shows a chip link with the PR number, state and tone', async () => {
-      seed()
-      fakeBridge.seedWorkspace({ ...retry, pr: makePullRequest({ state: 'draft' }) })
+  describe('unlock', () => {
+    it('counts the unlock down above Report, and locks again from lock now', async () => {
+      const user = userEvent.setup()
+      fakeBridge.setQuietState(makeQuietState({ inQuietHours: true }))
+      await window.que.quiet.unlock({ minutes: 5, why: 'check the deploy' })
       render(<App />)
 
-      const chip = await screen.findByRole('link', { name: '#41' })
-      expect(chip).toHaveAttribute('href', 'https://github.com/rquellh/que/pull/41')
-      expect(chip).toHaveAttribute('data-pr-state', 'draft')
-      expect(chip).toHaveClass('tone-neutral')
-      expect(chip).toHaveAttribute('title', 'PR #41: draft')
+      const countdown = await screen.findByTestId('sidebar-unlock-countdown')
+      expect(countdown).toHaveTextContent(/^[45]:\d\d left$/)
+      const unlock = screen.getByTestId('sidebar-unlock')
+      expect(unlock).toHaveAttribute('role', 'status')
+      expect(
+        unlock.compareDocumentPosition(screen.getByTestId('sidebar-report')) &
+          Node.DOCUMENT_POSITION_FOLLOWING
+      ).toBeTruthy()
+
+      await user.click(screen.getByTestId('sidebar-lock'))
+
+      expect(await screen.findByTestId('quiet-locked')).toBeInTheDocument()
+      expect((await window.que.quiet.log())[0]).toMatchObject({ endedAt: expect.any(String) })
+      expect(screen.queryByTestId('sidebar-unlock-countdown')).not.toBeInTheDocument()
     })
 
-    it('updates the chip live when the daemon refreshes the PR', async () => {
+    it('shows no unlock row in work hours', async () => {
       seed()
-      fakeBridge.seedWorkspace({ ...retry, pr: makePullRequest({ state: 'draft' }) })
-      render(<App />)
-      const chip = await screen.findByRole('link', { name: '#41' })
-
-      fakeBridge.setWorkspacePr(retry.id, makePullRequest({ state: 'open', checks: 'failing' }))
-
-      await waitFor(() => {
-        expect(chip).toHaveClass('tone-bad')
-      })
-      expect(chip).toHaveAttribute('data-pr-state', 'open')
-      expect(chip).toHaveAttribute('data-pr-checks', 'failing')
-    })
-
-    it("still links a finished task's PR while the workspace has no pr", async () => {
-      seed()
-      const owned = makeWorkspace({ id: 'ws_01hzx6v8b3xd', name: 'add-retry-logic' })
-      fakeBridge.seedWorkspace(owned)
-      fakeBridge.seedTask(
-        makeTask({
-          workspaceId: owned.id,
-          state: 'done',
-          prUrl: 'https://github.com/rquellh/que/pull/88'
-        })
-      )
       render(<App />)
 
-      expect(await screen.findByRole('link', { name: 'PR #88' })).toHaveAttribute(
-        'href',
-        'https://github.com/rquellh/que/pull/88'
-      )
+      await screen.findByTestId(`sidebar-project-${uploader.id}`)
+      expect(screen.queryByTestId('sidebar-unlock')).not.toBeInTheDocument()
     })
   })
 
@@ -483,6 +650,25 @@ describe('Sidebar', () => {
         expect(screen.getByTestId(`terminal-tab-${node.id}-select`)).toHaveAttribute(
           'aria-selected',
           'true'
+        )
+      })
+
+      it('reads an exited session faint, with exited as its hover word and no badge', async () => {
+        fakeBridge.seedTerminal(zsh)
+        render(<App />)
+        const session = await screen.findByTestId(`sidebar-session-${zsh.id}`)
+        expect(session).not.toHaveClass('weight-faint')
+
+        fakeBridge.exitTerminal(zsh.id, 1)
+
+        await waitFor(() => expect(session).toHaveClass('weight-faint'))
+        const exited = screen.getByTestId(`sidebar-session-${zsh.id}-exited`)
+        expect(exited).toHaveTextContent('exited')
+        expect(exited.parentElement).toHaveClass('reveal')
+        expect(within(session).queryByText('EXITED')).not.toBeInTheDocument()
+        expect(screen.getByTestId(`sidebar-session-${zsh.id}-open`)).toHaveAttribute(
+          'title',
+          '/Users/dev'
         )
       })
 

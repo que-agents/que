@@ -1,7 +1,7 @@
 // A workspace's Changes list in the review pane: the summary line (its commit
 // count and base, each opening a menu: the commits to narrow to, keyed by sha,
 // and the refs to compare against, by index with the ref in data-ref),
-// Refresh, Open in editor, and the file rows. The pane's toggle is TopBarPage.reviewToggle; a
+// Refresh, Open in editor, and the file rows. The pane's toggle is TabRowPage.reviewToggle; a
 // file's diff tab is DiffPage.
 import type { Locator, Page } from '@playwright/test'
 

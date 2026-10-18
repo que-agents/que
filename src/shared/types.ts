@@ -31,8 +31,20 @@ export interface Workspace {
   archivedAt: string | null
   /** The draft pull request opened from this workspace (workspace.createPr). */
   prUrl: string | null
-  /** The pull request for this workspace's branch, as last seen on GitHub; null when there is none. */
+  /**
+   * The current pull request, as last seen on GitHub: the open or draft one among `prs`, else
+   * the most recently updated; null when there is none.
+   */
   pr: PullRequest | null
+  /**
+   * Every pull request opened from this workspace: those whose head is its branch, plus any a
+   * task of it recorded as its `prUrl`. Newest first by number, at most 10.
+   */
+  prs: PullRequest[]
+  /** When its last turn ended (working to idle) or its task finished; null before either. */
+  finishedAt: string | null
+  /** When the app last had it selected in a focused window (workspace.seen); null before. */
+  seenAt: string | null
   /** What the work is, in a line (shown instead of the name); absent for a workspace made from a name. */
   title?: string
   /** The description the workspace was made from (written to `.que/brief.md`). */
@@ -101,6 +113,9 @@ export interface PullRequest {
   checkRuns: PrCheck[]
   /** When the pull request last changed on GitHub (ISO), or null when unknown. */
   updatedAt: string | null
+  /** Lines added and removed across the pull request, or null when unknown. */
+  additions: number | null
+  deletions: number | null
   /** When que last refreshed this from GitHub. */
   checkedAt: string
 }

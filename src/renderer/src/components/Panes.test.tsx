@@ -121,7 +121,7 @@ describe('Panes', () => {
       expect(screen.getByTestId('pane-divider')).toHaveAttribute('aria-orientation', 'horizontal')
     })
 
-    it('the top bar buttons split, and join the panes without killing anything', async () => {
+    it('the tab row buttons split, and join the panes without killing anything', async () => {
       const user = userEvent.setup()
       seed()
       render(<App />)
@@ -210,20 +210,147 @@ describe('Panes', () => {
       await user.keyboard('{Meta>}{Alt>}{ArrowUp}{/Alt}{/Meta}')
       expect(screen.getByTestId('pane-0')).toHaveAttribute('data-focused', 'true')
     })
+  })
 
-    it("the top bar's folder follows the focused pane", async () => {
+  describe('the controls', () => {
+    it('sit at the right end of the one strip, after the + and the tabs', async () => {
+      seed()
+      render(<App />)
+      await screen.findByTestId(`terminal-tab-${two.id}`)
+
+      const strip = within(screen.getByTestId('pane-0'))
+      const controls = strip.getByTestId('pane-controls')
+      expect(within(controls).getByTestId('topbar-split-beside')).toHaveAttribute(
+        'title',
+        'Split beside (⌘D)'
+      )
+      expect(within(controls).getByTestId('topbar-split-below')).toHaveAttribute(
+        'title',
+        'Split below (⌘⇧D)'
+      )
+      expect(
+        strip.getByTestId('pane-0-new').compareDocumentPosition(controls) &
+          Node.DOCUMENT_POSITION_FOLLOWING
+      ).toBeTruthy()
+    })
+
+    it("move to the second pane's strip with a beside split: the top-right corner", async () => {
       const user = userEvent.setup()
       seed()
       render(<App />)
       await screen.findByTestId(`terminal-tab-${two.id}`)
+
       await splitBeside(user)
-      await user.click(screen.getByTestId(`terminal-tab-${one.id}-select`))
-      expect(screen.getByTestId('topbar-cwd')).toHaveTextContent('/Users/dev/a')
 
-      await user.keyboard('{Meta>}{Alt>}{ArrowRight}{/Alt}{/Meta}')
+      expect(within(screen.getByTestId('pane-1')).getByTestId('topbar-join')).toHaveAttribute(
+        'title',
+        "Join panes: the second pane's tabs move to the first"
+      )
+      expect(
+        within(screen.getByTestId('pane-0')).queryByTestId('pane-controls')
+      ).not.toBeInTheDocument()
+      expect(screen.getAllByTestId('pane-controls')).toHaveLength(1)
+    })
 
-      // The new terminal started in the folder that was active when it was split.
-      expect(screen.getByTestId('topbar-cwd')).toHaveTextContent('/Users/dev/b')
+    it("stay in the first pane's strip with a below split", async () => {
+      const user = userEvent.setup()
+      seed()
+      render(<App />)
+      await screen.findByTestId(`terminal-tab-${two.id}`)
+
+      await user.keyboard(SPLIT_BELOW)
+      await screen.findByTestId('pane-1')
+
+      expect(within(screen.getByTestId('pane-0')).getByTestId('topbar-join')).toBeInTheDocument()
+      expect(
+        within(screen.getByTestId('pane-1')).queryByTestId('pane-controls')
+      ).not.toBeInTheDocument()
+    })
+  })
+
+  describe('the review toggle', () => {
+    async function openRetry(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+      fakeBridge.seedProject(makeProject())
+      fakeBridge.seedWorkspace(retry)
+      render(<App />)
+      await openWorkspace(user, retry.id)
+      await screen.findByTestId('topbar-review')
+    }
+
+    it('opens the review pane and closes it again, pressed while it is open', async () => {
+      const user = userEvent.setup()
+      await openRetry(user)
+      const toggle = screen.getByRole('button', { name: 'Review pane' })
+      expect(toggle).toHaveAttribute('data-testid', 'topbar-review')
+      expect(toggle).toHaveAttribute('title', 'Review pane: changes and pull request (⌘B)')
+      expect(toggle).toHaveAttribute('aria-pressed', 'false')
+      expect(
+        within(screen.getByTestId('pane-controls')).getByRole('button', { name: 'Review pane' })
+      ).toBe(toggle)
+
+      await user.click(toggle)
+
+      expect(toggle).toHaveAttribute('aria-pressed', 'true')
+      expect(screen.getByTestId('review-pane')).toHaveAttribute('data-tab', 'changes')
+
+      await user.click(toggle)
+
+      expect(toggle).toHaveAttribute('aria-pressed', 'false')
+      expect(screen.queryByTestId('review-pane')).not.toBeInTheDocument()
+    })
+
+    it('Cmd+B toggles the review pane too', async () => {
+      const user = userEvent.setup()
+      await openRetry(user)
+
+      await user.keyboard('{Meta>}b{/Meta}')
+
+      expect(await screen.findByTestId('review-pane')).toBeInTheDocument()
+      expect(screen.getByTestId('topbar-review')).toHaveAttribute('aria-pressed', 'true')
+    })
+
+    it('opens on the tab the pane was last left on', async () => {
+      const user = userEvent.setup()
+      localStorage.setItem('que.review', JSON.stringify({ open: false, tab: 'pr', width: 320 }))
+      await openRetry(user)
+
+      await user.click(screen.getByRole('button', { name: 'Review pane' }))
+
+      expect(screen.getByTestId('review-pane')).toHaveAttribute('data-tab', 'pr')
+      expect(screen.getByTestId('review-tab-pr')).toHaveAttribute('aria-selected', 'true')
+    })
+
+    it('stays pressed while switching tabs and unpresses when the pane closes itself', async () => {
+      const user = userEvent.setup()
+      await openRetry(user)
+      const toggle = screen.getByRole('button', { name: 'Review pane' })
+      await user.click(toggle)
+
+      await user.click(screen.getByRole('tab', { name: 'Pull request' }))
+      expect(toggle).toHaveAttribute('aria-pressed', 'true')
+
+      await user.click(screen.getByRole('button', { name: 'Close review' }))
+      expect(toggle).toHaveAttribute('aria-pressed', 'false')
+    })
+
+    it('is disabled while the daemon is disconnected', async () => {
+      const user = userEvent.setup()
+      await openRetry(user)
+      expect(screen.getByRole('button', { name: 'Review pane' })).toBeEnabled()
+
+      fakeBridge.disconnect()
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: 'Review pane' })).toBeDisabled()
+      })
+    })
+
+    it('is not offered for the loose sessions, which keep the split buttons', async () => {
+      render(<App />)
+
+      expect(await screen.findByTestId('pane-0')).toBeInTheDocument()
+      expect(screen.queryByTestId('topbar-review')).not.toBeInTheDocument()
+      expect(screen.getByTestId('topbar-split-beside')).toBeInTheDocument()
     })
   })
 

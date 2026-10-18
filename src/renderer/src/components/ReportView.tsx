@@ -13,7 +13,6 @@ import { prNumberOf, statusBadge, type Tone, taskBadge } from '../format'
 import { useQue, useStore } from '../store'
 import CountLine from './CountLine'
 import { RefreshIcon } from './icons'
-import UnlockStatus from './UnlockStatus'
 
 /** A row's state word and the one tone it may take (none stays faint). */
 interface StateWord {
@@ -153,7 +152,6 @@ export default function ReportView(): React.JSX.Element {
         <span className="cwd" data-testid="report-since">
           {report ? formatSince(Date.parse(report.since), store.now()) : ''}
         </span>
-        <UnlockStatus />
         <div className="actions">
           <button
             type="button"

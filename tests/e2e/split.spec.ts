@@ -5,7 +5,7 @@
 import { expect, test } from '@playwright/test'
 import { AppShellPage } from './pages/AppShellPage'
 import { TerminalPage } from './pages/TerminalPage'
-import { TopBarPage } from './pages/TopBarPage'
+import { TabRowPage } from './pages/TabRowPage'
 import { type LaunchedApp, launchApp } from './utils/app'
 
 let launched: LaunchedApp
@@ -19,7 +19,7 @@ test('a split survives quitting the app and comes back with both terminals', asy
   const left = `QUE_LEFT_${suffix}`
   const right = `QUE_RIGHT_${suffix}`
   let terminal: TerminalPage
-  let topbar: TopBarPage
+  let tabRow: TabRowPage
   let firstId = ''
   let secondId = ''
 
@@ -27,7 +27,7 @@ test('a split survives quitting the app and comes back with both terminals', asy
     launched = await launchApp()
     await new AppShellPage(launched.window).waitForLoad()
     terminal = new TerminalPage(launched.window)
-    topbar = new TopBarPage(launched.window)
+    tabRow = new TabRowPage(launched.window)
     firstId = await terminal.waitForActiveTerminal()
     await expect(terminal.pane(1).root).toHaveCount(0)
   })
@@ -43,6 +43,10 @@ test('a split survives quitting the app and comes back with both terminals', asy
     secondId = panes[1].activeTermId as string
     expect(secondId).not.toBe(firstId)
     expect(panes[1].focused).toBe(true)
+    // The split and join controls move to the second pane's strip, the top-right corner.
+    await expect(terminal.pane(1).controls).toBeVisible()
+    await expect(terminal.pane(0).controls).toHaveCount(0)
+    await expect(tabRow.joinButton).toBeVisible()
   })
 
   await test.step('A command in each pane lands in its own terminal', async () => {
@@ -75,7 +79,7 @@ test('a split survives quitting the app and comes back with both terminals', asy
     launched = await launchApp({ queHome: launched.queHome })
     await new AppShellPage(launched.window).waitForLoad()
     terminal = new TerminalPage(launched.window)
-    topbar = new TopBarPage(launched.window)
+    tabRow = new TabRowPage(launched.window)
     await expect(terminal.pane(1).root).toBeVisible()
     await expect
       .poll(async () => (await terminal.panes()).map((p) => p.activeTermId).sort())
@@ -90,17 +94,30 @@ test('a split survives quitting the app and comes back with both terminals', asy
       .toBe(true)
   })
 
-  await test.step('Join panes from the top bar: one pane holds both tabs, nothing is killed', async () => {
-    await topbar.joinButton.click()
+  await test.step('Join panes from the tab row: one pane holds both tabs, nothing is killed', async () => {
+    await tabRow.joinButton.click()
     await expect(terminal.pane(1).root).toHaveCount(0)
     await expect(terminal.tab(firstId)).toBeVisible()
     await expect(terminal.tab(secondId)).toBeVisible()
     await expect.poll(async () => (await terminal.panes()).length).toBe(1)
   })
 
-  await test.step('Split below from the top bar', async () => {
-    await topbar.splitBelowButton.click()
+  await test.step("An inactive tab's × is invisible until the tab is hovered, and keeps its width", async () => {
+    const active = (await terminal.panes())[0]?.activeTermId
+    const inactive = active === firstId ? secondId : firstId
+    await expect(terminal.tabClose(inactive)).toBeVisible()
+    await expect(terminal.tabClose(inactive)).toHaveCSS('opacity', '0')
+    await terminal.tabSelect(inactive).hover()
+    await expect(terminal.tabClose(inactive)).toHaveCSS('opacity', '0.5')
+  })
+
+  await test.step('Split below from the tab row; the controls stay in the top strip, the first', async () => {
+    await expect(terminal.pane(0).controls).toBeVisible()
+    await tabRow.splitBelowButton.click()
     await expect(terminal.divider).toHaveAttribute('aria-orientation', 'horizontal')
     await expect.poll(async () => (await terminal.panes()).length).toBe(2)
+    await expect(terminal.pane(0).controls).toBeVisible()
+    await expect(terminal.pane(1).controls).toHaveCount(0)
+    await expect(tabRow.joinButton).toBeVisible()
   })
 })

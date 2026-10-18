@@ -107,8 +107,61 @@ export function parsePullRequest(r: GhPullRequest, checkedAt: string): PullReque
     review: reviewOf(r.reviewDecision),
     checkRuns,
     updatedAt: r.updatedAt,
+    additions: r.additions,
+    deletions: r.deletions,
     checkedAt
   }
+}
+
+/** At most this many pull requests are kept per workspace. */
+export const PR_LIST_CAP = 10
+
+/** One entry per number (the first seen wins), newest first by number, at most PR_LIST_CAP. */
+export function pullRequestList(prs: PullRequest[]): PullRequest[] {
+  const seen = new Set<number>()
+  const out: PullRequest[] = []
+
+  for (const pr of prs) {
+    if (seen.has(pr.number)) continue
+    seen.add(pr.number)
+    out.push(pr)
+  }
+
+  return out.sort((a, b) => b.number - a.number).slice(0, PR_LIST_CAP)
+}
+
+/** True for a merged or closed pull request: it no longer changes much, so it is checked less often. */
+export function isSettled(pr: PullRequest): boolean {
+  return pr.state === 'merged' || pr.state === 'closed'
+}
+
+const live = (pr: PullRequest) => !isSettled(pr)
+
+/**
+ * The current one of a workspace's pull requests: the open or draft one, else the
+ * most recently updated of the rest. Among several candidates the most recently
+ * updated wins, then the higher number. Null for an empty list.
+ */
+export function currentPullRequest(prs: PullRequest[]): PullRequest | null {
+  const open = prs.filter(live)
+  const pool = open.length > 0 ? open : prs
+
+  return pool.reduce<PullRequest | null>((best, pr) => (!best || newer(pr, best) ? pr : best), null)
+}
+
+/** True when `a` should be shown over `b`: updated later, or the higher number on a tie. */
+function newer(a: PullRequest, b: PullRequest): boolean {
+  const au = a.updatedAt ?? ''
+  const bu = b.updatedAt ?? ''
+
+  if (au !== bu) return au > bu
+
+  return a.number > b.number
+}
+
+/** True when both lists hold the same pull requests in the same order (see samePullRequest). */
+export function samePullRequests(a: PullRequest[], b: PullRequest[]): boolean {
+  return a.length === b.length && a.every((pr, i) => samePullRequest(pr, b[i]))
 }
 
 /** True when everything but `checkedAt` matches (two nulls count as the same). */
@@ -123,6 +176,9 @@ export function samePullRequest(a: PullRequest | null, b: PullRequest | null): b
     a.checks === b.checks &&
     a.review === b.review &&
     a.updatedAt === b.updatedAt &&
+    // A pull request stored before line counts were kept has none.
+    (a.additions ?? null) === (b.additions ?? null) &&
+    (a.deletions ?? null) === (b.deletions ?? null) &&
     // A pull request stored before check runs were kept has none.
     sameChecks(a.checkRuns ?? [], b.checkRuns ?? [])
   )

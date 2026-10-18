@@ -11,7 +11,6 @@ import { MAX_SUMMARY_INTERVAL_MINUTES } from '../../../shared/config-defaults'
 import { type ConfigPatch, HHMM, WEEKDAYS } from '../../../shared/types'
 import { errorMessage } from '../../../shared/errors.decode'
 import { useQue, useStore } from '../store'
-import UnlockStatus from './UnlockStatus'
 
 type DayMode = 'inherit' | 'custom' | 'none'
 
@@ -642,7 +641,6 @@ export default function SettingsView(): React.JSX.Element {
         <span className="cwd muted" data-testid="settings-path" title={config.path}>
           {config.path}
         </span>
-        <UnlockStatus />
       </header>
       <form className="settings-body" onSubmit={(e) => e.preventDefault()} noValidate>
         <fieldset disabled={off}>

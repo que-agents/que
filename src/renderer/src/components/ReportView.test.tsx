@@ -189,9 +189,13 @@ describe('ReportView', () => {
       fakeBridge.seedDigest(quietOne)
       await openReport(user)
 
-      await user.click(await screen.findByRole('button', { name: 'app-1432-retry-logic' }))
+      const workspaces = await screen.findByTestId('report-workspaces')
+      await user.click(within(workspaces).getByRole('button', { name: 'app-1432-retry-logic' }))
 
-      expect(await screen.findByTestId('topbar-title')).toHaveTextContent('app-1432-retry-logic')
+      expect(await screen.findByTestId('sidebar-workspace-ws_01hzx3k9c2qf-open')).toHaveAttribute(
+        'aria-current',
+        'page'
+      )
     })
 
     it('shows the empty state only when there are no tasks and no workspaces', async () => {
