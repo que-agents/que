@@ -467,7 +467,9 @@ describe('safety', () => {
     })
     expect(originBranches(origin)).toEqual(['main'])
     expect(readFakeLog(d.ghLog).filter((c) => c.argv[1] !== 'list')).toEqual([])
-    expect(taskLog(d, task.id)).toContain('refusing to push protected branch release')
+    expect(taskLog(d, task.id)).toContain(
+      'refusing to open a pull request from protected branch release'
+    )
   }, 45_000)
 
   it("never pushes the project's default branch", async () => {

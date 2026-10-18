@@ -20,7 +20,7 @@ import type { JsonValue, Project, Ticket, Workspace } from '../shared/types'
 import { adfToText } from './adf-text'
 import { RpcError } from './errors'
 import { Poller } from './poller'
-import type { Emit } from './status'
+import type { Emit } from './bus'
 import type { Store } from './store'
 import {
   decodeParentLink,

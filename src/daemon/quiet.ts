@@ -4,7 +4,7 @@
 // detail methods while quiet and locked; tells the server to drop every
 // terminal subscription the moment that starts; emits quiet.changed and, once
 // per window, quiet.morningSummary.
-import { QUIET_REFUSED_METHODS, type Report } from '../shared/protocol'
+import { METHODS, type MethodName, type Report } from '../shared/protocol'
 import type { QuietHoursConfig, QuietState, QuietUnlock, UserConfig } from '../shared/types'
 import { badRequest, RpcError } from './errors'
 import {
@@ -16,11 +16,9 @@ import {
   quietMessage,
   type UnlockState
 } from './quiet-hours'
-import type { Emit } from './status'
+import type { Emit } from './bus'
 import type { Store } from './store'
 import { errorMessage } from '../shared/errors.decode'
-
-const REFUSED: ReadonlySet<string> = new Set(QUIET_REFUSED_METHODS)
 
 /** setTimeout's ceiling; later boundaries are reached by the tick. */
 const MAX_TIMER_MS = 2 ** 31 - 1
@@ -151,7 +149,7 @@ export class QuietService {
 
   /** Throws `quiet_hours` for a refused method while locked. */
   check(method: string): void {
-    if (!REFUSED.has(method) || this.stopped) return
+    if (!isQuietRefused(method) || this.stopped) return
     const now = this.now()
     const w = this.window(now)
 
@@ -311,4 +309,9 @@ export class QuietService {
       this.unlockTimer = t
     })
   }
+}
+
+/** Whether quiet hours refuse this method; unknown names are not refused (the dispatcher rejects them). */
+function isQuietRefused(method: string): boolean {
+  return Object.hasOwn(METHODS, method) && METHODS[method as MethodName].quiet
 }

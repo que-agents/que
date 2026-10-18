@@ -2,6 +2,8 @@
 // Newline-delimited JSON over a unix socket. Requests carry an id; responses
 // echo it. Events are server-pushed and carry no id.
 
+import { HOOK_EVENT_NAMES, type HookEventName } from './hook-events'
+import { decoders } from './methods.decode'
 import type {
   ConfigPatch,
   Project,
@@ -18,6 +20,8 @@ import type {
   Workspace,
   WorkspaceStatus
 } from './types'
+
+export { HOOK_EVENT_NAMES, type HookEventName }
 
 // ---- method types ---------------------------------------------------------
 
@@ -481,32 +485,148 @@ export interface Methods {
   'tickets.projectFor': { params: { key: string }; result: { projectId: string | null } }
 }
 
-/**
- * Refused with `quiet_hours` while quiet hours are on and not unlocked: every
- * way to see a terminal, its output, or a report, or to start new work.
- */
-export const QUIET_REFUSED_METHODS = [
-  'term.attach',
-  'term.snapshot',
-  'term.create',
-  'workspace.openTerminal',
-  'workspace.start',
-  'workspace.createPr',
-  'workspace.diff',
-  'workspace.prThread',
-  'workspace.files',
-  'workspace.readFile',
-  'report.get',
-  'task.add',
-  'queue.open',
-  'tickets.start'
-] as const satisfies readonly MethodName[]
-
 export type MethodName = keyof Methods
 
 export type ParamsOf<M extends MethodName> = Methods[M]['params']
 
 export type ResultOf<M extends MethodName> = Methods[M]['result']
+
+/**
+ * The one runtime list of methods, in the order of `Methods`; the mapped type
+ * makes a missing or extra entry a compile error.
+ *
+ * - `renderer`: the app's window may call it (Electron main enforces this). False for
+ *   the calls only the daemon's own tooling makes: ping, shutdown, and hook events.
+ * - `quiet`: refused with `quiet_hours` while quiet hours are on and not unlocked:
+ *   every way to see a terminal, its output, or a report, or to start new work.
+ * - `decode`: reads and checks the params a client sent; throws `ParamsError`.
+ */
+export const METHODS: {
+  [M in MethodName]: {
+    renderer: boolean
+    quiet: boolean
+    decode: (p: Record<string, unknown> | undefined) => ParamsOf<M>
+  }
+} = {
+  'daemon.ping': { renderer: false, quiet: false, decode: decoders['daemon.ping'] },
+  'daemon.shutdown': {
+    renderer: false,
+    quiet: false,
+    decode: decoders['daemon.shutdown']
+  },
+  'term.create': { renderer: true, quiet: true, decode: decoders['term.create'] },
+  'term.list': { renderer: true, quiet: false, decode: decoders['term.list'] },
+  'term.attach': { renderer: true, quiet: true, decode: decoders['term.attach'] },
+  'term.detach': { renderer: true, quiet: false, decode: decoders['term.detach'] },
+  'term.write': { renderer: true, quiet: false, decode: decoders['term.write'] },
+  'term.resize': { renderer: true, quiet: false, decode: decoders['term.resize'] },
+  'term.kill': { renderer: true, quiet: false, decode: decoders['term.kill'] },
+  'term.snapshot': { renderer: true, quiet: true, decode: decoders['term.snapshot'] },
+  'project.add': { renderer: true, quiet: false, decode: decoders['project.add'] },
+  'project.list': { renderer: true, quiet: false, decode: decoders['project.list'] },
+  'project.remove': { renderer: true, quiet: false, decode: decoders['project.remove'] },
+  'workspace.create': {
+    renderer: true,
+    quiet: false,
+    decode: decoders['workspace.create']
+  },
+  'workspace.list': { renderer: true, quiet: false, decode: decoders['workspace.list'] },
+  'workspace.get': { renderer: true, quiet: false, decode: decoders['workspace.get'] },
+  'workspace.remove': {
+    renderer: true,
+    quiet: false,
+    decode: decoders['workspace.remove']
+  },
+  'workspace.openTerminal': {
+    renderer: true,
+    quiet: true,
+    decode: decoders['workspace.openTerminal']
+  },
+  'workspace.createPr': {
+    renderer: true,
+    quiet: true,
+    decode: decoders['workspace.createPr']
+  },
+  'workspace.start': { renderer: true, quiet: true, decode: decoders['workspace.start'] },
+  'workspace.rename': {
+    renderer: true,
+    quiet: false,
+    decode: decoders['workspace.rename']
+  },
+  'workspace.canRenameBranch': {
+    renderer: true,
+    quiet: false,
+    decode: decoders['workspace.canRenameBranch']
+  },
+  'workspace.diff': { renderer: true, quiet: true, decode: decoders['workspace.diff'] },
+  'workspace.prThread': {
+    renderer: true,
+    quiet: true,
+    decode: decoders['workspace.prThread']
+  },
+  'workspace.files': { renderer: true, quiet: true, decode: decoders['workspace.files'] },
+  'workspace.readFile': {
+    renderer: true,
+    quiet: true,
+    decode: decoders['workspace.readFile']
+  },
+  'workspace.watch': {
+    renderer: true,
+    quiet: false,
+    decode: decoders['workspace.watch']
+  },
+  'workspace.unwatch': {
+    renderer: true,
+    quiet: false,
+    decode: decoders['workspace.unwatch']
+  },
+  'hook.event': { renderer: false, quiet: false, decode: decoders['hook.event'] },
+  'task.add': { renderer: true, quiet: true, decode: decoders['task.add'] },
+  'task.list': { renderer: true, quiet: false, decode: decoders['task.list'] },
+  'task.get': { renderer: true, quiet: false, decode: decoders['task.get'] },
+  'task.stop': { renderer: true, quiet: false, decode: decoders['task.stop'] },
+  'task.remove': { renderer: true, quiet: false, decode: decoders['task.remove'] },
+  'queue.open': { renderer: true, quiet: true, decode: decoders['queue.open'] },
+  'queue.close': { renderer: true, quiet: false, decode: decoders['queue.close'] },
+  'queue.state': { renderer: true, quiet: false, decode: decoders['queue.state'] },
+  'report.get': { renderer: true, quiet: true, decode: decoders['report.get'] },
+  'quiet.state': { renderer: true, quiet: false, decode: decoders['quiet.state'] },
+  'quiet.unlock': { renderer: true, quiet: false, decode: decoders['quiet.unlock'] },
+  'quiet.lock': { renderer: true, quiet: false, decode: decoders['quiet.lock'] },
+  'quiet.log': { renderer: true, quiet: false, decode: decoders['quiet.log'] },
+  'config.get': { renderer: true, quiet: false, decode: decoders['config.get'] },
+  'config.set': { renderer: true, quiet: false, decode: decoders['config.set'] },
+  'instructions.get': {
+    renderer: true,
+    quiet: false,
+    decode: decoders['instructions.get']
+  },
+  'instructions.set': {
+    renderer: true,
+    quiet: false,
+    decode: decoders['instructions.set']
+  },
+  'tickets.list': { renderer: true, quiet: false, decode: decoders['tickets.list'] },
+  'tickets.sync': { renderer: true, quiet: false, decode: decoders['tickets.sync'] },
+  'tickets.start': { renderer: true, quiet: true, decode: decoders['tickets.start'] },
+  'tickets.projectFor': {
+    renderer: true,
+    quiet: false,
+    decode: decoders['tickets.projectFor']
+  }
+}
+
+const METHOD_NAMES = Object.keys(METHODS) as MethodName[]
+
+/** Methods refused with `quiet_hours` while quiet hours are on and not unlocked. */
+export const QUIET_REFUSED_METHODS: readonly MethodName[] = METHOD_NAMES.filter(
+  (m) => METHODS[m].quiet
+)
+
+/** Methods the app's window may call. */
+export const RENDERER_METHODS: ReadonlySet<MethodName> = new Set(
+  METHOD_NAMES.filter((m) => METHODS[m].renderer)
+)
 
 // ---- event types ----------------------------------------------------------
 
@@ -537,6 +657,38 @@ export interface Events {
 }
 
 export type EventName = keyof Events
+
+/**
+ * The one runtime list of events, in the order of `Events`.
+ *
+ * - `renderer`: Electron main forwards it to the app's window. False for events main
+ *   handles itself.
+ */
+export const EVENTS: { [E in EventName]: { renderer: boolean } } = {
+  'term.data': { renderer: true },
+  'term.exit': { renderer: true },
+  'term.created': { renderer: true },
+  'term.killed': { renderer: true },
+  'workspace.created': { renderer: true },
+  'workspace.updated': { renderer: true },
+  'workspace.removed': { renderer: true },
+  'workspace.changed': { renderer: true },
+  'task.created': { renderer: true },
+  'task.updated': { renderer: true },
+  'task.removed': { renderer: true },
+  'queue.state': { renderer: true },
+  'project.added': { renderer: true },
+  'project.removed': { renderer: true },
+  'quiet.changed': { renderer: true },
+  'quiet.morningSummary': { renderer: false },
+  'config.changed': { renderer: true },
+  'tickets.synced': { renderer: true }
+}
+
+/** Events forwarded to the app's window. */
+export const RENDERER_EVENTS: readonly EventName[] = (Object.keys(EVENTS) as EventName[]).filter(
+  (e) => EVENTS[e].renderer
+)
 
 // ---- envelopes ------------------------------------------------------------
 
@@ -657,24 +809,6 @@ export function isEvent(msg: ServerMessage): msg is EventMessage {
 // ---- Claude Code payloads -------------------------------------------------
 // Shapes que receives from Claude Code: hook JSON on stdin and the final
 // stream-json `result` line of a headless run.
-
-export const HOOK_EVENT_NAMES = [
-  'SessionStart',
-  'SessionEnd',
-  'UserPromptSubmit',
-  'PreToolUse',
-  'PostToolUse',
-  'PostToolUseFailure',
-  'Stop',
-  'StopFailure',
-  'Notification',
-  'PermissionRequest',
-  'PreCompact',
-  'SubagentStart',
-  'SubagentStop'
-] as const
-
-export type HookEventName = (typeof HOOK_EVENT_NAMES)[number]
 
 export interface HookEvent {
   hook_event_name: HookEventName

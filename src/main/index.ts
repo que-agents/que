@@ -6,13 +6,19 @@ import { reportSummaryText } from '../daemon/report'
 import { DaemonClient } from '../shared/client'
 import { loginShellPath, mergePath } from '../shared/login-path'
 import { queHome } from '../shared/paths'
-import type { EventName, MethodName, ParamsOf, Report } from '../shared/protocol'
+import {
+  RENDERER_EVENTS,
+  RENDERER_METHODS,
+  type MethodName,
+  type ParamsOf,
+  type Report
+} from '../shared/protocol'
 import type { QuietState, UpdateInfo } from '../shared/types'
 import { createBoardWindow } from './board'
 import { decodeAbsolutePath } from './ipc.decode'
 import { installMenu } from './menu'
 import { createTray, type QueTray } from './tray'
-import { TRAY_EVENTS } from './tray-rows'
+import { TRAY_EVENTS, type TrayEventName } from './tray-rows'
 import { checkForUpdate } from './update-check'
 import { errorCode, errorMessage } from '../shared/errors.decode'
 
@@ -42,77 +48,6 @@ app.setPath('userData', join(queHome(), 'app'))
 /** A newer release, once the update check has found one. */
 let update: UpdateInfo | null = null
 
-/** Methods the renderer may call through the preload bridge. */
-const ALLOWED: ReadonlySet<MethodName> = new Set<MethodName>([
-  'term.create',
-  'term.list',
-  'term.attach',
-  'term.detach',
-  'term.write',
-  'term.resize',
-  'term.kill',
-  'term.snapshot',
-  'project.add',
-  'project.list',
-  'project.remove',
-  'workspace.create',
-  'workspace.list',
-  'workspace.get',
-  'workspace.remove',
-  'workspace.openTerminal',
-  'workspace.createPr',
-  'workspace.start',
-  'workspace.rename',
-  'workspace.canRenameBranch',
-  'workspace.diff',
-  'workspace.prThread',
-  'workspace.files',
-  'workspace.readFile',
-  'workspace.watch',
-  'workspace.unwatch',
-  'task.add',
-  'task.list',
-  'task.get',
-  'task.stop',
-  'task.remove',
-  'queue.open',
-  'queue.close',
-  'queue.state',
-  'report.get',
-  'quiet.state',
-  'quiet.unlock',
-  'quiet.lock',
-  'quiet.log',
-  'config.get',
-  'config.set',
-  'instructions.get',
-  'instructions.set',
-  'tickets.list',
-  'tickets.sync',
-  'tickets.start',
-  'tickets.projectFor'
-])
-
-const FORWARDED_EVENTS: EventName[] = [
-  'term.data',
-  'term.exit',
-  'term.created',
-  'term.killed',
-  'workspace.created',
-  'workspace.updated',
-  'workspace.removed',
-  'workspace.changed',
-  'task.created',
-  'task.updated',
-  'task.removed',
-  'queue.state',
-  'project.added',
-  'project.removed',
-  'quiet.changed',
-  'config.changed',
-  'tickets.synced'
-]
-
 function getClient(): Promise<DaemonClient> {
   if (client?.connected) return Promise.resolve(client)
 
@@ -121,11 +56,15 @@ function getClient(): Promise<DaemonClient> {
       .then((c) => {
         client = c
 
-        for (const ev of FORWARDED_EVENTS) {
+        for (const ev of RENDERER_EVENTS) {
           c.on(ev, (data) => sendToRenderer('que:event', ev, data))
         }
 
-        for (const ev of TRAY_EVENTS) c.on(ev, (data) => tray?.apply(ev, data as never))
+        const trayEvent = <E extends TrayEventName>(ev: E): void => {
+          c.on(ev, (data) => tray?.apply(ev, data))
+        }
+
+        TRAY_EVENTS.forEach(trayEvent)
         tray?.seed(c)
         c.on('quiet.changed', (q) => applyQuiet(q))
         c.on('quiet.morningSummary', ({ report }) => morningSummary(report))
@@ -345,7 +284,7 @@ function registerIpc(): void {
       method: M,
       params: ParamsOf<M>
     ) => {
-      if (!ALLOWED.has(method)) throw new Error(`method not allowed: ${method}`)
+      if (!RENDERER_METHODS.has(method)) throw new Error(`method not allowed: ${method}`)
       const c = await getClient()
 
       try {
