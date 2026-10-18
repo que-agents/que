@@ -664,7 +664,8 @@ export class DaemonServer {
 
     const name = method as MethodName
     // Quiet hours: detail is refused here, so every client gets the same answer.
-    this.quiet.check(name)
+
+    if (METHODS[name].quiet) this.quiet.check()
 
     let params: unknown
 

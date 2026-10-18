@@ -2,6 +2,7 @@
 // these before a handler sees anything, so a handler works with typed values.
 // Free of node modules so the renderer can import it too.
 import { decodeHookEvent } from './hook.decode'
+import { isObj } from './json.decode'
 import type { MethodName, ParamsOf } from './protocol'
 import type { ConfigPatch, TaskSource, TaskState } from './types'
 
@@ -10,10 +11,11 @@ export class ParamsError extends Error {}
 
 type Params = Record<string, unknown> | undefined
 
-function str(p: Params, key: string): string {
+/** Reads `key` and checks it with `test`; otherwise throws `<key> must be <what>`. */
+function field<T>(p: Params, key: string, test: (v: unknown) => v is T, what: string): T {
   const v = p?.[key]
 
-  if (typeof v !== 'string') throw new ParamsError(`${key} must be a string`)
+  if (!test(v)) throw new ParamsError(`${key} must be ${what}`)
 
   return v
 }
@@ -23,54 +25,34 @@ function opt<T>(p: Params, key: string, read: (p: Params, key: string) => T): T 
   return p?.[key] === undefined || p[key] === null ? undefined : read(p, key)
 }
 
-function optString(p: Params, key: string): string | undefined {
-  return opt(p, key, str)
-}
+const isString = (v: unknown): v is string => typeof v === 'string'
 
-function optStringArray(p: Params, key: string): string[] | undefined {
-  return opt(p, key, (q, k) => {
-    const v = q?.[k]
+const isBool = (v: unknown): v is boolean => typeof v === 'boolean'
 
-    if (!Array.isArray(v) || !v.every((x) => typeof x === 'string')) {
-      throw new ParamsError(`${k} must be an array of strings`)
-    }
-
-    return v
-  })
-}
-
-function optBool(p: Params, key: string): boolean | undefined {
-  return opt(p, key, (q, k) => {
-    const v = q?.[k]
-
-    if (typeof v !== 'boolean') throw new ParamsError(`${k} must be a boolean`)
-
-    return v
-  })
-}
-
-function optNumber(p: Params, key: string): number | undefined {
-  return opt(p, key, (q, k) => {
-    const v = q?.[k]
-
-    if (typeof v !== 'number' || !Number.isFinite(v)) throw new ParamsError(`${k} must be a number`)
-
-    return v
-  })
-}
-
+const isNumber = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v)
 /** A size or count: a finite number of at least 1. */
-function num(p: Params, key: string): number {
-  const v = p?.[key]
 
-  if (typeof v !== 'number' || !Number.isFinite(v) || v < 1) {
-    throw new ParamsError(`${key} must be a positive number`)
-  }
+const isPositive = (v: unknown): v is number => isNumber(v) && v >= 1
 
-  return v
-}
+const isStringArray = (v: unknown): v is string[] => Array.isArray(v) && v.every(isString)
+
+const str = (p: Params, key: string): string => field(p, key, isString, 'a string')
+
+const num = (p: Params, key: string): number => field(p, key, isPositive, 'a positive number')
+
+const optString = (p: Params, key: string): string | undefined => opt(p, key, str)
+
+const optBool = (p: Params, key: string): boolean | undefined =>
+  opt(p, key, (q, k) => field(q, k, isBool, 'a boolean'))
+
+const optNumber = (p: Params, key: string): number | undefined =>
+  opt(p, key, (q, k) => field(q, k, isNumber, 'a number'))
+
+const optStringArray = (p: Params, key: string): string[] | undefined =>
+  opt(p, key, (q, k) => field(q, k, isStringArray, 'an array of strings'))
 
 const none = (): undefined => undefined
+
 const idOnly = (p: Params): { id: string } => ({ id: str(p, 'id') })
 
 /** One decoder per method; the mapped type makes a missing or extra one a compile error. */
@@ -170,12 +152,8 @@ export const decoders: { [M in MethodName]: (p: Params) => ParamsOf<M> } = {
   'quiet.log': (p) => ({ since: optString(p, 'since') }),
   'config.get': none,
   'config.set': (p) => {
-    const patch = p?.patch
-
     // The shape of the patch is checked where it is merged into the file.
-    if (typeof patch !== 'object' || patch === null || Array.isArray(patch)) {
-      throw new ParamsError('patch must be an object')
-    }
+    const patch = field(p, 'patch', isObj, 'an object')
 
     return { patch: patch as ConfigPatch, applyTonight: optBool(p, 'applyTonight') }
   },
