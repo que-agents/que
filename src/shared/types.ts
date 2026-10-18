@@ -342,6 +342,11 @@ export interface QuietState {
   /** While an unlock lasts (ISO), else null. */
   unlockedUntil: string | null
   unlockMinutes: number
+  /**
+   * True while quiet hours are on and no unlock is running: the one value clients
+   * ask before showing the board, refusing a detail command or opening a terminal.
+   */
+  locked: boolean
 }
 
 /** One `que unlock`, from the quiet_unlocks log. */

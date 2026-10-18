@@ -97,7 +97,7 @@ export function makeTermInfo(overrides: Partial<TermInfo> = {}): TermInfo {
 
 /** Work hours: quiet hours on, the next window starting at 19:00 local. */
 export function makeQuietState(overrides: Partial<QuietState> = {}): QuietState {
-  return {
+  const state = {
     enabled: true,
     inQuietHours: false,
     windowStart: null,
@@ -107,6 +107,9 @@ export function makeQuietState(overrides: Partial<QuietState> = {}): QuietState 
     unlockMinutes: 20,
     ...overrides
   }
+
+  // Locked unless said otherwise: quiet hours on and no unlock running.
+  return { locked: state.inQuietHours && !state.unlockedUntil, ...state }
 }
 
 /** The parsed defaults, as config.get reports them. */

@@ -144,7 +144,8 @@ export class QuietService {
       windowEnd: w ? w.end.toISOString() : null,
       nextBoundary: next ? next.toISOString() : null,
       unlockedUntil: unlocked && this.unlock.until ? this.unlock.until.toISOString() : null,
-      unlockMinutes: this.o.config().quietHours.unlockMinutes
+      unlockMinutes: this.o.config().quietHours.unlockMinutes,
+      locked: this.locked()
     }
   }
 

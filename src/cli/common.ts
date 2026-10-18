@@ -1,5 +1,5 @@
 // Shared CLI helpers: daemon connection, tables, and id-or-name lookups.
-import { isLocked, quietMessage } from '../daemon/quiet-hours'
+import { quietMessage } from '../daemon/quiet-hours'
 import { DaemonClient, DaemonError } from '../shared/client'
 import type { Project, Workspace } from '../shared/types'
 
@@ -79,13 +79,13 @@ function onlyOne<T extends { id: string }>(items: T[], what: string): T | undefi
 }
 
 /**
- * For detail commands that call no refused daemon method themselves (opening
- * an editor, printing a terminal id): the daemon's quiet-hours refusal.
+ * For commands that may call no refused daemon method (opening an editor,
+ * printing a live terminal's id): the same refusal the daemon would give.
  */
 export async function assertNotQuiet(c: DaemonClient): Promise<void> {
   const q = await c.request('quiet.state')
 
-  if (isLocked(q) && q.windowEnd) {
+  if (q.locked && q.windowEnd) {
     throw new DaemonError('quiet_hours', quietMessage(Date.parse(q.windowEnd), q.unlockMinutes))
   }
 }

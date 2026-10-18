@@ -7,7 +7,6 @@ import {
   RenameWorkspaceDialog,
   StartTicketDialog
 } from './components/dialogs'
-import { isLocked } from '../../daemon/quiet-hours'
 import { hhmm } from '../../shared/format'
 import QuietBoard from './components/QuietBoard'
 import ReportView from './components/ReportView'
@@ -84,7 +83,7 @@ function Shell(): React.JSX.Element {
   const quiet = useQueSelector((s) => s.quiet)
   const review = useQueSelector((s) => s.review)
   const [sidebarWidth, setSidebarWidth] = useSidebarWidth()
-  const locked = isLocked(quiet)
+  const locked = quiet?.locked ?? false
   const termKey = view.kind === 'terminals' && !locked ? view.key : null
 
   // Cmd+T / Cmd+W manage the tabs (⌘W closes a view tab too), Cmd+D / Cmd+Shift+D split the panes and

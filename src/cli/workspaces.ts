@@ -358,7 +358,6 @@ export function registerWorkspaceCommands(program: Command): void {
     .option('--commit <sha>', "only that commit's own changes")
     .action((ref: string, opts: { json?: boolean; base?: string; commit?: string }) =>
       withClient(async (c) => {
-        await assertNotQuiet(c)
         const w = await findWorkspace(c, ref)
 
         const diff = await c.request('workspace.diff', {
@@ -376,7 +375,6 @@ export function registerWorkspaceCommands(program: Command): void {
     .option('--json', 'print JSON')
     .action((ref: string, opts: { json?: boolean }) =>
       withClient(async (c) => {
-        await assertNotQuiet(c)
         const w = await findWorkspace(c, ref)
         const listing = await c.request('workspace.files', { id: w.id })
 

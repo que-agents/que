@@ -38,7 +38,6 @@ import {
   isViewId
 } from './layout'
 import { buildTree, newlyChanged } from './files'
-import { isLocked } from '../../daemon/quiet-hours'
 import { isLiveTask, latestTasks } from './format'
 import { chime, shouldChime } from './sound'
 import { errorCode, errorMessage } from '../../shared/errors.decode'
@@ -341,6 +340,11 @@ export class QueStore {
   }
 
   /** Applies a patch computed from the current state. */
+  /** Quiet hours are on and no unlock is running; false until the state has loaded. */
+  private locked(): boolean {
+    return this.state.quiet?.locked ?? false
+  }
+
   private setWith(update: (s: QueState) => Partial<QueState>): void {
     this.set(update(this.state))
   }
@@ -427,11 +431,11 @@ export class QueStore {
     const { term, workspace, task, project, quiet, config, tickets } = this.api
     this.offs.push(
       quiet.on('quiet.changed', (q) => {
-        const was = isLocked(this.state.quiet)
+        const was = this.locked()
         this.set({ quiet: q })
 
         // Unlocked (or morning): open the current view's first terminal if it has none.
-        if (was && !isLocked(q)) void this.visit(this.currentKey())
+        if (was && !q.locked) void this.visit(this.currentKey())
       }),
       config.on('config.changed', (c) => this.set({ config: c })),
       tickets.on('tickets.synced', (r) => this.set({ tickets: r.tickets, ticketsSync: r.sync })),
@@ -572,7 +576,7 @@ export class QueStore {
     if (key === null || !this.state.loaded || this.autoOpened.has(key)) return
 
     // The board never opens terminals; during quiet hours nothing may.
-    if (this.options.board || isLocked(this.state.quiet)) return
+    if (this.options.board || this.locked()) return
     this.autoOpened.add(key)
 
     if (this.state.terminals.some((t) => t.key === key && t.alive)) return
@@ -678,7 +682,7 @@ export class QueStore {
    * while one is followed is followed once more after it lands.
    */
   private followChange(id: string): void {
-    if (id !== this.currentKey() || isLocked(this.state.quiet)) return
+    if (id !== this.currentKey() || this.locked()) return
 
     if (this.following.has(id)) {
       this.followAgain.add(id)

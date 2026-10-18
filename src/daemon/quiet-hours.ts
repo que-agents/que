@@ -5,7 +5,6 @@
 // No Node imports: the renderer uses this module too.
 import {
   type DayWindow,
-  type QuietState,
   type QuietUnlock,
   type QuietHoursConfig,
   type QuietWindow,
@@ -144,11 +143,6 @@ export function shortensTonight(
   incoming: QuietHoursConfig
 ): boolean {
   return effectiveConfig(now, current, incoming, false) === current && current !== incoming
-}
-
-/** Quiet hours are on and detail is not unlocked: terminals and reports are refused. */
-export function isLocked(q: Pick<QuietState, 'inQuietHours' | 'unlockedUntil'> | null): boolean {
-  return Boolean(q?.inQuietHours && !q.unlockedUntil)
 }
 
 /** The one-line refusal every detail command gets during quiet hours. */
