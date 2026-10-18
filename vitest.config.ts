@@ -4,8 +4,8 @@ import { defineConfig } from 'vitest/config'
 // Two projects (see .claude/skills/vitest-testing): `node` for logic tests and
 // daemon integration tests, `renderer` for React components in jsdom against
 // the fake window.que bridge. Globals are off in both.
-// Coverage (`npm run test:coverage`, and in CI) is reporting only; a floor is a
-// follow-up to #85, so there is no `thresholds` block.
+// Coverage (`npm run test:coverage`, and in CI) fails under the floor in `thresholds`
+// (#107); `npm test` runs without coverage and never checks it.
 export default defineConfig({
   resolve: {
     alias: {
@@ -33,7 +33,10 @@ export default defineConfig({
       ],
       // A failing run still writes the report, so CI can always show the numbers.
       reportOnFailure: true,
-      reporter: ['text-summary', 'json-summary', 'html', 'lcov']
+      reporter: ['text-summary', 'json-summary', 'html', 'lcov'],
+      // The floor (#107): a few points under the first baseline (80% lines, 78% statements,
+      // 78% functions, 76% branches), so a real drop fails the run and noise does not.
+      thresholds: { lines: 75, statements: 75, functions: 75, branches: 70 }
     },
     projects: [
       {

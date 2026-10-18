@@ -37,7 +37,7 @@ Path aliases: `@shared/*`, `@daemon/*`, `@renderer/*`.
 | `npm run lint`           | oxlint + oxfmt check (`npm run format` writes formatting)                                             |
 | `npm test`               | Vitest, both projects (`node`, `renderer`); contract tests skip                                       |
 | `npm run test:contract`  | Contract tests against the real `claude` (costs a few cents)                                          |
-| `npm run test:coverage`  | Vitest with v8 coverage; report in `coverage/`, the same four numbers on every PR step summary        |
+| `npm run test:coverage`  | Vitest with v8 coverage, failing under the floor; report in `coverage/`, numbers on every PR summary  |
 | `npm run smoke`          | Start a daemon in a temp `QUE_HOME`, run one PTY, shut down                                           |
 | `npm run e2e`            | Build, then run the Playwright Electron specs                                                         |
 | `npm run verify`         | All of the above in order, stopping at the first failure (CI runs the same checks, one workflow each) |

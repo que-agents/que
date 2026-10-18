@@ -55,8 +55,9 @@ flaky test.
 `npm run test:coverage` runs the Vitest suites with coverage and writes the
 report to `coverage/index.html`. Every pull request's "Unit tests" step summary
 shows the same four percentages (lines, statements, branches, functions) and
-links the full report. The number is informational until #107
-sets a floor. The CLI integration tests run the built CLI as a subprocess, so
+links the full report. The floor is 75% of lines, statements and functions and
+70% of branches (#107): a run below it fails, locally and in the Unit tests
+check. The CLI integration tests run the built CLI as a subprocess, so
 `src/cli` shows as uncovered, and the Playwright specs are not measured.
 
 Two mechanical commits (the oxfmt reformat and the blank-line autofix) are
