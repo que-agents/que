@@ -75,14 +75,11 @@ export interface FakePr {
   lineComments?: unknown[]
 }
 
-/** A branch's entry in the fake gh's pull request file: one pull request, or several. */
-export type FakePrEntry = FakePr | FakePr[]
-
-/** Reads the fake gh's pull requests, keyed by head branch; {} when there are none. */
-export function readFakePullRequests(file: string): Record<string, FakePrEntry> {
+/** Reads the fake gh's pull requests: a list per head branch; {} when there are none. */
+export function readFakePullRequests(file: string): Record<string, FakePr[]> {
   if (!fs.existsSync(file)) return {}
 
-  return JSON.parse(fs.readFileSync(file, 'utf8')) as Record<string, FakePrEntry>
+  return JSON.parse(fs.readFileSync(file, 'utf8')) as Record<string, FakePr[]>
 }
 
 const fakePrDefaults = (branch: string, number: number): FakePr => ({
@@ -98,43 +95,34 @@ const fakePrDefaults = (branch: string, number: number): FakePr => ({
 })
 
 /**
- * Merges `patch` into the branch's fake pull request, creating it with defaults first.
- * When the branch holds several (see addFakePullRequest), it patches the one whose number
- * is `patch.number`, else the newest.
+ * Merges `patch` into one of the branch's fake pull requests: the one whose number is
+ * `patch.number`, else the newest. A branch with none gets one, with defaults first.
  */
 export function setFakePullRequest(file: string, branch: string, patch: Partial<FakePr>): void {
   const all = readFakePullRequests(file)
-  const entry = all[branch]
+  const list = all[branch] ?? []
 
-  if (Array.isArray(entry)) {
-    const newest = entry.reduce((a, b) => (b.number > a.number ? b : a))
-    const target = entry.find((pr) => pr.number === patch.number) ?? newest
-    all[branch] = entry.map((pr) => (pr === target ? { ...pr, ...patch } : pr))
+  if (list.length === 0) {
+    all[branch] = [{ ...fakePrDefaults(branch, 1), ...patch }]
   } else {
-    all[branch] = { ...fakePrDefaults(branch, 1), ...entry, ...patch }
+    const newest = list.reduce((a, b) => (b.number > a.number ? b : a))
+    const target = list.find((pr) => pr.number === patch.number) ?? newest
+    all[branch] = list.map((pr) => (pr === target ? { ...pr, ...patch } : pr))
   }
 
   fs.writeFileSync(file, JSON.stringify(all, null, 2))
 }
 
 /**
- * Adds another pull request to the branch (turning a single entry into a list), with
- * defaults first; its number is one past the highest in the file unless `patch` says.
+ * Adds another pull request to the branch, with defaults first; its number is one past
+ * the highest in the file unless `patch` says.
  */
 export function addFakePullRequest(file: string, branch: string, patch: Partial<FakePr>): void {
   const all = readFakePullRequests(file)
-
-  const numbers = Object.values(all).flatMap((e) =>
-    (Array.isArray(e) ? e : [e]).map((pr) => pr.number)
-  )
-
+  const numbers = Object.values(all).flatMap((list) => list.map((pr) => pr.number))
   const number = patch.number ?? Math.max(0, ...numbers) + 1
-  const existing = all[branch] ?? []
 
-  all[branch] = [
-    ...(Array.isArray(existing) ? existing : [existing]),
-    { ...fakePrDefaults(branch, number), ...patch }
-  ]
+  all[branch] = [...(all[branch] ?? []), { ...fakePrDefaults(branch, number), ...patch }]
   fs.writeFileSync(file, JSON.stringify(all, null, 2))
 }
 

@@ -19,6 +19,7 @@ import type {
   Workspace,
   WorkspaceStatus
 } from '../shared/types'
+import { currentPullRequest } from './pr-state'
 
 const HOOK_EVENTS_PER_WORKSPACE = 500
 
@@ -315,38 +316,34 @@ function storedPr(v: unknown): PullRequest | null {
     : null
 }
 
-/** A stored pull request (pr_json) or list of them (prs_json); null when missing or not JSON. */
-function readPrJson(json: string | null): PullRequest | PullRequest[] | null {
+/** The stored list (prs_json); null when missing, not JSON, or not a list. */
+function readPrList(json: string | null): PullRequest[] | null {
   if (!json) return null
 
   try {
     const v = JSON.parse(json) as unknown
 
-    if (Array.isArray(v)) return v.flatMap((item) => storedPr(item) ?? [])
-
-    return storedPr(v)
+    return Array.isArray(v) ? v.flatMap((item) => storedPr(item) ?? []) : null
   } catch {
     return null
   }
 }
 
-function parsePr(json: string | null): PullRequest | null {
-  const v = readPrJson(json)
+/** A row stored before prs_json existed: its one pull request (pr_json) as a list, or none. */
+function readLegacyPrs(json: string | null): PullRequest[] {
+  if (!json) return []
 
-  return Array.isArray(v) ? null : v
-}
+  try {
+    const pr = storedPr(JSON.parse(json))
 
-/** The stored list; before it was kept, the one stored pull request (if any). */
-function parsePrs(json: string | null, pr: PullRequest | null): PullRequest[] {
-  const v = readPrJson(json)
-
-  if (Array.isArray(v)) return v
-
-  return pr ? [pr] : []
+    return pr ? [pr] : []
+  } catch {
+    return []
+  }
 }
 
 function toWorkspace(r: WorkspaceRow): Workspace {
-  const pr = parsePr(r.pr_json)
+  const prs = readPrList(r.prs_json ?? null) ?? readLegacyPrs(r.pr_json)
 
   const ws: Workspace = {
     id: r.id,
@@ -363,8 +360,8 @@ function toWorkspace(r: WorkspaceRow): Workspace {
     createdAt: r.created_at,
     archivedAt: r.archived_at,
     prUrl: r.pr_url ?? null,
-    pr,
-    prs: parsePrs(r.prs_json ?? null, pr),
+    pr: currentPullRequest(prs),
+    prs,
     finishedAt: r.finished_at ?? null,
     seenAt: r.seen_at ?? null
   }
@@ -531,7 +528,8 @@ export class Store {
       w.createdAt,
       w.archivedAt,
       w.prUrl,
-      w.pr ? JSON.stringify(w.pr) : null,
+      // pr_json is only read for a row stored before prs_json; the current one derives from prs.
+      null,
       JSON.stringify(w.prs),
       w.title ?? null,
       w.brief ?? null,
@@ -606,14 +604,9 @@ export class Store {
     this.run('UPDATE workspaces SET pr_url = ? WHERE id = ?', prUrl, id)
   }
 
-  /** Stores the workspace's current pull request and the list it was chosen from. */
-  setWorkspacePrs(id: string, pr: PullRequest | null, prs: PullRequest[]): void {
-    this.run(
-      'UPDATE workspaces SET pr_json = ?, prs_json = ? WHERE id = ?',
-      pr ? JSON.stringify(pr) : null,
-      JSON.stringify(prs),
-      id
-    )
+  /** Stores the workspace's pull requests; the current one (Workspace.pr) is derived from them. */
+  setWorkspacePrs(id: string, prs: PullRequest[]): void {
+    this.run('UPDATE workspaces SET prs_json = ? WHERE id = ?', JSON.stringify(prs), id)
   }
 
   archiveWorkspace(id: string, at: string): void {

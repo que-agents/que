@@ -130,7 +130,12 @@ export function pullRequestList(prs: PullRequest[]): PullRequest[] {
   return out.sort((a, b) => b.number - a.number).slice(0, PR_LIST_CAP)
 }
 
-const live = (pr: PullRequest) => pr.state === 'open' || pr.state === 'draft'
+/** True for a merged or closed pull request: it no longer changes much, so it is checked less often. */
+export function isSettled(pr: PullRequest): boolean {
+  return pr.state === 'merged' || pr.state === 'closed'
+}
+
+const live = (pr: PullRequest) => !isSettled(pr)
 
 /**
  * The current one of a workspace's pull requests: the open or draft one, else the
