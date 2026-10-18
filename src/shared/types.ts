@@ -374,38 +374,25 @@ export type JsonValue =
  * a ticket project, a configured repo). Mapping to the file's own key names
  * happens in `shared/config-keys.decode.ts`; nothing on the wire knows them.
  */
-export interface ConfigPatch {
-  worktreeRoot?: string | null
-  stallTimeoutMinutes?: number | null
-  statusPollSeconds?: number | null
-  prPollSeconds?: number | null
+/** `T` as a patch: every key optional, scalars and lists clearable with `null`, nested objects patched in turn. */
+type Patch<T> = {
+  [K in keyof T]?: T[K] extends readonly unknown[]
+    ? T[K] | null
+    : T[K] extends object
+      ? Patch<T[K]> | null
+      : T[K] | null
+}
+
+export type ConfigPatch = Patch<Omit<UserConfig, 'repos' | 'quietHours' | 'jira'>> & {
   /** A configured repo by name; `null` removes it. */
-  repos?: Record<string, { path?: string | null; defaultBranch?: string | null } | null>
-  concurrency?: number | null
-  maxTurns?: number | null
-  maxBudgetUsd?: number | null
-  defaultPermissionMode?: PermissionMode | null
-  allowBypassPermissions?: boolean | null
-  protectedBranches?: string[] | null
-  instructionsFile?: string | null
-  quietHours?: {
-    enabled?: boolean | null
+  repos?: Record<string, Patch<RepoEntry> | null>
+  quietHours?: Patch<Omit<QuietHoursConfig, 'default' | 'days'>> & {
     default?: QuietWindow | null
     /** A weekday's override; `null` removes it so the default window applies. */
     days?: Partial<Record<Weekday, DayWindow | null>>
-    unlockMinutes?: number | null
   }
-  notifications?: Partial<Record<keyof NotificationsConfig, boolean | null>>
-  jira?: {
-    jql?: string | null
-    pollMinutes?: number | null
-    site?: string | null
-    startPrompt?: string | null
+  jira?: Patch<Omit<JiraConfig, 'projects'>> & {
     /** Tracker project key to que project name; `null` forgets a key. */
     projects?: Record<string, string | null>
   }
-  startPrompt?: string | null
-  summaries?: boolean | null
-  summaryModel?: string | null
-  summaryIntervalMinutes?: number | null
 }

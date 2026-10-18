@@ -1,70 +1,85 @@
 // The one table of config key names: the camelCase names a UserConfig and a
-// ConfigPatch use, against the snake_case keys of the config file. Both
-// directions read it (a patch to the file's table, a `que config set` key to a
-// patch). No Node imports, so the renderer's fake bridge can use it.
+// ConfigPatch use, against the snake_case keys of the config file, as a single
+// schema tree. Both directions walk it (a patch to the file's table, a
+// `que config set` key to a patch path). No Node imports, so the renderer's
+// fake bridge can use it.
 import { isTable } from './config-patch.decode'
-import { type ConfigPatch, type JsonValue, WEEKDAYS } from './types'
+import { type ConfigPatch, type JsonValue, WEEKDAYS, type Weekday } from './types'
 
 /** A table of the config file, as the merge reads it. */
 type TomlTable = Record<string, JsonValue>
 
-/** Top-level settings: patch name to file key. */
-const TOP_KEYS: Record<string, string> = {
-  worktreeRoot: 'worktree_root',
-  stallTimeoutMinutes: 'stall_timeout_minutes',
-  statusPollSeconds: 'status_poll_seconds',
-  prPollSeconds: 'pr_poll_seconds',
-  concurrency: 'concurrency',
-  maxTurns: 'max_turns',
-  maxBudgetUsd: 'max_budget_usd',
-  defaultPermissionMode: 'default_permission_mode',
-  allowBypassPermissions: 'allow_bypass_permissions',
-  protectedBranches: 'protected_branches',
-  instructionsFile: 'instructions_file',
-  startPrompt: 'start_prompt',
-  summaries: 'summaries',
-  summaryModel: 'summary_model',
-  summaryIntervalMinutes: 'summary_interval_minutes'
+interface Node {
+  /** The key in the file's table. Unused on an `entries` node, which is named by its entry. */
+  file: string
+  /** A plain value, a quiet-hours window (`{ start, end }` in a patch, `[start, end]` in the file), or a table. */
+  kind: 'value' | 'window' | 'table'
+  /** Written into the parent's table instead of a table of its own (weekday overrides sit in `[quiet_hours]`). */
+  inline?: true
+  /** Fixed children, by patch name. */
+  keys?: Record<string, Node>
+  /** The child every other name gets (a repo, a ticket project key). */
+  entries?: Node
 }
 
-interface Section {
-  /** The section's table name in the file. */
-  table: string
-  /** Its plain settings: patch name to file key. */
-  keys: Record<string, string>
-}
+const value = (file: string): Node => ({ file, kind: 'value' })
+const window = (file: string): Node => ({ file, kind: 'window' })
 
-/** The fixed sections. Each also has keys of its own kind, handled where they are read. */
-const SECTIONS: Record<string, Section> = {
-  quietHours: {
-    table: 'quiet_hours',
-    keys: { enabled: 'enabled', default: 'default', unlockMinutes: 'unlock_minutes' }
+/** A table whose fixed children are exactly the keys of the patch section `T`. */
+const section = <T>(file: string, keys: Record<keyof T, Node>): Node => ({
+  file,
+  kind: 'table',
+  keys: keys as Record<string, Node>
+})
+
+const SCHEMA: Node = section<ConfigPatch>('', {
+  worktreeRoot: value('worktree_root'),
+  stallTimeoutMinutes: value('stall_timeout_minutes'),
+  statusPollSeconds: value('status_poll_seconds'),
+  prPollSeconds: value('pr_poll_seconds'),
+  concurrency: value('concurrency'),
+  maxTurns: value('max_turns'),
+  maxBudgetUsd: value('max_budget_usd'),
+  defaultPermissionMode: value('default_permission_mode'),
+  allowBypassPermissions: value('allow_bypass_permissions'),
+  protectedBranches: value('protected_branches'),
+  instructionsFile: value('instructions_file'),
+  startPrompt: value('start_prompt'),
+  summaries: value('summaries'),
+  summaryModel: value('summary_model'),
+  summaryIntervalMinutes: value('summary_interval_minutes'),
+  repos: {
+    file: 'repos',
+    kind: 'table',
+    entries: section<NonNullable<NonNullable<ConfigPatch['repos']>[string]>>('', {
+      path: value('path'),
+      defaultBranch: value('default_branch')
+    })
   },
-  notifications: {
-    table: 'notifications',
-    keys: {
-      chimeOnComplete: 'chime_on_complete',
-      chimeOnNeedsInput: 'chime_on_needs_input',
-      morningSummary: 'morning_summary'
+  quietHours: section<NonNullable<ConfigPatch['quietHours']>>('quiet_hours', {
+    enabled: value('enabled'),
+    default: window('default'),
+    unlockMinutes: value('unlock_minutes'),
+    days: {
+      file: '',
+      kind: 'table',
+      inline: true,
+      keys: Object.fromEntries(WEEKDAYS.map((d) => [d, window(d)])) as Record<Weekday, Node>
     }
-  },
-  jira: {
-    table: 'jira',
-    keys: { jql: 'jql', pollMinutes: 'poll_minutes', site: 'site', startPrompt: 'start_prompt' }
-  }
-}
-
-/** A configured repo's settings: patch name to file key. */
-const REPO_KEYS: Record<string, string> = { path: 'path', defaultBranch: 'default_branch' }
-
-const WEEKDAY_NAMES: readonly string[] = WEEKDAYS
-
-const has = (table: Record<string, unknown>, key: string): boolean => Object.hasOwn(table, key)
-
-/** The key whose value is `value`, or undefined. */
-function keyOf(table: Record<string, string>, value: string): string | undefined {
-  return Object.keys(table).find((k) => table[k] === value)
-}
+  }),
+  notifications: section<NonNullable<ConfigPatch['notifications']>>('notifications', {
+    chimeOnComplete: value('chime_on_complete'),
+    chimeOnNeedsInput: value('chime_on_needs_input'),
+    morningSummary: value('morning_summary')
+  }),
+  jira: section<NonNullable<ConfigPatch['jira']>>('jira', {
+    jql: value('jql'),
+    pollMinutes: value('poll_minutes'),
+    site: value('site'),
+    startPrompt: value('start_prompt'),
+    projects: { file: 'projects', kind: 'table', entries: value('') }
+  })
+})
 
 function unknownKey(key: string): Error {
   return new Error(`unknown config key ${JSON.stringify(key)}`)
@@ -79,69 +94,25 @@ function windowToToml(v: unknown): JsonValue {
   return v as JsonValue
 }
 
-function quietHoursToToml(q: Record<string, unknown>): TomlTable {
-  const out: TomlTable = {}
-  const keys = SECTIONS.quietHours.keys
+function toToml(v: unknown, node: Node, path: string): JsonValue {
+  if (node.kind === 'window') return windowToToml(v)
 
-  for (const [k, v] of Object.entries(q)) {
-    if (v === undefined) continue
-
-    if (k === 'days') {
-      if (!isTable(v)) throw unknownKey('quietHours.days')
-
-      for (const [day, w] of Object.entries(v)) {
-        if (!WEEKDAY_NAMES.includes(day)) throw unknownKey(`quietHours.days.${day}`)
-
-        if (w !== undefined) out[day] = windowToToml(w)
-      }
-    } else if (k === 'default') out[keys[k]] = windowToToml(v)
-    else if (has(keys, k)) out[keys[k]] = v as JsonValue
-    else throw unknownKey(`quietHours.${k}`)
-  }
-
-  return out
-}
-
-function sectionToToml(name: string, v: unknown): JsonValue {
-  // A section named as a whole (null) is removed as a whole.
-  if (!isTable(v)) return v as JsonValue
-
-  if (name === 'quietHours') return quietHoursToToml(v)
-  const keys = SECTIONS[name].keys
+  // A value, or a table named as a whole (null, which the merge reads as a removal).
+  if (node.kind === 'value' || !isTable(v)) return v as JsonValue
   const out: TomlTable = {}
 
   for (const [k, x] of Object.entries(v)) {
     if (x === undefined) continue
+    const fixed = node.keys !== undefined && Object.hasOwn(node.keys, k)
+    const child = fixed ? node.keys![k] : node.entries
+    const at = path ? `${path}.${k}` : k
 
-    if (name === 'jira' && k === 'projects') out.projects = x as JsonValue
-    else if (has(keys, k)) out[keys[k]] = x as JsonValue
-    else throw unknownKey(`${name}.${k}`)
-  }
+    if (!child) throw unknownKey(at)
 
-  return out
-}
-
-function reposToToml(repos: unknown): JsonValue {
-  if (!isTable(repos)) return repos as JsonValue
-  const out: TomlTable = {}
-
-  for (const [name, entry] of Object.entries(repos)) {
-    if (!isTable(entry)) {
-      out[name] = entry as JsonValue
-
-      continue
-    }
-
-    const e: TomlTable = {}
-
-    for (const [k, v] of Object.entries(entry)) {
-      if (v === undefined) continue
-
-      if (!has(REPO_KEYS, k)) throw unknownKey(`repos.${name}.${k}`)
-      e[REPO_KEYS[k]] = v as JsonValue
-    }
-
-    out[name] = e
+    if (child.inline) {
+      if (!isTable(x)) throw unknownKey(at)
+      Object.assign(out, toToml(x, child, at) as TomlTable)
+    } else out[fixed ? child.file : k] = toToml(x, child, at)
   }
 
   return out
@@ -154,64 +125,63 @@ function reposToToml(repos: unknown): JsonValue {
  * Throws on a key a patch does not have.
  */
 export function patchToToml(patch: ConfigPatch): TomlTable {
-  const out: TomlTable = {}
+  return toToml(patch, SCHEMA, '') as TomlTable
+}
 
-  for (const [k, v] of Object.entries(patch)) {
-    if (v === undefined) continue
+/** Where a file key leads: the patch path it stands for, and the node there. */
+interface Hit {
+  path: string[]
+  node: Node
+}
 
-    if (has(TOP_KEYS, k)) out[TOP_KEYS[k]] = v as JsonValue
-    else if (k === 'repos') out.repos = reposToToml(v)
-    else if (has(SECTIONS, k)) out[SECTIONS[k].table] = sectionToToml(k, v)
-    else throw unknownKey(k)
+/** Each table node's children by file key, inline children folded in. Built once. */
+const BY_FILE = new Map<Node, Map<string, Hit>>()
+
+function index(node: Node): void {
+  const hits = new Map<string, Hit>()
+
+  const add = (path: string[], child: Node): void => {
+    if (child.inline) {
+      for (const [name, c] of Object.entries(child.keys ?? {})) add([...path, name], c)
+    } else hits.set(child.file, { path, node: child })
   }
 
-  return out
+  for (const [name, child] of Object.entries(node.keys ?? {})) add([name], child)
+  BY_FILE.set(node, hits)
+
+  for (const child of [...Object.values(node.keys ?? {}), node.entries]) {
+    if (child) index(child)
+  }
 }
+
+index(SCHEMA)
 
 /**
  * The patch path (`['quietHours', 'unlockMinutes']`) of a dotted key as the file
- * spells it (`quiet_hours.unlock_minutes`). Throws on a key the config has no
- * place for.
+ * spells it (`quiet_hours.unlock_minutes`), and whether it holds a quiet-hours
+ * window. Throws on a key the config has no place for.
  */
-export function patchPathOf(key: string): string[] {
-  const parts = key.split('.')
-  const [head, second, third] = parts
+export function patchPathOf(key: string): { path: string[]; window: boolean } {
+  let node = SCHEMA
+  const path: string[] = []
+  let named = false
 
-  if (parts.length === 1) {
-    const top = keyOf(TOP_KEYS, head)
+  for (const part of key.split('.')) {
+    const hit = BY_FILE.get(node)?.get(part)
 
-    if (top) return [top]
+    if (hit) {
+      path.push(...hit.path)
+      node = hit.node
+      named = false
+    } else if (node.entries) {
+      path.push(part)
+      node = node.entries
+      named = true
+    } else throw unknownKey(key)
   }
 
-  if (head === 'repos' && (parts.length === 2 || parts.length === 3)) {
-    if (parts.length === 2) return ['repos', second]
-    const field = keyOf(REPO_KEYS, third)
+  // A section as a whole has no key of its own; a named entry (a repo) does.
+  if (node.kind === 'table' && !named) throw unknownKey(key)
 
-    if (field) return ['repos', second, field]
-  }
-
-  const section = Object.keys(SECTIONS).find((s) => SECTIONS[s].table === head)
-
-  if (section && parts.length === 2) {
-    if (section === 'quietHours' && WEEKDAY_NAMES.includes(second)) {
-      return ['quietHours', 'days', second]
-    }
-
-    const field = keyOf(SECTIONS[section].keys, second)
-
-    if (field) return [section, field]
-  }
-
-  if (head === 'jira' && second === 'projects' && parts.length === 3) {
-    return ['jira', 'projects', third]
-  }
-
-  throw unknownKey(key)
-}
-
-/** True where the patch holds a quiet-hours window: the default, or a weekday's override. */
-export function isWindowPath(path: string[]): boolean {
-  return (
-    path[0] === 'quietHours' && (path[1] === 'default' || (path[1] === 'days' && path.length === 3))
-  )
+  return { path, window: node.kind === 'window' }
 }

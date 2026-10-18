@@ -36,8 +36,8 @@ export {
   MAX_SUMMARY_INTERVAL_MINUTES
 } from './config-defaults'
 
-import { isWindowPath, patchPathOf } from './config-keys.decode'
-import { isTable } from './config-patch.decode'
+import { patchPathOf } from './config-keys.decode'
+import { mergeConfigPatch } from './config-patch.decode'
 
 export { patchToToml } from './config-keys.decode'
 
@@ -460,21 +460,7 @@ export function stringifyConfig(raw: Record<string, unknown>): string {
 
 /** Combines two patches (the later wins, sections combine key by key), keeping `null` (a clear) as a value. */
 export function combineConfigPatches(a: ConfigPatch, b: ConfigPatch): ConfigPatch {
-  return combineTables(a as Record<string, unknown>, b as Record<string, unknown>) as ConfigPatch
-}
-
-function combineTables(
-  a: Record<string, unknown>,
-  b: Record<string, unknown>
-): Record<string, unknown> {
-  const out: Record<string, unknown> = { ...a }
-
-  for (const [k, v] of Object.entries(b)) {
-    const prev = out[k]
-    out[k] = isTable(prev) && isTable(v) ? combineTables(prev, v) : v
-  }
-
-  return out
+  return mergeConfigPatch(a, b, true) as ConfigPatch
 }
 
 /** Keys whose value is a list even when `que config set` is given one item. */
@@ -511,13 +497,11 @@ export function parseConfigAssignment(arg: string): ConfigPatch {
   else if (text.includes(',')) value = text.split(',').map((x) => x.trim())
   else if (LIST_KEYS.has(key)) value = [text]
   else value = scalar(text)
-  const path = patchPathOf(key)
+  const { path, window } = patchPathOf(key)
 
-  if (isWindowPath(path) && value !== null && value !== 'none') {
-    if (!Array.isArray(value) || value.length !== 2) {
-      throw new Error(`${key}: must be ["HH:MM", "HH:MM"] (start, end)`)
-    }
-
+  // The CLI only turns `a,b` into a window; the daemon refuses a bad one when it reads the file.
+  if (window && Array.isArray(value)) {
+    if (value.length !== 2) throw new Error(`${key}: must be ["HH:MM", "HH:MM"] (start, end)`)
     value = { start: String(value[0]), end: String(value[1]) }
   }
 

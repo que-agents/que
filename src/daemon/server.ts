@@ -290,9 +290,16 @@ export class DaemonServer {
    * file keeps the last good config.
    */
   private configOrDefault(): UserConfig {
+    return this.readConfig().config
+  }
+
+  /** The config and the error of the file as last read (null when it read). `fresh` skips the once-a-second throttle. */
+  private readConfig(fresh = false): { config: UserConfig; error: string | null } {
     const now = performance.now()
 
-    if (now - this.configCheckedAt < CONFIG_RECHECK_MS) return this.config
+    if (!fresh && now - this.configCheckedAt < CONFIG_RECHECK_MS) {
+      return { config: this.config, error: this.configError }
+    }
 
     this.configCheckedAt = now
     const path = configPath()
@@ -318,7 +325,7 @@ export class DaemonServer {
       }
     }
 
-    return this.config
+    return { config: this.config, error: this.configError }
   }
 
   /**
@@ -327,12 +334,9 @@ export class DaemonServer {
    * checked now, so a fix is seen at once.
    */
   private strictConfig(): UserConfig {
-    this.configCheckedAt = Number.NEGATIVE_INFINITY
-    const config = this.configOrDefault()
+    const { config, error } = this.readConfig(true)
 
-    if (this.configError !== null) {
-      throw new RpcError(ErrorCodes.BadRequest, `invalid que config: ${this.configError}`)
-    }
+    if (error !== null) throw new RpcError(ErrorCodes.BadRequest, `invalid que config: ${error}`)
 
     return config
   }
@@ -375,8 +379,7 @@ export class DaemonServer {
     fs.writeFileSync(tmp, text.endsWith('\n') ? text : `${text}\n`)
     fs.renameSync(tmp, path)
     this.configStamp = ''
-    this.configCheckedAt = Number.NEGATIVE_INFINITY
-    this.configOrDefault()
+    this.readConfig(true)
     this.log(`config ${path} updated${applyTonight ? ' (apply tonight)' : ''}`)
     this.quiet.configChanged(applyTonight)
     this.tasks.kick()
