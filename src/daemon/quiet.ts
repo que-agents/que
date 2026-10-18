@@ -16,7 +16,7 @@ import {
   quietMessage,
   type UnlockState
 } from './quiet-hours'
-import type { Emit } from './status'
+import type { Emit } from './bus'
 import type { Store } from './store'
 import { errorMessage } from '../shared/errors.decode'
 
