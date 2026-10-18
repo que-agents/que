@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { PullRequest, Workspace } from '../../../preload/index.d'
 import { formatAge, formatSince } from '../../../shared/format'
 import { prBadge, statusBadge } from '../format'
 import { useStore } from '../store'
 import { useNow } from '../useNow'
-import { firstFailingCheck, newestPrsFirst, prStateText, tildePath } from '../workspace-popout'
+import { useDismiss } from '../useDismiss'
+import { firstFailingCheck, tildePath } from '../workspace-popout'
 import { CopyIcon, EditorIcon, ExternalLinkIcon } from './icons'
 
 /** The open card: which workspace, and the row it hangs off. */
@@ -115,7 +116,7 @@ const RISE = 10
 const MARGIN = 8
 
 function PullRequestRow({ ws, pr }: { ws: Workspace; pr: PullRequest }): React.JSX.Element {
-  const { tone } = prBadge(pr)
+  const { tone, text } = prBadge(pr)
   const failing = firstFailingCheck(pr)
   const id = `sidebar-workspace-${ws.id}-popout-pr-${pr.number}`
   const counted = pr.additions !== null && pr.deletions !== null
@@ -125,7 +126,7 @@ function PullRequestRow({ ws, pr }: { ws: Workspace; pr: PullRequest }): React.J
       <span className="pr-head">
         <span className="pr-number">#{pr.number}</span>{' '}
         <span className={`pr-state tone-${tone}`} data-testid={`${id}-state`} data-tone={tone}>
-          {prStateText(pr)}
+          {text}
         </span>
       </span>
       <span className="pr-diff" data-testid={`${id}-diff`}>
@@ -179,11 +180,8 @@ export default function WorkspacePopout({
   const ref = useRef<HTMLElement>(null)
   const [home, setHome] = useState<string | null>(null)
 
-  const [place, setPlace] = useState<{ left: number; top: number }>(() => {
-    const r = row.getBoundingClientRect()
-
-    return { left: r.right + GAP, top: r.top - RISE }
-  })
+  const rowRef = useMemo(() => ({ current: row }), [row])
+  const [place, setPlace] = useState<{ left: number; top: number } | null>(null)
 
   useEffect(() => {
     let live = true
@@ -197,7 +195,8 @@ export default function WorkspacePopout({
     }
   }, [store])
 
-  // Kept inside the window: a row near the bottom lifts the card until it fits.
+  // Placed before paint, kept inside the window: a row near the bottom lifts the card until
+  // it fits.
   useLayoutEffect(() => {
     const height = ref.current?.offsetHeight ?? 0
     const r = row.getBoundingClientRect()
@@ -205,27 +204,10 @@ export default function WorkspacePopout({
     setPlace({ left: r.right + GAP, top })
   }, [row, ws])
 
-  useEffect(() => {
-    const onDown = (e: MouseEvent): void => {
-      if (!row.contains(e.target as Node)) onClose()
-    }
-
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') onClose()
-    }
-
-    document.addEventListener('mousedown', onDown)
-    document.addEventListener('keydown', onKey)
-
-    return () => {
-      document.removeEventListener('mousedown', onDown)
-      document.removeEventListener('keydown', onKey)
-    }
-  }, [row, onClose])
+  useDismiss(onClose, ref, rowRef)
 
   const id = `sidebar-workspace-${ws.id}-popout`
   const status = statusBadge(ws.status)
-  const prs = newestPrsFirst(ws.prs)
   const copy = (text: string): void => void navigator.clipboard.writeText(text).catch(() => {})
 
   return (
@@ -234,7 +216,7 @@ export default function WorkspacePopout({
       className="workspace-popout"
       aria-label={ws.title ?? ws.name}
       data-testid={id}
-      style={place}
+      style={place ?? undefined}
     >
       <h3 className="popout-name">{ws.title ?? ws.name}</h3>
       <span className="label">Worktree</span>
@@ -244,7 +226,7 @@ export default function WorkspacePopout({
         </span>
         <button
           type="button"
-          className="ghost popout-icon on-hover"
+          className="ghost icon popout-icon on-hover"
           aria-label="Copy path"
           title="Copy path"
           data-testid={`${id}-copy-path`}
@@ -254,7 +236,7 @@ export default function WorkspacePopout({
         </button>
         <button
           type="button"
-          className="ghost popout-icon far"
+          className="ghost icon popout-icon far"
           aria-label="Open in editor"
           title="Open in editor"
           data-testid={`${id}-open-editor`}
@@ -269,7 +251,7 @@ export default function WorkspacePopout({
         </span>
         <button
           type="button"
-          className="ghost popout-icon on-hover"
+          className="ghost icon popout-icon on-hover"
           aria-label="Copy branch"
           title="Copy branch"
           data-testid={`${id}-copy-branch`}
@@ -294,13 +276,13 @@ export default function WorkspacePopout({
       </div>
       <hr />
       <span className="label">Pull requests</span>
-      {prs.length === 0 ? (
+      {ws.prs.length === 0 ? (
         <p className="popout-empty" data-testid={`${id}-no-pr`}>
           no pull request
         </p>
       ) : (
         <ul className="popout-prs">
-          {prs.map((pr) => (
+          {ws.prs.map((pr) => (
             <PullRequestRow key={pr.url} ws={ws} pr={pr} />
           ))}
         </ul>

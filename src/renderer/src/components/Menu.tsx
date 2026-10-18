@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { useQue } from '../store'
+import { useDismiss } from '../useDismiss'
 
 export interface MenuItem {
   label: string
@@ -49,6 +50,9 @@ export default function Menu({
   const { connected } = useQue()
   const ref = useRef<HTMLDivElement>(null)
 
+  const noAnchor = useRef<HTMLElement>(null)
+  useDismiss(onClose, ref, anchor ?? noAnchor)
+
   useEffect(() => {
     const menu = ref.current
 
@@ -57,25 +61,6 @@ export default function Menu({
       menu?.querySelector<HTMLElement>('[role^=menuitem]')
 
     first?.focus()
-
-    const onDown = (e: MouseEvent): void => {
-      const target = e.target as Node
-
-      if (ref.current?.contains(target) || anchor?.current?.contains(target)) return
-      onClose()
-    }
-
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') onClose()
-    }
-
-    document.addEventListener('mousedown', onDown)
-    document.addEventListener('keydown', onKey)
-
-    return () => {
-      document.removeEventListener('mousedown', onDown)
-      document.removeEventListener('keydown', onKey)
-    }
   }, [onClose, anchor])
 
   const style = at

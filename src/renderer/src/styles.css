@@ -245,14 +245,16 @@ h2 {
 .section-head h2::before,
 .report-body h2::before,
 .settings legend::before,
-.quiet-board-label::before {
+.quiet-board-label::before,
+.workspace-popout .label::before {
   content: '[ ';
 }
 
 .section-head h2::after,
 .report-body h2::after,
 .settings legend::after,
-.quiet-board-label::after {
+.quiet-board-label::after,
+.workspace-popout .label::after {
   content: ' ]';
 }
 
@@ -709,6 +711,11 @@ h2 {
   flex-direction: column;
   min-width: 160px;
   padding: 4px;
+}
+
+/* The raised surface a menu and the workspace card share. */
+.menu,
+.workspace-popout {
   background: var(--bg-raised);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius);
@@ -2409,10 +2416,6 @@ button.changes-pick {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  background: var(--bg-raised);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius);
-  box-shadow: 0 10px 28px rgb(0 0 0 / 0.55);
   white-space: normal;
   cursor: default;
 }
@@ -2422,14 +2425,6 @@ button.changes-pick {
   font: 600 13px / 1.3 var(--sans);
   color: var(--fg);
   overflow-wrap: anywhere;
-}
-
-.workspace-popout .label::before {
-  content: '[ ';
-}
-
-.workspace-popout .label::after {
-  content: ' ]';
 }
 
 /* A line of the worktree: its text, a copy icon right after it that waits for the pointer,
@@ -2465,16 +2460,12 @@ button.changes-pick {
   text-align: left;
 }
 
+/* The card's icon buttons are `button.icon` at 18px; the pull request link draws the same. */
 .workspace-popout .popout-icon {
   flex: none;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
   width: 18px;
   height: 18px;
-  padding: 0;
   border-radius: 2px;
-  color: var(--fg-faint);
 }
 
 .workspace-popout .popout-icon svg {
@@ -2570,7 +2561,11 @@ button.changes-pick {
 }
 
 .workspace-popout .popout-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   justify-self: end;
+  color: var(--fg-faint);
 }
 
 .workspace-popout .popout-link:hover,

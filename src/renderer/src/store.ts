@@ -1134,7 +1134,7 @@ export class QueStore {
   /** Creates a terminal for a key (a workspace's, or a loose one in the active tab's folder). */
   private async createFor(key: string): Promise<string> {
     if (key === SCRATCH) {
-      const cwd = this.activeTab(key)?.cwd ?? (await this.api.app.homedir())
+      const cwd = this.activeTab(key)?.cwd ?? (await this.homedir())
 
       return (await this.api.term.create({ cwd, cols: DEFAULT_COLS, rows: DEFAULT_ROWS })).id
     }

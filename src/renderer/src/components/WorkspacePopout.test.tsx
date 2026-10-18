@@ -46,7 +46,7 @@ const retry = makeWorkspace({
   status: 'idle',
   statusAt: new Date(2026, 9, 17, 14, 2).toISOString(),
   lastActivityAt: new Date(NOW - 2 * 3_600_000).toISOString(),
-  prs: [passing, merged]
+  prs: [merged, passing]
 })
 
 const stuck = makeWorkspace({
@@ -219,7 +219,7 @@ describe('WorkspacePopout', () => {
       expect(screen.queryByTestId(`${id}-reason`)).not.toBeInTheDocument()
     })
 
-    it('lists the pull requests newest first, each in its tone with its line counts', async () => {
+    it('lists the pull requests in the daemon’s order, newest first, each in its tone with its line counts', async () => {
       const user = userEvent.setup()
       renderSidebar()
       const popout = await hoverCard(user, retry.id)
@@ -327,7 +327,7 @@ describe('WorkspacePopout', () => {
       renderSidebar()
       const popout = await hoverCard(user, retry.id)
 
-      for (const pr of [passing, merged]) {
+      for (const pr of [merged, passing]) {
         const link = within(popout).getByRole('link', { name: `Open pull request #${pr.number}` })
         expect(link).toHaveAttribute('href', pr.url)
         expect(link).toHaveAttribute('target', '_blank')
