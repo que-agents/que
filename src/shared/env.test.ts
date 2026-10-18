@@ -56,11 +56,12 @@ describe('cleanSpawnEnv', () => {
     expect(Object.keys(env).sort()).toEqual(['COLORTERM', 'LANG', 'QUE_TERMINAL', 'TERM'])
   })
 
-  it('drops app internals and skips unset values', () => {
+  it("drops app internals and the launching terminal's id, and skips unset values", () => {
     const env = cleanSpawnEnv({
       ELECTRON_RUN_AS_NODE: '1',
       ELECTRON_RENDERER_URL: 'http://localhost:5173',
       ELECTRON_ENABLE_LOGGING: '1',
+      QUE_TERMINAL_ID: '5f0c2a7e-4b1d-4c9e-9a3f-2d8e6b1c7a40',
       SHELL: '/bin/zsh',
       UNSET: undefined
     })

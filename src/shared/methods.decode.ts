@@ -127,7 +127,12 @@ export const decoders: { [M in MethodName]: (p: Params) => ParamsOf<M> } = {
 
     if (!payload) throw new ParamsError('payload must be a hook event')
 
-    return { workspaceId, taskId: optString(p, 'taskId'), payload }
+    return {
+      workspaceId,
+      taskId: optString(p, 'taskId'),
+      terminalId: optString(p, 'terminalId'),
+      payload
+    }
   },
   'task.add': (p) => ({
     projectId: optString(p, 'projectId'),

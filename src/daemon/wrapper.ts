@@ -30,12 +30,21 @@ export function claudeCommand(prompt: string): string {
   return `claude ${shQuote(prompt)}\r`
 }
 
+/** How a workspace's claude starts: on a first prompt (or the brief), or resuming a session. */
+export type StartFrom =
+  | { startPrompt: string; briefFile: string | null }
+  | { resumeSessionId: string }
+
 /**
  * What workspace.start types: claude on the start prompt when one is set, else on the
  * brief file read by the shell (so the brief arrives verbatim, never quoted by us), else
- * a bare claude.
+ * a bare claude. A session restored after a daemon restart resumes its session id
+ * instead. The wrapper adds the hook settings and permission mode either way.
  */
-export function startCommand(startPrompt: string, briefFile: string | null): string {
+export function startCommand(from: StartFrom): string {
+  if ('resumeSessionId' in from) return `claude --resume ${shQuote(from.resumeSessionId)}\r`
+  const { startPrompt, briefFile } = from
+
   if (startPrompt.trim() !== '') return claudeCommand(startPrompt)
 
   if (briefFile) return `claude "$(cat ${shQuote(briefFile)})"\r`

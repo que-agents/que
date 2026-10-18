@@ -65,6 +65,9 @@ export function cleanSpawnEnv(base: NodeJS.ProcessEnv | Record<string, string> =
     if (TERMINAL_IDENTITY.includes(k) || TERMINAL_IDENTITY_PREFIX.test(k)) continue
 
     if (APP_INTERNAL.includes(k)) continue
+
+    // The terminal que was started from is not the terminal of what it starts.
+    if (k === 'QUE_TERMINAL_ID') continue
     env[k] = v
   }
 

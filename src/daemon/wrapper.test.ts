@@ -7,7 +7,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { installWrapper } from '@daemon/wrapper'
+import { installWrapper, startCommand } from '@daemon/wrapper'
 import { ensureDirs, quePaths, type QuePaths } from '@shared/paths'
 import { FAKE_WRAPPERS, FAKES_BIN, readFakeLog, readWrapperLog } from '../testing/fakes'
 
@@ -234,5 +234,26 @@ describe('bin/claude', () => {
       stdout: '',
       stderr: `que: could not find the claude executable on PATH (outside ${paths.binDir})\n`
     })
+  })
+})
+
+describe('startCommand', () => {
+  it('starts on the start prompt, else on the brief file, else bare', () => {
+    expect(
+      startCommand({
+        startPrompt: "Read the brief, then say what you'd do first.",
+        briefFile: null
+      })
+    ).toBe(`claude 'Read the brief, then say what you'\\''d do first.'\r`)
+    expect(startCommand({ startPrompt: ' ', briefFile: '/w/.que/brief.md' })).toBe(
+      `claude "$(cat '/w/.que/brief.md')"\r`
+    )
+    expect(startCommand({ startPrompt: '', briefFile: null })).toBe('claude\r')
+  })
+
+  it('resumes a session by its id instead of a prompt', () => {
+    expect(startCommand({ resumeSessionId: '3c9e7b21-8d4a-4f6e-b2c1-9a7d5e3f1b08' })).toBe(
+      "claude --resume '3c9e7b21-8d4a-4f6e-b2c1-9a7d5e3f1b08'\r"
+    )
   })
 })
