@@ -15,7 +15,7 @@ import { AppShellPage } from './pages/AppShellPage'
 import { ChangesPage } from './pages/ChangesPage'
 import { SidebarPage } from './pages/SidebarPage'
 import { TerminalPage } from './pages/TerminalPage'
-import { TopBarPage } from './pages/TopBarPage'
+import { TabRowPage } from './pages/TabRowPage'
 import { type LaunchedApp, launchApp, newQueHome, tempDir } from './utils/app'
 import { queJson } from './utils/que'
 
@@ -33,7 +33,7 @@ test('a workspace made in the sidebar runs claude, shows needs input, opens in t
   let termId = ''
   let sidebar: SidebarPage
   let terminal: TerminalPage
-  let topbar: TopBarPage
+  let tabRow: TabRowPage
   let changes: ChangesPage
   let shell: AppShellPage
 
@@ -49,7 +49,7 @@ test('a workspace made in the sidebar runs claude, shows needs input, opens in t
     launched = await launchApp({ queHome })
     sidebar = new SidebarPage(launched.window)
     terminal = new TerminalPage(launched.window)
-    topbar = new TopBarPage(launched.window)
+    tabRow = new TabRowPage(launched.window)
     changes = new ChangesPage(launched.window)
     shell = new AppShellPage(launched.window)
     await sidebar.waitForLoad()
@@ -72,7 +72,7 @@ test('a workspace made in the sidebar runs claude, shows needs input, opens in t
     expect(created).toBeDefined()
     workspace = created as Workspace
     await expect(sidebar.workspace(workspace.id)).toBeVisible()
-    await expect(topbar.title).toHaveText('app-1432-retry-logic')
+    await expect(sidebar.workspaceOpen(workspace.id)).toHaveAttribute('aria-current', 'page')
   })
 
   await test.step('Its first terminal opens as a tab, in the worktree', async () => {
@@ -136,7 +136,6 @@ test('a workspace made in the sidebar runs claude, shows needs input, opens in t
     await sidebar.workspace(workspace.id).hover()
     await expect(sidebar.workspaceReveal(workspace.id)).toHaveCSS('opacity', '1')
     await expect(sidebar.workspaceWord(workspace.id)).toHaveText('needs input')
-    await expect(topbar.status).toHaveAttribute('data-status', 'needs_input')
     expect(statusOf()?.status).toBe('needs_input')
     // The needs-input chime is off by default.
     expect(await shell.chimes()).toEqual(['complete'])
@@ -176,7 +175,7 @@ test('a workspace made in the sidebar runs claude, shows needs input, opens in t
   })
 
   await test.step("Open in editor, in the review pane's Changes, launches the editor on the worktree", async () => {
-    await topbar.reviewToggle.click()
+    await tabRow.reviewToggle.click()
     await changes.openEditor.click()
     await expect.poll(() => launched.codeCalls()).toContainEqual(['-n', workspace.path])
     await launched.window.screenshot({ path: 'test-results/wp4-work-mode.png' })

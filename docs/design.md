@@ -24,7 +24,7 @@ them; nothing sets a colour, font, or radius inline.
 
 Surfaces step up by one token per layer: the sidebar is darker than the main
 area, raised things (menus, dialogs) sit one step above it. Regions are divided
-by a 1px hairline; the top bar uses the dashed
+by a 1px hairline; the tab row uses the dashed
 guide (`--dash`, 6px on, 6px off) instead, so the eye reads them as sections of
 one drawing rather than separate panels. The sidebar's bottom group (Report, Tickets, Settings) is pinned to
 the window's bottom edge above a solid hairline.
@@ -85,12 +85,12 @@ remove. The quiet board uses the same tones on a dot or a word, never a badge.
   1px accent line at its top; with one pane there is none.
 - The review pane is a full-height column at the right of the window, the sidebar's
   mirror: it runs from the window's top edge to the bottom on `--bg-side` behind a 1px
-  hairline, and the top bar spans only the middle column. It is 320px wide, dragged
+  hairline, and the tab row spans only the middle column. It is 320px wide, dragged
   between 240 and 520px on a 7px track like the sidebar's (double-click resets, arrow
   keys move it), and remembered with its tab. Its strip is 40px tall, lined up with the
-  top bar above a solid hairline, and holds three tabs, Changes, Files and Pull request,
+  tab row above a solid hairline, and holds three tabs, Changes, Files and Pull request,
   drawn like a pane's tabs, and a close button at the right end. One icon button at the right
-  end of the top bar (a frame with a divider toward its right edge, filled while open)
+  end of the tab row (a frame with a divider toward its right edge, filled while open)
   toggles the pane on its remembered tab, and so does ⌘B. The Changes header is one
   line, `Commits n vs base` (the count and `vs` muted, the full counts in its tooltip),
   with refresh and open-in-editor icon buttons at its right end. Each half of the line
@@ -116,8 +116,8 @@ remove. The quiet board uses the same tones on a dot or a word, never a badge.
   the terminals.
 - Row actions (the ⋯ button) show on hover, focus, or while their menu is open.
 - The window has no native title bar. The traffic lights sit in the 40px strip
-  above the sidebar's content; that strip, the top bar's empty space and the review
-  pane strip's empty space drag the window.
+  above the sidebar's content; that strip, the tab row's empty space and the review
+  pane strip's empty space drag the window (every button in them is excluded).
 - The sidebar's divider drags between 180 and 520px, double-click resets it, and
   the arrow keys move it when it has focus; the width is remembered.
 - Search is an icon in the title strip (`button.ghost.icon`, a magnifier), in line
@@ -127,12 +127,19 @@ remove. The quiet board uses the same tones on a dot or a word, never a badge.
   empty, folds it away and clears the narrowing; text keeps it open. The Projects head
   carries a sort toggle (`button.ghost.icon`, three lines of decreasing length)
   between name and last activity; the choice is remembered.
-- The top bar reads `project / workspace`, with the branch after it only when
-  the branch is not the workspace's own name, then the status, the pull request chip
-  and the working directory; at its right end, split or join and the review pane
-  toggle, all icon buttons. The title truncates with an ellipsis before the buttons
-  give way. The pull request chip is `PR #n · state`; failing
-  checks and a requested change are its tone, and its tooltip spells them out.
+- There is no top bar. The main column's first row is the tab strip, 40px tall like
+  the sidebar's title strip and the review pane's bar, so one line runs across the
+  window, with the dashed guide under it. With two panes beside each other each pane
+  has its strip in that row; split below, the second pane's strip sits under the first
+  pane. At the right end of the top-right strip (the second pane's beside, the first's
+  below) sit split beside and split below, or join while split, then the review pane
+  toggle for a workspace, all `button.ghost.icon`; the Sessions view has the same row
+  without the toggle. The `+` after the last tab is always visible; a tab's × waits at
+  opacity 0 until the tab is under the pointer, holds the keyboard focus, or is the
+  active one, so the tab keeps its width. An exited terminal's name reads `--fg-faint`,
+  with no badge; `reattached` is a small mono badge. A tab's tooltip is its folder.
+  The workspace's name lives in the sidebar's selected row and the tab, its status in
+  the row's dot, and the error and update banners sit above the row.
 
 ## Sidebar
 

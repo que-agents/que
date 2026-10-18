@@ -1,4 +1,4 @@
-// The review pane, a full-height column at the right of the window: its three tabs, its close
+// The review pane, a full-height column at the right of the window: its bar, three tabs, its close
 // button, the resizer on its left edge, and its state from the test hook.
 import type { Locator, Page } from '@playwright/test'
 
@@ -11,6 +11,7 @@ export interface ReviewState {
 export class ReviewPage {
   page: Page
   root: Locator
+  bar: Locator
   tabChanges: Locator
   tabFiles: Locator
   tabPr: Locator
@@ -21,6 +22,7 @@ export class ReviewPage {
   constructor(page: Page) {
     this.page = page
     this.root = page.getByTestId('review-pane')
+    this.bar = page.getByTestId('review-bar')
     this.tabChanges = page.getByTestId('review-tab-changes')
     this.tabFiles = page.getByTestId('review-tab-files')
     this.tabPr = page.getByTestId('review-tab-pr')
