@@ -2,6 +2,7 @@
 // the same events clients receive, and react to each other by subscribing,
 // so no service needs a reference to another and the socket server's only job
 // on an event is to send it.
+import { errorMessage } from '../shared/errors.decode'
 import type { EventName, Events } from '../shared/protocol'
 
 export type Emit = <E extends EventName>(event: E, data: Events[E]) => void
@@ -19,26 +20,15 @@ export class EventBus {
   /** Calls `handler` for each `event` from now on. Returns the function that stops it. */
   on<E extends EventName>(event: E, handler: Handler<E>): () => void {
     const list = this.byEvent.get(event) ?? []
-    const h = handler as Handler<EventName>
-    list.push(h)
+
     this.byEvent.set(event, list)
 
-    return () => {
-      const at = list.indexOf(h)
-
-      if (at >= 0) list.splice(at, 1)
-    }
+    return this.add(list, handler as Handler<EventName>)
   }
 
   /** Calls `handler` for every event. Returns the function that stops it. */
   onAny(handler: AnyHandler): () => void {
-    this.any.push(handler)
-
-    return () => {
-      const at = this.any.indexOf(handler)
-
-      if (at >= 0) this.any.splice(at, 1)
-    }
+    return this.add(this.any, handler)
   }
 
   /**
@@ -46,19 +36,27 @@ export class EventBus {
    * handler that throws is logged and the rest still run.
    */
   readonly emit: Emit = (event, data) => {
-    const handlers: Array<() => void> = [
-      ...this.any.map((h) => () => h(event, data)),
-      ...(this.byEvent.get(event) ?? []).map((h) => () => h(data))
-    ]
+    // Iterate over copies: a handler may unsubscribe (splice) while we loop.
+    for (const h of [...this.any]) this.run(event, () => h(event, data))
 
-    for (const run of handlers) {
-      try {
-        run()
-      } catch (error) {
-        this.opts.log?.(
-          `event ${event} handler threw: ${error instanceof Error ? error.message : String(error)}`
-        )
-      }
+    for (const h of [...(this.byEvent.get(event) ?? [])]) this.run(event, () => h(data))
+  }
+
+  private add<T>(list: T[], item: T): () => void {
+    list.push(item)
+
+    return () => {
+      const at = list.indexOf(item)
+
+      if (at >= 0) list.splice(at, 1)
+    }
+  }
+
+  private run(event: EventName, fn: () => void): void {
+    try {
+      fn()
+    } catch (error) {
+      this.opts.log?.(`event ${event} handler threw: ${errorMessage(error)}`)
     }
   }
 }

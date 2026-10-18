@@ -4,7 +4,7 @@
 // detail methods while quiet and locked; tells the server to drop every
 // terminal subscription the moment that starts; emits quiet.changed and, once
 // per window, quiet.morningSummary.
-import { METHODS, type MethodName, type Report } from '../shared/protocol'
+import type { Report } from '../shared/protocol'
 import type { QuietHoursConfig, QuietState, QuietUnlock, UserConfig } from '../shared/types'
 import { badRequest, RpcError } from './errors'
 import {
@@ -147,9 +147,9 @@ export class QuietService {
     }
   }
 
-  /** Throws `quiet_hours` for a refused method while locked. */
-  check(method: string): void {
-    if (!isQuietRefused(method) || this.stopped) return
+  /** Throws `quiet_hours` while quiet hours are on and locked. */
+  check(): void {
+    if (this.stopped) return
     const now = this.now()
     const w = this.window(now)
 
@@ -309,9 +309,4 @@ export class QuietService {
       this.unlockTimer = t
     })
   }
-}
-
-/** Whether quiet hours refuse this method; unknown names are not refused (the dispatcher rejects them). */
-function isQuietRefused(method: string): boolean {
-  return Object.hasOwn(METHODS, method) && METHODS[method as MethodName].quiet
 }
