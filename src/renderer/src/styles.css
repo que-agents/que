@@ -353,19 +353,21 @@ h2 {
   border-radius: var(--radius);
 }
 
-/* A head's buttons stay out of sight until the head is under the pointer, holds the
+/* A section head's buttons (Sessions +, Projects folder-plus and sort) always show. A
+ * project head's stay out of sight until the head is under the pointer, holds the
  * keyboard focus, or has its menu open. */
 .head-actions {
   display: flex;
   align-items: center;
   gap: 2px;
   margin-left: auto;
+}
+
+.project-head .head-actions {
   opacity: 0;
   transition: opacity 0.12s;
 }
 
-.section-head:hover .head-actions,
-.section-head:has(:focus-visible) .head-actions,
 .project-head:hover .head-actions,
 .project-head:has(:focus-visible) .head-actions,
 .project-head:has([aria-haspopup][aria-expanded='true']) .head-actions {

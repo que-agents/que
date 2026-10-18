@@ -186,19 +186,21 @@ describe('Sidebar', () => {
       expect(screen.getByTestId(`sidebar-project-${uploader.id}-count`)).toHaveTextContent(/^2$/)
     })
 
-    it("keeps the heads' buttons in the actions the head's hover, focus or open menu reveal", async () => {
+    it("keeps the section heads' buttons in view, and a project head's in the actions its hover, focus or open menu reveal", async () => {
       seed()
       render(<App />)
       await screen.findByTestId(`sidebar-project-${uploader.id}`)
 
-      for (const name of [
-        'New session',
-        'Add project',
-        'Sorted by name',
-        'New workspace in uploader',
-        'More actions for uploader'
-      ]) {
-        expect(screen.getByRole('button', { name }).closest('.head-actions')).not.toBeNull()
+      for (const name of ['New session', 'Add project', 'Sorted by name']) {
+        const actions = screen.getByRole('button', { name }).closest('.head-actions')
+        expect(actions?.closest('.section-head')).not.toBeNull()
+        expect(actions?.closest('.project-head')).toBeNull()
+      }
+
+      for (const name of ['New workspace in uploader', 'More actions for uploader']) {
+        expect(
+          screen.getByRole('button', { name }).closest('.project-head .head-actions')
+        ).not.toBeNull()
       }
     })
 

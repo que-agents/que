@@ -174,10 +174,10 @@ only under the pointer.
   ⋯. For a fresh finish the word is `done · 12m ago`, or the task's ask, `done · draft
   PR #12` or `done · no changes`. The overlay covers the end of a long name rather
   than reflowing it, so nothing jumps. A project head under the pointer turns its
-  folder into its chevron and shows `+` and ⋯; the section heads' buttons (Sessions
-  `+`, Projects add and sort) likewise stay at opacity 0 until the head is under the
-  pointer, holds the keyboard focus, or has its menu open. Clicking anywhere on a
-  project head folds it. An exited session reads faint, with `exited` as its word.
+  folder into its chevron and shows `+` and ⋯, which stay at opacity 0 until the head
+  is under the pointer, holds the keyboard focus, or has its menu open; the section
+  heads' buttons (Sessions `+`, Projects add and sort) always show, since the two heads
+  are the way in. Clicking anywhere on a project head folds it. An exited session reads faint, with `exited` as its word.
 - **The foot.** Report, Tickets and Settings are 26px rows in `--fg-muted`, `--fg`
   under the pointer. During an unlock a row above them carries the open lock at 12px
   and `m:ss left` in mono 11px `--accent`, and `lock now` in mono 11px `--fg-faint` at
