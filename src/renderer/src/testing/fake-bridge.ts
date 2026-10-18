@@ -517,21 +517,16 @@ class FakeBridge {
           const failure = this.diffFailures.get(scoped)
 
           if (failure !== undefined) throw rpcError('bad_request', failure)
+
+          if (base !== undefined && this.refusedBases.has(diffKey(id, base))) {
+            const fallback = this.diffs.get(diffKey(id)) ?? this.defaultDiff(ws)
+
+            return structuredClone({ ...fallback, rejectedBase: base })
+          }
+
           const seeded = this.diffs.get(scoped) ?? this.diffs.get(diffKey(id))
 
-          return structuredClone(
-            seeded ?? {
-              workspaceId: ws.id,
-              base: 'origin/main',
-              head: ws.branch,
-              commitsAhead: 0,
-              commits: [],
-              bases: ['origin/main'],
-              commit: null,
-              files: [],
-              generatedAt: new Date().toISOString()
-            }
-          )
+          return structuredClone(seeded ?? this.defaultDiff(ws))
         },
         files: async ({ id }) => {
           this.refuseIfQuiet('workspace.files')
@@ -915,9 +910,31 @@ class FakeBridge {
     this.diffs.set(diffKey(diff.workspaceId, scope.base, scope.commit), structuredClone(diff))
   }
 
-  /** Makes workspace.diff in exactly this scope fail with this message (a ref the daemon refuses). */
+  /** Makes workspace.diff in exactly this scope fail with this message (the whole request fails, as when the workspace is gone). */
   failDiff(id: string, scope: { base?: string; commit?: string }, message: string): void {
     this.diffFailures.set(diffKey(id, scope.base, scope.commit), message)
+  }
+
+  /** Makes workspace.diff with this base answer as the daemon does for a ref that is not a commit: the default comparison, with `rejectedBase` set. */
+  refuseDiffBase(id: string, base: string): void {
+    this.refusedBases.add(diffKey(id, base))
+  }
+
+  private refusedBases = new Set<string>()
+
+  private defaultDiff(ws: { id: string; branch: string }): WorkspaceDiff {
+    return {
+      workspaceId: ws.id,
+      base: 'origin/main',
+      head: ws.branch,
+      commitsAhead: 0,
+      commits: [],
+      bases: ['origin/main'],
+      commit: null,
+      files: [],
+      rejectedBase: null,
+      generatedAt: new Date().toISOString()
+    }
   }
 
   /** Every workspace.diff call, in order. */

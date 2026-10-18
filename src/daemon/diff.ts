@@ -234,13 +234,13 @@ export async function workspaceDiff(
     bases: [base],
     commit: null,
     files: [],
+    rejectedBase: null,
     generatedAt: new Date(now()).toISOString()
   })
 
   if (!fs.existsSync(ws.path)) return empty(ws.baseRef)
 
-  // An asked-for base or commit is checked first, so a bad one is an error
-  // rather than an empty diff.
+  // An asked-for commit is checked, so a bad one is an error rather than an empty diff.
   const resolveCommit = async (ref: string): Promise<string | null> => {
     if (ref.startsWith('-')) return null
     const r = await run('rev-parse', '--verify', '--quiet', `${ref}^{commit}`)
@@ -248,13 +248,14 @@ export async function workspaceDiff(
     return r.ok && r.stdout ? r.stdout : null
   }
 
-  if (opts.base !== undefined && !(await resolveCommit(opts.base))) {
-    throw badRequest(`base ${opts.base} is not a commit`)
-  }
-
   const refs = await run('for-each-ref', '--format=%(refname)', 'refs/heads', 'refs/remotes/origin')
   const allRefs = parseRefs(refs.stdout)
-  const base = opts.base ?? chooseBase(ws, project, allRefs)
+
+  // A remembered base can outlive its branch, so one that is not a commit falls back to the
+  // default comparison and is reported, letting the caller forget it.
+  const requestedOk = opts.base !== undefined && (await resolveCommit(opts.base)) !== null
+  const base = requestedOk ? (opts.base as string) : chooseBase(ws, project, allRefs)
+  const rejectedBase = opts.base !== undefined && !requestedOk ? opts.base : null
   let commit: string | null = null
 
   if (opts.commit !== undefined) {
@@ -283,6 +284,7 @@ export async function workspaceDiff(
 
     const result = (files: DiffFile[]): WorkspaceDiff => ({
       ...empty(base),
+      rejectedBase,
       commitsAhead:
         counted.ok && Number.isInteger(Number(counted.stdout)) ? Number(counted.stdout) : 0,
       commits: log.ok ? parseLog(log.stdout) : [],

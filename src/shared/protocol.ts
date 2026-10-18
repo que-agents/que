@@ -197,6 +197,12 @@ export interface WorkspaceDiff {
   /** The sha the files are narrowed to (that commit's own changes), or null for the whole branch and the working tree. */
   commit: string | null
   files: DiffFile[]
+  /**
+   * The `base` the caller asked for when it was not a commit (a branch since deleted, say). Then
+   * `base` is the default comparison and the diff is against that; null when the requested base
+   * was used or none was requested.
+   */
+  rejectedBase: string | null
   generatedAt: string
 }
 
