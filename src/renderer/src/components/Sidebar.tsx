@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Project, Task, Workspace } from '../../../preload/index.d'
+import { isLocked } from '../../../daemon/quiet-hours'
 import { formatCountdown } from '../../../shared/format'
 import { latestTasks, statusBadge, taskBadge } from '../format'
 import { SCRATCH, usePanes, useQueSelector, useStore } from '../store'
@@ -17,6 +18,7 @@ import {
   UnlockIcon
 } from './icons'
 import Menu, { type MenuItem, type Point } from './Menu'
+import WorkspacePopout, { usePopout } from './WorkspacePopout'
 
 /** Which row's menu is open, and where: under its ⋯ button, or at the pointer. */
 type OpenMenu = { kind: 'project' | 'workspace'; id: string; at?: Point }
@@ -118,7 +120,13 @@ export default function Sidebar(): React.JSX.Element {
   const searchOpen = useQueSelector((s) => s.searchOpen)
   const searchFocusNonce = useQueSelector((s) => s.searchFocusNonce)
   const sort = useQueSelector((s) => s.sort)
+  const quiet = useQueSelector((s) => s.quiet)
+  const dialog = useQueSelector((s) => s.dialog)
   const now = useNow()
+  // The workspace card: detail, so never while quiet hours lock the app.
+  const popout = usePopout(!isLocked(quiet))
+  const rows = useRef(new Map<string, HTMLLIElement>())
+  const showPopout = popout.show
 
   const searchRef = useRef<HTMLInputElement>(null)
   // the nonce re-runs the focus on every request
@@ -165,12 +173,34 @@ export default function Sidebar(): React.JSX.Element {
       return next
     })
 
-  const toggleMenu = (kind: OpenMenu['kind'], id: string): void =>
+  // ⌘I opens the card for the selected workspace (not under a dialog).
+  useEffect(() => {
+    if (dialog) return
+
+    const onKey = (e: KeyboardEvent): void => {
+      if (!e.metaKey || e.ctrlKey || e.altKey || e.shiftKey || e.key.toLowerCase() !== 'i') return
+      const row = selected ? rows.current.get(selected) : undefined
+
+      if (!selected || !row) return
+      e.preventDefault()
+      e.stopPropagation()
+      showPopout(selected, row)
+    }
+
+    window.addEventListener('keydown', onKey, true)
+
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [dialog, selected, showPopout])
+
+  const toggleMenu = (kind: OpenMenu['kind'], id: string): void => {
+    popout.close()
     setMenu(menu?.kind === kind && menu.id === id && !menu.at ? null : { kind, id })
+  }
 
   const menuAtPointer = (e: React.MouseEvent, kind: OpenMenu['kind'], id: string): void => {
     e.preventDefault()
     e.stopPropagation()
+    popout.close()
     setMenu({ kind, id, at: { x: e.clientX, y: e.clientY } })
   }
 
@@ -432,14 +462,20 @@ export default function Sidebar(): React.JSX.Element {
                         key={w.id}
                         className={`workspace row weight-${look.weight}`}
                         data-testid={`sidebar-workspace-${w.id}`}
+                        ref={(el) => {
+                          if (el) rows.current.set(w.id, el)
+                          else rows.current.delete(w.id)
+                        }}
                         onContextMenu={(e) => menuAtPointer(e, 'workspace', w.id)}
+                        onMouseEnter={(e) => popout.enter(w.id, e.currentTarget)}
+                        onMouseLeave={popout.leave}
+                        onMouseDown={popout.press}
                       >
                         <button
                           type="button"
                           className="row-button"
                           data-testid={`sidebar-workspace-${w.id}-open`}
                           aria-current={selected === w.id ? 'page' : undefined}
-                          title={w.brief?.trim() ? `${w.brief.trim()}\n${w.path}` : w.path}
                           onClick={() => store.showTerminals(w.id)}
                         >
                           <span className="ico" aria-hidden="true">
@@ -468,6 +504,9 @@ export default function Sidebar(): React.JSX.Element {
                             ⋯
                           </button>
                         </span>
+                        {popout.open?.id === w.id && (
+                          <WorkspacePopout ws={w} row={popout.open.row} onClose={popout.close} />
+                        )}
                         {workspaceMenu && (
                           <Menu
                             label={`Actions for ${w.title ?? w.name}`}

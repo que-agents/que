@@ -147,7 +147,7 @@ describe('Sidebar', () => {
       )
     })
 
-    it('shows the title instead of the name, with the brief then the path on hover', async () => {
+    it('shows the title instead of the name, with no tooltip on the row: the card replaces it', async () => {
       const briefed = makeWorkspace({
         id: 'ws_01hzx7b2n4qe',
         name: 'speed-up-the-diff-view-for-large-change',
@@ -163,9 +163,8 @@ describe('Sidebar', () => {
         'Speed up the diff view for large changesets'
       )
       expect(screen.queryByText(briefed.name)).not.toBeInTheDocument()
-      expect(screen.getByTestId(`sidebar-workspace-${briefed.id}-open`)).toHaveAttribute(
-        'title',
-        `Speed up the diff view for large changesets\n\nVirtualize the file list.\n${briefed.path}`
+      expect(screen.getByTestId(`sidebar-workspace-${briefed.id}-open`)).not.toHaveAttribute(
+        'title'
       )
     })
 

@@ -234,7 +234,19 @@ export interface StoreOptions {
   board?: boolean
   /** The clock for ages, countdowns and windows. Default Date.now. */
   now?: () => number
+  /**
+   * The workspace popout's delays in ms: how long the pointer rests on a row before it opens,
+   * and how long after the pointer leaves the row and the card it closes. Default 500 and 150.
+   */
+  popoutDelays?: PopoutDelays
 }
+
+export interface PopoutDelays {
+  open: number
+  close: number
+}
+
+const POPOUT_DELAYS: PopoutDelays = { open: 500, close: 150 }
 
 const SORT_KEY = 'que.sidebarSort'
 
@@ -321,6 +333,14 @@ export class QueStore {
 
   /** The current time, from the injected clock. */
   now = (): number => (this.options.now ?? Date.now)()
+
+  /** The workspace popout's open and close delays, injectable like the clock. */
+  popoutDelays = (): PopoutDelays => this.options.popoutDelays ?? POPOUT_DELAYS
+
+  private home: Promise<string> | null = null
+
+  /** The user's home directory (asked once), so paths can read `~/…`. */
+  homedir = (): Promise<string> => (this.home ??= this.api.app.homedir())
 
   // ---- app update ----------------------------------------------------------
 
