@@ -11,17 +11,17 @@ import { ghFailed, notFound } from './errors'
 import { isProtectedBranch } from './finisher'
 import {
   currentPullRequest,
+  isSettled,
   parsePullRequest,
   PR_LIST_CAP,
   pullRequestList,
-  samePullRequest,
   samePullRequests
 } from './pr-state'
 import {
   decodeHeadRef,
-  decodePrUrlNumber,
   decodePullRequest,
   decodePullRequests,
+  FIELDS,
   type GhPullRequest
 } from './pr-state.decode'
 import { Poller } from './poller'
@@ -30,9 +30,7 @@ import { decodeLineComments, decodePrView } from './pr-thread.decode'
 import type { Emit } from './status'
 import type { Store } from './store'
 import { errorMessage } from '../shared/errors.decode'
-
-const FIELDS =
-  'number,url,title,state,isDraft,reviewDecision,statusCheckRollup,mergedAt,updatedAt,additions,deletions'
+import { prUrlNumber } from '../shared/pr-url'
 
 /** A project's tick lists at most this many of its most recent pull requests. */
 const LIST_LIMIT = 100
@@ -72,29 +70,17 @@ async function ghPrList(
   cwd: string,
   signal: AbortSignal
 ): Promise<unknown[]> {
-  const args = branch
-    ? [
-        'pr',
-        'list',
-        '--head',
-        branch,
-        '--state',
-        'all',
-        '--limit',
-        String(PR_LIST_CAP),
-        '--json',
-        FIELDS
-      ]
-    : [
-        'pr',
-        'list',
-        '--state',
-        'all',
-        '--limit',
-        String(LIST_LIMIT),
-        '--json',
-        `${FIELDS},headRefName`
-      ]
+  const args = [
+    'pr',
+    'list',
+    ...(branch ? ['--head', branch] : []),
+    '--state',
+    'all',
+    '--limit',
+    String(branch ? PR_LIST_CAP : LIST_LIMIT),
+    '--json',
+    branch ? FIELDS : `${FIELDS},headRefName`
+  ]
 
   const parsed = await ghJson(args, cwd, signal)
 
@@ -161,7 +147,7 @@ export class PrService {
       const byProject = new Map<string, Workspace[]>()
 
       for (const ws of this.opts.store.listWorkspaces()) {
-        const settled = ws.pr?.state === 'merged' || ws.pr?.state === 'closed'
+        const settled = ws.pr !== null && isSettled(ws.pr)
 
         if (settled && !due) continue
         const list = byProject.get(ws.projectId)
@@ -359,7 +345,7 @@ export class PrService {
     const urls = [...(ws.prUrl ? [ws.prUrl] : []), ...this.opts.store.listTaskPrUrls(ws.id)]
 
     for (const url of urls) {
-      const n = decodePrUrlNumber(url)
+      const n = prUrlNumber(url)
 
       if (n !== null && !known.has(n)) numbers.add(n)
     }
@@ -372,7 +358,7 @@ export class PrService {
       if (this.stopped) break
       const old = stored.get(n)
 
-      if (old && (old.state === 'merged' || old.state === 'closed') && !due) {
+      if (old && isSettled(old) && !due) {
         prs.push(old)
         continue
       }
@@ -416,8 +402,8 @@ export class PrService {
 
     if (!next) this.threads.delete(ws.id)
 
-    if (samePullRequest(current.pr, next) && samePullRequests(current.prs, prs)) return
-    this.opts.store.setWorkspacePrs(ws.id, next, prs)
+    if (samePullRequests(current.prs, prs)) return
+    this.opts.store.setWorkspacePrs(ws.id, prs)
     this.opts.emit('workspace.updated', { ...current, pr: next, prs })
   }
 }

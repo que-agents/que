@@ -1,17 +1,19 @@
 import { describe, expect, it } from 'vitest'
 import { makeTask, makeWorkspace } from '@renderer/testing/fixtures'
-import { collapsedCount, hoverWord, rowTone } from './sidebar-row'
+import { minutesAgo } from '@renderer/testing/helpers'
+import { hoverWord, rowTone, unseenDone } from './sidebar-row'
 
 const NOW = new Date(2026, 9, 17, 21, 30).getTime()
-const minutesAgo = (m: number): string => new Date(NOW - m * 60_000).toISOString()
 
 const idle = makeWorkspace({ id: 'ws_01hzx3k9c2qf', name: 'app-1432-retry-logic' })
-const fresh = { ...idle, finishedAt: minutesAgo(12), seenAt: minutesAgo(40) }
+const fresh = { ...idle, finishedAt: minutesAgo(NOW, 12), seenAt: minutesAgo(NOW, 40) }
 
 describe('rowTone', () => {
   describe('the workspace status', () => {
     it('reads an idle workspace looked at as a grey dot and a faint name', () => {
-      expect(rowTone({ ...idle, finishedAt: minutesAgo(40), seenAt: minutesAgo(12) })).toEqual({
+      expect(
+        rowTone({ ...idle, finishedAt: minutesAgo(NOW, 40), seenAt: minutesAgo(NOW, 12) })
+      ).toEqual({
         status: 'idle',
         tone: 'neutral',
         working: false,
@@ -96,11 +98,16 @@ describe('rowTone', () => {
     })
 
     it('reports done once finished, green until looked at, then the workspace tone', () => {
-      const done = makeTask({ workspaceId: idle.id, state: 'done', finishedAt: minutesAgo(12) })
+      const done = makeTask({
+        workspaceId: idle.id,
+        state: 'done',
+        finishedAt: minutesAgo(NOW, 12)
+      })
+
       const ws = { ...fresh, status: 'exited' as const }
 
       expect(rowTone(ws, done)).toMatchObject({ status: 'done', tone: 'good', unseen: true })
-      expect(rowTone({ ...ws, seenAt: minutesAgo(1) }, done)).toMatchObject({
+      expect(rowTone({ ...ws, seenAt: minutesAgo(NOW, 1) }, done)).toMatchObject({
         status: 'done',
         tone: 'muted',
         unseen: false,
@@ -165,7 +172,7 @@ describe('hoverWord', () => {
     const later = makeTask({
       workspaceId: fresh.id,
       state: 'done',
-      finishedAt: minutesAgo(90),
+      finishedAt: minutesAgo(NOW, 90),
       prUrl: 'https://github.com/rquellh/que/pull/12'
     })
 
@@ -181,12 +188,50 @@ describe('hoverWord', () => {
   })
 })
 
-describe('collapsedCount', () => {
-  it('counts the rows and the unseen finishes among them', () => {
-    expect(collapsedCount([])).toEqual({ done: 0, total: 0 })
-    expect(collapsedCount([{ unseen: true }, { unseen: false }, { unseen: false }])).toEqual({
-      done: 1,
-      total: 3
-    })
+describe('unseenDone', () => {
+  it('is false for a workspace that never finished, seen or not', () => {
+    expect(unseenDone(makeWorkspace({ finishedAt: null, seenAt: null }))).toBe(false)
+    expect(
+      unseenDone(makeWorkspace({ finishedAt: null, seenAt: '2026-10-17T21:10:00.000Z' }))
+    ).toBe(false)
+  })
+
+  it('is true for a workspace that finished and was never seen', () => {
+    expect(
+      unseenDone(makeWorkspace({ finishedAt: '2026-10-17T21:12:00.000Z', seenAt: null }))
+    ).toBe(true)
+  })
+
+  it('is false once seen after it finished', () => {
+    expect(
+      unseenDone(
+        makeWorkspace({
+          finishedAt: '2026-10-17T21:12:00.000Z',
+          seenAt: '2026-10-17T21:15:30.000Z'
+        })
+      )
+    ).toBe(false)
+  })
+
+  it('is true again when it finishes again after it was seen', () => {
+    expect(
+      unseenDone(
+        makeWorkspace({
+          finishedAt: '2026-10-17T21:40:00.000Z',
+          seenAt: '2026-10-17T21:15:30.000Z'
+        })
+      )
+    ).toBe(true)
+  })
+
+  it('is false when it was seen at the moment it finished (selected while it finished)', () => {
+    expect(
+      unseenDone(
+        makeWorkspace({
+          finishedAt: '2026-10-17T21:40:00.000Z',
+          seenAt: '2026-10-17T21:40:00.000Z'
+        })
+      )
+    ).toBe(false)
   })
 })
