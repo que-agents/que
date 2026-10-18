@@ -403,6 +403,8 @@ export class DaemonServer {
     )
 
     void this.status.setupDone(ws.id).then(() => {
+      // Shutdown releases the wait too; nothing is typed into a terminal that is being torn down.
+      if (this.closed) return
       const t = this.opts.host.get(first.id)
 
       if (t?.alive) t.write(command)
