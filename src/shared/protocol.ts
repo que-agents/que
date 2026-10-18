@@ -497,32 +497,135 @@ export interface Methods {
   'tickets.projectFor': { params: { key: string }; result: { projectId: string | null } }
 }
 
-/**
- * Refused with `quiet_hours` while quiet hours are on and not unlocked: every
- * way to see a terminal, its output, or a report, or to start new work.
- */
-export const QUIET_REFUSED_METHODS = [
-  'term.attach',
-  'term.snapshot',
-  'term.create',
-  'workspace.openTerminal',
-  'workspace.start',
-  'workspace.createPr',
-  'workspace.diff',
-  'workspace.prThread',
-  'workspace.files',
-  'workspace.readFile',
-  'report.get',
-  'task.add',
-  'queue.open',
-  'tickets.start'
-] as const satisfies readonly MethodName[]
-
 export type MethodName = keyof Methods
 
 export type ParamsOf<M extends MethodName> = Methods[M]['params']
 
 export type ResultOf<M extends MethodName> = Methods[M]['result']
+
+/**
+ * The one runtime list of methods, in the order of `Methods`; the mapped type
+ * makes a missing or extra entry a compile error.
+ *
+ * - `renderer`: the app's window may call it (Electron main enforces this). False for
+ *   the calls only the daemon's own tooling makes: ping, shutdown, and hook events.
+ * - `quiet`: refused with `quiet_hours` while quiet hours are on and not unlocked:
+ *   every way to see a terminal, its output, or a report, or to start new work.
+ *
+ * The decoders for the params are the sibling table in `methods.decode.ts`, keyed the same way.
+ */
+export const METHODS: {
+  [M in MethodName]: {
+    renderer: boolean
+    quiet: boolean
+  }
+} = {
+  'daemon.ping': { renderer: false, quiet: false },
+  'daemon.shutdown': {
+    renderer: false,
+    quiet: false
+  },
+  'term.create': { renderer: true, quiet: true },
+  'term.list': { renderer: true, quiet: false },
+  'term.attach': { renderer: true, quiet: true },
+  'term.detach': { renderer: true, quiet: false },
+  'term.write': { renderer: true, quiet: false },
+  'term.resize': { renderer: true, quiet: false },
+  'term.kill': { renderer: true, quiet: false },
+  'term.snapshot': { renderer: true, quiet: true },
+  'project.add': { renderer: true, quiet: false },
+  'project.list': { renderer: true, quiet: false },
+  'project.remove': { renderer: true, quiet: false },
+  'workspace.create': {
+    renderer: true,
+    quiet: false
+  },
+  'workspace.list': { renderer: true, quiet: false },
+  'workspace.get': { renderer: true, quiet: false },
+  'workspace.remove': {
+    renderer: true,
+    quiet: false
+  },
+  'workspace.openTerminal': {
+    renderer: true,
+    quiet: true
+  },
+  'workspace.createPr': {
+    renderer: true,
+    quiet: true
+  },
+  'workspace.start': { renderer: true, quiet: true },
+  'workspace.rename': {
+    renderer: true,
+    quiet: false
+  },
+  'workspace.canRenameBranch': {
+    renderer: true,
+    quiet: false
+  },
+  'workspace.seen': { renderer: true, quiet: false },
+  'workspace.diff': { renderer: true, quiet: true },
+  'workspace.prThread': {
+    renderer: true,
+    quiet: true
+  },
+  'workspace.files': { renderer: true, quiet: true },
+  'workspace.readFile': {
+    renderer: true,
+    quiet: true
+  },
+  'workspace.watch': {
+    renderer: true,
+    quiet: false
+  },
+  'workspace.unwatch': {
+    renderer: true,
+    quiet: false
+  },
+  'hook.event': { renderer: false, quiet: false },
+  'task.add': { renderer: true, quiet: true },
+  'task.list': { renderer: true, quiet: false },
+  'task.get': { renderer: true, quiet: false },
+  'task.stop': { renderer: true, quiet: false },
+  'task.remove': { renderer: true, quiet: false },
+  'queue.open': { renderer: true, quiet: true },
+  'queue.close': { renderer: true, quiet: false },
+  'queue.state': { renderer: true, quiet: false },
+  'report.get': { renderer: true, quiet: true },
+  'quiet.state': { renderer: true, quiet: false },
+  'quiet.unlock': { renderer: true, quiet: false },
+  'quiet.lock': { renderer: true, quiet: false },
+  'quiet.log': { renderer: true, quiet: false },
+  'config.get': { renderer: true, quiet: false },
+  'config.set': { renderer: true, quiet: false },
+  'instructions.get': {
+    renderer: true,
+    quiet: false
+  },
+  'instructions.set': {
+    renderer: true,
+    quiet: false
+  },
+  'tickets.list': { renderer: true, quiet: false },
+  'tickets.sync': { renderer: true, quiet: false },
+  'tickets.start': { renderer: true, quiet: true },
+  'tickets.projectFor': {
+    renderer: true,
+    quiet: false
+  }
+}
+
+const METHOD_NAMES = Object.keys(METHODS) as MethodName[]
+
+/** Methods refused with `quiet_hours` while quiet hours are on and not unlocked. */
+export const QUIET_REFUSED_METHODS: readonly MethodName[] = METHOD_NAMES.filter(
+  (m) => METHODS[m].quiet
+)
+
+/** Methods the app's window may call. */
+export const RENDERER_METHODS: ReadonlySet<MethodName> = new Set(
+  METHOD_NAMES.filter((m) => METHODS[m].renderer)
+)
 
 // ---- event types ----------------------------------------------------------
 
@@ -554,6 +657,39 @@ export interface Events {
 }
 
 export type EventName = keyof Events
+
+/**
+ * The one runtime list of events, in the order of `Events`.
+ *
+ * - `renderer`: Electron main forwards it to the app's window. False for events main
+ *   handles itself.
+ */
+export const EVENTS: { [E in EventName]: { renderer: boolean } } = {
+  'term.data': { renderer: true },
+  'term.exit': { renderer: true },
+  'term.created': { renderer: true },
+  'term.killed': { renderer: true },
+  'workspace.created': { renderer: true },
+  'workspace.updated': { renderer: true },
+  'workspace.removed': { renderer: true },
+  'workspace.status': { renderer: true },
+  'workspace.changed': { renderer: true },
+  'task.created': { renderer: true },
+  'task.status': { renderer: true },
+  'task.updated': { renderer: true },
+  'queue.state': { renderer: true },
+  'project.added': { renderer: true },
+  'project.removed': { renderer: true },
+  'quiet.changed': { renderer: true },
+  'quiet.morningSummary': { renderer: false },
+  'config.changed': { renderer: true },
+  'tickets.synced': { renderer: true }
+}
+
+/** Events forwarded to the app's window. */
+export const RENDERER_EVENTS: readonly EventName[] = (Object.keys(EVENTS) as EventName[]).filter(
+  (e) => EVENTS[e].renderer
+)
 
 // ---- envelopes ------------------------------------------------------------
 

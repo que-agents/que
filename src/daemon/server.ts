@@ -7,8 +7,11 @@ import {
   encode,
   type EventName,
   type Events,
+  METHODS,
+  type MethodName,
   type Methods,
-  type PingResult,
+  type ParamsOf,
+  type ResultOf,
   type Request,
   type ResponseError
 } from '../shared/protocol'
@@ -24,17 +27,16 @@ import {
   stringifyConfig,
   type UserConfig
 } from '../shared/config'
-import { decodeHookEvent } from '../shared/hook.decode'
+import { decoders, ParamsError } from '../shared/methods.decode'
 import { ensureDirs, quePaths, type QuePaths } from '../shared/paths'
 import type {
   ConfigGetResult,
   InstructionsGetResult,
-  TaskAddParams,
   TermCreateParams,
   TermInfo,
   WorkspaceStartResult
 } from '../shared/protocol'
-import { type TaskSource, type TaskState, type Workspace } from '../shared/types'
+import type { Workspace } from '../shared/types'
 import { EventBus } from './bus'
 import { RpcError } from './errors'
 import type { HostedTerminal, PtyHost, TermExtra } from './pty-host'
@@ -90,6 +92,12 @@ interface Subscription {
 
 /** Work to run after a response is written (e.g. flushing buffered data). */
 type AfterSend = (fn: () => void) => void
+
+/** What a handler may need besides its params: the caller's connection and work to run after the reply is sent. */
+interface HandlerContext {
+  conn: Connection
+  afterSend: AfterSend
+}
 
 class Connection {
   readonly subs = new Map<string, Subscription>()
@@ -648,263 +656,188 @@ export class DaemonServer {
     p: Record<string, unknown>,
     afterSend: AfterSend
   ): Promise<Methods[keyof Methods]['result']> {
-    const { host } = this.opts
-    // Quiet hours: detail is refused here, so every client gets the same answer.
-    this.quiet.check(method)
-
-    switch (method) {
-      case 'daemon.ping': {
-        const r: PingResult = {
-          version: this.opts.version,
-          pid: process.pid,
-          startedAt: this.startedAt,
-          nodeVersion: process.version,
-          path: process.env.PATH ?? ''
-        }
-
-        return r
-      }
-
-      case 'daemon.shutdown':
-        return { ok: true }
-      case 'term.create': {
-        const t = this.createTerminal({
-          cwd: optString(p, 'cwd'),
-          cols: num(p, 'cols'),
-          rows: num(p, 'rows'),
-          name: optString(p, 'name'),
-          file: optString(p, 'file'),
-          args: optStringArray(p, 'args')
-        })
-
-        return t.info()
-      }
-
-      case 'term.list': {
-        const workspaceId = optString(p, 'workspaceId')
-
-        return host
-          .list()
-          .filter((t) => !workspaceId || t.workspaceId === workspaceId)
-          .map((t) => t.info())
-      }
-
-      case 'term.attach': {
-        const t = this.requireTerm(str(p, 'id'))
-        const cols = num(p, 'cols')
-        const rows = num(p, 'rows')
-        // Buffer live output from this instant; the snapshot below covers
-        // everything before it, so nothing is lost or duplicated.
-        const sub: Subscription = { pending: [] }
-        conn.subs.set(t.id, sub)
-
-        try {
-          t.resize(cols, rows)
-          const snapshot = await t.serializeNow()
-          afterSend(() => flushPending(conn, t.id, sub))
-
-          return { snapshot, cols: t.cols, rows: t.rows }
-        } catch (e) {
-          if (conn.subs.get(t.id) === sub) conn.subs.delete(t.id)
-          throw e
-        }
-      }
-
-      case 'term.detach': {
-        conn.subs.delete(str(p, 'id'))
-
-        return { ok: true }
-      }
-
-      case 'term.write': {
-        this.requireTerm(str(p, 'id')).write(str(p, 'data'))
-
-        return { ok: true }
-      }
-
-      case 'term.resize': {
-        this.requireTerm(str(p, 'id')).resize(num(p, 'cols'), num(p, 'rows'))
-
-        return { ok: true }
-      }
-
-      case 'term.kill': {
-        const id = str(p, 'id')
-
-        if (!this.killTerminal(id)) throw new RpcError(ErrorCodes.NotFound, `no terminal ${id}`)
-
-        return { ok: true }
-      }
-
-      case 'term.snapshot':
-        return this.requireTerm(str(p, 'id')).snapshot()
-      case 'project.add': {
-        const before = new Set(this.workspaces.listProjects().map((x) => x.id))
-
-        const project = await this.workspaces.addProject({
-          path: optString(p, 'path'),
-          repo: optString(p, 'repo'),
-          cwd: optString(p, 'cwd'),
-          name: optString(p, 'name')
-        })
-
-        if (!before.has(project.id)) this.bus.emit('project.added', project)
-
-        return project
-      }
-
-      case 'project.list':
-        return this.workspaces.listProjects()
-      case 'project.remove':
-        await this.workspaces.removeProject(str(p, 'id'), optBool(p, 'force'))
-        this.bus.emit('project.removed', { id: str(p, 'id') })
-
-        return { ok: true }
-      case 'workspace.create':
-        return this.workspaces.create({
-          projectId: str(p, 'projectId'),
-          name: optString(p, 'name'),
-          title: optString(p, 'title'),
-          brief: optString(p, 'brief'),
-          baseRef: optString(p, 'baseRef'),
-          branch: optString(p, 'branch')
-        })
-      case 'workspace.start':
-        return this.startWorkspace(str(p, 'id'), optNumber(p, 'cols'), optNumber(p, 'rows'))
-      case 'workspace.rename':
-        return this.workspaces.rename({
-          id: str(p, 'id'),
-          title: str(p, 'title'),
-          branch: optString(p, 'branch')
-        })
-      case 'workspace.canRenameBranch':
-        return { allowed: await this.workspaces.canRenameBranch(str(p, 'id')) }
-      case 'workspace.seen':
-        return this.workspaces.seen(str(p, 'id'))
-      case 'workspace.list':
-        return this.workspaces.list(optString(p, 'projectId'))
-      case 'workspace.get':
-        return this.workspaces.get(str(p, 'id'))
-      case 'workspace.remove':
-        this.tasks.stopWorkspace(str(p, 'id'))
-        await this.workspaces.remove({ id: str(p, 'id'), deleteBranch: optBool(p, 'deleteBranch') })
-
-        return { ok: true }
-      case 'workspace.openTerminal':
-        return this.openWorkspaceTerminal(str(p, 'id'), num(p, 'cols'), num(p, 'rows'))
-
-      case 'workspace.diff': {
-        const ws = this.workspaces.get(str(p, 'id'))
-
-        return workspaceDiff(ws, this.workspaces.project(ws.projectId), Date.now, {
-          base: optString(p, 'base'),
-          commit: optString(p, 'commit')
-        })
-      }
-
-      case 'workspace.watch':
-        conn.watches.add(this.workspaces.get(str(p, 'id')).id)
-        this.syncWatches()
-
-        return { ok: true }
-      case 'workspace.unwatch':
-        conn.watches.delete(str(p, 'id'))
-        this.syncWatches()
-
-        return { ok: true }
-      case 'workspace.files':
-        return workspaceFiles(this.workspaces.get(str(p, 'id')), Date.now)
-      case 'workspace.readFile':
-        return readWorkspaceFile(this.workspaces.get(str(p, 'id')), str(p, 'path'))
-      case 'workspace.prThread': {
-        const ws = this.workspaces.get(str(p, 'id'))
-
-        return this.prs.thread(ws.id, optBool(p, 'refresh') === true)
-      }
-
-      case 'workspace.createPr':
-        return this.prs.create(str(p, 'id'), str(p, 'title'))
-      case 'hook.event': {
-        const ws = this.workspaces.get(str(p, 'workspaceId'))
-        const payload = decodeHookEvent(p.payload)
-
-        if (!payload) throw new RpcError(ErrorCodes.BadRequest, 'payload must be a hook event')
-
-        this.status.hook(ws.id, payload)
-
-        if (payload.hook_event_name === 'Stop' && !payload.agent_id) this.summaries.stopped(ws.id)
-
-        const taskId = optString(p, 'taskId')
-
-        if (taskId) this.tasks.hook(taskId, payload)
-
-        return { ok: true }
-      }
-
-      case 'task.add': {
-        const params: TaskAddParams = {
-          projectId: optString(p, 'projectId'),
-          workspaceId: optString(p, 'workspaceId'),
-          title: optString(p, 'title'),
-          brief: str(p, 'brief'),
-          source: optString(p, 'source') as TaskSource | undefined,
-          resumeSessionId: optString(p, 'resumeSessionId'),
-          maxTurns: optNumber(p, 'maxTurns'),
-          maxBudgetUsd: optNumber(p, 'maxBudgetUsd')
-        }
-
-        return this.tasks.add(params)
-      }
-
-      case 'task.list':
-        return this.tasks.list({ state: optString(p, 'state') as TaskState | undefined })
-      case 'task.get':
-        return this.tasks.get(str(p, 'id'))
-      case 'task.stop':
-        return this.tasks.stop(str(p, 'id'))
-      case 'task.remove':
-        this.tasks.remove(str(p, 'id'))
-
-        return { ok: true }
-      case 'queue.open':
-        return this.tasks.open(optNumber(p, 'concurrency'))
-      case 'queue.close':
-        return this.tasks.close()
-      case 'queue.state':
-        return this.tasks.state()
-      case 'report.get':
-        return this.tasks.report(optString(p, 'since'))
-      case 'quiet.state':
-        return this.quiet.state()
-      case 'quiet.unlock':
-        return this.quiet.unlockFor(optNumber(p, 'minutes'), optString(p, 'why'))
-      case 'quiet.lock':
-        return this.quiet.lock()
-      case 'quiet.log':
-        return this.quiet.log(optString(p, 'since'))
-      case 'tickets.list':
-        return this.tickets.list()
-      case 'tickets.sync':
-        return this.tickets.sync()
-      case 'tickets.start':
-        return this.tickets.startTicket({
-          key: str(p, 'key'),
-          projectId: optString(p, 'projectId'),
-          session: optBool(p, 'session')
-        })
-      case 'tickets.projectFor':
-        return { projectId: this.tickets.projectFor(str(p, 'key')) }
-      case 'config.get':
-        return this.getConfig()
-      case 'config.set':
-        return this.setConfig(p.patch, optBool(p, 'applyTonight') === true)
-      case 'instructions.get':
-        return this.getInstructions()
-      case 'instructions.set':
-        return this.setInstructions(str(p, 'content'))
-      default:
-        throw new RpcError(ErrorCodes.UnknownMethod, `unknown method ${method}`)
+    if (!Object.hasOwn(METHODS, method)) {
+      throw new RpcError(ErrorCodes.UnknownMethod, `unknown method ${method}`)
     }
+
+    const name = method as MethodName
+    // Quiet hours: detail is refused here, so every client gets the same answer.
+
+    if (METHODS[name].quiet) this.quiet.check()
+
+    let params: unknown
+
+    try {
+      params = decoders[name](p)
+    } catch (e) {
+      if (e instanceof ParamsError) throw new RpcError(ErrorCodes.BadRequest, e.message)
+
+      throw e
+    }
+
+    // Each handler takes its own method's params; the table above pairs them.
+    const run = this.handlers[name] as (
+      params: unknown,
+      ctx: HandlerContext
+    ) => Promise<Methods[keyof Methods]['result']> | Methods[keyof Methods]['result']
+
+    return run(params, { conn, afterSend })
+  }
+
+  /** What each method does with its decoded params; the compiler proves none is missing. */
+  private readonly handlers: {
+    [M in MethodName]: (
+      params: ParamsOf<M>,
+      ctx: HandlerContext
+    ) => ResultOf<M> | Promise<ResultOf<M>>
+  } = {
+    'daemon.ping': () => ({
+      version: this.opts.version,
+      pid: process.pid,
+      startedAt: this.startedAt,
+      nodeVersion: process.version,
+      path: process.env.PATH ?? ''
+    }),
+    'daemon.shutdown': () => ({ ok: true }),
+    'term.create': (p) => this.createTerminal(p).info(),
+    'term.list': (p) =>
+      this.opts.host
+        .list()
+        .filter((t) => !p?.workspaceId || t.workspaceId === p.workspaceId)
+        .map((t) => t.info()),
+    'term.attach': async (p, { conn, afterSend }) => {
+      const t = this.requireTerm(p.id)
+      // Buffer live output from this instant; the snapshot below covers
+      // everything before it, so nothing is lost or duplicated.
+      const sub: Subscription = { pending: [] }
+      conn.subs.set(t.id, sub)
+
+      try {
+        t.resize(p.cols, p.rows)
+        const snapshot = await t.serializeNow()
+        afterSend(() => flushPending(conn, t.id, sub))
+
+        return { snapshot, cols: t.cols, rows: t.rows }
+      } catch (e) {
+        if (conn.subs.get(t.id) === sub) conn.subs.delete(t.id)
+        throw e
+      }
+    },
+    'term.detach': (p, { conn }) => {
+      conn.subs.delete(p.id)
+
+      return { ok: true }
+    },
+    'term.write': (p) => {
+      this.requireTerm(p.id).write(p.data)
+
+      return { ok: true }
+    },
+    'term.resize': (p) => {
+      this.requireTerm(p.id).resize(p.cols, p.rows)
+
+      return { ok: true }
+    },
+    'term.kill': (p) => {
+      if (!this.killTerminal(p.id)) throw new RpcError(ErrorCodes.NotFound, `no terminal ${p.id}`)
+
+      return { ok: true }
+    },
+    'term.snapshot': (p) => this.requireTerm(p.id).snapshot(),
+    'project.add': async (p) => {
+      const before = new Set(this.workspaces.listProjects().map((x) => x.id))
+      const project = await this.workspaces.addProject(p)
+
+      if (!before.has(project.id)) this.bus.emit('project.added', project)
+
+      return project
+    },
+    'project.list': () => this.workspaces.listProjects(),
+    'project.remove': async (p) => {
+      await this.workspaces.removeProject(p.id, p.force)
+      this.bus.emit('project.removed', { id: p.id })
+
+      return { ok: true }
+    },
+    'workspace.create': (p) => this.workspaces.create(p),
+    'workspace.list': (p) => this.workspaces.list(p?.projectId),
+    'workspace.get': (p) => this.workspaces.get(p.id),
+    'workspace.remove': async (p) => {
+      this.tasks.stopWorkspace(p.id)
+      await this.workspaces.remove({ id: p.id, deleteBranch: p.deleteBranch })
+
+      return { ok: true }
+    },
+    'workspace.openTerminal': (p) => this.openWorkspaceTerminal(p.id, p.cols, p.rows),
+    'workspace.createPr': (p) => this.prs.create(p.id, p.title),
+    'workspace.start': (p) => this.startWorkspace(p.id, p.cols, p.rows),
+    'workspace.rename': (p) => this.workspaces.rename(p),
+    'workspace.canRenameBranch': async (p) => ({
+      allowed: await this.workspaces.canRenameBranch(p.id)
+    }),
+    'workspace.seen': (p) => this.workspaces.seen(p.id),
+    'workspace.diff': (p) => {
+      const ws = this.workspaces.get(p.id)
+
+      return workspaceDiff(ws, this.workspaces.project(ws.projectId), Date.now, {
+        base: p.base,
+        commit: p.commit
+      })
+    },
+    'workspace.prThread': (p) => {
+      const ws = this.workspaces.get(p.id)
+
+      return this.prs.thread(ws.id, p.refresh === true)
+    },
+    'workspace.files': (p) => workspaceFiles(this.workspaces.get(p.id), Date.now),
+    'workspace.readFile': (p) => readWorkspaceFile(this.workspaces.get(p.id), p.path),
+    'workspace.watch': (p, { conn }) => {
+      conn.watches.add(this.workspaces.get(p.id).id)
+      this.syncWatches()
+
+      return { ok: true }
+    },
+    'workspace.unwatch': (p, { conn }) => {
+      conn.watches.delete(p.id)
+      this.syncWatches()
+
+      return { ok: true }
+    },
+    'hook.event': (p) => {
+      const ws = this.workspaces.get(p.workspaceId)
+      this.status.hook(ws.id, p.payload)
+
+      if (p.payload.hook_event_name === 'Stop' && !p.payload.agent_id) this.summaries.stopped(ws.id)
+
+      if (p.taskId) this.tasks.hook(p.taskId, p.payload)
+
+      return { ok: true }
+    },
+    'task.add': (p) => this.tasks.add(p),
+    'task.list': (p) => this.tasks.list({ state: p?.state }),
+    'task.get': (p) => this.tasks.get(p.id),
+    'task.stop': (p) => this.tasks.stop(p.id),
+    'task.remove': (p) => {
+      this.tasks.remove(p.id)
+
+      return { ok: true }
+    },
+    'queue.open': (p) => this.tasks.open(p?.concurrency),
+    'queue.close': () => this.tasks.close(),
+    'queue.state': () => this.tasks.state(),
+    'report.get': (p) => this.tasks.report(p?.since),
+    'quiet.state': () => this.quiet.state(),
+    'quiet.unlock': (p) => this.quiet.unlockFor(p?.minutes, p?.why),
+    'quiet.lock': () => this.quiet.lock(),
+    'quiet.log': (p) => this.quiet.log(p?.since),
+    'tickets.list': () => this.tickets.list(),
+    'tickets.sync': () => this.tickets.sync(),
+    'tickets.start': (p) => this.tickets.startTicket(p),
+    'tickets.projectFor': (p) => ({ projectId: this.tickets.projectFor(p.key) }),
+    'config.get': () => this.getConfig(),
+    'config.set': (p) => this.setConfig(p.patch, p.applyTonight === true),
+    'instructions.get': () => this.getInstructions(),
+    'instructions.set': (p) => this.setInstructions(p.content)
   }
 }
 
@@ -919,69 +852,4 @@ function flushPending(conn: Connection, id: string, sub: Subscription): void {
 
 function err(code: string, message: string): ResponseError {
   return { code, message }
-}
-
-function str(p: Record<string, unknown>, key: string): string {
-  const v = p[key]
-
-  if (typeof v !== 'string') throw new RpcError(ErrorCodes.BadRequest, `${key} must be a string`)
-
-  return v
-}
-
-/** A reader that also takes an absent (undefined or null) parameter as undefined. */
-function opt<T>(
-  p: Record<string, unknown>,
-  key: string,
-  read: (p: Record<string, unknown>, key: string) => T
-): T | undefined {
-  return p[key] === undefined || p[key] === null ? undefined : read(p, key)
-}
-
-function optString(p: Record<string, unknown>, key: string): string | undefined {
-  return opt(p, key, str)
-}
-
-function optStringArray(p: Record<string, unknown>, key: string): string[] | undefined {
-  return opt(p, key, (q, k) => {
-    const v = q[k]
-
-    if (!Array.isArray(v) || !v.every((x) => typeof x === 'string')) {
-      throw new RpcError(ErrorCodes.BadRequest, `${k} must be an array of strings`)
-    }
-
-    return v
-  })
-}
-
-function optBool(p: Record<string, unknown>, key: string): boolean | undefined {
-  return opt(p, key, (q, k) => {
-    const v = q[k]
-
-    if (typeof v !== 'boolean') throw new RpcError(ErrorCodes.BadRequest, `${k} must be a boolean`)
-
-    return v
-  })
-}
-
-function optNumber(p: Record<string, unknown>, key: string): number | undefined {
-  return opt(p, key, (q, k) => {
-    const v = q[k]
-
-    if (typeof v !== 'number' || !Number.isFinite(v)) {
-      throw new RpcError(ErrorCodes.BadRequest, `${k} must be a number`)
-    }
-
-    return v
-  })
-}
-
-function num(p: Record<string, unknown>, key: string): number {
-  const v = p[key]
-
-  if (typeof v !== 'number' || !Number.isFinite(v) || v < 1) {
-    throw new RpcError(ErrorCodes.BadRequest, `${key} must be a positive number`)
-  }
-
-  return v
 }

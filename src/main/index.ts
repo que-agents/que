@@ -6,7 +6,14 @@ import { reportSummaryText } from '../daemon/report'
 import { DaemonClient } from '../shared/client'
 import { loginShellPath, mergePath } from '../shared/login-path'
 import { queHome } from '../shared/paths'
-import type { EventName, MethodName, ParamsOf, Report } from '../shared/protocol'
+import {
+  RENDERER_EVENTS,
+  RENDERER_METHODS,
+  type EventName,
+  type MethodName,
+  type ParamsOf,
+  type Report
+} from '../shared/protocol'
 import type { QuietState, UpdateInfo } from '../shared/types'
 import { createBoardWindow } from './board'
 import { decodeAbsolutePath } from './ipc.decode'
@@ -41,79 +48,6 @@ app.setPath('userData', join(queHome(), 'app'))
 /** A newer release, once the update check has found one. */
 let update: UpdateInfo | null = null
 
-/** Methods the renderer may call through the preload bridge. */
-const ALLOWED: ReadonlySet<MethodName> = new Set<MethodName>([
-  'term.create',
-  'term.list',
-  'term.attach',
-  'term.detach',
-  'term.write',
-  'term.resize',
-  'term.kill',
-  'term.snapshot',
-  'project.add',
-  'project.list',
-  'project.remove',
-  'workspace.create',
-  'workspace.list',
-  'workspace.get',
-  'workspace.remove',
-  'workspace.openTerminal',
-  'workspace.createPr',
-  'workspace.start',
-  'workspace.rename',
-  'workspace.canRenameBranch',
-  'workspace.seen',
-  'workspace.diff',
-  'workspace.prThread',
-  'workspace.files',
-  'workspace.readFile',
-  'workspace.watch',
-  'workspace.unwatch',
-  'task.add',
-  'task.list',
-  'task.get',
-  'task.stop',
-  'task.remove',
-  'queue.open',
-  'queue.close',
-  'queue.state',
-  'report.get',
-  'quiet.state',
-  'quiet.unlock',
-  'quiet.lock',
-  'quiet.log',
-  'config.get',
-  'config.set',
-  'instructions.get',
-  'instructions.set',
-  'tickets.list',
-  'tickets.sync',
-  'tickets.start',
-  'tickets.projectFor'
-])
-
-const FORWARDED_EVENTS: EventName[] = [
-  'term.data',
-  'term.exit',
-  'term.created',
-  'term.killed',
-  'workspace.created',
-  'workspace.updated',
-  'workspace.removed',
-  'workspace.status',
-  'workspace.changed',
-  'task.created',
-  'task.status',
-  'task.updated',
-  'queue.state',
-  'project.added',
-  'project.removed',
-  'quiet.changed',
-  'config.changed',
-  'tickets.synced'
-]
-
 /** Events after which the tray title is recomputed. */
 const TRAY_EVENTS: EventName[] = [
   'workspace.created',
@@ -131,7 +65,7 @@ function getClient(): Promise<DaemonClient> {
       .then((c) => {
         client = c
 
-        for (const ev of FORWARDED_EVENTS) {
+        for (const ev of RENDERER_EVENTS) {
           c.on(ev, (data) => sendToRenderer('que:event', ev, data))
         }
 
@@ -355,7 +289,7 @@ function registerIpc(): void {
       method: M,
       params: ParamsOf<M>
     ) => {
-      if (!ALLOWED.has(method)) throw new Error(`method not allowed: ${method}`)
+      if (!RENDERER_METHODS.has(method)) throw new Error(`method not allowed: ${method}`)
       const c = await getClient()
 
       try {
