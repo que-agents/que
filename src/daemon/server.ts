@@ -64,6 +64,8 @@ import { errorCode, errorMessage } from '../shared/errors.decode'
 export interface ServerOptions {
   host: PtyHost
   version: string
+  /** The build id of the bundle this daemon runs (shared/build-id.ts). Default ''. */
+  buildId?: string
   startedAt?: string
   log?: (msg: string) => void
   /** Called after the daemon.shutdown response has been flushed. */
@@ -719,6 +721,7 @@ export class DaemonServer {
   } = {
     'daemon.ping': () => ({
       version: this.opts.version,
+      buildId: this.opts.buildId ?? '',
       pid: process.pid,
       startedAt: this.startedAt,
       nodeVersion: process.version,

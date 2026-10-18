@@ -3,6 +3,7 @@
 // setup.ts installs `fakeBridge.api` as window.que and resets it after each test.
 import type {
   ConfigGetResult,
+  DaemonState,
   ConfigSetParams,
   InstructionsGetResult,
   Events,
@@ -75,6 +76,16 @@ function diffKey(id: string, base?: string, commit?: string): string {
 
 let idCounter = 0
 
+/** A daemon running the same build as the app. */
+function currentDaemon(): DaemonState {
+  return {
+    version: '0.4.0',
+    buildId: '3f9a2c71b0de',
+    expectedBuildId: '3f9a2c71b0de',
+    stale: false
+  }
+}
+
 function fakeId(prefix: 'prj_' | 'ws_' | 'tsk_'): string {
   idCounter += 1
 
@@ -89,6 +100,13 @@ class FakeBridge {
   private terminals = new Map<string, FakeTerminal>()
   private listeners = new Map<string, Set<Listener>>()
   private disconnectListeners = new Set<() => void>()
+  private reconnectListeners = new Set<(state: DaemonState) => void>()
+  private daemonBook: DaemonState = currentDaemon()
+  /** While the connection is down: daemon.state calls wait here until reconnect() or failReconnect(). */
+  private down: Array<{ resolve: (s: DaemonState) => void; reject: (e: Error) => void }> | null =
+    null
+  private restartCount = 0
+  private daemonStateCount = 0
   private tasks = new Map<string, Task>()
   private queue: QueueState = closedQueue()
   private home = '/Users/dev'
@@ -269,6 +287,36 @@ class FakeBridge {
           return { ok: true }
         },
         e2e: false
+      },
+      daemon: {
+        state: () => {
+          this.daemonStateCount++
+          const waiting = this.down
+
+          if (waiting) return new Promise((resolve, reject) => waiting.push({ resolve, reject }))
+
+          return Promise.resolve({ ...this.daemonBook })
+        },
+        restart: async () => {
+          this.restartCount++
+
+          // As the main process does: the old daemon ends every terminal, the new one has none.
+          this.terminals.clear()
+          this.disconnect()
+          this.daemonBook = {
+            ...this.daemonBook,
+            buildId: this.daemonBook.expectedBuildId,
+            stale: false
+          }
+          this.reconnect()
+
+          return { ...this.daemonBook }
+        },
+        onReconnected: (cb) => {
+          this.reconnectListeners.add(cb)
+
+          return () => this.reconnectListeners.delete(cb)
+        }
       },
       project: {
         add: async ({ path = '', name }) => {
@@ -921,9 +969,52 @@ class FakeBridge {
     this.emit('task.updated', { ...t })
   }
 
-  /** Drops the daemon connection: every onDisconnect listener fires. */
+  /**
+   * Drops the daemon connection: every onDisconnect listener fires, and daemon.state
+   * calls wait (as the main process's reconnect does) until reconnect() or failReconnect().
+   */
   disconnect(): void {
+    this.down ??= []
+
     for (const cb of this.disconnectListeners) cb()
+  }
+
+  /** The daemon was restarted elsewhere (from the CLI): it comes back with no terminals. */
+  forgetTerminals(): void {
+    this.terminals.clear()
+  }
+
+  /** The connection is back: waiting daemon.state calls answer and daemon.reconnected fires. */
+  reconnect(): void {
+    const waiting = this.down ?? []
+    this.down = null
+
+    for (const w of waiting) w.resolve({ ...this.daemonBook })
+
+    for (const cb of this.reconnectListeners) cb({ ...this.daemonBook })
+  }
+
+  /** The reconnect failed: waiting daemon.state calls reject with `message`; the connection stays down. */
+  failReconnect(message: string): void {
+    const waiting = this.down ?? []
+    this.down = []
+
+    for (const w of waiting) w.reject(rpcError('start_timeout', message))
+  }
+
+  /** What daemon.state answers: the daemon's build and the one this app would start. Call before render() to seed. */
+  setDaemon(state: Partial<DaemonState>): void {
+    this.daemonBook = { ...this.daemonBook, ...state }
+  }
+
+  /** How many times the window asked to restart the daemon. */
+  restartCalls(): number {
+    return this.restartCount
+  }
+
+  /** How many times daemon.state was asked (each reconnect asks once). */
+  daemonStateCalls(): number {
+    return this.daemonStateCount
   }
 
   /** Empties the book and drops listeners. setup.ts calls it after every test. */
@@ -1079,6 +1170,11 @@ class FakeBridge {
     this.queue = closedQueue()
     this.listeners.clear()
     this.disconnectListeners.clear()
+    this.reconnectListeners.clear()
+    this.daemonBook = currentDaemon()
+    this.down = null
+    this.restartCount = 0
+    this.daemonStateCount = 0
     this.folder = null
     this.tray = '● 0 ▸ 0 ✕ 0'
     this.editorCalls = []

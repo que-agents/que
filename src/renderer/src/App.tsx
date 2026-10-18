@@ -17,6 +17,7 @@ import SidebarResizer, { useSidebarWidth } from './components/SidebarResizer'
 import Panes from './components/Panes'
 import ReviewPane from './components/ReviewPane'
 import ReviewResizer from './components/ReviewResizer'
+import DaemonBanner from './components/DaemonBanner'
 import UpdateBanner from './components/UpdateBanner'
 import { QueStore, StoreContext, useQue, useQueSelector, useStore } from './store'
 import { setReviewSource } from './testHook'
@@ -79,6 +80,7 @@ function Shell(): React.JSX.Element {
   const error = useQueSelector((s) => s.error)
   const dialog = useQueSelector((s) => s.dialog)
   const connected = useQueSelector((s) => s.connected)
+  const reconnecting = useQueSelector((s) => s.reconnecting)
   const quiet = useQueSelector((s) => s.quiet)
   const review = useQueSelector((s) => s.review)
   const [sidebarWidth, setSidebarWidth] = useSidebarWidth()
@@ -162,9 +164,17 @@ function Shell(): React.JSX.Element {
       <SidebarResizer width={sidebarWidth} onChange={setSidebarWidth} />
       <main className="main">
         <UpdateBanner />
-        {!connected ? (
+        <DaemonBanner />
+        {reconnecting ? (
+          <div className="update-banner" role="status" data-testid="app-reconnecting">
+            <span>Reconnecting to the background service…</span>
+          </div>
+        ) : !connected ? (
           <div className="error" role="alert" data-testid="app-error">
-            <span>Lost connection to the que daemon.</span>
+            <span>Lost connection to the background service{error ? `: ${error}` : '.'}</span>
+            <button type="button" onClick={() => store.reconnect()}>
+              Reconnect
+            </button>
           </div>
         ) : (
           error && (
