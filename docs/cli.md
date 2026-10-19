@@ -7,6 +7,7 @@ hand; run `npm run docs` after changing a command.
 | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `que daemon start [options]`                | start the daemon if it is not running                                                                                                                                                      |
 | `que daemon stop [options]`                 | kill all terminals and stop the daemon                                                                                                                                                     |
+| `que daemon restart [options]`              | stop the daemon, ending every terminal, and start it from this build                                                                                                                       |
 | `que daemon status [options]`               | show whether the daemon is running                                                                                                                                                         |
 | `que daemon install [options]`              | install a launchd agent that keeps the daemon running                                                                                                                                      |
 | `que daemon uninstall [options]`            | remove the launchd agent                                                                                                                                                                   |
@@ -67,6 +68,17 @@ Options:
 Usage: que daemon stop [options]
 
 kill all terminals and stop the daemon
+
+Options:
+  -h, --help  display help for command
+```
+
+### que daemon restart
+
+```text
+Usage: que daemon restart [options]
+
+stop the daemon, ending every terminal, and start it from this build
 
 Options:
   -h, --help  display help for command

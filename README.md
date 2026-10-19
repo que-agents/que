@@ -154,6 +154,7 @@ Generated from `que --help`; options and arguments are in [docs/cli.md](docs/cli
 | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `que daemon start [options]`                | start the daemon if it is not running                                                                                                                                                      |
 | `que daemon stop [options]`                 | kill all terminals and stop the daemon                                                                                                                                                     |
+| `que daemon restart [options]`              | stop the daemon, ending every terminal, and start it from this build                                                                                                                       |
 | `que daemon status [options]`               | show whether the daemon is running                                                                                                                                                         |
 | `que daemon install [options]`              | install a launchd agent that keeps the daemon running                                                                                                                                      |
 | `que daemon uninstall [options]`            | remove the launchd agent                                                                                                                                                                   |
@@ -230,6 +231,10 @@ terminal. For now, run `que daemon stop` when nothing is running, then reopen th
 | `src/main/`, `src/preload/`, `src/renderer/` | the Electron app                                                                  |
 | `tests/`                                     | daemon integration tests, Playwright specs, subprocess fakes                      |
 | `scripts/`                                   | build, smoke, packaged smoke, soak, flake hunt, docs, release                     |
+
+The terminals live in the background service (the daemon), which keeps running the build it
+started with. When a rebuild or an update changes it, the app says so with a Restart button;
+restarting ends every terminal, and `que daemon restart` does the same from the CLI.
 
 How the pieces fit: [docs/architecture.md](docs/architecture.md). How it looks and why:
 [docs/design.md](docs/design.md). Tests follow the

@@ -26,6 +26,9 @@ All notable changes to que are recorded here. The format follows
 - The tickets view groups tickets under their epics, with subtasks beneath theirs; epics are overviews and have no Start.
 - A ticket queue: `que tickets` lists the tickets assigned to you from the tracker, `que tickets start KEY` makes a workspace for one under its project (learned the first time you choose), writes the ticket as a brief and starts claude on it.
 - `npm run install:local` builds que from your checkout, replaces `/Applications/que.app`, links the `que` command and reopens the app, leaving the background service and every terminal running.
+- The daemon reports the build it runs (`buildId` in `daemon.ping`); `que daemon status` and `que doctor` show it beside the build this que would start and say when they differ.
+- When the background service runs an older build than the app, a banner says so and names the terminals a restart ends; Restart there, or `que daemon restart`, stops it and starts the current build.
+- The window says when it is reconnecting to the background service, and comes back on the same workspace with its terminals reattached, or a fresh shell where they ended.
 - Claude sessions come back after the background service restarts: each workspace terminal that had a live session reopens and resumes it where it left off. Sessions Claude ended and terminals you closed stay closed, and during locked quiet hours they wait for the unlock.
 
 ### Changed

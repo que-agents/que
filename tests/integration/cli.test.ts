@@ -76,6 +76,10 @@ describe('que daemon status', () => {
       running: true,
       pid: ping.pid,
       version: ping.version,
+      // The in-process daemon has no bundle of its own, so its build is unknown.
+      buildId: '',
+      expectedBuildId: expect.any(String),
+      stale: false,
       nodeVersion: ping.nodeVersion,
       startedAt: ping.startedAt,
       socket: daemon.socket,
@@ -268,6 +272,7 @@ describe('que doctor', () => {
     const lines = r.stdout.trim().split('\n')
     expect(lines.map((l) => l.split(/\s+/).slice(0, 2).join(' '))).toEqual([
       'ok daemon',
+      'ok daemon', // the daemon build line
       'ok daemon', // the daemon PATH line
       'ok claude',
       'ok gh',

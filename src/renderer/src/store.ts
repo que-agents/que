@@ -5,6 +5,7 @@ import { createContext, useContext, useSyncExternalStore } from 'react'
 import type {
   ConfigGetResult,
   ConfigSetParams,
+  DaemonState,
   InstructionsGetResult,
   PrThread,
   Project,
@@ -195,6 +196,12 @@ export function fileKey(key: string, path: string): string {
 export interface QueState extends ResourceTables {
   loaded: boolean
   connected: boolean
+  /** Disconnected and asking the main process to reconnect (see the reconnect contract). */
+  reconnecting: boolean
+  /** Bumped on every reconnect, so the panes attach their terminals again. */
+  connection: number
+  /** The daemon's build as the main process last saw it; null until asked. */
+  daemon: DaemonState | null
   error: string | null
   projects: Project[]
   /** Unarchived workspaces by id. */
@@ -279,6 +286,9 @@ export class QueStore {
   private state: QueState = {
     loaded: false,
     connected: true,
+    reconnecting: false,
+    connection: 0,
+    daemon: null,
     error: null,
     projects: [],
     workspaces: {},
@@ -357,6 +367,73 @@ export class QueStore {
     void this.api.app.openUpdate().catch(() => {})
   }
 
+  // ---- the daemon's build and the connection --------------------------------
+  //
+  // The reconnect contract (session resume and the upgrade handoff build on it):
+  // - The connection drops (term.onDisconnect): `connected` goes false, the window
+  //   says it is reconnecting, and the store asks the main process for the daemon's
+  //   state, which reconnects or starts a daemon. A failure goes to the error line
+  //   and the next try is the user's (Reconnect), never a loop.
+  // - The connection is back (daemon.onReconnected, or that state call answering):
+  //   everything is loaded again, the terminals that still exist attach again (the
+  //   `connection` count remounts the panes), the rest are marked exited, the shown
+  //   workspace is watched again (watches are per connection), a visited workspace
+  //   opens a fresh shell again (autoOpened is cleared), and `daemon` is refreshed
+  //   so the stale-build banner clears.
+
+  /** Asks the main process which build the daemon runs; failures leave it unknown. */
+  private refreshDaemon(): void {
+    void this.api.daemon.state().then(
+      (daemon) => this.set({ daemon }),
+      () => {}
+    )
+  }
+
+  /** Asks the main process to reconnect; once it answers, the store recovers. */
+  reconnect = (): void => {
+    if (this.state.connected || this.state.reconnecting) return
+    this.set({ reconnecting: true })
+    this.api.daemon.state().then(
+      (daemon) => void this.recover(daemon),
+      (err) => this.set({ reconnecting: false, error: errorMessage(err) })
+    )
+  }
+
+  /** The connection is back: reload and re-attach as the contract above says. */
+  private async recover(daemon: DaemonState): Promise<void> {
+    this.set({ daemon })
+
+    if (this.state.connected) return
+    this.autoOpened.clear()
+    // The daemon forgot this window's watch with the old connection.
+    this.watchedKey = null
+    this.setWith((s) => ({
+      connected: true,
+      reconnecting: false,
+      error: null,
+      connection: s.connection + 1
+    }))
+    this.watchShown()
+    await this.load(true)
+  }
+
+  /**
+   * Restarts the daemon from this app's build, ending every terminal. Only the
+   * banner's button calls it. Resolves false when it failed (the error line says why).
+   */
+  async restartDaemon(): Promise<boolean> {
+    try {
+      const daemon = await this.api.daemon.restart()
+      await this.recover(daemon)
+
+      return true
+    } catch (err) {
+      this.set({ error: errorMessage(err) })
+
+      return false
+    }
+  }
+
   subscribe = (cb: () => void): (() => void) => {
     this.listeners.add(cb)
 
@@ -408,7 +485,12 @@ export class QueStore {
   /** Subscribes to daemon events and loads everything once. Safe to call again after stop(). */
   start(): void {
     this.subscribeEvents()
-    this.boot ??= this.load()
+
+    if (!this.boot) {
+      this.boot = this.load()
+
+      if (!this.options.board) this.refreshDaemon()
+    }
   }
 
   stop(): void {
@@ -416,7 +498,11 @@ export class QueStore {
     this.offs = []
   }
 
-  private async load(): Promise<void> {
+  /**
+   * Loads everything. On a reconnect (`again`) the daemon's answer wins over what the
+   * store holds, and a tab whose terminal the daemon no longer has is marked exited.
+   */
+  private async load(again = false): Promise<void> {
     try {
       const [projects, workspaces, terms, tasks, quiet, config, tickets] = await Promise.all([
         this.api.project.list(),
@@ -429,21 +515,39 @@ export class QueStore {
       ])
 
       const live = terms.filter((t) => t.alive)
-      this.setWith((s) => ({
-        loaded: true,
-        quiet: s.quiet ?? quiet,
-        config: s.config ?? config,
-        tickets: tickets.tickets,
-        ticketsSync: tickets.sync,
-        projects: mergeById(projects, s.projects),
-        workspaces: { ...byId(workspaces), ...s.workspaces },
-        tasks: { ...byId(tasks), ...s.tasks },
-        terminals: mergeById(
-          live.map((t) => toTab(t, true)),
-          s.terminals
-        )
-      }))
-      this.hydrateLayouts()
+      const liveTabs = live.map((t) => toTab(t, true))
+
+      if (again) {
+        const alive = new Set(live.map((t) => t.id))
+        this.setWith((s) => ({
+          loaded: true,
+          quiet,
+          config,
+          tickets: tickets.tickets,
+          ticketsSync: tickets.sync,
+          projects,
+          workspaces: byId(workspaces),
+          tasks: byId(tasks),
+          terminals: mergeById(
+            liveTabs,
+            s.terminals.map((t) => (alive.has(t.id) ? t : { ...t, alive: false }))
+          )
+        }))
+      } else {
+        this.setWith((s) => ({
+          loaded: true,
+          quiet: s.quiet ?? quiet,
+          config: s.config ?? config,
+          tickets: tickets.tickets,
+          ticketsSync: tickets.sync,
+          projects: mergeById(projects, s.projects),
+          workspaces: { ...byId(workspaces), ...s.workspaces },
+          tasks: { ...byId(tasks), ...s.tasks },
+          terminals: mergeById(liveTabs, s.terminals)
+        }))
+        this.hydrateLayouts()
+      }
+
       await this.visit(this.currentKey())
     } catch (err) {
       this.set({ error: errorMessage(err) })
@@ -477,7 +581,11 @@ export class QueStore {
           terminals: s.terminals.map((t) => (t.id === id ? { ...t, alive: false } : t))
         }))
       ),
-      term.onDisconnect(() => this.set({ connected: false })),
+      term.onDisconnect(() => {
+        this.set({ connected: false })
+        this.reconnect()
+      }),
+      this.api.daemon.onReconnected((daemon) => void this.recover(daemon)),
       workspace.on('workspace.created', (ws) => this.upsertWorkspace(ws)),
       workspace.on('workspace.updated', (ws) => {
         const prev = this.state.workspaces[ws.id]?.status

@@ -2,6 +2,7 @@
 // Electron binary as plain Node (ELECTRON_RUN_AS_NODE=1).
 import fs from 'node:fs'
 import net from 'node:net'
+import { buildIdOf } from '../shared/build-id'
 import { ensureDirs, quePaths } from '../shared/paths'
 import { PtyHost } from './pty-host'
 import { DaemonServer } from './server'
@@ -10,6 +11,10 @@ declare const __QUE_VERSION__: string
 
 // oxlint-disable-next-line anti-slop/no-runtime-typeof -- build-time define, absent when run unbundled
 const VERSION = typeof __QUE_VERSION__ === 'string' ? __QUE_VERSION__ : '0.0.0-dev'
+
+// The bundle is CommonJS, so __filename is this bundle's own file
+// (out/daemon/index.js, or Resources/daemon/index.js in the app).
+const BUILD_ID = buildIdOf(__filename)
 
 const paths = ensureDirs(quePaths())
 const logStream = fs.createWriteStream(paths.daemonLog, { flags: 'a' })
@@ -73,13 +78,16 @@ async function main(): Promise<void> {
   const server = new DaemonServer({
     host,
     version: VERSION,
+    buildId: BUILD_ID,
     log,
     onShutdown: () => shutdown('daemon.shutdown')
   })
 
   await server.listen(paths.socket)
   fs.writeFileSync(paths.pid, `${process.pid}\n`)
-  log(`listening on ${paths.socket} (version ${VERSION}, node ${process.version})`)
+  log(
+    `listening on ${paths.socket} (version ${VERSION}, build ${BUILD_ID}, node ${process.version})`
+  )
 
   process.on('SIGTERM', () => shutdown('SIGTERM'))
   process.on('SIGINT', () => shutdown('SIGINT'))
