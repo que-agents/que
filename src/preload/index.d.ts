@@ -158,9 +158,14 @@ export interface AppApi {
 export interface DaemonApi {
   /** Connects (or starts a daemon) if needed, then says which build it runs. */
   state(): Promise<DaemonState>
-  /** Stops the daemon, ending every terminal, and starts it from this app's build. */
-  restart(): Promise<DaemonState>
-  /** Fires after a dropped connection is back (a restart, or the daemon came back). */
+  /**
+   * Updates the daemon in place to this app's build: every terminal moves to the
+   * new daemon with the same id and keeps running, and `daemon.reconnected` fires.
+   * Rejects when the hand-off failed, saying what that means; the old daemon
+   * still serves, and the app never restarts it (`que daemon restart` does).
+   */
+  upgrade(): Promise<DaemonState>
+  /** Fires after a dropped connection is back (an update, a restart, or the daemon came back). */
   onReconnected(cb: (state: DaemonState) => void): () => void
 }
 

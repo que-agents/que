@@ -3,6 +3,7 @@ import fs from 'node:fs'
 import { Command } from 'commander'
 import { buildIdOf, daemonIsStale, staleDaemonHint } from '../shared/build-id'
 import { DaemonClient, DaemonError, resolveDaemonScript } from '../shared/client'
+import { plural } from '../shared/format'
 import { quePaths } from '../shared/paths'
 import { delay, waitForExit } from '../shared/process'
 import type { TermInfo } from '../shared/protocol'
@@ -40,10 +41,6 @@ function printTerms(terms: TermInfo[]): void {
       t.cwd
     ])
   )
-}
-
-function plural(n: number, word: string): string {
-  return `${n} ${word}${n === 1 ? '' : 's'}`
 }
 
 /** Asks the daemon to shut down, waits for it to exit, and returns its pid. */

@@ -27,5 +27,5 @@ export function daemonIsStale(daemonId: string, expectedId: string): boolean {
 
 /** What `que daemon status` and `que doctor` say when the daemon runs another build. */
 export function staleDaemonHint(daemonId: string, expectedId: string): string {
-  return `the daemon runs build ${daemonId}, a different build than this que (${expectedId}); run \`que daemon restart\` (it ends every terminal)`
+  return `the daemon runs build ${daemonId}, a different build than this que (${expectedId}); run \`que daemon upgrade\` (every terminal keeps running), or \`que daemon restart\` if that fails (it ends every terminal)`
 }

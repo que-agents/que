@@ -221,8 +221,8 @@ app. It never touches the background service, so every terminal keeps running. T
 `main` and run it again. `--no-build` installs the app `npm run package` already made, `--dest`
 installs somewhere else, `--no-link` and `--no-launch` skip those steps.
 
-A change to the background service itself takes effect only when it restarts, and that ends every
-terminal. For now, run `que daemon stop` when nothing is running, then reopen the app.
+A change to the background service itself reaches the running one only through an update in
+place: the Update control beside Settings, or `que daemon upgrade` (see below).
 
 | Path                                         | What lives there                                                                  |
 | -------------------------------------------- | --------------------------------------------------------------------------------- |
@@ -234,8 +234,11 @@ terminal. For now, run `que daemon stop` when nothing is running, then reopen th
 | `scripts/`                                   | build, smoke, packaged smoke, soak, flake hunt, docs, release                     |
 
 The terminals live in the background service (the daemon), which keeps running the build it
-started with. When a rebuild or an update changes it, the app says so with a Restart button;
-restarting ends every terminal, and `que daemon restart` does the same from the CLI.
+started with. When a rebuild or an update changes it, an Update control appears beside Settings
+in the sidebar; it hands every terminal to the new build without ending any, and `que daemon
+upgrade` does the same from the CLI. If the handoff is refused, the running service keeps
+serving as it was and the error line says why. The app never restarts the service, since that
+ends every terminal; `que daemon restart` does, when you want the new build regardless.
 
 How the pieces fit: [docs/architecture.md](docs/architecture.md). How it looks and why:
 [docs/design.md](docs/design.md). Tests follow the

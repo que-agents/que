@@ -678,6 +678,33 @@ h2 {
   color: var(--fg);
 }
 
+/* Settings and, while the background service runs an older build, Update at its right. */
+.settings-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* A dot and a word in the foot's muted voice; the dot is the only colour on the row. The
+ * hairline and the hover are the button's own. */
+.update-chip {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 20px;
+  margin-right: 2px;
+  padding: 0 8px;
+  background: none;
+  border-radius: var(--radius);
+  font-size: 11px;
+  color: var(--fg-muted);
+}
+
+.update-chip .status-dot {
+  --tone: var(--accent);
+}
+
 .unlock-row {
   display: flex;
   align-items: center;

@@ -418,20 +418,12 @@ export class QueStore {
   }
 
   /**
-   * Restarts the daemon from this app's build, ending every terminal. Only the
-   * banner's button calls it. Resolves false when it failed (the error line says why).
+   * Updates the daemon in place to this app's build; every terminal keeps running
+   * with its id, so the reconnect re-attaches them all. A failed hand-off goes to
+   * the error line, and the Update control stays for another try.
    */
-  async restartDaemon(): Promise<boolean> {
-    try {
-      const daemon = await this.api.daemon.restart()
-      await this.recover(daemon)
-
-      return true
-    } catch (err) {
-      this.set({ error: errorMessage(err) })
-
-      return false
-    }
+  upgradeDaemon(): Promise<void> {
+    return this.guard(async () => this.recover(await this.api.daemon.upgrade()))
   }
 
   subscribe = (cb: () => void): (() => void) => {

@@ -8,6 +8,7 @@ import { filterSidebar, matches, sortProjects, sortWorkspaces } from '../sidebar
 import { hoverWord, type RowTone, rowTone } from '../sidebar-row'
 import { useNow } from '../useNow'
 import { useUnlockCountdown } from '../useUnlockCountdown'
+import DaemonUpdate from './DaemonUpdate'
 import {
   ChevronIcon,
   FolderIcon,
@@ -537,15 +538,18 @@ export default function Sidebar(): React.JSX.Element {
             {openTickets}
           </span>
         </button>
-        <button
-          type="button"
-          className="row-button report-entry"
-          data-testid="sidebar-settings"
-          aria-current={view.kind === 'settings' ? 'page' : undefined}
-          onClick={() => store.showSettings()}
-        >
-          <span className="name">Settings</span>
-        </button>
+        <div className="settings-row">
+          <button
+            type="button"
+            className="row-button report-entry"
+            data-testid="sidebar-settings"
+            aria-current={view.kind === 'settings' ? 'page' : undefined}
+            onClick={() => store.showSettings()}
+          >
+            <span className="name">Settings</span>
+          </button>
+          <DaemonUpdate />
+        </div>
       </div>
     </aside>
   )

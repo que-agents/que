@@ -6,7 +6,7 @@ import { reportSummaryText } from '../daemon/report'
 import { buildIdOf, daemonIsStale } from '../shared/build-id'
 import { DaemonClient, resolveDaemonScript } from '../shared/client'
 import { loginShellPath, mergePath } from '../shared/login-path'
-import { queHome } from '../shared/paths'
+import { queHome, quePaths } from '../shared/paths'
 import { delay, waitForExit } from '../shared/process'
 import {
   RENDERER_EVENTS,
@@ -16,6 +16,7 @@ import {
   type Report
 } from '../shared/protocol'
 import type { DaemonState, QuietState, UpdateInfo } from '../shared/types'
+import { handOffDaemon, handOffFailedText } from '../shared/upgrade'
 import { createBoardWindow } from './board'
 import { decodeAbsolutePath } from './ipc.decode'
 import { installMenu } from './menu'
@@ -59,8 +60,8 @@ let exitingPid: number | null = null
 /** A connection was made before, so the next one is a reconnect. */
 let everConnected = false
 
-/** A restart from the window in flight; state() waits for it. */
-let restarting: Promise<DaemonState> | null = null
+/** An update in place from the window in flight; state() waits for it. */
+let upgrading: Promise<DaemonState> | null = null
 
 /** Asks the daemon which build it runs and compares it with the bundle this app would start. */
 async function refreshDaemon(c: DaemonClient): Promise<DaemonState> {
@@ -134,30 +135,45 @@ async function connect(): Promise<DaemonClient> {
 }
 
 /**
- * Stops the daemon (every terminal ends) and starts one from this app's
- * bundle. Only ever the user's click: nothing calls this on its own.
+ * Updates the daemon in place: it hands every terminal to a daemon started
+ * from this app's bundle, which then serves the socket. Terminal ids and shells
+ * stay the same, and nothing is killed. The connection to the old daemon closes
+ * as it exits; the next one reaches the successor, and `daemon.reconnected`
+ * fires as after a restart. A failed hand-off rejects with what it means (the
+ * old daemon still serves). Only ever the user's click.
  */
-function restartDaemon(): Promise<DaemonState> {
-  restarting ??= (async () => {
+function upgradeDaemon(): Promise<DaemonState> {
+  upgrading ??= (async () => {
     const c = await getClient()
-    const { pid } = await c.request('daemon.ping')
     const closed = new Promise<void>((r) => c.onClose(r))
-    await c.request('daemon.shutdown')
+    const paths = quePaths()
+    const outcome = await handOffDaemon(c, paths)
+
+    if (!outcome.ok) throw new Error(sentence(handOffFailedText(outcome, paths)))
+    // The old daemon exits once it has answered; its connection goes with it. It
+    // leaves the socket to its successor, so there is no exit to wait for.
     await Promise.race([closed, delay(2_000)])
     c.close()
-    exitingPid = pid
+    exitingPid = null
     const next = await getClient()
 
-    return daemon ?? (await refreshDaemon(next))
+    return daemon && daemonPid === outcome.pid ? daemon : await refreshDaemon(next)
   })().finally(() => {
-    restarting = null
+    upgrading = null
   })
 
-  return restarting
+  return upgrading
+}
+
+/** A lower-case clause as the error line's sentence. */
+function sentence(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1)
 }
 
 async function daemonState(): Promise<DaemonState> {
-  if (restarting) return restarting
+  // Whatever the update's outcome, a daemon serves afterwards; ask it.
+  if (upgrading) await upgrading.catch(() => {})
+
   const c = await getClient()
 
   return daemon ?? (await refreshDaemon(c))
@@ -361,7 +377,7 @@ function registerIpc(): void {
   })
 
   ipcMain.handle('daemon:state', () => reply(daemonState))
-  ipcMain.handle('daemon:restart', () => reply(restartDaemon))
+  ipcMain.handle('daemon:upgrade', () => reply(upgradeDaemon))
 
   ipcMain.handle('app:trayTitle', () => {
     if (!e2e) throw new Error('app.trayTitle is only available under QUE_E2E=1')

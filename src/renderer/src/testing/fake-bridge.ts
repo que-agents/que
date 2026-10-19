@@ -65,6 +65,47 @@ function notFound(what: string, id: string): Error {
   return Object.assign(new Error(`no ${what} ${id}`), { code: 'not_found' })
 }
 
+/**
+ * A test's hold on one bridge method: while held, calls wait until release();
+ * refuse() makes the next call fail with a message. A slow or refusing daemon.
+ */
+class Gate {
+  private held: Array<() => void> | null = null
+  private refusal: string | null = null
+
+  hold(): void {
+    this.held ??= []
+  }
+
+  /** Lets the held calls through, in the order they arrived, and stops holding. */
+  release(): void {
+    const held = this.held ?? []
+    this.held = null
+
+    for (const go of held) go()
+  }
+
+  refuse(message: string): void {
+    this.refusal = message
+  }
+
+  /** A call passes: it waits while held, then takes the refusal meant for it, if any. */
+  async pass(): Promise<string | null> {
+    const held = this.held
+
+    if (held) await new Promise<void>((go) => held.push(go))
+    const refusal = this.refusal
+    this.refusal = null
+
+    return refusal
+  }
+
+  reset(): void {
+    this.held = null
+    this.refusal = null
+  }
+}
+
 function rpcError(code: string, message: string): Error {
   return Object.assign(new Error(message), { code })
 }
@@ -105,7 +146,9 @@ class FakeBridge {
   /** While the connection is down: daemon.state calls wait here until reconnect() or failReconnect(). */
   private down: Array<{ resolve: (s: DaemonState) => void; reject: (e: Error) => void }> | null =
     null
-  private restartCount = 0
+  private upgradeCount = 0
+  /** A test's hold or refusal on daemon.upgrade. */
+  private upgradeGate = new Gate()
   private daemonStateCount = 0
   private tasks = new Map<string, Task>()
   private queue: QueueState = closedQueue()
@@ -120,6 +163,7 @@ class FakeBridge {
   private createCallLog: WorkspaceCreateParams[] = []
   private startCallLog: string[] = []
   private termListCalls = 0
+  private attachCallLog: string[] = []
   private renameCallLog: WorkspaceRenameParams[] = []
   private seenCallLog: string[] = []
   private pushedBranches = new Set<string>()
@@ -130,10 +174,8 @@ class FakeBridge {
   /** The config file's table, as the daemon would hold it: what config.set patches end up as. */
   private configRaw: Record<string, unknown> = {}
   private configSets: ConfigSetParams[] = []
-  /** The daemon's refusal of the next config.set, if one is set. */
-  private configRefusal: string | null = null
-  /** config.set calls held until released, when holding. */
-  private configHeld: Array<() => void> | null = null
+  /** A test's hold or refusal on config.set. */
+  private configGate = new Gate()
   /** The instructions file's text; null while it does not exist. */
   private instructionsText: string | null = null
   private instructionsSets: string[] = []
@@ -172,15 +214,9 @@ class FakeBridge {
       config: {
         get: async () => structuredClone(this.configBook),
         set: async (p) => {
-          const held = this.configHeld
+          const refusal = await this.configGate.pass()
 
-          if (held) await new Promise<void>((release) => held.push(release))
-
-          if (this.configRefusal !== null) {
-            const message = this.configRefusal
-            this.configRefusal = null
-            throw rpcError('bad_request', message)
-          }
+          if (refusal !== null) throw rpcError('bad_request', refusal)
 
           this.configSets.push(structuredClone(p))
           this.configRaw = mergeConfigPatch(this.configRaw, patchToToml(p.patch))
@@ -231,6 +267,7 @@ class FakeBridge {
         attach: async ({ id, cols, rows }) => {
           this.refuseIfQuiet('term.attach')
           const t = this.terminal(id)
+          this.attachCallLog.push(id)
           Object.assign(t, { cols, rows })
 
           return { snapshot: t.screen, cols, rows }
@@ -297,11 +334,14 @@ class FakeBridge {
 
           return Promise.resolve({ ...this.daemonBook })
         },
-        restart: async () => {
-          this.restartCount++
+        upgrade: async () => {
+          this.upgradeCount++
+          const refusal = await this.upgradeGate.pass()
 
-          // As the main process does: the old daemon ends every terminal, the new one has none.
-          this.terminals.clear()
+          // As the main process does: a failed handoff leaves the old daemon serving as it was.
+          if (refusal !== null) throw rpcError('handoff_failed', refusal)
+
+          // The terminals move to the new daemon with their ids; the connection drops and comes back.
           this.disconnect()
           this.daemonBook = {
             ...this.daemonBook,
@@ -744,20 +784,17 @@ class FakeBridge {
 
   /** Makes the next config.set fail with this message, as the daemon refuses a bad value. */
   refuseConfigSet(message: string): void {
-    this.configRefusal = message
+    this.configGate.refuse(message)
   }
 
   /** Holds every config.set until releaseConfigSets(), as a slow daemon would. */
   holdConfigSets(): void {
-    this.configHeld ??= []
+    this.configGate.hold()
   }
 
   /** Lets the held config.set calls through, in the order they arrived, and stops holding. */
   releaseConfigSets(): void {
-    const held = this.configHeld ?? []
-    this.configHeld = null
-
-    for (const release of held) release()
+    this.configGate.release()
   }
 
   /** Every config.set call's params, in order. */
@@ -1007,9 +1044,29 @@ class FakeBridge {
     this.daemonBook = { ...this.daemonBook, ...state }
   }
 
-  /** How many times the window asked to restart the daemon. */
-  restartCalls(): number {
-    return this.restartCount
+  /** Makes the next daemon.upgrade reject with `message`, as a failed handoff does. */
+  refuseUpgrade(message: string): void {
+    this.upgradeGate.refuse(message)
+  }
+
+  /** Holds every daemon.upgrade until releaseUpgrade(), as a handoff in progress would. */
+  holdUpgrade(): void {
+    this.upgradeGate.hold()
+  }
+
+  /** Lets the held daemon.upgrade calls go on. */
+  releaseUpgrade(): void {
+    this.upgradeGate.release()
+  }
+
+  /** The terminal id of every term.attach, in order (a pane attaches on mount and on every reconnect). */
+  attachCalls(): string[] {
+    return [...this.attachCallLog]
+  }
+
+  /** How many times the window asked to update the daemon in place. */
+  upgradeCalls(): number {
+    return this.upgradeCount
   }
 
   /** How many times daemon.state was asked (each reconnect asks once). */
@@ -1173,7 +1230,9 @@ class FakeBridge {
     this.reconnectListeners.clear()
     this.daemonBook = currentDaemon()
     this.down = null
-    this.restartCount = 0
+    this.upgradeCount = 0
+    this.attachCallLog = []
+    this.upgradeGate.reset()
     this.daemonStateCount = 0
     this.folder = null
     this.tray = '● 0 ▸ 0 ✕ 0'
@@ -1194,8 +1253,7 @@ class FakeBridge {
     this.configBook = defaultConfigBook()
     this.configRaw = {}
     this.configSets = []
-    this.configRefusal = null
-    this.configHeld = null
+    this.configGate.reset()
     this.instructionsText = null
     this.instructionsSets = []
   }

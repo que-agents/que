@@ -144,3 +144,8 @@ export function formatSince(sinceMs: number, nowMs: number): string {
 
   return `${clock} on ${d.getDate()} ${MONTH_NAMES[d.getMonth()]}`
 }
+
+/** A count with its noun, an s added past one: "3 terminals", "1 terminal". */
+export function plural(n: number, word: string): string {
+  return `${n} ${word}${n === 1 ? '' : 's'}`
+}

@@ -17,7 +17,6 @@ import SidebarResizer, { useSidebarWidth } from './components/SidebarResizer'
 import Panes from './components/Panes'
 import ReviewPane from './components/ReviewPane'
 import ReviewResizer from './components/ReviewResizer'
-import DaemonBanner from './components/DaemonBanner'
 import UpdateBanner from './components/UpdateBanner'
 import { QueStore, StoreContext, useQue, useQueSelector, useStore } from './store'
 import { setReviewSource } from './testHook'
@@ -164,7 +163,6 @@ function Shell(): React.JSX.Element {
       <SidebarResizer width={sidebarWidth} onChange={setSidebarWidth} />
       <main className="main">
         <UpdateBanner />
-        <DaemonBanner />
         {reconnecting ? (
           <div className="update-banner" role="status" data-testid="app-reconnecting">
             <span>Reconnecting to the background service…</span>

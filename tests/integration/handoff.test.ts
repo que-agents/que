@@ -1,4 +1,5 @@
-// `que daemon upgrade` against a real daemon process: its terminals move to a
+// `que daemon upgrade` (and so handOffDaemon, which the app's Update control also
+// goes through) against a real daemon process: its terminals move to a
 // new daemon process with the same ids and the same shells, and a successor
 // that cannot start leaves the running daemon serving them. A Claude session
 // live in a workspace terminal stays the same live session across the move (it

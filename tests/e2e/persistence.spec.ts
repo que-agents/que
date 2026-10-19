@@ -1,7 +1,9 @@
 // Proves terminals survive quitting and relaunching the app: the daemon owns
 // the PTY, and the relaunched app reattaches and replays its screen. And the
 // other way round: the daemon restarted under a running app (`que daemon
-// restart`), which says it is reconnecting and comes back on the same workspace.
+// restart`), which says it is reconnecting and comes back on the same workspace,
+// and the daemon updated in place under it (`que daemon upgrade`), after which
+// the same terminal is still there with its screen.
 import { expect, test } from '@playwright/test'
 import type { TermInfo } from '../../src/shared/protocol'
 import type { Workspace } from '../../src/shared/types'
@@ -134,5 +136,77 @@ test('the app reconnects after the daemon restarts from the CLI, on the same wor
     await launched.window.keyboard.press('Enter')
     await terminal.expectScreenToContain(marker)
     await launched.window.screenshot({ path: 'test-results/persistence-03-after-restart.png' })
+  })
+})
+
+test('the app reconnects after the daemon updates in place from the CLI, keeping the same terminal', async () => {
+  const repo = makeTempRepo(tempDir('que-e2e-repo-'))
+  const suffix = Math.random().toString(36).slice(2, 10)
+  const before = `QUE_BEFORE_UPGRADE_${suffix}`
+  const after = `QUE_AFTER_UPGRADE_${suffix}`
+  let workspace: Workspace
+  let termId = ''
+  let appShell: AppShellPage
+  let sidebar: SidebarPage
+  let terminal: TerminalPage
+
+  await test.step('Launch, open a workspace, and print something in its terminal', async () => {
+    launched = await launchApp()
+    appShell = new AppShellPage(launched.window)
+    sidebar = new SidebarPage(launched.window)
+    terminal = new TerminalPage(launched.window)
+    await appShell.waitForLoad()
+    await terminal.waitForActiveTerminal()
+    que(launched.queHome, 'project', 'add', repo)
+    workspace = queJson<Workspace>(
+      launched.queHome,
+      'work',
+      '--name',
+      'APP-1440 upload docs',
+      '-r',
+      repo,
+      '--json'
+    )
+    termId = que(launched.queHome, 'ws', 'terminal', workspace.id).trim()
+    await sidebar.workspaceOpen(workspace.id).click()
+    await terminal.tabSelect(termId).click()
+    await expect.poll(() => terminal.activeTermId()).toBe(termId)
+    await terminal.input.focus()
+    await launched.window.keyboard.type(`echo ${before}`)
+    await launched.window.keyboard.press('Enter')
+    await terminal.expectScreenToContain(before)
+    // Opened under this window, so it does not read reattached until a reconnect reloads it.
+    await expect(terminal.tabReattached(termId)).toHaveCount(0)
+  })
+
+  await test.step('Update the daemon in place from the CLI; every terminal carries over', async () => {
+    const r = await queAsync(launched.queHome, 'daemon', 'upgrade')
+    expect(r.code, r.stderr).toBe(0)
+    expect(r.stdout).toMatch(/^daemon upgraded: pid \d+ → \d+, 2 terminals carried over$/m)
+  })
+
+  await test.step('The app reconnects on the same terminal, with its earlier output', async () => {
+    // The reload after the reconnect brings the same terminal back from the new daemon.
+    await expect(terminal.tabReattached(termId)).toBeVisible({ timeout: 20_000 })
+    await expect(appShell.reconnecting).toBeHidden()
+    await expect(appShell.error).toHaveCount(0)
+    await expect(sidebar.workspaceOpen(workspace.id)).toHaveAttribute('aria-current', 'page')
+    await expect(terminal.tab(termId)).toBeVisible()
+    await expect(terminal.tabExited(termId)).toHaveCount(0)
+    expect(await terminal.activeTermId()).toBe(termId)
+    const terms = queJson<TermInfo[]>(launched.queHome, 'term', 'list', '--json')
+    expect(terms.find((t) => t.id === termId)).toMatchObject({
+      workspaceId: workspace.id,
+      alive: true
+    })
+    await terminal.expectScreenToContain(before)
+  })
+
+  await test.step('The carried-over shell still runs commands', async () => {
+    await terminal.input.focus()
+    await launched.window.keyboard.type(`echo ${after}`)
+    await launched.window.keyboard.press('Enter')
+    await terminal.expectScreenToContain(after)
+    await launched.window.screenshot({ path: 'test-results/persistence-04-after-upgrade.png' })
   })
 })

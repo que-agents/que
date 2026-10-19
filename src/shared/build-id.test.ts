@@ -3,7 +3,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { buildIdOf, daemonIsStale } from './build-id'
+import { buildIdOf, daemonIsStale, staleDaemonHint } from './build-id'
 
 let dir: string
 
@@ -50,5 +50,13 @@ describe('daemonIsStale', () => {
     ['', '', false]
   ])('daemon %j against expected %j is stale: %s', (daemonId, expectedId, stale) => {
     expect(daemonIsStale(daemonId, expectedId)).toBe(stale)
+  })
+})
+
+describe('staleDaemonHint', () => {
+  it('names both builds and recommends the update in place before the restart', () => {
+    expect(staleDaemonHint('8c41e07d92aa', '3f9a2c71b0de')).toBe(
+      'the daemon runs build 8c41e07d92aa, a different build than this que (3f9a2c71b0de); run `que daemon upgrade` (every terminal keeps running), or `que daemon restart` if that fails (it ends every terminal)'
+    )
   })
 })
