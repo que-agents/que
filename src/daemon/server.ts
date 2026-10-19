@@ -45,6 +45,7 @@ import { QuietService } from './quiet'
 import { TaskQueue } from './queue'
 import { SYSTEM_PROMPT } from './runner'
 import { PrService } from './prs'
+import { LiveSessions, storedLiveSessions } from './live-sessions'
 import { StatusService } from './status'
 import { Summarizer } from './summarizer'
 import { TicketService } from './tickets'
@@ -160,6 +161,8 @@ export class DaemonServer {
   readonly tasks: TaskQueue
   readonly quiet: QuietService
   readonly summaries: Summarizer
+  /** Workspace terminals with a live Claude session, restored after a restart. */
+  readonly liveSessions: LiveSessions
   /** The last good user config, the file stamp it was read at, and when the file was last statted. */
   private config: UserConfig
   private configStamp = ''
@@ -257,6 +260,30 @@ export class DaemonServer {
       now: opts.now,
       tickMs: opts.quietTickMs
     })
+    this.liveSessions = new LiveSessions({
+      ...storedLiveSessions(this.store),
+      locked: () => this.quiet.locked(),
+      workspace: (id) => this.store.getWorkspace(id),
+      isWorkspaceTerminal: (termId, wsId) => {
+        const t = host.get(termId)
+
+        return t !== undefined && t.alive && t.workspaceId === wsId
+      },
+      resume: (entry) => {
+        const t = this.openWorkspaceTerminal(entry.workspaceId, 120, 30)
+        this.typeAfterSetup(
+          entry.workspaceId,
+          t.id,
+          startCommand({ resumeSessionId: entry.sessionId })
+        )
+
+        return t.id
+      },
+      log: (m) => this.log(m)
+    })
+    this.bus.on('quiet.changed', (q) => {
+      if (!q.locked) this.liveSessions.unlocked()
+    })
     this.unsubs.push(
       host.onData((id, data) => {
         for (const c of this.conns) {
@@ -271,6 +298,7 @@ export class DaemonServer {
       host.onExit((id, info) => {
         this.log(`term ${id} exited code=${info.exitCode} signal=${info.signal ?? ''}`)
         this.bus.emit('term.exit', { id, exitCode: info.exitCode, signal: info.signal })
+        this.liveSessions.terminalGone(id)
         const wsId = this.termWorkspace.get(id)
 
         if (wsId) {
@@ -433,26 +461,32 @@ export class DaemonServer {
         { workspaceId: ws.id, env: this.terminalEnv(ws) }
       )
 
-    const command = startCommand(
-      this.configOrDefault().startPrompt,
-      ws.brief ? join(ws.path, '.que', 'brief.md') : null
-    )
-
-    void this.status.setupDone(ws.id).then(() => {
-      // Shutdown releases the wait too; nothing is typed into a terminal that is being torn down.
-      if (this.closed) return
-      const t = this.opts.host.get(first.id)
-
-      if (t?.alive) t.write(command)
-      else this.log(`workspace ${ws.id}: terminal ${first.id} is gone; claude not started`)
+    const command = startCommand({
+      startPrompt: this.configOrDefault().startPrompt,
+      briefFile: ws.brief ? join(ws.path, '.que', 'brief.md') : null
     })
 
+    this.typeAfterSetup(ws.id, first.id, command)
+
     return { terminal: first.info() }
+  }
+
+  /** Types a command into a workspace terminal once the workspace's setup has ended. */
+  private typeAfterSetup(wsId: string, termId: string, command: string): void {
+    void this.status.setupDone(wsId).then(() => {
+      // Shutdown releases the wait too; nothing is typed into a terminal that is being torn down.
+      if (this.closed) return
+      const t = this.opts.host.get(termId)
+
+      if (t?.alive) t.write(command)
+      else this.log(`workspace ${wsId}: terminal ${termId} is gone; claude not started`)
+    })
   }
 
   private killTerminal(id: string): boolean {
     if (!this.opts.host.kill(id)) return false
     this.log(`term ${id} killed`)
+    this.liveSessions.terminalGone(id)
 
     for (const c of this.conns) c.subs.delete(id)
     this.bus.emit('term.killed', { id })
@@ -565,6 +599,8 @@ export class DaemonServer {
         this.quiet.start()
         this.prs.start()
         this.tickets.start()
+        // After quiet hours have read their state: a locked start keeps the sessions for the unlock.
+        this.liveSessions.start()
         server.on('error', (err) => this.log(`server error: ${err.message}`))
 
         try {
@@ -584,6 +620,9 @@ export class DaemonServer {
    * run (restart recovery resumes them). Does not kill PTYs.
    */
   async close(): Promise<void> {
+    // Before the terminals' exits and hooks arrive: shutdown leaves the record as it was.
+    this.liveSessions.stop()
+
     for (const u of this.unsubs) u()
     this.unsubs = []
 
@@ -834,6 +873,7 @@ export class DaemonServer {
     },
     'hook.event': (p) => {
       const ws = this.workspaces.get(p.workspaceId)
+      this.liveSessions.hook(ws.id, p.terminalId, p.taskId, p.payload)
       this.status.hook(ws.id, p.payload)
 
       if (p.payload.hook_event_name === 'Stop' && !p.payload.agent_id) this.summaries.stopped(ws.id)
