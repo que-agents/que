@@ -4,7 +4,12 @@ import type { QueApi, UpdateInfo } from './index.d'
 type Reply = { ok: true; result: unknown } | { ok: false; error: { code: string; message: string } }
 
 async function call<T>(method: string, params?: unknown): Promise<T> {
-  const reply = (await ipcRenderer.invoke('que:request', method, params)) as Reply
+  return unwrap<T>(ipcRenderer.invoke('que:request', method, params))
+}
+
+/** A main-process reply as a value, or an Error carrying its code. */
+async function unwrap<T>(pending: Promise<unknown>): Promise<T> {
+  const reply = (await pending) as Reply
 
   if (reply.ok) return reply.result as T
   const err = new Error(reply.error.message) as Error & { code?: string }
@@ -133,6 +138,11 @@ const api: QueApi = {
     },
     openUpdate: () => ipcRenderer.invoke('app:openUpdate'),
     e2e: process.argv.includes('--que-e2e')
+  },
+  daemon: {
+    state: () => unwrap(ipcRenderer.invoke('daemon:state')),
+    restart: () => unwrap(ipcRenderer.invoke('daemon:restart')),
+    onReconnected: (cb) => subscribe('daemon.reconnected', cb as (data: unknown) => void)
   }
 }
 

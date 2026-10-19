@@ -41,6 +41,24 @@ and `node-pty` in `Resources/daemon/node_modules`, outside the asar archive.
 Quitting the app closes a socket connection and nothing more: terminals and
 tasks keep running, and the next window reattaches.
 
+A rebuilt daemon bundle does not reach a daemon that is already running, so
+each side names the build it has. The daemon hashes its own bundle at start
+(the first 12 hex characters of a sha256, `src/shared/build-id.ts`) and answers
+`daemon.ping` with it as `buildId`; the app and the CLI hash the bundle they
+would start. Only the daemon bundle counts, so a change to the window never
+asks for a restart, and an unknown id on either side never does either.
+`que daemon status` and `que doctor` show both ids; the app shows a banner
+with a Restart button that names the terminals a restart ends. Restarting is
+always the user's click or `que daemon restart`, never automatic.
+
+When the connection drops, the window says it is reconnecting and asks the
+main process for the daemon's state, which reconnects or starts a daemon (after
+the old one has exited). Once it is back (`daemon.reconnected`), the store
+loads everything again, attaches the terminals that still exist, marks the
+rest exited, sends `workspace.watch` for the shown workspace again (watches
+belong to a connection), and lets a visited workspace open a fresh shell. A
+failed reconnect shows its error and waits for the user's Reconnect.
+
 ## The protocol
 
 `src/shared/protocol.ts` is the contract. Requests are `{ id, method, params }`,

@@ -182,16 +182,78 @@ describe('App', () => {
   })
 
   describe('errors', () => {
-    it('tells the user when the daemon connection drops', async () => {
+    it('says it is reconnecting when the daemon connection drops', async () => {
       fakeBridge.seedTerminal(uploader)
       render(<App />)
       await screen.findByTestId(`terminal-tab-${uploader.id}`)
 
       fakeBridge.disconnect()
 
-      expect(await screen.findByRole('alert')).toHaveTextContent(
-        'Lost connection to the que daemon.'
+      expect(await screen.findByTestId('app-reconnecting')).toHaveTextContent(
+        'Reconnecting to the background service…'
       )
+    })
+
+    it('says why a reconnect failed, and tries again on Reconnect', async () => {
+      const user = userEvent.setup()
+      fakeBridge.seedTerminal(uploader)
+      render(<App />)
+      await screen.findByTestId(`terminal-tab-${uploader.id}`)
+      fakeBridge.disconnect()
+      await screen.findByTestId('app-reconnecting')
+
+      fakeBridge.failReconnect('daemon did not answer within 5000 ms')
+
+      expect(await screen.findByRole('alert')).toHaveTextContent(
+        'Lost connection to the background service: daemon did not answer within 5000 ms'
+      )
+      const asked = fakeBridge.daemonStateCalls()
+
+      await user.click(screen.getByRole('button', { name: 'Reconnect' }))
+      expect(await screen.findByTestId('app-reconnecting')).toBeInTheDocument()
+      expect(fakeBridge.daemonStateCalls()).toBe(asked + 1)
+
+      fakeBridge.reconnect()
+
+      await waitFor(() => {
+        expect(screen.queryByTestId('app-reconnecting')).not.toBeInTheDocument()
+      })
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    })
+
+    it('reloads after a reconnect: gone terminals read exited, the shown workspace is watched again and opens a fresh shell', async () => {
+      const user = userEvent.setup()
+      const retry = makeWorkspace({ id: 'ws_01hzx3k9c2qf', name: 'app-1432-retry-logic' })
+      const shell = makeTermInfo({ name: 'claude', workspaceId: retry.id })
+      fakeBridge.seedProject(makeProject())
+      fakeBridge.seedWorkspace(retry)
+      fakeBridge.seedTerminal(shell)
+      render(<App />)
+      await user.click(await screen.findByTestId(`sidebar-workspace-${retry.id}-open`))
+      await screen.findByTestId(`terminal-tab-${shell.id}`)
+      await waitFor(() => {
+        expect(fakeBridge.watchCalls()).toEqual([{ id: retry.id, on: true }])
+      })
+      const lists = fakeBridge.termListCount()
+
+      fakeBridge.disconnect()
+      await screen.findByTestId('app-reconnecting')
+      // The daemon was restarted elsewhere: it comes back without the old terminals.
+      fakeBridge.forgetTerminals()
+      fakeBridge.reconnect()
+
+      expect(await screen.findByTestId(`terminal-tab-${shell.id}-exited`)).toBeInTheDocument()
+      await waitFor(async () => {
+        const fresh = await window.que.term.list({ workspaceId: retry.id })
+        expect(fresh.filter((t) => t.alive)).toHaveLength(1)
+      })
+      expect(fakeBridge.termListCount()).toBeGreaterThan(lists)
+      expect(fakeBridge.watchCalls()).toEqual([
+        { id: retry.id, on: true },
+        { id: retry.id, on: true }
+      ])
+      expect(screen.queryByTestId('app-reconnecting')).not.toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'New terminal' })).toBeEnabled()
     })
 
     it('disables every daemon action while disconnected', async () => {

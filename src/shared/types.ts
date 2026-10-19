@@ -335,6 +335,18 @@ export interface UserConfig {
 }
 
 /** A newer que release, found by the app's daily update check. */
+/**
+ * The daemon the app is connected to, as the main process last saw it: its
+ * version and build id, the build id of the bundle this app would start, and
+ * whether they differ (shared/build-id.ts).
+ */
+export interface DaemonState {
+  version: string
+  buildId: string
+  expectedBuildId: string
+  stale: boolean
+}
+
 export interface UpdateInfo {
   /** The newer version, without a leading v. */
   version: string

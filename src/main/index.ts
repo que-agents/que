@@ -3,9 +3,11 @@ import os from 'node:os'
 import { join } from 'node:path'
 import { app, BrowserWindow, dialog, ipcMain, Notification, shell } from 'electron'
 import { reportSummaryText } from '../daemon/report'
-import { DaemonClient } from '../shared/client'
+import { buildIdOf, daemonIsStale } from '../shared/build-id'
+import { DaemonClient, resolveDaemonScript } from '../shared/client'
 import { loginShellPath, mergePath } from '../shared/login-path'
 import { queHome } from '../shared/paths'
+import { delay, waitForExit } from '../shared/process'
 import {
   RENDERER_EVENTS,
   RENDERER_METHODS,
@@ -13,7 +15,7 @@ import {
   type ParamsOf,
   type Report
 } from '../shared/protocol'
-import type { QuietState, UpdateInfo } from '../shared/types'
+import type { DaemonState, QuietState, UpdateInfo } from '../shared/types'
 import { createBoardWindow } from './board'
 import { decodeAbsolutePath } from './ipc.decode'
 import { installMenu } from './menu'
@@ -47,41 +49,129 @@ app.setPath('userData', join(queHome(), 'app'))
 /** A newer release, once the update check has found one. */
 let update: UpdateInfo | null = null
 
+/** The daemon as last seen after a connect (see refreshDaemon). */
+let daemon: DaemonState | null = null
+let daemonPid: number | null = null
+
+/** The pid of a daemon whose connection just closed: reconnecting waits for it to exit first. */
+let exitingPid: number | null = null
+
+/** A connection was made before, so the next one is a reconnect. */
+let everConnected = false
+
+/** A restart from the window in flight; state() waits for it. */
+let restarting: Promise<DaemonState> | null = null
+
+/** Asks the daemon which build it runs and compares it with the bundle this app would start. */
+async function refreshDaemon(c: DaemonClient): Promise<DaemonState> {
+  const ping = await c.request('daemon.ping')
+  daemonPid = ping.pid
+  // A daemon from before build ids answers without one: unknown, like ''.
+  const buildId = ping.buildId ?? ''
+  const expectedBuildId = buildIdOf(resolveDaemonScript())
+  daemon = {
+    version: ping.version,
+    buildId,
+    expectedBuildId,
+    stale: daemonIsStale(buildId, expectedBuildId)
+  }
+
+  return daemon
+}
+
 function getClient(): Promise<DaemonClient> {
   if (client?.connected) return Promise.resolve(client)
 
-  if (!connecting) {
-    connecting = DaemonClient.connectOrStart({ log: (m) => console.log(`[daemon] ${m}`) })
-      .then((c) => {
-        client = c
-
-        for (const ev of RENDERER_EVENTS) {
-          c.on(ev, (data) => sendToRenderer('que:event', ev, data))
-        }
-
-        c.on('workspace.created', (w) => tray?.putWorkspace(w))
-        c.on('workspace.updated', (w) => tray?.putWorkspace(w))
-        c.on('workspace.removed', ({ id }) => tray?.dropWorkspace(id))
-        c.on('task.created', (t) => tray?.putTask(t))
-        c.on('task.updated', (t) => tray?.putTask(t))
-        c.on('task.removed', ({ id }) => tray?.dropTask(id))
-        tray?.seed(c)
-        c.on('quiet.changed', (q) => applyQuiet(q))
-        c.on('quiet.morningSummary', ({ report }) => morningSummary(report))
-        void c.request('quiet.state').then(applyQuiet, () => {})
-        c.onClose(() => {
-          if (client === c) client = null
-          sendToRenderer('que:event', 'daemon.disconnected', {})
-        })
-
-        return c
-      })
-      .finally(() => {
-        connecting = null
-      })
-  }
+  connecting ??= connect().finally(() => {
+    connecting = null
+  })
 
   return connecting
+}
+
+async function connect(): Promise<DaemonClient> {
+  // A daemon that is shutting down still owns the socket for a moment and
+  // removes it on its way out; starting the next one before it is gone
+  // would race that removal.
+  const leaving = exitingPid
+  exitingPid = null
+
+  if (leaving !== null) await waitForExit(leaving, 5_000)
+
+  const c = await DaemonClient.connectOrStart({ log: (m) => console.log(`[daemon] ${m}`) })
+  client = c
+
+  for (const ev of RENDERER_EVENTS) {
+    c.on(ev, (data) => sendToRenderer('que:event', ev, data))
+  }
+
+  c.on('workspace.created', (w) => tray?.putWorkspace(w))
+  c.on('workspace.updated', (w) => tray?.putWorkspace(w))
+  c.on('workspace.removed', ({ id }) => tray?.dropWorkspace(id))
+  c.on('task.created', (t) => tray?.putTask(t))
+  c.on('task.updated', (t) => tray?.putTask(t))
+  c.on('task.removed', ({ id }) => tray?.dropTask(id))
+  tray?.seed(c)
+  c.on('quiet.changed', (q) => applyQuiet(q))
+  c.on('quiet.morningSummary', ({ report }) => morningSummary(report))
+  void c.request('quiet.state').then(applyQuiet, () => {})
+  c.onClose(() => {
+    if (client === c) client = null
+    exitingPid = daemonPid
+    sendToRenderer('que:event', 'daemon.disconnected', {})
+  })
+
+  try {
+    await refreshDaemon(c)
+  } catch (err) {
+    console.error('daemon.ping failed after connecting:', err)
+  }
+
+  if (everConnected && daemon) sendToRenderer('que:event', 'daemon.reconnected', daemon)
+  everConnected = true
+
+  return c
+}
+
+/**
+ * Stops the daemon (every terminal ends) and starts one from this app's
+ * bundle. Only ever the user's click: nothing calls this on its own.
+ */
+function restartDaemon(): Promise<DaemonState> {
+  restarting ??= (async () => {
+    const c = await getClient()
+    const { pid } = await c.request('daemon.ping')
+    const closed = new Promise<void>((r) => c.onClose(r))
+    await c.request('daemon.shutdown')
+    await Promise.race([closed, delay(2_000)])
+    c.close()
+    exitingPid = pid
+    const next = await getClient()
+
+    return daemon ?? (await refreshDaemon(next))
+  })().finally(() => {
+    restarting = null
+  })
+
+  return restarting
+}
+
+async function daemonState(): Promise<DaemonState> {
+  if (restarting) return restarting
+  const c = await getClient()
+
+  return daemon ?? (await refreshDaemon(c))
+}
+
+/** A main-side call as data, so its error keeps its code across ipc. */
+async function reply<T>(
+  fn: () => Promise<T>
+): Promise<{ ok: true; result: T } | { ok: false; error: { code: string; message: string } }> {
+  try {
+    return { ok: true, result: await fn() }
+  } catch (err) {
+    return { ok: false, error: { code: errorCode(err) ?? 'error', message: errorMessage(err) } }
+  }
 }
 
 function showBoard(): void {
@@ -270,6 +360,9 @@ function registerIpc(): void {
     return { ok: true }
   })
 
+  ipcMain.handle('daemon:state', () => reply(daemonState))
+  ipcMain.handle('daemon:restart', () => reply(restartDaemon))
+
   ipcMain.handle('app:trayTitle', () => {
     if (!e2e) throw new Error('app.trayTitle is only available under QUE_E2E=1')
 
@@ -287,12 +380,8 @@ function registerIpc(): void {
       if (!RENDERER_METHODS.has(method)) throw new Error(`method not allowed: ${method}`)
       const c = await getClient()
 
-      try {
-        return { ok: true, result: await c.request(method, params) }
-      } catch (err) {
-        // Errors thrown across ipc lose their fields; return them as data.
-        return { ok: false, error: { code: errorCode(err) ?? 'error', message: errorMessage(err) } }
-      }
+      // Errors thrown across ipc lose their fields; return them as data.
+      return reply(() => c.request(method, params))
     }
   )
 

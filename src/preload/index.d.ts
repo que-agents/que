@@ -50,6 +50,7 @@ import type {
   WorkspaceStartResult
 } from '../shared/protocol'
 import type {
+  DaemonState,
   NotificationsConfig,
   Project,
   PullRequest,
@@ -67,6 +68,7 @@ import type {
 
 export type {
   ConfigGetResult,
+  DaemonState,
   ConfigSetParams,
   InstructionsGetResult,
   InstructionsSetParams,
@@ -145,6 +147,21 @@ export interface AppApi {
   openUpdate(): Promise<{ ok: true }>
   /** True only when the app was launched with QUE_E2E=1. */
   e2e: boolean
+}
+
+/**
+ * The background service itself, from the main process (not daemon socket methods).
+ * The reconnect contract: when the connection drops, `term.onDisconnect` fires; the
+ * main process reconnects (or starts a daemon) on the next call that needs it, and
+ * `daemon.reconnected` fires once a connection that had dropped is back.
+ */
+export interface DaemonApi {
+  /** Connects (or starts a daemon) if needed, then says which build it runs. */
+  state(): Promise<DaemonState>
+  /** Stops the daemon, ending every terminal, and starts it from this app's build. */
+  restart(): Promise<DaemonState>
+  /** Fires after a dropped connection is back (a restart, or the daemon came back). */
+  onReconnected(cb: (state: DaemonState) => void): () => void
 }
 
 export type ProjectEventName = 'project.added' | 'project.removed'
@@ -268,6 +285,7 @@ export interface QueApi {
   report: ReportApi
   tickets: TicketsApi
   app: AppApi
+  daemon: DaemonApi
 }
 
 /** The two chimes: a session's turn or a task finished, or a session needs input. */

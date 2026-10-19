@@ -2,7 +2,8 @@
 import fs from 'node:fs'
 import { join } from 'node:path'
 import { findOnPath } from '../daemon/wrapper'
-import { DaemonClient } from '../shared/client'
+import { buildIdOf, daemonIsStale, staleDaemonHint } from '../shared/build-id'
+import { DaemonClient, resolveDaemonScript } from '../shared/client'
 import { configPath, describeQuietHours, formatConfigErrors, loadConfig } from '../shared/config'
 import { firstLine, run as exec } from '../shared/exec'
 import { quePaths } from '../shared/paths'
@@ -35,6 +36,7 @@ export async function runDoctor(): Promise<number> {
   const checks: Check[] = []
 
   let daemonPath: { ok: boolean; detail: string } | null = null
+  let daemonBuild: { ok: boolean; detail: string } | null = null
   const client = await DaemonClient.tryConnect(paths)
 
   if (client) {
@@ -46,6 +48,13 @@ export async function runDoctor(): Promise<number> {
         ok: c !== '',
         detail: `${c ? `claude at ${c}` : "claude not on the daemon's PATH"}, ${g ? `gh at ${g}` : "gh not on the daemon's PATH"}`
       }
+      const expected = buildIdOf(resolveDaemonScript())
+      daemonBuild = daemonIsStale(ping.buildId, expected)
+        ? { ok: false, detail: staleDaemonHint(ping.buildId, expected) }
+        : {
+            ok: true,
+            detail: ping.buildId && expected ? `${ping.buildId} (matches this que)` : 'unknown'
+          }
       checks.push({
         name: 'daemon',
         ok: true,
@@ -63,6 +72,13 @@ export async function runDoctor(): Promise<number> {
       detail: `not reachable at ${paths.socket} (start it with \`que daemon start\`)`
     })
   }
+
+  checks.push({
+    name: 'daemon build',
+    ok: daemonBuild?.ok ?? false,
+    required: false,
+    detail: daemonBuild?.detail ?? 'skipped (the daemon is not running)'
+  })
 
   checks.push({
     name: 'daemon PATH',
@@ -151,7 +167,7 @@ export async function runDoctor(): Promise<number> {
 
   for (const c of checks) {
     const tag = c.ok ? 'ok  ' : c.required ? 'FAIL' : 'warn'
-    console.log(`${tag}  ${c.name.padEnd(10)} ${c.detail}`)
+    console.log(`${tag}  ${c.name.padEnd(12)} ${c.detail}`)
   }
 
   return checks.some((c) => c.required && !c.ok) ? 1 : 0
