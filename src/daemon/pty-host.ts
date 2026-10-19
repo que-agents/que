@@ -66,7 +66,8 @@ export class HostedTerminal implements Term {
       cols: this.cols,
       rows: this.rows,
       cwd: this.cwd,
-      env: { ...spawnEnv(), ...extra.env }
+      // QUE_TERMINAL_ID: hooks of a session started here name the terminal they fired in.
+      env: { ...spawnEnv(), ...extra.env, QUE_TERMINAL_ID: this.id }
     })
     this.proc.onData((data) => {
       this.mirror.write(data)

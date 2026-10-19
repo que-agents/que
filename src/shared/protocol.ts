@@ -270,6 +270,8 @@ export interface HookEventParams {
   workspaceId: string
   /** Set when the hook fired inside a headless task run (QUE_TASK_ID). */
   taskId?: string
+  /** The daemon terminal the hook fired in (QUE_TERMINAL_ID), when it fired in one. */
+  terminalId?: string
   /** The hook JSON Claude Code wrote to the hook's stdin. */
   payload: HookEvent
 }

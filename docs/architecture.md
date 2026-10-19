@@ -168,6 +168,22 @@ means stuck. `status.ts` runs those rules per workspace, persists transitions,
 and emits `workspace.updated` with the full row. Nothing in the rules reads the clock, so they are
 tested exhaustively as plain functions.
 
+The same hooks keep a record of the sessions that are live in workspace
+terminals (`live-sessions.ts`). Every terminal carries its own id
+(`QUE_TERMINAL_ID`), which `que hook` passes along, so a session start names
+the terminal it runs in. An entry is written on the session's start and cleared
+when Claude ends the session, when the terminal exits, or when it is killed;
+headless task runs are never recorded, since the queue recovers those. The
+record is saved in the store as it changes and frozen when shutdown begins, so
+a crash leaves it as current as a clean stop. At start the next daemon consumes
+each entry once and, unless the workspace is gone or archived, opens a terminal
+in it that types `claude --resume <session>` once setup is done. An entry whose terminal is
+alive in the new daemon came over with it and stays live rather than being resumed
+again. While quiet
+hours are locked the entries wait for the unlock. If a resume fails, the shell
+shows the error and nothing else is typed; the daemon log names each session
+it resumed or skipped.
+
 ## The overnight digest
 
 Every change of a workspace's status or reason is also appended to the
