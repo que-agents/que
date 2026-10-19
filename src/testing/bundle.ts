@@ -5,7 +5,9 @@ import { join, resolve } from 'node:path'
 import { buildSync } from 'esbuild'
 import { REPO_ROOT } from './fakes'
 
-// Inside node_modules so the bundle's `require('node-pty')` resolves.
+// Inside node_modules so the bundle's `require('node-pty')` resolves. Laid out
+// like out/ (cli/index.js beside daemon/index.js), so the CLI bundle finds the
+// daemon bundle it would start, as the built CLI does.
 const OUT_DIR = join(REPO_ROOT, 'node_modules/.cache/que-test-bundles')
 const built = new Map<string, string>()
 
@@ -15,10 +17,10 @@ export function bundleEntry(entry: 'src/cli/index.ts' | 'src/daemon/index.ts'): 
 
   if (cached) return cached
   const name = entry.split('/')[1]
-  const outfile = join(OUT_DIR, `${name}.js`)
+  const outfile = join(OUT_DIR, name, 'index.js')
   // Parallel workers each build to their own file, then atomically rename it
   // into place; a process already running the old file keeps its copy.
-  const tmpfile = join(OUT_DIR, `${name}.${process.pid}.tmp.js`)
+  const tmpfile = join(OUT_DIR, name, `index.${process.pid}.tmp.js`)
   buildSync({
     entryPoints: [resolve(REPO_ROOT, entry)],
     outfile: tmpfile,

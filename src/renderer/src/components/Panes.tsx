@@ -214,6 +214,7 @@ function Pane({
 }): React.JSX.Element {
   const store = usePanes(termKey)
   const connected = useQueSelector((s) => s.connected)
+  const connection = useQueSelector((s) => s.connection)
   const error = useQueSelector((s) => s.error)
   const tabs = store.paneTabs(termKey, index)
   const views = store.paneViews(termKey, index)
@@ -337,7 +338,8 @@ function Pane({
         <FileView key={activeFile} termKey={termKey} path={activeFile} />
       ) : active ? (
         // An inactive tab's terminal is detached; it reattaches (and replays) when selected.
-        <Terminal key={active.id} id={active.id} focused={focused} />
+        // A reconnect (a new `connection`) attaches it again.
+        <Terminal key={`${active.id}:${connection}`} id={active.id} focused={focused} />
       ) : (
         <div className="empty" data-testid="terminal-empty">
           {tabs.length === 0 && !error ? 'No terminals. Press + to open one.' : ''}

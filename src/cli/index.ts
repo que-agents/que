@@ -1,7 +1,8 @@
 // que CLI. Runs under the system `node`; must not load native modules.
 import fs from 'node:fs'
 import { Command } from 'commander'
-import { DaemonClient, DaemonError } from '../shared/client'
+import { buildIdOf, daemonIsStale, staleDaemonHint } from '../shared/build-id'
+import { DaemonClient, DaemonError, resolveDaemonScript } from '../shared/client'
 import { quePaths } from '../shared/paths'
 import { delay, waitForExit } from '../shared/process'
 import type { TermInfo } from '../shared/protocol'
@@ -41,6 +42,24 @@ function printTerms(terms: TermInfo[]): void {
   )
 }
 
+function plural(n: number, word: string): string {
+  return `${n} ${word}${n === 1 ? '' : 's'}`
+}
+
+/** Asks the daemon to shut down, waits for it to exit, and returns its pid. */
+async function stopDaemon(c: DaemonClient): Promise<number> {
+  const { pid } = await c.request('daemon.ping')
+  const closed = new Promise<void>((r) => c.onClose(r))
+  await c.request('daemon.shutdown')
+  await Promise.race([closed, delay(2000)])
+  c.close()
+
+  // Wait (briefly) for the process to actually exit.
+  await waitForExit(pid, 3_000)
+
+  return pid
+}
+
 async function main(): Promise<void> {
   // Set when the app binary runs the CLI as Node; it has done its job and must
   // not reach programs started from here (an editor would start as plain Node).
@@ -78,16 +97,29 @@ async function main(): Promise<void> {
         return
       }
 
-      const { pid } = await c.request('daemon.ping')
-      const closed = new Promise<void>((r) => c.onClose(r))
-      await c.request('daemon.shutdown')
-      await Promise.race([closed, delay(2000)])
-      c.close()
-
-      // Wait (briefly) for the process to actually exit.
-      await waitForExit(pid, 3_000)
-
+      const pid = await stopDaemon(c)
       console.log(`daemon stopped (pid ${pid})`)
+    })
+  daemon
+    .command('restart')
+    .description('stop the daemon, ending every terminal, and start it from this build')
+    .action(async () => {
+      const old = await DaemonClient.tryConnect()
+
+      if (old) {
+        const alive = (await old.request('term.list')).filter((t) => t.alive).length
+        const pid = await stopDaemon(old)
+        console.log(`daemon stopped (pid ${pid}), ended ${plural(alive, 'terminal')}`)
+      }
+
+      const c = await DaemonClient.connectOrStart()
+
+      try {
+        const info = await c.request('daemon.ping')
+        console.log(`daemon running pid=${info.pid} version=${info.version} build=${info.buildId}`)
+      } finally {
+        c.close()
+      }
     })
   daemon
     .command('status')
@@ -109,6 +141,8 @@ async function main(): Promise<void> {
         const info = await c.request('daemon.ping')
         const terms = await c.request('term.list')
         const alive = terms.filter((t) => t.alive).length
+        const expectedBuildId = buildIdOf(resolveDaemonScript())
+        const stale = daemonIsStale(info.buildId, expectedBuildId)
 
         if (opts.json) {
           console.log(
@@ -117,6 +151,9 @@ async function main(): Promise<void> {
                 running: true,
                 pid: info.pid,
                 version: info.version,
+                buildId: info.buildId,
+                expectedBuildId,
+                stale,
                 nodeVersion: info.nodeVersion,
                 startedAt: info.startedAt,
                 socket: paths.socket,
@@ -133,6 +170,9 @@ async function main(): Promise<void> {
         console.log(
           `daemon running pid=${info.pid} version=${info.version} node=${info.nodeVersion}`
         )
+        console.log(`build ${info.buildId || 'unknown'}`)
+
+        if (stale) console.log(staleDaemonHint(info.buildId, expectedBuildId))
         console.log(`started ${info.startedAt}`)
         console.log(`socket ${paths.socket}`)
         console.log(`terminals ${alive} alive / ${terms.length} total`)

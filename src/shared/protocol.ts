@@ -23,6 +23,8 @@ import type {
 
 export interface PingResult {
   version: string
+  /** The build id of the daemon's bundle (shared/build-id.ts), '' when unknown. */
+  buildId: string
   pid: number
   startedAt: string
   nodeVersion: string

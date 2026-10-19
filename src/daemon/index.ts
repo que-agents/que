@@ -5,6 +5,7 @@
 import fs from 'node:fs'
 import net from 'node:net'
 import { errorMessage } from '../shared/errors.decode'
+import { buildIdOf } from '../shared/build-id'
 import { ensureDirs, quePaths } from '../shared/paths'
 import { HandoffSender, receiveHandoff } from './handoff'
 import { PtyHost } from './pty-host'
@@ -14,6 +15,10 @@ declare const __QUE_VERSION__: string
 
 // oxlint-disable-next-line anti-slop/no-runtime-typeof -- build-time define, absent when run unbundled
 const VERSION = typeof __QUE_VERSION__ === 'string' ? __QUE_VERSION__ : '0.0.0-dev'
+
+// The bundle is CommonJS, so __filename is this bundle's own file
+// (out/daemon/index.js, or Resources/daemon/index.js in the app).
+const BUILD_ID = buildIdOf(__filename)
 
 const paths = ensureDirs(quePaths())
 const logStream = fs.createWriteStream(paths.daemonLog, { flags: 'a' })
@@ -116,6 +121,7 @@ async function main(): Promise<void> {
     const next = new DaemonServer({
       host,
       version: VERSION,
+      buildId: BUILD_ID,
       log,
       onShutdown: () => shutdown('daemon.shutdown'),
       handoff: (p, release) => sender.run(p, release),
@@ -129,7 +135,9 @@ async function main(): Promise<void> {
 
   if (snapshotPath === null) {
     await serve()
-    log(`listening on ${paths.socket} (version ${VERSION}, node ${process.version})`)
+    log(
+      `listening on ${paths.socket} (version ${VERSION}, build ${BUILD_ID}, node ${process.version})`
+    )
   } else {
     try {
       const n = await receiveHandoff({
@@ -147,7 +155,7 @@ async function main(): Promise<void> {
       })
 
       log(
-        `listening on ${paths.socket} (version ${VERSION}, node ${process.version}), ` +
+        `listening on ${paths.socket} (version ${VERSION}, build ${BUILD_ID}, node ${process.version}), ` +
           `took over ${n} terminal(s)`
       )
     } catch (err) {
