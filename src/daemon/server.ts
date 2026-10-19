@@ -179,7 +179,7 @@ export class DaemonServer {
   private configError: string | null = null
   private configCheckedAt = Number.NEGATIVE_INFINITY
   /** Watches the worktrees of the workspaces clients asked for with workspace.watch (workspace.changed). */
-  readonly watcher = new WorktreeWatcher((id) => this.bus.emit('workspace.changed', { id }), {
+  readonly watcher = new WorktreeWatcher((id) => void this.worktreeChanged(id), {
     log: (m) => this.log(m)
   })
 
@@ -681,6 +681,17 @@ export class DaemonServer {
     }
   }
 
+  /** A watched worktree changed: its branch is re-read (HEAD may have moved) before clients hear of it. */
+  private async worktreeChanged(id: string): Promise<void> {
+    try {
+      await this.workspaces.syncBranch(id)
+    } catch {
+      // Removed since the change was seen.
+    }
+
+    this.bus.emit('workspace.changed', { id })
+  }
+
   /**
    * Watches the worktree of every workspace some connection asked to watch
    * with workspace.watch, and nothing else. Terminals do not matter here: a
@@ -885,8 +896,8 @@ export class DaemonServer {
       allowed: await this.workspaces.canRenameBranch(p.id)
     }),
     'workspace.seen': (p) => this.workspaces.seen(p.id),
-    'workspace.diff': async (p) => {
-      const ws = await this.workspaces.syncBranch(p.id)
+    'workspace.diff': (p) => {
+      const ws = this.workspaces.get(p.id)
 
       return workspaceDiff(ws, this.workspaces.project(ws.projectId), Date.now, {
         base: p.base,

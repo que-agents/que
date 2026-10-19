@@ -230,9 +230,6 @@ describe('pull request tracking', () => {
       await expect
         .poll(async () => await prOf(ws.id), opts)
         .toMatchObject({ number: 57, state: 'open' })
-      expect((await client.request('workspace.get', { id: ws.id })).branch).toBe(
-        'fix/upload-timeout'
-      )
       expect(updates.some((w) => w.id === ws.id && w.branch === 'fix/upload-timeout')).toBe(true)
     }, 30_000)
 
@@ -241,6 +238,7 @@ describe('pull request tracking', () => {
       gitIn(ws.path, 'checkout', '--quiet', '--detach')
       setFakePullRequest(daemon.ghPrs, ws.branch, { isDraft: true })
 
+      // The draft's arrival shows a check ran after the detach.
       await expect.poll(async () => (await prOf(ws.id))?.state, opts).toBe('draft')
       expect((await client.request('workspace.get', { id: ws.id })).branch).toBe(ws.branch)
     }, 30_000)

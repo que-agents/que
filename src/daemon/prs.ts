@@ -163,10 +163,7 @@ export class PrService {
     return this.poller.stopped
   }
 
-  /**
-   * One pass over every unarchived workspace: each one's branch is re-read from its worktree
-   * first, then one `gh pr list` per project, one at a time.
-   */
+  /** One pass over the workspaces: each branch re-read, then one `gh pr list` per project. */
   async tick(): Promise<void> {
     if (this.polling) return
     this.polling = true
@@ -174,18 +171,11 @@ export class PrService {
     try {
       const n = this.tickCount++
       const due = n % SETTLED_EVERY === 0
+      const listed = this.opts.store.listWorkspaces()
+      const checked = listed.filter((ws) => due || ws.pr === null || !isSettled(ws.pr))
       const byProject = new Map<string, Workspace[]>()
-      const synced: Workspace[] = []
 
-      for (const ws of this.opts.store.listWorkspaces()) {
-        if (this.stopped) return
-        synced.push(await this.sync(ws))
-      }
-
-      for (const ws of synced) {
-        const settled = ws.pr !== null && isSettled(ws.pr)
-
-        if (settled && !due) continue
+      for (const ws of await Promise.all(checked.map((ws) => this.sync(ws)))) {
         const list = byProject.get(ws.projectId)
 
         if (list) list.push(ws)
@@ -454,7 +444,6 @@ export class PrService {
    */
   async create(id: string, rawTitle: string): Promise<WorkspaceCreatePrResult> {
     const { workspaces, tasks, store, paths } = this.opts
-    // The branch checked out now is the one pushed and checked against protected_branches.
     const ws = await workspaces.syncBranch(id)
     const title = rawTitle.trim()
 
