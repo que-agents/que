@@ -18,7 +18,7 @@ import {
   readFakePullRequests,
   setFakePullRequest
 } from '../../src/testing/fakes'
-import { addBareOrigin, makeTempRepo } from '../../src/testing/temp-repo'
+import { addBareOrigin, gitIn, makeTempRepo } from '../../src/testing/temp-repo'
 
 let daemon: TestDaemon
 let client: DaemonClient
@@ -215,4 +215,34 @@ describe('pull request tracking', () => {
     expect(prViews().some((c) => c.argv[2] === '1')).toBe(true)
     expect(prViews().some((c) => c.argv[2] === '2')).toBe(false)
   }, 60_000)
+
+  describe('a branch checked out in the worktree', () => {
+    it('becomes the workspace branch and finds the pull request opened from it', async () => {
+      const ws = await workspace()
+      const updates = recordEvents(client, 'workspace.updated')
+      gitIn(ws.path, 'checkout', '--quiet', '-b', 'fix/upload-timeout')
+      setFakePullRequest(daemon.ghPrs, 'fix/upload-timeout', {
+        number: 57,
+        url: 'https://github.com/rquellh/que/pull/57',
+        isDraft: false
+      })
+
+      await expect
+        .poll(async () => await prOf(ws.id), opts)
+        .toMatchObject({ number: 57, state: 'open' })
+      expect((await client.request('workspace.get', { id: ws.id })).branch).toBe(
+        'fix/upload-timeout'
+      )
+      expect(updates.some((w) => w.id === ws.id && w.branch === 'fix/upload-timeout')).toBe(true)
+    }, 30_000)
+
+    it('keeps the recorded branch while the worktree is on a detached HEAD', async () => {
+      const ws = await workspace()
+      gitIn(ws.path, 'checkout', '--quiet', '--detach')
+      setFakePullRequest(daemon.ghPrs, ws.branch, { isDraft: true })
+
+      await expect.poll(async () => (await prOf(ws.id))?.state, opts).toBe('draft')
+      expect((await client.request('workspace.get', { id: ws.id })).branch).toBe(ws.branch)
+    }, 30_000)
+  })
 })

@@ -52,7 +52,7 @@ const SETTLED_EVERY = 5
 
 export interface PrServiceOptions {
   store: Store
-  workspaces: Pick<WorkspaceManager, 'get' | 'project'>
+  workspaces: Pick<WorkspaceManager, 'get' | 'project' | 'syncBranch'>
   tasks: Pick<TaskQueue, 'list'>
   paths: Pick<QuePaths, 'workspaceLogsDir'>
   /** The daemon's bus: a finished task refreshes its workspace, a removed one is forgotten. */
@@ -163,7 +163,10 @@ export class PrService {
     return this.poller.stopped
   }
 
-  /** One pass over every unarchived workspace: one `gh pr list` per project, one at a time. */
+  /**
+   * One pass over every unarchived workspace: each one's branch is re-read from its worktree
+   * first, then one `gh pr list` per project, one at a time.
+   */
   async tick(): Promise<void> {
     if (this.polling) return
     this.polling = true
@@ -172,8 +175,14 @@ export class PrService {
       const n = this.tickCount++
       const due = n % SETTLED_EVERY === 0
       const byProject = new Map<string, Workspace[]>()
+      const synced: Workspace[] = []
 
       for (const ws of this.opts.store.listWorkspaces()) {
+        if (this.stopped) return
+        synced.push(await this.sync(ws))
+      }
+
+      for (const ws of synced) {
         const settled = ws.pr !== null && isSettled(ws.pr)
 
         if (settled && !due) continue
@@ -197,7 +206,7 @@ export class PrService {
     if (this.stopped) return
     const ws = this.opts.store.getWorkspace(id)
 
-    if (ws && !ws.archivedAt) await this.check(ws)
+    if (ws && !ws.archivedAt) await this.check(await this.sync(ws))
   }
 
   /**
@@ -274,6 +283,11 @@ export class PrService {
   /** Resolves once every check that was running when stop() was called has ended. */
   drain(): Promise<void> {
     return this.poller.drain()
+  }
+
+  /** The workspace with the branch its worktree has checked out; as stored when that cannot be read. */
+  private sync(ws: Workspace): Promise<Workspace> {
+    return this.poller.track(this.opts.workspaces.syncBranch(ws.id).catch(() => ws))
   }
 
   private check(ws: Workspace): Promise<void> {
@@ -440,7 +454,8 @@ export class PrService {
    */
   async create(id: string, rawTitle: string): Promise<WorkspaceCreatePrResult> {
     const { workspaces, tasks, store, paths } = this.opts
-    const ws = workspaces.get(id)
+    // The branch checked out now is the one pushed and checked against protected_branches.
+    const ws = await workspaces.syncBranch(id)
     const title = rawTitle.trim()
 
     if (!title) throw new RpcError(ErrorCodes.BadRequest, 'title is required')

@@ -408,9 +408,27 @@ export class WorkspaceManager {
     return ''
   }
 
+  /**
+   * Records the branch the worktree has checked out when it is not the stored one, and
+   * announces it with workspace.updated. A detached HEAD or a missing worktree keeps it.
+   */
+  async syncBranch(id: string): Promise<Workspace> {
+    const ws = this.get(id)
+    const r = await git(ws.path, ['symbolic-ref', '--short', 'HEAD'], 10_000)
+    const head = r.ok ? r.stdout : ''
+
+    if (!head || head === ws.branch) return ws
+    this.opts.store.setWorkspaceBranch(ws.id, head)
+    const next = this.get(ws.id)
+    this.log(`workspace ${ws.id} is on ${head} (was ${ws.branch})`)
+    this.opts.emit('workspace.updated', next)
+
+    return next
+  }
+
   /** True when the branch was never pushed: no `origin/<branch>` in the worktree. */
   async canRenameBranch(id: string): Promise<boolean> {
-    const ws = this.get(id)
+    const ws = await this.syncBranch(id)
 
     const remote = await git(ws.path, [
       'rev-parse',
@@ -427,7 +445,7 @@ export class WorkspaceManager {
    * folder keeps its name). Announces the change with workspace.updated.
    */
   async rename(p: WorkspaceRenameParams): Promise<Workspace> {
-    const ws = this.get(p.id)
+    const ws = await this.syncBranch(p.id)
     const title = p.title.trim()
 
     if (!title) throw badRequest('title is required')
@@ -503,8 +521,9 @@ export class WorkspaceManager {
     }
   }
 
+  /** Tears down and removes the worktree, and with deleteBranch the branch it has checked out. */
   async remove(p: WorkspaceRemoveParams): Promise<void> {
-    const ws = this.get(p.id)
+    const ws = await this.syncBranch(p.id)
     const project = this.opts.store.getProject(ws.projectId)
     this.opts.killTerminals(ws.id)
     const setup = this.setups.get(ws.id)

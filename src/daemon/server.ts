@@ -885,8 +885,8 @@ export class DaemonServer {
       allowed: await this.workspaces.canRenameBranch(p.id)
     }),
     'workspace.seen': (p) => this.workspaces.seen(p.id),
-    'workspace.diff': (p) => {
-      const ws = this.workspaces.get(p.id)
+    'workspace.diff': async (p) => {
+      const ws = await this.workspaces.syncBranch(p.id)
 
       return workspaceDiff(ws, this.workspaces.project(ws.projectId), Date.now, {
         base: p.base,

@@ -94,6 +94,10 @@ All notable changes to que are recorded here. The format follows
   at the real executable with `--settings` added once, and a wrapper that
   keeps spawning instead fails with a message. `QUE_REAL_CLAUDE` pins the
   executable when `PATH` resolution is not what you want.
+- A branch checked out inside a workspace's worktree after it was created is
+  now the workspace's branch: the Pull request tab finds pull requests opened
+  from it, Create draft PR and a finished task push it, and removing the
+  workspace deletes it.
 
 ## [0.1.0] - 2026-10-14
 

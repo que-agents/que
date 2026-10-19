@@ -469,7 +469,8 @@ export class TaskRunner {
 
     const result = await finishTask({
       task,
-      workspace: ws,
+      // The branch the run left checked out is the one pushed.
+      workspace: await this.o.workspaces.syncBranch(ws.id),
       project,
       protectedBranches: this.o.config().protectedBranches,
       bodyFile: join(this.o.paths.taskLogsDir, `${id}.pr.md`),
