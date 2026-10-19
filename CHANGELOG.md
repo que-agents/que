@@ -35,6 +35,7 @@ All notable changes to que are recorded here. The format follows
 ### Changed
 
 - Changes and Files follow the worktree without a click.
+- The banner for an older background service now updates it in place: Update hands every terminal to the new build and keeps them all running. Only when that fails does it say why and offer Restart, which ends them; `que daemon status` and `que doctor` recommend `que daemon upgrade` first too.
 
 ### Fixed
 

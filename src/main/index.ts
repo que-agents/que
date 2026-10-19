@@ -4,9 +4,9 @@ import { join } from 'node:path'
 import { app, BrowserWindow, dialog, ipcMain, Notification, shell } from 'electron'
 import { reportSummaryText } from '../daemon/report'
 import { buildIdOf, daemonIsStale } from '../shared/build-id'
-import { DaemonClient, resolveDaemonScript } from '../shared/client'
+import { DaemonClient, resolveDaemonScript, resolveRuntime } from '../shared/client'
 import { loginShellPath, mergePath } from '../shared/login-path'
-import { queHome } from '../shared/paths'
+import { queHome, quePaths } from '../shared/paths'
 import { delay, waitForExit } from '../shared/process'
 import {
   RENDERER_EVENTS,
@@ -15,7 +15,8 @@ import {
   type ParamsOf,
   type Report
 } from '../shared/protocol'
-import type { DaemonState, QuietState, UpdateInfo } from '../shared/types'
+import type { DaemonState, DaemonUpgradeResult, QuietState, UpdateInfo } from '../shared/types'
+import { handOffDaemon } from '../shared/upgrade'
 import { createBoardWindow } from './board'
 import { decodeAbsolutePath } from './ipc.decode'
 import { installMenu } from './menu'
@@ -61,6 +62,9 @@ let everConnected = false
 
 /** A restart from the window in flight; state() waits for it. */
 let restarting: Promise<DaemonState> | null = null
+
+/** An update in place from the window in flight; state() waits for it too. */
+let upgrading: Promise<DaemonUpgradeResult> | null = null
 
 /** Asks the daemon which build it runs and compares it with the bundle this app would start. */
 async function refreshDaemon(c: DaemonClient): Promise<DaemonState> {
@@ -156,8 +160,45 @@ function restartDaemon(): Promise<DaemonState> {
   return restarting
 }
 
+/**
+ * Updates the daemon in place: it hands every terminal to a daemon started
+ * from this app's bundle, which then serves the socket. Terminal ids and shells
+ * stay the same, and nothing is killed. The connection to the old daemon closes
+ * as it exits; the next one reaches the successor, and `daemon.reconnected`
+ * fires as after a restart. On `ok: false` the old daemon still serves and
+ * nothing changed. Only ever the user's click.
+ */
+function upgradeDaemon(): Promise<DaemonUpgradeResult> {
+  upgrading ??= (async (): Promise<DaemonUpgradeResult> => {
+    const c = await getClient()
+    const closed = new Promise<void>((r) => c.onClose(r))
+
+    const outcome = await handOffDaemon(c, quePaths(), {
+      script: resolveDaemonScript(),
+      runtime: resolveRuntime()
+    })
+
+    if (!outcome.ok) return { ok: false, reason: outcome.reason }
+    // The old daemon exits once it has answered; its connection goes with it.
+    await Promise.race([closed, delay(2_000)])
+    c.close()
+    const next = await getClient()
+    const state = daemon && daemonPid === outcome.pid ? daemon : await refreshDaemon(next)
+
+    return { ok: true, state }
+  })().finally(() => {
+    upgrading = null
+  })
+
+  return upgrading
+}
+
 async function daemonState(): Promise<DaemonState> {
   if (restarting) return restarting
+
+  // Whatever the update's outcome, a daemon serves afterwards; ask it.
+  if (upgrading) await upgrading.catch(() => {})
+
   const c = await getClient()
 
   return daemon ?? (await refreshDaemon(c))
@@ -362,6 +403,7 @@ function registerIpc(): void {
 
   ipcMain.handle('daemon:state', () => reply(daemonState))
   ipcMain.handle('daemon:restart', () => reply(restartDaemon))
+  ipcMain.handle('daemon:upgrade', () => reply(upgradeDaemon))
 
   ipcMain.handle('app:trayTitle', () => {
     if (!e2e) throw new Error('app.trayTitle is only available under QUE_E2E=1')

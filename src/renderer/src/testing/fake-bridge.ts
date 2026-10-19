@@ -106,6 +106,11 @@ class FakeBridge {
   private down: Array<{ resolve: (s: DaemonState) => void; reject: (e: Error) => void }> | null =
     null
   private restartCount = 0
+  private upgradeCount = 0
+  /** The reason the next daemon.upgrade answers `ok: false` with, if one is set. */
+  private upgradeRefusal: string | null = null
+  /** While set, daemon.upgrade calls wait here until releaseUpgrade(). */
+  private heldUpgrades: Array<() => void> | null = null
   private daemonStateCount = 0
   private tasks = new Map<string, Task>()
   private queue: QueueState = closedQueue()
@@ -120,6 +125,7 @@ class FakeBridge {
   private createCallLog: WorkspaceCreateParams[] = []
   private startCallLog: string[] = []
   private termListCalls = 0
+  private attachCallLog: string[] = []
   private renameCallLog: WorkspaceRenameParams[] = []
   private seenCallLog: string[] = []
   private pushedBranches = new Set<string>()
@@ -231,6 +237,7 @@ class FakeBridge {
         attach: async ({ id, cols, rows }) => {
           this.refuseIfQuiet('term.attach')
           const t = this.terminal(id)
+          this.attachCallLog.push(id)
           Object.assign(t, { cols, rows })
 
           return { snapshot: t.screen, cols, rows }
@@ -296,6 +303,28 @@ class FakeBridge {
           if (waiting) return new Promise((resolve, reject) => waiting.push({ resolve, reject }))
 
           return Promise.resolve({ ...this.daemonBook })
+        },
+        upgrade: async () => {
+          this.upgradeCount++
+          const held = this.heldUpgrades
+
+          if (held) await new Promise<void>((r) => held.push(r))
+          const refusal = this.upgradeRefusal
+          this.upgradeRefusal = null
+
+          // As the main process does: a refused handoff leaves the old daemon serving as it was.
+          if (refusal !== null) return { ok: false, reason: refusal }
+
+          // The terminals move to the new daemon with their ids; the connection drops and comes back.
+          this.disconnect()
+          this.daemonBook = {
+            ...this.daemonBook,
+            buildId: this.daemonBook.expectedBuildId,
+            stale: false
+          }
+          this.reconnect()
+
+          return { ok: true, state: { ...this.daemonBook } }
         },
         restart: async () => {
           this.restartCount++
@@ -1007,6 +1036,34 @@ class FakeBridge {
     this.daemonBook = { ...this.daemonBook, ...state }
   }
 
+  /** Makes the next daemon.upgrade answer `ok: false` with `reason`, as a refused handoff does. */
+  refuseUpgrade(reason: string): void {
+    this.upgradeRefusal = reason
+  }
+
+  /** Holds every daemon.upgrade until releaseUpgrade(), as a handoff in progress would. */
+  holdUpgrade(): void {
+    this.heldUpgrades ??= []
+  }
+
+  /** Lets the held daemon.upgrade calls go on. */
+  releaseUpgrade(): void {
+    const held = this.heldUpgrades ?? []
+    this.heldUpgrades = null
+
+    for (const go of held) go()
+  }
+
+  /** The terminal id of every term.attach, in order (a pane attaches on mount and on every reconnect). */
+  attachCalls(): string[] {
+    return [...this.attachCallLog]
+  }
+
+  /** How many times the window asked to update the daemon in place. */
+  upgradeCalls(): number {
+    return this.upgradeCount
+  }
+
   /** How many times the window asked to restart the daemon. */
   restartCalls(): number {
     return this.restartCount
@@ -1174,6 +1231,10 @@ class FakeBridge {
     this.daemonBook = currentDaemon()
     this.down = null
     this.restartCount = 0
+    this.upgradeCount = 0
+    this.attachCallLog = []
+    this.upgradeRefusal = null
+    this.heldUpgrades = null
     this.daemonStateCount = 0
     this.folder = null
     this.tray = '● 0 ▸ 0 ✕ 0'

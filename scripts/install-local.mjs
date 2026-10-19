@@ -163,7 +163,7 @@ export async function main(argv) {
   if (opts.launch) execFileSync('open', [opts.dest])
 
   console.log(
-    'The background service was not touched, so every terminal keeps running; the app will say when it needs a restart.'
+    'The background service was not touched, so every terminal keeps running; the app will say when it needs an update.'
   )
 }
 

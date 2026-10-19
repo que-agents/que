@@ -234,8 +234,10 @@ terminal. For now, run `que daemon stop` when nothing is running, then reopen th
 | `scripts/`                                   | build, smoke, packaged smoke, soak, flake hunt, docs, release                     |
 
 The terminals live in the background service (the daemon), which keeps running the build it
-started with. When a rebuild or an update changes it, the app says so with a Restart button;
-restarting ends every terminal, and `que daemon restart` does the same from the CLI.
+started with. When a rebuild or an update changes it, the app says so with an Update button,
+which hands every terminal to the new build without ending any; `que daemon upgrade` does the
+same from the CLI. Only when that fails does the app offer Restart, which ends every terminal,
+as `que daemon restart` does.
 
 How the pieces fit: [docs/architecture.md](docs/architecture.md). How it looks and why:
 [docs/design.md](docs/design.md). Tests follow the

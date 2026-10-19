@@ -6,6 +6,7 @@ import type {
   ConfigGetResult,
   ConfigSetParams,
   DaemonState,
+  DaemonUpgradeResult,
   InstructionsGetResult,
   PrThread,
   Project,
@@ -415,6 +416,25 @@ export class QueStore {
     }))
     this.watchShown()
     await this.load(true)
+  }
+
+  /**
+   * Updates the daemon in place to this app's build; every terminal keeps running
+   * with its id, so the reconnect re-attaches them all. Only the banner's button
+   * calls it. A failure is the answer (`ok: false` with a reason), never a throw.
+   */
+  async upgradeDaemon(): Promise<DaemonUpgradeResult> {
+    let r: DaemonUpgradeResult
+
+    try {
+      r = await this.api.daemon.upgrade()
+    } catch (err) {
+      return { ok: false, reason: errorMessage(err) }
+    }
+
+    if (r.ok) await this.recover(r.state)
+
+    return r
   }
 
   /**

@@ -1,4 +1,5 @@
-// The words of the stale-build banner: what restarting the background service costs.
+// The words of the stale-build banner: the update in place it offers first, and
+// what the restart it falls back to costs.
 import type { Workspace } from '../../preload/index.d'
 import type { TermTab } from './store'
 
@@ -22,10 +23,13 @@ export function restartCost(
   }
 }
 
-/** The banner's sentence, naming the terminals a restart ends. */
-export function daemonBannerText({ terminals, working }: RestartCost): string {
-  const lead =
-    'que was updated. The background service is still running the previous build. Restart it to pick up the changes.'
+/** The banner's first sentence: an update in place, which ends nothing. */
+export const DAEMON_UPDATE_TEXT =
+  'que was updated. The background service is still running the previous build. Update it to pick up the changes; your terminals keep running.'
+
+/** The banner after an update in place failed for `reason`, naming the terminals a restart ends. */
+export function daemonRestartText(reason: string, { terminals, working }: RestartCost): string {
+  const lead = `The service could not be updated in place: ${reason.trim().replace(/\.+$/, '')}. Restart it instead.`
 
   if (terminals === 0) return `${lead} No terminals are running.`
   const count = `${terminals} terminal${terminals === 1 ? '' : 's'}`

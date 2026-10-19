@@ -1,9 +1,11 @@
-// `que daemon upgrade` against a real daemon process: its terminals move to a
+// `que daemon upgrade` (and handOffDaemon, which the app's Update button also
+// goes through) against a real daemon process: its terminals move to a
 // new daemon process with the same ids and the same shells, and a successor
 // that cannot start leaves the running daemon serving them. A Claude session
 // live in a workspace terminal stays the same live session across the move (it
 // is not resumed a second time), and the next hard restart still resumes it.
 import fs from 'node:fs'
+import net from 'node:net'
 import os from 'node:os'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
@@ -13,7 +15,8 @@ import type { LiveSession } from '@daemon/live-sessions'
 import { DaemonClient } from '@shared/client'
 import { quePaths } from '@shared/paths'
 import { pidAlive } from '@shared/process'
-import type { Events, TermInfo } from '@shared/protocol'
+import { encode, MessageDecoder, type Events, type Request, type TermInfo } from '@shared/protocol'
+import { handOffDaemon, TOO_OLD_TO_HAND_OFF } from '@shared/upgrade'
 import { bundleEntry } from '../../src/testing/bundle'
 import { runCli } from '../../src/testing/cli'
 import { readFakeLog } from '../../src/testing/fakes'
@@ -77,6 +80,33 @@ function claudeRuns(): Array<{ pid: number; resume: string | null }> {
 
 async function terminalsOf(c: DaemonClient, wsId: string): Promise<TermInfo[]> {
   return c.request('term.list', { workspaceId: wsId })
+}
+
+/**
+ * A daemon from before the handoff, on its own socket: it answers ping and
+ * refuses every other method as unknown, as such a daemon does.
+ */
+async function olderDaemon(socket: string): Promise<net.Server> {
+  const server = net.createServer((conn) => {
+    const decoder = new MessageDecoder<Request>()
+    conn.on('data', (chunk) => {
+      for (const req of decoder.push(chunk)) {
+        const answer =
+          req.method === 'daemon.ping'
+            ? { id: req.id, result: { ok: true, pid: 4242, version: '0.3.0' } }
+            : {
+                id: req.id,
+                error: { code: 'unknown_method', message: `unknown method ${req.method}` }
+              }
+
+        conn.write(encode(answer))
+      }
+    })
+  })
+
+  await new Promise<void>((resolve) => server.listen(socket, resolve))
+
+  return server
 }
 
 function upgrade(script = bundleEntry('src/daemon/index.ts')): ReturnType<typeof runCli> {
@@ -293,6 +323,72 @@ describe('daemon handoff', () => {
       for (const run of claudeRuns()) pids.add(run.pid)
       // afterEach stops the daemon and fails if a shell, claude or daemon is left.
     }, 90_000)
+  })
+
+  describe('handOffDaemon', () => {
+    const script = (): string => bundleEntry('src/daemon/index.ts')
+
+    it('answers with the successor once it serves, carrying every terminal', async () => {
+      const c = clients[0]
+      const oldPid = (await c.request('daemon.ping')).pid
+      const term = await shell(c)
+
+      const outcome = await handOffDaemon(c, quePaths(), {
+        script: script(),
+        runtime: process.execPath
+      })
+
+      if (outcome.ok) pids.add(outcome.pid)
+      expect(outcome).toEqual({ ok: true, oldPid, pid: expect.any(Number), terminals: 1 })
+      const after = await connect()
+
+      expect(await after.request('term.list')).toEqual([
+        expect.objectContaining({ id: term.id, pid: term.pid, alive: true })
+      ])
+    })
+
+    it("answers ok: false with the daemon's reason when the successor fails, and the old daemon serves on", async () => {
+      const c = clients[0]
+      const oldPid = (await c.request('daemon.ping')).pid
+      const term = await shell(c)
+      const broken = join(scratch, 'broken-daemon.js')
+      fs.writeFileSync(broken, 'process.exit(3)\n')
+
+      const outcome = await handOffDaemon(c, quePaths(), {
+        script: broken,
+        runtime: process.execPath
+      })
+
+      expect(outcome).toEqual({
+        ok: false,
+        reason: 'the new daemon exited (code 3) while taking over the terminals',
+        timedOut: false
+      })
+      expect((await c.request('daemon.ping')).pid).toBe(oldPid)
+      expect(await c.request('term.list')).toEqual([
+        expect.objectContaining({ id: term.id, alive: true })
+      ])
+    })
+
+    it('answers ok: false, too old, when the running daemon has no handoff', async () => {
+      const socket = join(scratch, 'old.sock')
+      const server = await olderDaemon(socket)
+      const c = new DaemonClient(socket)
+
+      try {
+        await c.connect()
+
+        const outcome = await handOffDaemon(c, quePaths(), {
+          script: script(),
+          runtime: process.execPath
+        })
+
+        expect(outcome).toEqual({ ok: false, reason: TOO_OLD_TO_HAND_OFF, timedOut: false })
+      } finally {
+        c.close()
+        await new Promise<void>((resolve) => server.close(() => resolve()))
+      }
+    })
   })
 
   describe('errors', () => {

@@ -51,6 +51,7 @@ import type {
 } from '../shared/protocol'
 import type {
   DaemonState,
+  DaemonUpgradeResult,
   NotificationsConfig,
   Project,
   PullRequest,
@@ -69,6 +70,7 @@ import type {
 export type {
   ConfigGetResult,
   DaemonState,
+  DaemonUpgradeResult,
   ConfigSetParams,
   InstructionsGetResult,
   InstructionsSetParams,
@@ -158,9 +160,15 @@ export interface AppApi {
 export interface DaemonApi {
   /** Connects (or starts a daemon) if needed, then says which build it runs. */
   state(): Promise<DaemonState>
+  /**
+   * Updates the daemon in place to this app's build: every terminal moves to the
+   * new daemon with the same id and keeps running, and `daemon.reconnected` fires.
+   * A failure is an answer (`ok: false` with a reason), and the old daemon still serves.
+   */
+  upgrade(): Promise<DaemonUpgradeResult>
   /** Stops the daemon, ending every terminal, and starts it from this app's build. */
   restart(): Promise<DaemonState>
-  /** Fires after a dropped connection is back (a restart, or the daemon came back). */
+  /** Fires after a dropped connection is back (an update, a restart, or the daemon came back). */
   onReconnected(cb: (state: DaemonState) => void): () => void
 }
 

@@ -347,6 +347,12 @@ export interface DaemonState {
   stale: boolean
 }
 
+/**
+ * The answer to updating the daemon in place. On `ok: false` the old daemon
+ * still serves every terminal and nothing changed; `reason` is a short sentence.
+ */
+export type DaemonUpgradeResult = { ok: true; state: DaemonState } | { ok: false; reason: string }
+
 export interface UpdateInfo {
   /** The newer version, without a leading v. */
   version: string

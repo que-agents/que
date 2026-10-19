@@ -47,9 +47,13 @@ each side names the build it has. The daemon hashes its own bundle at start
 `daemon.ping` with it as `buildId`; the app and the CLI hash the bundle they
 would start. Only the daemon bundle counts, so a change to the window never
 asks for a restart, and an unknown id on either side never does either.
-`que daemon status` and `que doctor` show both ids; the app shows a banner
-with a Restart button that names the terminals a restart ends. Restarting is
-always the user's click or `que daemon restart`, never automatic.
+`que daemon status` and `que doctor` show both ids and recommend `que daemon
+upgrade`, with `que daemon restart` as the fallback. The app shows a banner
+with an Update button, which hands the terminals to the new build in place
+(see below) and keeps every one running. If that fails (the running daemon is
+too old to hand off, or the successor did not start), the old daemon still
+serves and the banner says why and offers Restart instead, naming the
+terminals a restart ends. Either is always the user's click, never automatic.
 
 When the connection drops, the window says it is reconnecting and asks the
 main process for the daemon's state, which reconnects or starts a daemon (after
@@ -83,10 +87,12 @@ fd; `PtyHost` holds both kinds behind one interface.
 ## Upgrading the daemon without ending terminals
 
 A PTY is a file descriptor, so a terminal can change owners without the shell
-noticing. `que daemon upgrade` asks the running daemon for `daemon.handoff`
-(CLI only; the window cannot call it), naming the daemon bundle and runtime of
-the que that runs the command, normally the newly installed app's. The running
-daemon then:
+noticing. `que daemon upgrade`, and the banner's Update through the app's main
+process, ask the running daemon for `daemon.handoff` (the renderer cannot call
+it directly), naming the daemon bundle and runtime of the que that asks,
+normally the newly installed app's. Both go through `src/shared/upgrade.ts`,
+which waits until a daemon with another pid answers and reports a failure as
+an answer, not a throw. The running daemon then:
 
 1. stops reading every live terminal at the handle, so what the shells print
    from then on waits in the kernel, and serializes each mirror;
@@ -118,7 +124,13 @@ Every wait on the successor has a timeout. If it fails, exits or does not
 answer before `adopted`, the old daemon reads its terminals again and answers
 with the error; after it has let go of the socket, it also kills the successor
 (SIGKILL, so no shutdown of its runs), listens again with fresh services and
-then answers. Either way no terminal ends, and the fallback is a hard restart.
+then answers. Either way no terminal ends, and the fallback is a hard restart:
+the banner switches to Restart with the error as its reason.
+
+After an Update the app reconnects as after any drop (the reconnect contract
+above): the old connection closes as that daemon exits, the next one reaches
+the successor, and `daemon.reconnected` fires. The terminal ids are the same,
+so every pane attaches its terminal again and none is marked exited.
 The sender lives in the running daemon, so the first upgrade to a que that has
 this is still a restart.
 
