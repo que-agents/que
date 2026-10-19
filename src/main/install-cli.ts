@@ -23,13 +23,15 @@ export interface PlanInput {
   home: string
   /** Whether /usr/local/bin exists and this user can write to it. */
   systemBinWritable: boolean
+  /** The system-wide directory. Default: /usr/local/bin; scripts and tests point it elsewhere. */
+  systemBin?: string
   /** What is at the link path in the chosen directory now. */
   existing: (link: string) => Existing
 }
 
 export function planCliInstall(input: PlanInput): CliInstallPlan {
   const system = input.systemBinWritable
-  const dir = system ? SYSTEM_BIN : join(input.home, '.local', 'bin')
+  const dir = system ? (input.systemBin ?? SYSTEM_BIN) : join(input.home, '.local', 'bin')
   const link = join(dir, 'que')
   const existing = input.existing(link)
   const action = existing === 'none' ? 'create' : existing === 'file' ? 'refuse' : 'replace'
@@ -86,17 +88,23 @@ function writable(dir: string): boolean {
 }
 
 /** Links `launcher` (Resources/cli/que) into PATH. Throws on a filesystem error. */
-export function installCli(launcher: string, home: string): CliInstallPlan {
+export function installCli(
+  launcher: string,
+  home: string,
+  systemBin: string = SYSTEM_BIN
+): CliInstallPlan {
   const plan = planCliInstall({
     home,
-    systemBinWritable: writable(SYSTEM_BIN),
+    systemBin,
+    systemBinWritable: writable(systemBin),
     existing: (link) => existingAt(link, launcher)
   })
 
   if (plan.action === 'refuse') return plan
   fs.mkdirSync(plan.dir, { recursive: true })
 
-  if (plan.action === 'replace') fs.rmSync(plan.link, { force: true })
+  // unlink, not rmSync: rmSync leaves a symlink whose target is gone (a moved or deleted app).
+  if (plan.action === 'replace') fs.unlinkSync(plan.link)
   fs.symlinkSync(launcher, plan.link)
 
   return plan
