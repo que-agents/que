@@ -205,7 +205,12 @@ only under the pointer.
   the pointer. Every action sits on the line it belongs to, and the card never holds a
   destructive one: Remove… stays in the ⋯ menu.
 - **The foot.** Report, Tickets and Settings are 26px rows in `--fg-muted`, `--fg`
-  under the pointer. During an unlock a row above them carries the open lock at 12px
+  under the pointer. While the background service runs an older build than the app, a
+  20px control sits at the right end of the Settings row: a 6px `--accent` dot and the
+  word Update in 11px `--fg-muted`, hairline-bordered, `--fg` under the pointer, its
+  tooltip saying why it is there. It reads Updating… at 0.4 opacity with a `--tone-muted`
+  dot while the update runs, and is absent otherwise; a refusal goes to the error line
+  above the tab strip. During an unlock a row above them carries the open lock at 12px
   and `m:ss left` in mono 11px `--accent`, and `lock now` in mono 11px `--fg-faint` at
   its right end (`--fg-muted` under the pointer), always visible: locking again is the
   behaviour we want. The row is a `role="status"` region.

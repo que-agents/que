@@ -105,7 +105,6 @@ class FakeBridge {
   /** While the connection is down: daemon.state calls wait here until reconnect() or failReconnect(). */
   private down: Array<{ resolve: (s: DaemonState) => void; reject: (e: Error) => void }> | null =
     null
-  private restartCount = 0
   private upgradeCount = 0
   /** The reason the next daemon.upgrade answers `ok: false` with, if one is set. */
   private upgradeRefusal: string | null = null
@@ -325,21 +324,6 @@ class FakeBridge {
           this.reconnect()
 
           return { ok: true, state: { ...this.daemonBook } }
-        },
-        restart: async () => {
-          this.restartCount++
-
-          // As the main process does: the old daemon ends every terminal, the new one has none.
-          this.terminals.clear()
-          this.disconnect()
-          this.daemonBook = {
-            ...this.daemonBook,
-            buildId: this.daemonBook.expectedBuildId,
-            stale: false
-          }
-          this.reconnect()
-
-          return { ...this.daemonBook }
         },
         onReconnected: (cb) => {
           this.reconnectListeners.add(cb)
@@ -1064,11 +1048,6 @@ class FakeBridge {
     return this.upgradeCount
   }
 
-  /** How many times the window asked to restart the daemon. */
-  restartCalls(): number {
-    return this.restartCount
-  }
-
   /** How many times daemon.state was asked (each reconnect asks once). */
   daemonStateCalls(): number {
     return this.daemonStateCount
@@ -1230,7 +1209,6 @@ class FakeBridge {
     this.reconnectListeners.clear()
     this.daemonBook = currentDaemon()
     this.down = null
-    this.restartCount = 0
     this.upgradeCount = 0
     this.attachCallLog = []
     this.upgradeRefusal = null

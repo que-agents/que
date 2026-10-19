@@ -48,12 +48,14 @@ each side names the build it has. The daemon hashes its own bundle at start
 would start. Only the daemon bundle counts, so a change to the window never
 asks for a restart, and an unknown id on either side never does either.
 `que daemon status` and `que doctor` show both ids and recommend `que daemon
-upgrade`, with `que daemon restart` as the fallback. The app shows a banner
-with an Update button, which hands the terminals to the new build in place
-(see below) and keeps every one running. If that fails (the running daemon is
-too old to hand off, or the successor did not start), the old daemon still
-serves and the banner says why and offers Restart instead, naming the
-terminals a restart ends. Either is always the user's click, never automatic.
+upgrade`, with `que daemon restart` as the fallback. The app shows an Update
+control beside Settings in the sidebar, which hands the terminals to the new
+build in place (see below) and keeps every one running. If that fails (the
+running daemon is too old to hand off, or the successor did not start), the
+old daemon still serves, the error line says why, and the control stays for
+another try. The app never restarts the daemon, since that ends every
+terminal; only `que daemon restart` does. Both are always the user's click,
+never automatic.
 
 When the connection drops, the window says it is reconnecting and asks the
 main process for the daemon's state, which reconnects or starts a daemon (after
@@ -87,7 +89,7 @@ fd; `PtyHost` holds both kinds behind one interface.
 ## Upgrading the daemon without ending terminals
 
 A PTY is a file descriptor, so a terminal can change owners without the shell
-noticing. `que daemon upgrade`, and the banner's Update through the app's main
+noticing. `que daemon upgrade`, and the sidebar's Update through the app's main
 process, ask the running daemon for `daemon.handoff` (the renderer cannot call
 it directly), naming the daemon bundle and runtime of the que that asks,
 normally the newly installed app's. Both go through `src/shared/upgrade.ts`,
@@ -124,8 +126,8 @@ Every wait on the successor has a timeout. If it fails, exits or does not
 answer before `adopted`, the old daemon reads its terminals again and answers
 with the error; after it has let go of the socket, it also kills the successor
 (SIGKILL, so no shutdown of its runs), listens again with fresh services and
-then answers. Either way no terminal ends, and the fallback is a hard restart:
-the banner switches to Restart with the error as its reason.
+then answers. Either way no terminal ends; the error reaches the app's error
+line or the CLI's stderr, and the fallback is `que daemon restart`.
 
 After an Update the app reconnects as after any drop (the reconnect contract
 above): the old connection closes as that daemon exits, the next one reaches

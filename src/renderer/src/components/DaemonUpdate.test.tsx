@@ -21,8 +21,8 @@ const docs = makeWorkspace({
   status: 'idle'
 })
 
-const UPDATE =
-  'que was updated. The background service is still running the previous build. Update it to pick up the changes; your terminals keep running.'
+const TITLE =
+  'que was updated. The background service still runs the previous build. Update it in place; every terminal keeps running.'
 
 /** A daemon still running the build before this app's. */
 const STALE = { buildId: '8c41e07d92aa', expectedBuildId: '3f9a2c71b0de', stale: true }
@@ -40,22 +40,33 @@ function seed(): void {
   fakeBridge.seedTerminal(homeShell)
 }
 
-describe('DaemonBanner', () => {
+/** Every terminal the fake daemon has, alive or not, in its order. */
+async function aliveFlags(): Promise<boolean[]> {
+  return (await window.que.term.list()).map((t) => t.alive)
+}
+
+describe('DaemonUpdate', () => {
   describe('rendering', () => {
-    it('says the background service runs the previous build and offers to update it in place', async () => {
+    it('sits at the right end of the Settings row while the service runs the previous build, and says why', async () => {
       seed()
       fakeBridge.setDaemon(STALE)
 
       render(<App />)
 
-      expect(await screen.findByTestId('app-daemon-banner')).toHaveTextContent(UPDATE)
-      expect(screen.getByRole('button', { name: 'Update' })).toBeEnabled()
+      const update = await screen.findByRole('button', { name: 'Update' })
+      expect(update).toBeEnabled()
+      expect(update).toHaveAttribute('title', TITLE)
+      const settings = screen.getByTestId('sidebar-settings')
+      expect(update.parentElement).toBe(settings.parentElement)
+      expect(
+        settings.compareDocumentPosition(update) & Node.DOCUMENT_POSITION_FOLLOWING
+      ).toBeTruthy()
       expect(screen.queryByRole('button', { name: 'Restart' })).not.toBeInTheDocument()
     })
   })
 
   describe('user interactions', () => {
-    it('updates the daemon in place on the click, then goes away with the stale build', async () => {
+    it('updates the service in place on the click, then goes away with the stale build', async () => {
       const user = userEvent.setup()
       seed()
       fakeBridge.setDaemon(STALE)
@@ -64,13 +75,13 @@ describe('DaemonBanner', () => {
       await user.click(await screen.findByRole('button', { name: 'Update' }))
 
       await waitFor(() => {
-        expect(screen.queryByTestId('app-daemon-banner')).not.toBeInTheDocument()
+        expect(screen.queryByTestId('sidebar-daemon-update')).not.toBeInTheDocument()
       })
       expect(fakeBridge.upgradeCalls()).toBe(1)
-      expect(fakeBridge.restartCalls()).toBe(0)
+      expect(screen.getByTestId('sidebar-settings')).toBeInTheDocument()
     })
 
-    it('says the update is under way and takes no second click until it answers', async () => {
+    it('reads Updating… and takes no second click until the service answers', async () => {
       const user = userEvent.setup()
       seed()
       fakeBridge.setDaemon(STALE)
@@ -82,7 +93,7 @@ describe('DaemonBanner', () => {
       expect(await screen.findByRole('button', { name: 'Updating…' })).toBeDisabled()
       fakeBridge.releaseUpgrade()
       await waitFor(() => {
-        expect(screen.queryByTestId('app-daemon-banner')).not.toBeInTheDocument()
+        expect(screen.queryByTestId('sidebar-daemon-update')).not.toBeInTheDocument()
       })
       expect(fakeBridge.upgradeCalls()).toBe(1)
     })
@@ -102,7 +113,7 @@ describe('DaemonBanner', () => {
       await user.click(screen.getByRole('button', { name: 'Update' }))
 
       await waitFor(() => {
-        expect(screen.queryByTestId('app-daemon-banner')).not.toBeInTheDocument()
+        expect(screen.queryByTestId('sidebar-daemon-update')).not.toBeInTheDocument()
       })
       // The shown pane attached the same terminal again on the new connection.
       await waitFor(() => {
@@ -118,16 +129,12 @@ describe('DaemonBanner', () => {
         expect(screen.queryByTestId(`terminal-tab-${t.id}-exited`)).not.toBeInTheDocument()
       }
 
-      expect((await window.que.term.list()).map((t) => [t.id, t.alive])).toEqual([
-        [claude.id, true],
-        [docsShell.id, true],
-        [homeShell.id, true]
-      ])
+      expect(await aliveFlags()).toEqual([true, true, true])
     })
   })
 
   describe('errors', () => {
-    it('falls back to the restart when the update in place fails, naming the reason and what it ends', async () => {
+    it('puts a refusal on the error line, ends no terminal, and stays for another try', async () => {
       const user = userEvent.setup()
       seed()
       fakeBridge.setDaemon(STALE)
@@ -136,45 +143,46 @@ describe('DaemonBanner', () => {
 
       await user.click(await screen.findByRole('button', { name: 'Update' }))
 
-      expect(await screen.findByRole('button', { name: 'Restart' })).toBeEnabled()
-      expect(screen.getByTestId('app-daemon-banner')).toHaveTextContent(
-        'The service could not be updated in place: the new daemon exited (code 3). Restart it instead. This ends 3 terminals (1 working).'
+      expect(await screen.findByRole('alert')).toHaveTextContent(
+        'Could not update the background service in place: the new daemon exited (code 3). It keeps running the previous build with every terminal; to end them and start this build, run que daemon restart.'
       )
-      expect(screen.queryByRole('button', { name: 'Update' })).not.toBeInTheDocument()
-      // Nothing restarts on its own.
-      expect(fakeBridge.restartCalls()).toBe(0)
+      // Back to Update once the refusal is in, and nothing else is on offer.
+      expect(await screen.findByRole('button', { name: 'Update' })).toBeEnabled()
+      expect(screen.queryByRole('button', { name: 'Restart' })).not.toBeInTheDocument()
+      expect(await aliveFlags()).toEqual([true, true, true])
+      expect(fakeBridge.upgradeCalls()).toBe(1)
     })
 
-    it('restarts the daemon on the fallback click, then goes away with the stale build', async () => {
+    it('tries again on the next click, and the error line clears when the service takes the update', async () => {
       const user = userEvent.setup()
       seed()
       fakeBridge.setDaemon(STALE)
       fakeBridge.refuseUpgrade('the running service is too old to update in place')
       render(<App />)
       await user.click(await screen.findByRole('button', { name: 'Update' }))
+      await screen.findByRole('alert')
 
-      await user.click(await screen.findByRole('button', { name: 'Restart' }))
+      await user.click(await screen.findByRole('button', { name: 'Update' }))
 
       await waitFor(() => {
-        expect(screen.queryByTestId('app-daemon-banner')).not.toBeInTheDocument()
+        expect(screen.queryByTestId('sidebar-daemon-update')).not.toBeInTheDocument()
       })
-      expect(fakeBridge.upgradeCalls()).toBe(1)
-      expect(fakeBridge.restartCalls()).toBe(1)
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      expect(fakeBridge.upgradeCalls()).toBe(2)
     })
   })
 
   describe('empty state', () => {
-    it('shows nothing, and never updates or restarts, while the daemon runs this build', async () => {
+    it('shows nothing, and never asks for an update, while the service runs this build', async () => {
       seed()
       render(<App />)
 
-      await screen.findAllByRole('tab')
+      await screen.findByTestId('sidebar-settings')
       await waitFor(() => {
         expect(fakeBridge.daemonStateCalls()).toBeGreaterThan(0)
       })
-      expect(screen.queryByTestId('app-daemon-banner')).not.toBeInTheDocument()
+      expect(screen.queryByTestId('sidebar-daemon-update')).not.toBeInTheDocument()
       expect(fakeBridge.upgradeCalls()).toBe(0)
-      expect(fakeBridge.restartCalls()).toBe(0)
     })
   })
 })

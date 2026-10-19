@@ -27,10 +27,10 @@ All notable changes to que are recorded here. The format follows
 - A ticket queue: `que tickets` lists the tickets assigned to you from the tracker, `que tickets start KEY` makes a workspace for one under its project (learned the first time you choose), writes the ticket as a brief and starts claude on it.
 - `npm run install:local` builds que from your checkout, replaces `/Applications/que.app`, links the `que` command and reopens the app, leaving the background service and every terminal running.
 - The daemon reports the build it runs (`buildId` in `daemon.ping`); `que daemon status` and `que doctor` show it beside the build this que would start and say when they differ.
-- When the background service runs an older build than the app, a banner says so and names the terminals a restart ends; Restart there, or `que daemon restart`, stops it and starts the current build.
+- When the background service runs an older build than the app, an Update control appears beside Settings in the sidebar. It hands every terminal to the new build and keeps them all running; if that is refused, the service keeps serving as it was and the error line says why. `que daemon restart` stops it and starts the current build, ending every terminal.
 - The window says when it is reconnecting to the background service, and comes back on the same workspace with its terminals reattached, or a fresh shell where they ended.
 - Claude sessions come back after the background service restarts: each workspace terminal that had a live session reopens and resumes it where it left off. Sessions Claude ended and terminals you closed stay closed, and during locked quiet hours they wait for the unlock.
-- `que daemon upgrade` swaps in the newly installed background service without ending any terminal: shells, their screens and scrollback move to the new daemon under the same ids, and if the new one cannot start, the running one keeps serving them.
+- `que daemon upgrade` swaps in the newly installed background service without ending any terminal: shells, their screens and scrollback move to the new daemon under the same ids, and if the new one cannot start, the running one keeps serving them. `que daemon status` and `que doctor` recommend it before `que daemon restart`.
 - The morning report, `que report` and the morning summary now cover interactive sessions: per workspace, time working, needs-input moments, whether it is still waiting, commits ahead of base, and the pull request.
 - Pull request tracking: every workspace's PR state (draft, open, merged, closed; checks; review decision) is refreshed from GitHub and shown in `que status` (the app side arrives separately).
 - The sidebar is resizable: drag the divider (180 to 520px), double-click it
@@ -44,7 +44,6 @@ All notable changes to que are recorded here. The format follows
 ### Changed
 
 - Changes and Files follow the worktree without a click.
-- The banner for an older background service now updates it in place: Update hands every terminal to the new build and keeps them all running. Only when that fails does it say why and offer Restart, which ends them; `que daemon status` and `que doctor` recommend `que daemon upgrade` first too.
 - The top bar has one review pane toggle, an icon at its right end, in place of its `Changes`, `Pull request`, `Open in editor` and `Create draft PR` buttons; `⌘B` toggles the pane too.
 - The review pane's Changes header is a single line, `Commits n vs base`, with refresh and open-in-editor icons at its right end; the full counts are in its tooltip.
 - `Create draft PR` lives only in the review pane's Pull request tab, while the workspace has no pull request.

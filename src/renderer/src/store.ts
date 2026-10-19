@@ -39,6 +39,7 @@ import {
   filePathOf,
   isViewId
 } from './layout'
+import { daemonUpdateRefusedText } from './daemon-update'
 import { buildTree, newlyChanged } from './files'
 import { isLiveTask, latestTasks } from './format'
 import { chime, shouldChime } from './sound'
@@ -420,38 +421,18 @@ export class QueStore {
 
   /**
    * Updates the daemon in place to this app's build; every terminal keeps running
-   * with its id, so the reconnect re-attaches them all. Only the banner's button
-   * calls it. A failure is the answer (`ok: false` with a reason), never a throw.
+   * with its id, so the reconnect re-attaches them all. Only the sidebar's Update
+   * control calls it. A refusal goes to the error line: the old daemon still serves
+   * and nothing changed, so the control stays for another try. The app never
+   * restarts the daemon, since that ends every terminal; `que daemon restart` does.
    */
-  async upgradeDaemon(): Promise<DaemonUpgradeResult> {
-    let r: DaemonUpgradeResult
-
-    try {
-      r = await this.api.daemon.upgrade()
-    } catch (err) {
-      return { ok: false, reason: errorMessage(err) }
-    }
+  async upgradeDaemon(): Promise<void> {
+    const r = await this.api.daemon
+      .upgrade()
+      .catch((err): DaemonUpgradeResult => ({ ok: false, reason: errorMessage(err) }))
 
     if (r.ok) await this.recover(r.state)
-
-    return r
-  }
-
-  /**
-   * Restarts the daemon from this app's build, ending every terminal. Only the
-   * banner's button calls it. Resolves false when it failed (the error line says why).
-   */
-  async restartDaemon(): Promise<boolean> {
-    try {
-      const daemon = await this.api.daemon.restart()
-      await this.recover(daemon)
-
-      return true
-    } catch (err) {
-      this.set({ error: errorMessage(err) })
-
-      return false
-    }
+    else this.set({ error: daemonUpdateRefusedText(r.reason) })
   }
 
   subscribe = (cb: () => void): (() => void) => {

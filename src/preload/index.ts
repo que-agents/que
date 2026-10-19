@@ -141,7 +141,6 @@ const api: QueApi = {
   },
   daemon: {
     state: () => unwrap(ipcRenderer.invoke('daemon:state')),
-    restart: () => unwrap(ipcRenderer.invoke('daemon:restart')),
     upgrade: () => unwrap(ipcRenderer.invoke('daemon:upgrade')),
     onReconnected: (cb) => subscribe('daemon.reconnected', cb as (data: unknown) => void)
   }

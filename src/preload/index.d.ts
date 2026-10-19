@@ -166,8 +166,6 @@ export interface DaemonApi {
    * A failure is an answer (`ok: false` with a reason), and the old daemon still serves.
    */
   upgrade(): Promise<DaemonUpgradeResult>
-  /** Stops the daemon, ending every terminal, and starts it from this app's build. */
-  restart(): Promise<DaemonState>
   /** Fires after a dropped connection is back (an update, a restart, or the daemon came back). */
   onReconnected(cb: (state: DaemonState) => void): () => void
 }

@@ -60,10 +60,7 @@ let exitingPid: number | null = null
 /** A connection was made before, so the next one is a reconnect. */
 let everConnected = false
 
-/** A restart from the window in flight; state() waits for it. */
-let restarting: Promise<DaemonState> | null = null
-
-/** An update in place from the window in flight; state() waits for it too. */
+/** An update in place from the window in flight; state() waits for it. */
 let upgrading: Promise<DaemonUpgradeResult> | null = null
 
 /** Asks the daemon which build it runs and compares it with the bundle this app would start. */
@@ -138,35 +135,13 @@ async function connect(): Promise<DaemonClient> {
 }
 
 /**
- * Stops the daemon (every terminal ends) and starts one from this app's
- * bundle. Only ever the user's click: nothing calls this on its own.
- */
-function restartDaemon(): Promise<DaemonState> {
-  restarting ??= (async () => {
-    const c = await getClient()
-    const { pid } = await c.request('daemon.ping')
-    const closed = new Promise<void>((r) => c.onClose(r))
-    await c.request('daemon.shutdown')
-    await Promise.race([closed, delay(2_000)])
-    c.close()
-    exitingPid = pid
-    const next = await getClient()
-
-    return daemon ?? (await refreshDaemon(next))
-  })().finally(() => {
-    restarting = null
-  })
-
-  return restarting
-}
-
-/**
  * Updates the daemon in place: it hands every terminal to a daemon started
  * from this app's bundle, which then serves the socket. Terminal ids and shells
  * stay the same, and nothing is killed. The connection to the old daemon closes
  * as it exits; the next one reaches the successor, and `daemon.reconnected`
  * fires as after a restart. On `ok: false` the old daemon still serves and
- * nothing changed. Only ever the user's click.
+ * nothing changed. Only ever the user's click; the app never restarts the
+ * daemon (that ends every terminal), `que daemon restart` does.
  */
 function upgradeDaemon(): Promise<DaemonUpgradeResult> {
   upgrading ??= (async (): Promise<DaemonUpgradeResult> => {
@@ -194,8 +169,6 @@ function upgradeDaemon(): Promise<DaemonUpgradeResult> {
 }
 
 async function daemonState(): Promise<DaemonState> {
-  if (restarting) return restarting
-
   // Whatever the update's outcome, a daemon serves afterwards; ask it.
   if (upgrading) await upgrading.catch(() => {})
 
@@ -402,7 +375,6 @@ function registerIpc(): void {
   })
 
   ipcMain.handle('daemon:state', () => reply(daemonState))
-  ipcMain.handle('daemon:restart', () => reply(restartDaemon))
   ipcMain.handle('daemon:upgrade', () => reply(upgradeDaemon))
 
   ipcMain.handle('app:trayTitle', () => {
