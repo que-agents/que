@@ -31,21 +31,20 @@ All notable changes to que are recorded here. The format follows
 - The window says when it is reconnecting to the background service, and comes back on the same workspace with its terminals reattached, or a fresh shell where they ended.
 - Claude sessions come back after the background service restarts: each workspace terminal that had a live session reopens and resumes it where it left off. Sessions Claude ended and terminals you closed stay closed, and during locked quiet hours they wait for the unlock.
 - `que daemon upgrade` swaps in the newly installed background service without ending any terminal: shells, their screens and scrollback move to the new daemon under the same ids, and if the new one cannot start, the running one keeps serving them.
+- The morning report, `que report` and the morning summary now cover interactive sessions: per workspace, time working, needs-input moments, whether it is still waiting, commits ahead of base, and the pull request.
+- Pull request tracking: every workspace's PR state (draft, open, merged, closed; checks; review decision) is refreshed from GitHub and shown in `que status` (the app side arrives separately).
+- The sidebar is resizable: drag the divider (180 to 520px), double-click it
+  to reset, or use the arrow keys when it has focus. The width is remembered.
+  The app's own data (such as this) now lives under `QUE_HOME/app`, so a test
+  `QUE_HOME` isolates it too.
+- Right-click a project or a workspace in the sidebar for its actions (the ⋯
+  button offers the same). Projects can now be removed from the app; their
+  workspaces go with them, worktrees deleted and branches kept.
 
 ### Changed
 
 - Changes and Files follow the worktree without a click.
 - The banner for an older background service now updates it in place: Update hands every terminal to the new build and keeps them all running. Only when that fails does it say why and offer Restart, which ends them; `que daemon status` and `que doctor` recommend `que daemon upgrade` first too.
-
-### Fixed
-
-- The completion chime only played for queued tasks; it now also plays when a session in a workspace finishes a turn (work hours only), and a task's workspace chimes once, when the task finishes.
-- Ticket links pointed at the tracker's API host; they now use the site from the CLI's auth status or `[jira] site`.
-- Ticket sync asked the Jira CLI for `project` and `updated`, which its search refuses; que now requests only the allowed fields, takes the project from the key, and keeps the queue in the JQL's order.
-- Launched from Finder, the app now resolves the login shell's PATH for the daemon, so `claude` and `gh` are found the same way they are in a terminal; `que doctor` reports what is on the daemon's PATH.
-
-### Changed
-
 - The top bar has one review pane toggle, an icon at its right end, in place of its `Changes`, `Pull request`, `Open in editor` and `Create draft PR` buttons; `⌘B` toggles the pane too.
 - The review pane's Changes header is a single line, `Commits n vs base`, with refresh and open-in-editor icons at its right end; the full counts are in its tooltip.
 - `Create draft PR` lives only in the review pane's Pull request tab, while the workspace has no pull request.
@@ -53,7 +52,6 @@ All notable changes to que are recorded here. The format follows
 - The Changes view no longer replaces the terminals: the list lives in the review pane and a file's diff opens as a tab in the middle.
 - The sidebar filter is a search icon in the title strip, in line with the window buttons; it pops the field out on click or `⌘K` and folds away when cleared.
 - The Tickets entry sits in the sidebar's bottom group with Report and Settings, which stays pinned to the bottom of the window above a solid line.
-
 - Add project is a folder-plus line icon, and the other add buttons (session,
   workspace, terminal tab) use a matching plus; icons are inline SVG.
 - The sidebar starts with a Sessions section: one row per terminal outside a
@@ -72,18 +70,6 @@ All notable changes to que are recorded here. The format follows
   Protected branches, which also guard Create draft PR, sit under a Pull
   requests heading.
 
-### Added
-
-- The morning report, `que report` and the morning summary now cover interactive sessions: per workspace, time working, needs-input moments, whether it is still waiting, commits ahead of base, and the pull request.
-- Pull request tracking: every workspace's PR state (draft, open, merged, closed; checks; review decision) is refreshed from GitHub and shown in `que status` (the app side arrives separately).
-- The sidebar is resizable: drag the divider (180 to 520px), double-click it
-  to reset, or use the arrow keys when it has focus. The width is remembered.
-  The app's own data (such as this) now lives under `QUE_HOME/app`, so a test
-  `QUE_HOME` isolates it too.
-- Right-click a project or a workspace in the sidebar for its actions (the ⋯
-  button offers the same). Projects can now be removed from the app; their
-  workspaces go with them, worktrees deleted and branches kept.
-
 ### Removed
 
 - The Tonight panel in the sidebar (add task, queue control, task list) and
@@ -94,6 +80,10 @@ All notable changes to que are recorded here. The format follows
 
 ### Fixed
 
+- The completion chime only played for queued tasks; it now also plays when a session in a workspace finishes a turn (work hours only), and a task's workspace chimes once, when the task finishes.
+- Ticket links pointed at the tracker's API host; they now use the site from the CLI's auth status or `[jira] site`.
+- Ticket sync asked the Jira CLI for `project` and `updated`, which its search refuses; que now requests only the allowed fields, takes the project from the key, and keeps the queue in the JQL's order.
+- Launched from Finder, the app now resolves the login shell's PATH for the daemon, so `claude` and `gh` are found the same way they are in a terminal; `que doctor` reports what is on the daemon's PATH.
 - Terminals and headless runs start with a cleaned environment: the markers a
   running coding-agent session leaves in its shells are removed (a session in
   que is a top-level one again, with transcripts saved), and the launching
