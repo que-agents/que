@@ -30,6 +30,7 @@ All notable changes to que are recorded here. The format follows
 - When the background service runs an older build than the app, a banner says so and names the terminals a restart ends; Restart there, or `que daemon restart`, stops it and starts the current build.
 - The window says when it is reconnecting to the background service, and comes back on the same workspace with its terminals reattached, or a fresh shell where they ended.
 - Claude sessions come back after the background service restarts: each workspace terminal that had a live session reopens and resumes it where it left off. Sessions Claude ended and terminals you closed stay closed, and during locked quiet hours they wait for the unlock.
+- `que daemon upgrade` swaps in the newly installed background service without ending any terminal: shells, their screens and scrollback move to the new daemon under the same ids, and if the new one cannot start, the running one keeps serving them.
 
 ### Changed
 

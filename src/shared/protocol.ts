@@ -32,6 +32,22 @@ export interface PingResult {
   path: string
 }
 
+/** daemon.handoff: the daemon bundle to hand the terminals to, and the program that runs it as Node. */
+export interface HandoffParams {
+  /** Default: this daemon's own bundle. */
+  script?: string
+  /** Default: the program running this daemon. */
+  runtime?: string
+}
+
+export interface HandoffResult {
+  ok: true
+  /** The successor's pid. */
+  pid: number
+  /** How many live terminals it took over. */
+  terminals: number
+}
+
 export interface TermCreateParams {
   cwd?: string
   cols: number
@@ -418,6 +434,8 @@ export interface InstructionsSetParams {
 export interface Methods {
   'daemon.ping': { params: Record<string, never> | undefined; result: PingResult }
   'daemon.shutdown': { params: Record<string, never> | undefined; result: Ok }
+  /** Hands every live terminal to a new daemon process, which then serves the socket; this one exits. */
+  'daemon.handoff': { params: HandoffParams | undefined; result: HandoffResult }
   'term.create': { params: TermCreateParams; result: TermInfo }
   'term.list': { params: TermListParams | undefined; result: TermInfo[] }
   'term.attach': { params: TermAttachParams; result: TermAttachResult }
@@ -496,7 +514,7 @@ export type ResultOf<M extends MethodName> = Methods[M]['result']
  * makes a missing or extra entry a compile error.
  *
  * - `renderer`: the app's window may call it (Electron main enforces this). False for
- *   the calls only the daemon's own tooling makes: ping, shutdown, and hook events.
+ *   the calls only the daemon's own tooling makes: ping, shutdown, handoff, and hook events.
  * - `quiet`: refused with `quiet_hours` while quiet hours are on and not unlocked:
  *   every way to see a terminal, its output, or a report, or to start new work.
  *
@@ -513,6 +531,7 @@ export const METHODS: {
     renderer: false,
     quiet: false
   },
+  'daemon.handoff': { renderer: false, quiet: false },
   'term.create': { renderer: true, quiet: true },
   'term.list': { renderer: true, quiet: false },
   'term.attach': { renderer: true, quiet: true },

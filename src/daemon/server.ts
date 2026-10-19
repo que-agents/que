@@ -32,6 +32,8 @@ import { decoders, ParamsError } from '../shared/methods.decode'
 import { ensureDirs, quePaths, type QuePaths } from '../shared/paths'
 import type {
   ConfigGetResult,
+  HandoffParams,
+  HandoffResult,
   InstructionsGetResult,
   TermCreateParams,
   TermInfo,
@@ -40,7 +42,7 @@ import type {
 import type { ConfigPatch, Workspace } from '../shared/types'
 import { EventBus } from './bus'
 import { RpcError } from './errors'
-import type { HostedTerminal, PtyHost, TermExtra } from './pty-host'
+import type { HostedTerminal, PtyHost, Term, TermExtra } from './pty-host'
 import { QuietService } from './quiet'
 import { TaskQueue } from './queue'
 import { SYSTEM_PROMPT } from './runner'
@@ -71,6 +73,13 @@ export interface ServerOptions {
   log?: (msg: string) => void
   /** Called after the daemon.shutdown response has been flushed. */
   onShutdown?: () => void
+  /**
+   * Runs daemon.handoff (see handoff.ts); `release` stops serving everyone but
+   * the caller. Without it the daemon refuses the method.
+   */
+  handoff?: (params: HandoffParams, release: () => Promise<void>) => Promise<HandoffResult>
+  /** Called after a successful daemon.handoff response has been flushed: exit, ending nothing. */
+  onHandedOff?: () => void
   /** Defaults to quePaths() at construction. */
   paths?: QuePaths
   /** The CLI bin/que runs. Defaults to the bundled out/cli/index.js. */
@@ -260,6 +269,10 @@ export class DaemonServer {
       now: opts.now,
       tickMs: opts.quietTickMs
     })
+
+    // Terminals taken over from a predecessor daemon keep their workspace.
+    for (const t of host.list())
+      if (t.alive && t.workspaceId) this.termWorkspace.set(t.id, t.workspaceId)
     this.liveSessions = new LiveSessions({
       ...storedLiveSessions(this.store),
       locked: () => this.quiet.locked(),
@@ -421,7 +434,7 @@ export class DaemonServer {
     const t = this.opts.host.create(params, extra)
 
     if (extra?.workspaceId) this.termWorkspace.set(t.id, extra.workspaceId)
-    this.log(`term ${t.id} created pid=${t.proc.pid} cwd=${t.cwd}`)
+    this.log(`term ${t.id} created pid=${t.pid} cwd=${t.cwd}`)
     this.bus.emit('term.created', t.info())
 
     return t
@@ -439,7 +452,7 @@ export class DaemonServer {
     return t.info()
   }
 
-  private requireTerm(id: string): HostedTerminal {
+  private requireTerm(id: string): Term {
     const t = this.opts.host.get(id)
 
     if (!t) throw new RpcError(ErrorCodes.NotFound, `no terminal ${id}`)
@@ -620,7 +633,33 @@ export class DaemonServer {
    * run (restart recovery resumes them). Does not kill PTYs.
    */
   async close(): Promise<void> {
-    // Before the terminals' exits and hooks arrive: shutdown leaves the record as it was.
+    await this.stopServices()
+
+    for (const c of this.conns) c.socket.destroy()
+    this.conns.clear()
+    const server = this.server
+    this.server = null
+
+    if (!server) return Promise.resolve()
+
+    return new Promise((resolve) => server.close(() => resolve()))
+  }
+
+  /**
+   * For a handoff: as close(), but the caller's connection stays open for the
+   * answer, and this resolves once the socket stops accepting rather than
+   * when every connection has ended. Does not kill PTYs.
+   */
+  private async release(spare: Connection): Promise<void> {
+    await this.stopServices()
+
+    for (const c of this.conns) if (c !== spare) c.socket.destroy()
+    this.server?.close()
+    this.server = null
+  }
+
+  private async stopServices(): Promise<void> {
+    // Before the terminals' exits and hooks arrive: shutdown and a handoff leave the record as it was.
     this.liveSessions.stop()
 
     for (const u of this.unsubs) u()
@@ -640,15 +679,6 @@ export class DaemonServer {
       this.workspaces.close()
       this.store.close()
     }
-
-    for (const c of this.conns) c.socket.destroy()
-    this.conns.clear()
-    const server = this.server
-    this.server = null
-
-    if (!server) return Promise.resolve()
-
-    return new Promise((resolve) => server.close(() => resolve()))
   }
 
   /**
@@ -702,6 +732,11 @@ export class DaemonServer {
       conn.send({ id: req.id, result })
 
       for (const fn of after) fn()
+
+      if (req.method === 'daemon.handoff') {
+        conn.socket.end(() => this.opts.onHandedOff?.())
+        setTimeout(() => this.opts.onHandedOff?.(), 500).unref()
+      }
 
       if (req.method === 'daemon.shutdown') {
         // Let the response reach the client before tearing everything down.
@@ -767,6 +802,12 @@ export class DaemonServer {
       path: process.env.PATH ?? ''
     }),
     'daemon.shutdown': () => ({ ok: true }),
+    'daemon.handoff': (p, { conn }) => {
+      if (!this.opts.handoff)
+        throw new RpcError(ErrorCodes.BadRequest, 'this daemon cannot hand off')
+
+      return this.opts.handoff(p ?? {}, () => this.release(conn))
+    },
     'term.create': (p) => this.createTerminal(p).info(),
     'term.list': (p) =>
       this.opts.host

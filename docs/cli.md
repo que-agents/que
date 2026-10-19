@@ -9,6 +9,7 @@ hand; run `npm run docs` after changing a command.
 | `que daemon stop [options]`                 | kill all terminals and stop the daemon                                                                                                                                                     |
 | `que daemon restart [options]`              | stop the daemon, ending every terminal, and start it from this build                                                                                                                       |
 | `que daemon status [options]`               | show whether the daemon is running                                                                                                                                                         |
+| `que daemon upgrade [options]`              | hand every terminal to the daemon of this que, without ending any                                                                                                                          |
 | `que daemon install [options]`              | install a launchd agent that keeps the daemon running                                                                                                                                      |
 | `que daemon uninstall [options]`            | remove the launchd agent                                                                                                                                                                   |
 | `que term list [options]`                   | list terminals                                                                                                                                                                             |
@@ -94,6 +95,19 @@ show whether the daemon is running
 Options:
   --json      print JSON
   -h, --help  display help for command
+```
+
+### que daemon upgrade
+
+```text
+Usage: que daemon upgrade [options]
+
+hand every terminal to the daemon of this que, without ending any
+
+Options:
+  --script <path>   daemon bundle to start (default: the one next to this CLI)
+  --runtime <path>  program that runs it as Node (default: the one of this que)
+  -h, --help        display help for command
 ```
 
 ### que daemon install

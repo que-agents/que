@@ -59,6 +59,7 @@ const idOnly = (p: Params): { id: string } => ({ id: str(p, 'id') })
 export const decoders: { [M in MethodName]: (p: Params) => ParamsOf<M> } = {
   'daemon.ping': none,
   'daemon.shutdown': none,
+  'daemon.handoff': (p) => ({ script: optString(p, 'script'), runtime: optString(p, 'runtime') }),
   'term.create': (p) => ({
     cwd: optString(p, 'cwd'),
     cols: num(p, 'cols'),

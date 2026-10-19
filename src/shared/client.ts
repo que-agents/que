@@ -252,6 +252,20 @@ export function resolveDaemonScript(): string {
   return daemonScriptFrom(__dirname)
 }
 
+/**
+ * The environment a daemon starts with. It starts clean (shared/env.ts):
+ * nothing of the shell or agent session that launched it reaches the
+ * terminals it will open.
+ */
+export function daemonEnv(paths: QuePaths): Record<string, string> {
+  const env = cleanSpawnEnv(process.env)
+  delete env.QUE_TERMINAL
+  env.ELECTRON_RUN_AS_NODE = '1'
+  env.QUE_HOME = paths.home
+
+  return env
+}
+
 function startDaemon(paths: QuePaths, opts: StartOptions): void {
   const runtime = opts.runtime ?? resolveRuntime()
   const script = opts.daemonScript ?? resolveDaemonScript()
@@ -263,13 +277,7 @@ function startDaemon(paths: QuePaths, opts: StartOptions): void {
     )
   }
 
-  // The daemon starts clean (shared/env.ts): nothing of the shell or agent
-  // session that launched it reaches the terminals it will open.
-  const env = cleanSpawnEnv(process.env)
-  delete env.QUE_TERMINAL
-  env.ELECTRON_RUN_AS_NODE = '1'
-  env.QUE_HOME = paths.home
-
+  const env = daemonEnv(paths)
   const logFd = fs.openSync(paths.daemonLog, 'a')
 
   try {
