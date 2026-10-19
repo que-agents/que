@@ -137,11 +137,20 @@ export class LiveSessions {
 
   constructor(private o: LiveSessionsOptions) {}
 
-  /** Takes the previous daemon's record and restores it, unless quiet hours are locked. */
+  /**
+   * Takes the previous daemon's record. An entry whose terminal is alive in this
+   * daemon came over with it (a handoff) and is still live; the rest are restored,
+   * unless quiet hours are locked.
+   */
   start(): void {
     this.running = true
-    this.live = []
-    this.pending = this.o.load()
+    const stored = this.o.load()
+    this.live = stored.filter((e) => this.o.isWorkspaceTerminal(e.terminalId, e.workspaceId))
+    this.pending = stored.filter((e) => !this.live.includes(e))
+
+    if (this.live.length > 0) {
+      this.o.log(`live sessions: ${this.live.length} session(s) came over with their terminals`)
+    }
 
     if (this.pending.length > 0 && this.o.locked()) {
       this.o.log(

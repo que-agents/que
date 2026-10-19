@@ -207,6 +207,20 @@ describe('LiveSessions', () => {
     expect(saved()).toEqual([])
   })
 
+  it('keeps an entry whose terminal is alive in this daemon instead of resuming it', () => {
+    // After a handoff the terminals came over with the record: the session in TERM
+    // is still live, while the one in a terminal this daemon does not have is resumed.
+    const carried = { workspaceId: WS, terminalId: TERM, sessionId: 'carried' }
+    const { sessions, resumed, saved } = setup([carried, previous])
+    sessions.start()
+
+    expect(resumed).toEqual([previous])
+    expect(saved()).toEqual([carried])
+
+    sessions.hook(WS, TERM, undefined, makeHookEvent('SessionEnd', { session_id: 'carried' }))
+    expect(saved()).toEqual([])
+  })
+
   it('keeps the record while quiet hours are locked and restores it at the unlock', () => {
     const { sessions, resumed, state, saved } = setup([previous], true)
 

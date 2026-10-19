@@ -133,7 +133,9 @@ headless task runs are never recorded, since the queue recovers those. The
 record is saved in the store as it changes and frozen when shutdown begins, so
 a crash leaves it as current as a clean stop. At start the next daemon consumes
 each entry once and, unless the workspace is gone or archived, opens a terminal
-in it that types `claude --resume <session>` once setup is done. While quiet
+in it that types `claude --resume <session>` once setup is done. An entry whose terminal is
+alive in the new daemon came over with it and stays live rather than being resumed
+again. While quiet
 hours are locked the entries wait for the unlock. If a resume fails, the shell
 shows the error and nothing else is typed; the daemon log names each session
 it resumed or skipped.
