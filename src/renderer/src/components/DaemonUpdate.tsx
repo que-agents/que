@@ -1,13 +1,10 @@
 import { useState } from 'react'
-import { DAEMON_UPDATE_TITLE } from '../daemon-update'
 import { useQueSelector, useStore } from '../store'
 
 /**
  * A small control beside Settings while the background service runs an older
- * build than this app; absent otherwise. Its click updates the service in place,
- * which keeps every terminal running, and on success it goes away with the stale
- * state. A refusal goes to the error line and the control stays, for another try
- * after a rebuild. Nothing here ends a terminal.
+ * build than this app; absent otherwise. Its click updates the service in place
+ * (see QueStore.upgradeDaemon), and on success it goes away with the stale state.
  */
 export default function DaemonUpdate(): React.JSX.Element | null {
   const store = useStore()
@@ -26,11 +23,11 @@ export default function DaemonUpdate(): React.JSX.Element | null {
       type="button"
       className="update-chip"
       data-testid="sidebar-daemon-update"
-      title={DAEMON_UPDATE_TITLE}
+      title="que was updated. The background service still runs the previous build. Update it in place; every terminal keeps running."
       disabled={busy}
       onClick={update}
     >
-      <span className="dot" aria-hidden="true" />
+      <span className="status-dot" aria-hidden="true" />
       {busy ? 'Updating…' : 'Update'}
     </button>
   )

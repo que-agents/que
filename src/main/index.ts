@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { app, BrowserWindow, dialog, ipcMain, Notification, shell } from 'electron'
 import { reportSummaryText } from '../daemon/report'
 import { buildIdOf, daemonIsStale } from '../shared/build-id'
-import { DaemonClient, resolveDaemonScript, resolveRuntime } from '../shared/client'
+import { DaemonClient, resolveDaemonScript } from '../shared/client'
 import { loginShellPath, mergePath } from '../shared/login-path'
 import { queHome, quePaths } from '../shared/paths'
 import { delay, waitForExit } from '../shared/process'
@@ -15,8 +15,8 @@ import {
   type ParamsOf,
   type Report
 } from '../shared/protocol'
-import type { DaemonState, DaemonUpgradeResult, QuietState, UpdateInfo } from '../shared/types'
-import { handOffDaemon } from '../shared/upgrade'
+import type { DaemonState, QuietState, UpdateInfo } from '../shared/types'
+import { handOffDaemon, handOffFailedText } from '../shared/upgrade'
 import { createBoardWindow } from './board'
 import { decodeAbsolutePath } from './ipc.decode'
 import { installMenu } from './menu'
@@ -61,7 +61,7 @@ let exitingPid: number | null = null
 let everConnected = false
 
 /** An update in place from the window in flight; state() waits for it. */
-let upgrading: Promise<DaemonUpgradeResult> | null = null
+let upgrading: Promise<DaemonState> | null = null
 
 /** Asks the daemon which build it runs and compares it with the bundle this app would start. */
 async function refreshDaemon(c: DaemonClient): Promise<DaemonState> {
@@ -139,33 +139,35 @@ async function connect(): Promise<DaemonClient> {
  * from this app's bundle, which then serves the socket. Terminal ids and shells
  * stay the same, and nothing is killed. The connection to the old daemon closes
  * as it exits; the next one reaches the successor, and `daemon.reconnected`
- * fires as after a restart. On `ok: false` the old daemon still serves and
- * nothing changed. Only ever the user's click; the app never restarts the
- * daemon (that ends every terminal), `que daemon restart` does.
+ * fires as after a restart. A failed hand-off rejects with what it means (the
+ * old daemon still serves). Only ever the user's click.
  */
-function upgradeDaemon(): Promise<DaemonUpgradeResult> {
-  upgrading ??= (async (): Promise<DaemonUpgradeResult> => {
+function upgradeDaemon(): Promise<DaemonState> {
+  upgrading ??= (async () => {
     const c = await getClient()
     const closed = new Promise<void>((r) => c.onClose(r))
+    const paths = quePaths()
+    const outcome = await handOffDaemon(c, paths)
 
-    const outcome = await handOffDaemon(c, quePaths(), {
-      script: resolveDaemonScript(),
-      runtime: resolveRuntime()
-    })
-
-    if (!outcome.ok) return { ok: false, reason: outcome.reason }
-    // The old daemon exits once it has answered; its connection goes with it.
+    if (!outcome.ok) throw new Error(sentence(handOffFailedText(outcome, paths)))
+    // The old daemon exits once it has answered; its connection goes with it. It
+    // leaves the socket to its successor, so there is no exit to wait for.
     await Promise.race([closed, delay(2_000)])
     c.close()
+    exitingPid = null
     const next = await getClient()
-    const state = daemon && daemonPid === outcome.pid ? daemon : await refreshDaemon(next)
 
-    return { ok: true, state }
+    return daemon && daemonPid === outcome.pid ? daemon : await refreshDaemon(next)
   })().finally(() => {
     upgrading = null
   })
 
   return upgrading
+}
+
+/** A lower-case clause as the error line's sentence. */
+function sentence(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1)
 }
 
 async function daemonState(): Promise<DaemonState> {

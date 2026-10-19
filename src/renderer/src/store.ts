@@ -6,7 +6,6 @@ import type {
   ConfigGetResult,
   ConfigSetParams,
   DaemonState,
-  DaemonUpgradeResult,
   InstructionsGetResult,
   PrThread,
   Project,
@@ -39,7 +38,6 @@ import {
   filePathOf,
   isViewId
 } from './layout'
-import { daemonUpdateRefusedText } from './daemon-update'
 import { buildTree, newlyChanged } from './files'
 import { isLiveTask, latestTasks } from './format'
 import { chime, shouldChime } from './sound'
@@ -421,18 +419,11 @@ export class QueStore {
 
   /**
    * Updates the daemon in place to this app's build; every terminal keeps running
-   * with its id, so the reconnect re-attaches them all. Only the sidebar's Update
-   * control calls it. A refusal goes to the error line: the old daemon still serves
-   * and nothing changed, so the control stays for another try. The app never
-   * restarts the daemon, since that ends every terminal; `que daemon restart` does.
+   * with its id, so the reconnect re-attaches them all. A failed hand-off goes to
+   * the error line, and the Update control stays for another try.
    */
-  async upgradeDaemon(): Promise<void> {
-    const r = await this.api.daemon
-      .upgrade()
-      .catch((err): DaemonUpgradeResult => ({ ok: false, reason: errorMessage(err) }))
-
-    if (r.ok) await this.recover(r.state)
-    else this.set({ error: daemonUpdateRefusedText(r.reason) })
+  upgradeDaemon(): Promise<void> {
+    return this.guard(async () => this.recover(await this.api.daemon.upgrade()))
   }
 
   subscribe = (cb: () => void): (() => void) => {

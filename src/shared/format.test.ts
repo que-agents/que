@@ -6,7 +6,8 @@ import {
   formatMinSec,
   formatSince,
   formatSpan,
-  hhmm
+  hhmm,
+  plural
 } from './format'
 
 describe('formatCost', () => {
@@ -93,5 +94,15 @@ describe('formatSince', () => {
   it('gives the date when older than that', () => {
     expect(formatSince(at(10, 19, 0), now)).toBe('since 19:00 on 10 Oct')
     expect(formatSince(at(28, 9, 0, 8), now)).toBe('since 09:00 on 28 Sep')
+  })
+})
+
+describe('plural', () => {
+  it.each([
+    [0, '0 terminals'],
+    [1, '1 terminal'],
+    [2, '2 terminals']
+  ])('counts %i', (n, text) => {
+    expect(plural(n, 'terminal')).toBe(text)
   })
 })

@@ -685,11 +685,8 @@ h2 {
   gap: 4px;
 }
 
-.settings-row .row-button {
-  flex: 1;
-}
-
-/* A dot and a word in the foot's muted voice; the dot is the only colour on the row. */
+/* A dot and a word in the foot's muted voice; the dot is the only colour on the row. The
+ * hairline and the hover are the button's own. */
 .update-chip {
   flex: none;
   display: inline-flex;
@@ -699,26 +696,13 @@ h2 {
   margin-right: 2px;
   padding: 0 8px;
   background: none;
-  border: 1px solid var(--border);
   border-radius: var(--radius);
   font-size: 11px;
   color: var(--fg-muted);
 }
 
-.update-chip:hover:not(:disabled) {
-  background: var(--bg-hover);
-  border-color: var(--border-strong);
-  color: var(--fg);
-}
-
-.update-chip .dot {
-  width: 6px;
-  height: 6px;
-  background: var(--accent);
-}
-
-.update-chip:disabled .dot {
-  background: var(--tone-muted);
+.update-chip .status-dot {
+  --tone: var(--accent);
 }
 
 .unlock-row {

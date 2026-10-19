@@ -93,8 +93,8 @@ noticing. `que daemon upgrade`, and the sidebar's Update through the app's main
 process, ask the running daemon for `daemon.handoff` (the renderer cannot call
 it directly), naming the daemon bundle and runtime of the que that asks,
 normally the newly installed app's. Both go through `src/shared/upgrade.ts`,
-which waits until a daemon with another pid answers and reports a failure as
-an answer, not a throw. The running daemon then:
+which reports a failure as an answer, not a throw, and puts what it means into
+words for both surfaces (`handOffFailedText`). The running daemon then:
 
 1. stops reading every live terminal at the handle, so what the shells print
    from then on waits in the kernel, and serializes each mirror;

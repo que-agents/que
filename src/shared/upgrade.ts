@@ -1,21 +1,27 @@
 // Updating the daemon in place: the running daemon hands every live terminal
-// to a successor started from the given bundle (daemon.handoff), and the
-// caller waits until a daemon with another pid answers on the socket. Both
-// `que daemon upgrade` and the app's Update button go through here. A failure
-// is an answer, not a throw: the old daemon still serves and nothing changed.
-import { DaemonClient, DaemonError } from './client'
+// to a successor started from the given bundle (daemon.handoff), which then
+// serves the socket. Both `que daemon upgrade` and the app's Update control go
+// through here. A failure is an answer, not a throw, and handOffFailedText
+// puts what it means into words for both.
+import { DaemonClient, DaemonError, resolveDaemonScript, resolveRuntime } from './client'
 import { errorMessage } from './errors.decode'
 import type { QuePaths } from './paths'
 import { delay } from './process'
-import { ErrorCodes } from './protocol'
+import { ErrorCodes, type HandoffResult } from './protocol'
 
 export interface HandOffOptions {
-  /** The daemon bundle the successor runs. */
-  script: string
-  /** The program that runs it as Node. */
-  runtime: string
-  /** How long to wait for the successor to answer after the handoff. Default 10 s. */
-  timeoutMs?: number
+  /** The daemon bundle the successor runs; default: the one of this que. */
+  script?: string
+  /** The program that runs it as Node; default: the one of this que. */
+  runtime?: string
+}
+
+export interface HandOffFailure {
+  ok: false
+  /** Why, as a short clause: the daemon's own message when it refused. */
+  reason: string
+  /** No successor answered in time (the handoff itself was not refused). */
+  timedOut: boolean
 }
 
 export type HandOffOutcome =
@@ -28,57 +34,68 @@ export type HandOffOutcome =
       /** Live terminals it serves. */
       terminals: number
     }
-  | {
-      ok: false
-      /** Why, as a short sentence: the daemon's own message when it refused. */
-      reason: string
-      /** No successor answered in time (the handoff itself was not refused). */
-      timedOut: boolean
-    }
+  | HandOffFailure
+
+/** How long to wait for a successor when the old daemon's connection dropped before its answer. */
+const SUCCESSOR_TIMEOUT_MS = 10_000
 
 /** What a daemon from before the handoff answers to it, in words. */
 export const TOO_OLD_TO_HAND_OFF = 'the running service is too old to update in place'
 
-/** Asks the daemon on `c` to hand over, then waits for its successor on `paths`. */
+/** Asks the daemon on `c` to hand over to a daemon from `opts`, and says who serves `paths` now. */
 export async function handOffDaemon(
   c: DaemonClient,
   paths: QuePaths,
-  opts: HandOffOptions
+  opts: HandOffOptions = {}
 ): Promise<HandOffOutcome> {
-  const timeoutMs = opts.timeoutMs ?? 10_000
   let oldPid: number
-  let carried: number | null = null
+  let result: HandoffResult | null
 
   try {
     oldPid = (await c.request('daemon.ping')).pid
-
-    const result = await c
-      .request('daemon.handoff', { script: opts.script, runtime: opts.runtime })
+    result = await c
+      .request('daemon.handoff', {
+        script: opts.script ?? resolveDaemonScript(),
+        runtime: opts.runtime ?? resolveRuntime()
+      })
       .catch((err: Error) => {
         // The old daemon may exit before its answer arrives; the new pid tells.
         if (err instanceof DaemonError && err.code === 'disconnected') return null
 
         throw err
       })
-
-    carried = result?.terminals ?? null
   } catch (err) {
     const tooOld = err instanceof DaemonError && err.code === ErrorCodes.UnknownMethod
 
     return { ok: false, reason: tooOld ? TOO_OLD_TO_HAND_OFF : errorMessage(err), timedOut: false }
   }
 
-  const next = await successor(paths, oldPid, timeoutMs)
+  // The daemon answers only once its successor serves the socket, so the answer is the outcome.
+  if (result) return { ok: true, oldPid, pid: result.pid, terminals: result.terminals }
+
+  const next = await successor(paths, oldPid, SUCCESSOR_TIMEOUT_MS)
 
   if (!next) {
     return {
       ok: false,
-      reason: `no new service answered within ${Math.round(timeoutMs / 1000)} seconds`,
+      reason: `no new service answered within ${SUCCESSOR_TIMEOUT_MS / 1000} seconds`,
       timedOut: true
     }
   }
 
-  return { ok: true, oldPid, pid: next.pid, terminals: carried ?? next.terminals }
+  return { ok: true, oldPid, ...next }
+}
+
+/**
+ * What a failed hand-off means and what to do next, in lower case: the CLI
+ * prints it after `que: `, the app capitalises it on its error line.
+ */
+export function handOffFailedText(outcome: HandOffFailure, paths: QuePaths): string {
+  if (outcome.timedOut) {
+    return `${outcome.reason} after the handoff; see the service log at ${paths.daemonLog}`
+  }
+
+  return `the handoff failed: ${outcome.reason}. Nothing changed: the previous build keeps serving every terminal, and que daemon restart would end them and start this build`
 }
 
 /** Polls the socket until a daemon other than `oldPid` answers; null after `timeoutMs`. */

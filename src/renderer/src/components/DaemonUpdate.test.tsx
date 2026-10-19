@@ -3,6 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { fakeBridge } from '@renderer/testing/fake-bridge'
 import { makeProject, makeTermInfo, makeWorkspace } from '@renderer/testing/fixtures'
+import { openWorkspace } from '@renderer/testing/helpers'
 import App from '../App'
 
 const project = makeProject({ id: 'prj_01hzx2a7k4mn', name: 'uploader' })
@@ -10,22 +11,20 @@ const project = makeProject({ id: 'prj_01hzx2a7k4mn', name: 'uploader' })
 const retry = makeWorkspace({
   id: 'ws_01hzx3k9c2qf',
   projectId: project.id,
-  name: 'app-1432-retry-logic',
-  status: 'working'
+  name: 'app-1432-retry-logic'
 })
 
-const docs = makeWorkspace({
-  id: 'ws_01hzx4m1p8rt',
-  projectId: project.id,
-  name: 'app-1440-docs',
-  status: 'idle'
-})
+const docs = makeWorkspace({ id: 'ws_01hzx4m1p8rt', projectId: project.id, name: 'app-1440-docs' })
 
 const TITLE =
   'que was updated. The background service still runs the previous build. Update it in place; every terminal keeps running.'
 
 /** A daemon still running the build before this app's. */
 const STALE = { buildId: '8c41e07d92aa', expectedBuildId: '3f9a2c71b0de', stale: true }
+
+/** As the main process words a failed hand-off (src/shared/upgrade.ts). */
+const REFUSED =
+  'The handoff failed: the new daemon exited (code 3) while taking over the terminals. Nothing changed: the previous build keeps serving every terminal, and que daemon restart would end them and start this build'
 
 const claude = makeTermInfo({ name: 'claude', workspaceId: retry.id })
 const docsShell = makeTermInfo({ name: 'zsh', workspaceId: docs.id })
@@ -40,7 +39,7 @@ function seed(): void {
   fakeBridge.seedTerminal(homeShell)
 }
 
-/** Every terminal the fake daemon has, alive or not, in its order. */
+/** Whether each terminal the fake daemon has is alive, in its order. */
 async function aliveFlags(): Promise<boolean[]> {
   return (await window.que.term.list()).map((t) => t.alive)
 }
@@ -61,7 +60,6 @@ describe('DaemonUpdate', () => {
       expect(
         settings.compareDocumentPosition(update) & Node.DOCUMENT_POSITION_FOLLOWING
       ).toBeTruthy()
-      expect(screen.queryByRole('button', { name: 'Restart' })).not.toBeInTheDocument()
     })
   })
 
@@ -103,8 +101,7 @@ describe('DaemonUpdate', () => {
       seed()
       fakeBridge.setDaemon(STALE)
       render(<App />)
-      await user.click(await screen.findByTestId(`sidebar-workspace-${retry.id}-open`))
-      await screen.findByTestId(`terminal-tab-${claude.id}`)
+      expect(await openWorkspace(user, retry.id)).toBe(claude.id)
       await waitFor(() => {
         expect(fakeBridge.attachCalls()).toContain(claude.id)
       })
@@ -134,21 +131,18 @@ describe('DaemonUpdate', () => {
   })
 
   describe('errors', () => {
-    it('puts a refusal on the error line, ends no terminal, and stays for another try', async () => {
+    it('puts a failed hand-off on the error line, ends no terminal, and stays for another try', async () => {
       const user = userEvent.setup()
       seed()
       fakeBridge.setDaemon(STALE)
-      fakeBridge.refuseUpgrade('the new daemon exited (code 3)')
+      fakeBridge.refuseUpgrade(REFUSED)
       render(<App />)
 
       await user.click(await screen.findByRole('button', { name: 'Update' }))
 
-      expect(await screen.findByRole('alert')).toHaveTextContent(
-        'Could not update the background service in place: the new daemon exited (code 3). It keeps running the previous build with every terminal; to end them and start this build, run que daemon restart.'
-      )
-      // Back to Update once the refusal is in, and nothing else is on offer.
+      expect(await screen.findByRole('alert')).toHaveTextContent(REFUSED)
+      // Back to Update once the answer is in.
       expect(await screen.findByRole('button', { name: 'Update' })).toBeEnabled()
-      expect(screen.queryByRole('button', { name: 'Restart' })).not.toBeInTheDocument()
       expect(await aliveFlags()).toEqual([true, true, true])
       expect(fakeBridge.upgradeCalls()).toBe(1)
     })
@@ -157,7 +151,9 @@ describe('DaemonUpdate', () => {
       const user = userEvent.setup()
       seed()
       fakeBridge.setDaemon(STALE)
-      fakeBridge.refuseUpgrade('the running service is too old to update in place')
+      fakeBridge.refuseUpgrade(
+        'The handoff failed: the running service is too old to update in place'
+      )
       render(<App />)
       await user.click(await screen.findByRole('button', { name: 'Update' }))
       await screen.findByRole('alert')
