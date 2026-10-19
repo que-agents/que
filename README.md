@@ -207,6 +207,21 @@ npm run package   # an unsigned que.app in release/mac-arm64
 npm run dist      # the DMG and zip
 ```
 
+### Running from source
+
+```sh
+npm run install:local
+```
+
+Builds que.app from your checkout, replaces `/Applications/que.app` with it, links the `que`
+command (`/usr/local/bin/que` when that is writable, else `~/.local/bin/que`), and reopens the
+app. It never touches the background service, so every terminal keeps running. To upgrade, pull
+`main` and run it again. `--no-build` installs the app `npm run package` already made, `--dest`
+installs somewhere else, `--no-link` and `--no-launch` skip those steps.
+
+A change to the background service itself takes effect only when it restarts, and that ends every
+terminal. For now, run `que daemon stop` when nothing is running, then reopen the app.
+
 | Path                                         | What lives there                                                                  |
 | -------------------------------------------- | --------------------------------------------------------------------------------- |
 | `src/daemon/`                                | the daemon: terminals, workspaces, status engine, task queue, quiet hours, SQLite |
