@@ -26,7 +26,7 @@ afterEach(async () => {
 })
 
 describe('que add, run, task list, report', () => {
-  it('queues a brief for a repo, runs it, and reports the draft PR', async () => {
+  it('queues a brief for a repo, runs it to a draft PR, and reports its workspace', async () => {
     const repo = makeTempRepo(daemon.home)
     addBareOrigin(repo)
 
@@ -53,24 +53,29 @@ describe('que add, run, task list, report', () => {
       /^queue open · concurrency 1 · [01] running · [01] queued · 0 paused$/
     )
     await waitForTaskState(daemon, id, 'done', 30_000)
-
-    const report = await runCliJson<Report>('report', '--json', '--since', '1h')
-    expect(report.groups.done).toEqual([
+    const finished = await runCliJson<Task[]>('task', 'list', '--json')
+    expect(finished).toEqual([
       expect.objectContaining({
         id,
-        title: 'Add retry logic to the uploader',
-        workspace: expect.stringMatching(/^[a-z]+-[a-z]+-[a-z]+$/),
         prUrl: 'https://github.com/rquellh/que/pull/1',
         turns: 2,
         costUsd: 0.0123
       })
     ])
-    expect(report.totals).toMatchObject({ tasks: 1, prs: 1 })
+
+    const report = await runCliJson<Report>('report', '--json', '--since', '1h')
+    expect(report.workspaces).toEqual([
+      expect.objectContaining({
+        name: expect.stringMatching(/^[a-z]+-[a-z]+-[a-z]+$/),
+        commitsAhead: 1
+      })
+    ])
+    expect(report.totals).toEqual({ workspaces: 1, needsInput: 0 })
 
     const text = await runCli('report')
-    expect(text.stdout).toContain('Done (1)\n  Add retry logic to the uploader\n')
-    expect(text.stdout).toContain('https://github.com/rquellh/que/pull/1')
-    expect(text.stdout).toMatch(/Total: 1 tasks · 1 PRs · 2 turns · \$0\.01/)
+    expect(text.stdout).toMatch(/^que report since \S+\n1 session · /)
+    expect(text.stdout).toContain('\nWorkspaces (1)\n')
+    expect(text.stdout).not.toMatch(/Done|Total:/)
 
     const closed = await runCli('queue', 'close')
     expect(closed.stdout.trim()).toBe(
@@ -115,11 +120,11 @@ describe('que add, run, task list, report', () => {
     expect(report.workspaces).toEqual([
       expect.objectContaining({ id: ws.id, name: ws.name, status: 'working', commitsAhead: 0 })
     ])
-    expect(report.totals).toMatchObject({ workspaces: 1, needsInput: 0, tasks: 0 })
+    expect(report.totals).toEqual({ workspaces: 1, needsInput: 0 })
     const text = await runCli('report', '--since', '1h')
+    expect(text.stdout).toContain('\n1 session · worked ')
     expect(text.stdout).toContain('Workspaces (1)')
     expect(text.stdout).toContain(`  ${ws.name} · ${project.name} · working`)
-    expect(text.stdout).not.toContain('No tasks in this window.')
   }, 30_000)
 
   it('fails with a message for a bad --since and for a missing target', async () => {

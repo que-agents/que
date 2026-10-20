@@ -247,7 +247,7 @@ describe('quiet hours', () => {
         inQuietHours: false,
         nextBoundary: new Date(2026, 9, 14, 19, 0).toISOString()
       })
-      expect((await d.client.request('report.get')).totals.tasks).toBe(0)
+      expect((await d.client.request('report.get')).totals.workspaces).toBe(0)
     })
   })
 
@@ -347,7 +347,7 @@ describe('quiet hours', () => {
       expect(q).toMatchObject({ inQuietHours: false, kind: null, locked: false })
       expect(q.nextBoundary).toBe(new Date(2026, 9, 14, 19, 0).toISOString())
       await expect.poll(() => changes.at(-1)?.kind).toBeNull()
-      expect((await d.client.request('report.get')).totals.tasks).toBe(0)
+      expect((await d.client.request('report.get')).totals.workspaces).toBe(0)
     })
 
     it('ends on its own when its minutes run out', async () => {

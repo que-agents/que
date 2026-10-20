@@ -1326,7 +1326,7 @@ class FakeBridge {
     return t
   }
 
-  /** Every task in the book through the daemon's buildReport, with no time window. */
+  /** Every seeded digest through the daemon's buildReport, with no time window. */
   private report(since?: string): Report {
     const rank = (s: WorkspaceStatus): number =>
       s === 'needs_input' ? 0 : s === 'stuck' ? 1 : s === 'working' ? 2 : 3
@@ -1335,9 +1335,7 @@ class FakeBridge {
       .map((d) => ({ ...d }))
       .sort((a, b) => rank(a.status) - rank(b.status))
 
-    const names = new Map([...this.workspaces.values()].map((w) => [w.id, w.name]))
-    const epoch = new Date(0).toISOString()
-    const report = buildReport([...this.tasks.values()], names, epoch, Date.now(), digests)
+    const report = buildReport(digests, new Date(0).toISOString(), Date.now())
 
     return { ...report, since: since ?? report.generatedAt }
   }

@@ -3,7 +3,7 @@
 // claude and the finisher's draft PR (fake gh, real push to a bare origin),
 // the sidebar row reading done and unseen with the PR as its word, the review
 // pane's Pull request tab following the PR from draft to merged once it is selected, the tray title
-// settling back to all clear, and the report listing it under done.
+// settling back to all clear, and the report listing its workspace with the PR.
 import { join } from 'node:path'
 import { expect, test } from '@playwright/test'
 import type { Project, Task } from '../../src/shared/types'
@@ -24,7 +24,7 @@ test.afterEach(async () => {
   await launched?.close() // quits the app AND stops the test daemon
 })
 
-test('a task queued from the CLI runs overnight-style, shows in the sidebar, and lands in the report as a draft PR', async () => {
+test('a task queued from the CLI runs overnight-style, shows in the sidebar, and lands in the report with its draft PR', async () => {
   const repo = makeTempRepo(tempDir('que-e2e-repo-'))
   addBareOrigin(repo)
   // The PR tracker polls every second here, so the chip follows the fake state fast.
@@ -110,12 +110,13 @@ test('a task queued from the CLI runs overnight-style, shows in the sidebar, and
     await expect.poll(() => shell.trayTitle()).toBe('● 0 ▸ 0 ✕ 0')
   })
 
-  await test.step('The report lists the task under done with its PR', async () => {
+  await test.step("The report lists the task's workspace with its PR", async () => {
     await sidebar.reportButton.click()
     await report.waitForLoad()
-    await expect(report.groupTask('done', taskId)).toBeVisible()
-    await expect(report.taskPrLink(taskId)).toHaveAttribute('href', /\/pull\/\d+$/)
-    await expect(report.totals).toContainText('1 done · 1 PR')
+    await expect(report.workspace(workspaceId)).toBeVisible()
+    await expect(report.workspacePrLink(workspaceId)).toHaveAttribute('href', /\/pull\/\d+$/)
+    await expect(report.workspacePrLink(workspaceId)).toHaveText(/^#\d+ merged$/)
+    await expect(report.totals).toContainText('1 session')
     await launched.window.screenshot({ path: 'test-results/wp4-overnight.png' })
   })
 })

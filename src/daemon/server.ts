@@ -46,6 +46,7 @@ import { RpcError } from './errors'
 import type { HostedTerminal, PtyHost, Term, TermExtra } from './pty-host'
 import { QuietService } from './quiet'
 import { TaskQueue } from './queue'
+import { ReportService } from './report-service'
 import { SYSTEM_PROMPT } from './runner'
 import { PrService } from './prs'
 import { LiveSessions, storedLiveSessions } from './live-sessions'
@@ -166,6 +167,7 @@ export class DaemonServer {
   readonly tickets: TicketService
   readonly workspaces: WorkspaceManager
   readonly tasks: TaskQueue
+  readonly reports: ReportService
   readonly quiet: QuietService
   /** Workspace terminals with a live Claude session, restored after a restart. */
   readonly liveSessions: LiveSessions
@@ -220,6 +222,7 @@ export class DaemonServer {
       log: (m) => this.log(m),
       tickMs: opts.queueTickMs
     })
+    this.reports = new ReportService({ store: this.store, workspaces: this.workspaces })
     this.prs = new PrService({
       store: this.store,
       workspaces: this.workspaces,
@@ -251,7 +254,7 @@ export class DaemonServer {
       detachAll: () => {
         for (const c of this.conns) c.subs.clear()
       },
-      report: (since) => this.tasks.report(since),
+      report: (since) => this.reports.report(since),
       log: (m) => this.log(m),
       now: opts.now,
       tickMs: opts.quietTickMs
@@ -951,7 +954,7 @@ export class DaemonServer {
     'queue.open': (p) => this.tasks.open(p?.concurrency),
     'queue.close': () => this.tasks.close(),
     'queue.state': () => this.tasks.state(),
-    'report.get': (p) => this.tasks.report(p?.since),
+    'report.get': (p) => this.reports.report(p?.since),
     'quiet.state': () => this.quiet.state(),
     'quiet.unlock': (p) => this.quiet.unlockFor(p?.minutes, p?.why),
     'quiet.lock': () => this.quiet.lock(),

@@ -334,26 +334,8 @@ export interface TicketsListResult {
 }
 
 export interface ReportParams {
-  /** ISO time; defaults to the last queue.open, else 24 hours ago. */
+  /** ISO time; defaults to 24 hours ago. */
   since?: string
-}
-
-export type ReportGroup = 'done' | 'stuck' | 'failed' | 'stopped' | 'paused' | 'running' | 'queued'
-
-export interface ReportEntry {
-  id: string
-  title: string
-  state: TaskState
-  reason: string | null
-  workspace: string | null
-  workspaceId: string | null
-  branch: string | null
-  prUrl: string | null
-  /** When a paused task's rate limit resets; null unless it is paused on one. */
-  pausedUntil: string | null
-  durationMs: number | null
-  turns: number
-  costUsd: number
 }
 
 /** What one workspace (an interactive session in its worktree) did in the window. */
@@ -383,15 +365,9 @@ export interface WorkspaceDigest {
 export interface Report {
   since: string
   generatedAt: string
-  groups: Record<ReportGroup, ReportEntry[]>
   /** Workspaces with activity in the window, those needing attention first. */
   workspaces: WorkspaceDigest[]
   totals: {
-    tasks: number
-    prs: number
-    turns: number
-    costUsd: number
-    durationMs: number
     workspaces: number
     needsInput: number
   }

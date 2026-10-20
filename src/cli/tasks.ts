@@ -219,7 +219,7 @@ export function registerTaskCommands(program: Command, daemon: Command): void {
 
   program
     .command('report')
-    .description('the morning report: what the queue did')
+    .description('the morning report: what the sessions did')
     .option('--since <when>', 'ISO time or a duration back from now (12h, 90m, 2d)')
     .option('--json', 'print JSON')
     .action((opts: { since?: string; json?: boolean }) =>

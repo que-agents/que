@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { WorkspaceDigest } from '../shared/protocol'
-import { makeTask } from '../testing/fixtures'
+import type { PullRequest } from '../shared/types'
 import {
   buildReport,
   digestFacts,
@@ -17,66 +17,10 @@ import { countLineText } from '../shared/count-line'
 
 const NOW = Date.parse('2026-10-14T07:30:00.000Z')
 const SINCE = '2026-10-13T22:00:00.000Z'
+const WAITING = new Date(2026, 9, 14, 2, 5).toISOString()
 
-const WORKSPACES = new Map([
-  ['ws_01hzx3k9c2qf', 'add-retry-logic'],
-  ['ws_01hzx4m1p8rt', 'fix-flaky-upload-test']
-])
-
-const done = makeTask({
-  title: 'Add retry logic to the uploader',
-  state: 'done',
-  workspaceId: 'ws_01hzx3k9c2qf',
-  branch: 'add-retry-logic',
-  prUrl: 'https://github.com/rquellh/que/pull/88',
-  turns: 14,
-  costUsd: 1.82,
-  startedAt: '2026-10-13T22:01:00.000Z',
-  finishedAt: '2026-10-13T22:43:30.000Z',
-  createdAt: '2026-10-13T21:50:00.000Z',
-  updatedAt: '2026-10-13T22:43:30.000Z'
-})
-
-const stuck = makeTask({
-  title: 'Fix the flaky upload test',
-  state: 'stuck',
-  reason: 'needs_input',
-  workspaceId: 'ws_01hzx4m1p8rt',
-  branch: 'fix-flaky-upload-test',
-  turns: 3,
-  costUsd: 0.4,
-  startedAt: '2026-10-13T22:01:00.000Z',
-  finishedAt: '2026-10-13T22:06:00.000Z',
-  createdAt: '2026-10-13T21:51:00.000Z',
-  updatedAt: '2026-10-13T22:06:00.000Z'
-})
-
-const running = makeTask({
-  title: 'Migrate the queue to sqlite',
-  state: 'finishing',
-  workspaceId: 'ws_missing00000',
-  startedAt: '2026-10-14T07:00:00.000Z',
-  createdAt: '2026-10-13T21:52:00.000Z',
-  updatedAt: '2026-10-14T07:29:00.000Z'
-})
-
-const queuedLongAgo = makeTask({
-  title: 'Write the changelog',
-  workspaceId: null,
-  createdAt: '2026-10-10T09:00:00.000Z',
-  updatedAt: '2026-10-10T09:00:00.000Z'
-})
-
-const oldFailure = makeTask({
-  title: 'Old failure',
-  state: 'failed',
-  reason: 'crashed',
-  createdAt: '2026-10-11T09:00:00.000Z',
-  updatedAt: '2026-10-11T09:30:00.000Z'
-})
-
-const emptyDigest: WorkspaceDigest = {
-  id: 'ws_a',
+const digest = (over: Partial<WorkspaceDigest>): WorkspaceDigest => ({
+  id: 'ws_01hzx3k9c2qf',
   name: 'app-1432-retry-logic',
   project: 'uploader',
   branch: 'app-1432-retry-logic',
@@ -90,284 +34,140 @@ const emptyDigest: WorkspaceDigest = {
   stuckCount: 0,
   commitsAhead: null,
   pr: null,
-  sessionId: null
-}
+  sessionId: null,
+  ...over
+})
+
+const pr = (over: Partial<PullRequest>): PullRequest => ({
+  url: 'https://github.com/rquellh/que/pull/12',
+  number: 12,
+  title: 'Retry the upload on a dropped connection',
+  state: 'draft',
+  checks: 'failing',
+  review: null,
+  checkRuns: [],
+  updatedAt: null,
+  additions: null,
+  deletions: null,
+  checkedAt: '2026-10-14T02:00:00.000Z',
+  ...over
+})
+
+const waiting = digest({
+  status: 'needs_input',
+  workingMs: 72 * 60_000,
+  needsInputCount: 2,
+  waitingSince: WAITING,
+  commitsAhead: 4
+})
+
+const stuck = digest({
+  id: 'ws_01hzx4m1p8rt',
+  name: 'fix-flaky-upload-test',
+  status: 'stuck',
+  statusReason: 'no_heartbeat',
+  pr: pr({})
+})
+
+const worked = digest({
+  id: 'ws_01hzx5n7d3vb',
+  name: 'migrate-queue-sqlite',
+  status: 'idle',
+  workingMs: 23 * 60_000,
+  commitsAhead: 2,
+  pr: pr({ number: 13, url: 'https://github.com/rquellh/que/pull/13', state: 'open' })
+})
+
+const empty = buildReport([], SINCE, NOW)
 
 describe('buildReport', () => {
-  const report = buildReport(
-    [running, stuck, oldFailure, done, queuedLongAgo],
-    WORKSPACES,
-    SINCE,
-    NOW
-  )
+  const report = buildReport([waiting, stuck], SINCE, NOW)
 
-  it('groups what changed since the window opened, plus everything still live', () => {
-    expect(report.groups.done.map((e) => e.title)).toEqual(['Add retry logic to the uploader'])
-    expect(report.groups.stuck.map((e) => e.title)).toEqual(['Fix the flaky upload test'])
-    expect(report.groups.running.map((e) => e.title)).toEqual(['Migrate the queue to sqlite'])
-    expect(report.groups.queued.map((e) => e.title)).toEqual(['Write the changelog'])
-    expect(report.groups.failed).toEqual([])
+  it('keeps the digests in the order given, with the window and when it was made', () => {
+    expect(report.workspaces).toEqual([waiting, stuck])
     expect(report.since).toBe(SINCE)
     expect(report.generatedAt).toBe('2026-10-14T07:30:00.000Z')
   })
 
-  it('names the workspace, and measures duration to the finish (or to now while live)', () => {
-    expect(report.groups.done[0]).toEqual({
-      id: done.id,
-      title: 'Add retry logic to the uploader',
-      state: 'done',
-      reason: null,
-      workspace: 'add-retry-logic',
-      workspaceId: 'ws_01hzx3k9c2qf',
-      branch: 'add-retry-logic',
-      prUrl: 'https://github.com/rquellh/que/pull/88',
-      pausedUntil: null,
-      durationMs: 42.5 * 60_000,
-      turns: 14,
-      costUsd: 1.82
-    })
-    expect(report.groups.running[0]).toMatchObject({
-      workspace: 'ws_missing00000',
-      durationMs: 30 * 60_000
-    })
-    expect(report.groups.queued[0]).toMatchObject({ workspace: null, durationMs: null })
+  it('totals the workspaces and the ones waiting for input', () => {
+    expect(report.totals).toEqual({ workspaces: 2, needsInput: 1 })
+    expect(empty.totals).toEqual({ workspaces: 0, needsInput: 0 })
   })
+})
 
-  it('totals tasks, pull requests, turns, cost, and time', () => {
-    expect(report.totals).toEqual({
-      tasks: 4,
-      prs: 1,
-      turns: 17,
-      costUsd: 2.22,
-      durationMs: (42.5 + 5 + 30) * 60_000,
-      workspaces: 0,
-      needsInput: 0
-    })
-  })
+describe('formatReport', () => {
+  it('prints the count line, a block per workspace, then the unlocks line', () => {
+    const text = formatReport(buildReport([waiting, stuck], SINCE, NOW), 'Unlocked once')
 
-  it('renders as text, one block per non-empty group', () => {
-    const text = formatReport(report)
-
-    expect(text).toContain(
-      'Done (1)\n  Add retry logic to the uploader\n    add-retry-logic · 42m · 14 turns · $1.82\n    https://github.com/rquellh/que/pull/88'
-    )
-    expect(text).toContain(
-      'Stuck (1)\n  Fix the flaky upload test\n    needs_input · fix-flaky-upload-test · 5m · 3 turns · $0.40'
-    )
-    expect(text).not.toContain('Failed')
-    expect(text.trim().split('\n').at(-1)).toBe(
-      'Total: 4 tasks · 1 PRs · 17 turns · $2.22 · 1h 17m'
-    )
-  })
-
-  it('reads done, stuck, failed, paused, running, queued, then stopped, with the unlocks line last-but-one', () => {
-    const tasks = (
-      ['stopped', 'queued', 'running', 'paused', 'failed', 'stuck', 'done'] as const
-    ).map((state, i) =>
-      makeTask({
-        title: `Task ${state}`,
-        state,
-        createdAt: `2026-10-13T22:0${i}:00.000Z`,
-        updatedAt: `2026-10-13T23:0${i}:00.000Z`
-      })
-    )
-
-    const text = formatReport(
-      buildReport(tasks, WORKSPACES, SINCE, NOW),
-      'Unlocked once last night, 20 min total'
-    )
-
-    const headings = text.split('\n').filter((l) => /^[A-Z][a-z]+ \(\d+\)$/.test(l))
-    expect(headings).toEqual([
-      'Done (1)',
-      'Stuck (1)',
-      'Failed (1)',
-      'Paused (1)',
-      'Running (1)',
-      'Queued (1)',
-      'Stopped (1)'
+    expect(text.split('\n')).toEqual([
+      `que report since ${SINCE}`,
+      '2 sessions · 1 stuck · 1 needs input · 1 PR open · worked 1h 12m',
+      '',
+      'Workspaces (2)',
+      '  app-1432-retry-logic · uploader · needs_input',
+      '    worked 1h 12m · asked for input 2× · waiting since 02:05 · 4 commits ahead',
+      '  fix-flaky-upload-test · uploader · stuck (no_heartbeat)',
+      '    no work in this window · PR #12 draft, checks failing',
+      '',
+      'Unlocked once'
     ])
-    expect(text.trim().split('\n').at(-3)).toBe('Unlocked once last night, 20 min total')
   })
 
-  describe('with workspaces', () => {
-    const waiting = new Date(2026, 9, 14, 2, 5).toISOString()
+  it('says nothing ran when the window is empty, and mentions no tasks', () => {
+    const text = formatReport(empty)
 
-    const digest = (over: Partial<WorkspaceDigest>): WorkspaceDigest => ({
-      id: 'ws_a',
-      name: 'app-1432-retry-logic',
-      project: 'uploader',
-      branch: 'app-1432-retry-logic',
-      status: 'needs_input',
-      statusReason: null,
-      firstActivityAt: null,
-      lastActivityAt: null,
-      workingMs: 72 * 60_000,
-      needsInputCount: 2,
-      waitingSince: waiting,
-      stuckCount: 0,
-      commitsAhead: 4,
-      pr: null,
-      sessionId: null,
-      ...over
-    })
-
-    const pr = {
-      url: 'https://github.com/rquellh/que/pull/12',
-      number: 12,
-      title: 'Retry',
-      state: 'draft' as const,
-      checks: 'failing' as const,
-      review: null,
-      checkRuns: [],
-      updatedAt: null,
-      additions: null,
-      deletions: null,
-      checkedAt: '2026-10-14T02:00:00.000Z'
-    }
-
-    const digests = [
-      digest({}),
-      digest({
-        id: 'ws_b',
-        name: 'quiet-one',
-        status: 'stuck',
-        statusReason: 'no_heartbeat',
-        workingMs: 0,
-        needsInputCount: 0,
-        waitingSince: null,
-        commitsAhead: null,
-        pr
-      })
-    ]
-
-    it('totals them and counts the ones waiting for input', () => {
-      const r = buildReport([done], WORKSPACES, SINCE, NOW, digests)
-
-      expect(r.workspaces).toEqual(digests)
-      expect(r.totals).toMatchObject({ workspaces: 2, needsInput: 1, tasks: 1 })
-    })
-
-    it('prints a block before the unlocks line and the total', () => {
-      const text = formatReport(
-        buildReport([done], WORKSPACES, SINCE, NOW, digests),
-        'Unlocked once'
-      )
-
-      const lines = text.split('\n')
-
-      const at = lines.indexOf('Workspaces (2)')
-      expect(lines.slice(at, at + 5)).toEqual([
-        'Workspaces (2)',
-        '  app-1432-retry-logic · uploader · needs_input',
-        '    worked 1h 12m · asked for input 2× · waiting since 02:05 · 4 commits ahead',
-        '  quiet-one · uploader · stuck (no_heartbeat)',
-        '    no work in this window · PR #12 draft, checks failing'
-      ])
-      expect(lines.at(-3)).toBe('Unlocked once')
-      expect(lines.at(-1)).toMatch(/^Total: /)
-    })
-
-    it('lists the facts of each digest, leaving out the ones it has none for', () => {
-      expect(digestFacts(digests[0])).toEqual([
-        'worked 1h 12m',
-        'asked for input 2×',
-        'waiting since 02:05',
-        '4 commits ahead'
-      ])
-      expect(digestFacts(digests[1])).toEqual([
-        'no work in this window',
-        'PR #12 draft, checks failing'
-      ])
-    })
-
-    it('does not claim there were no tasks when only workspaces had activity', () => {
-      const text = formatReport(buildReport([], WORKSPACES, SINCE, NOW, digests))
-
-      expect(text).toContain('Workspaces (2)')
-      expect(text).not.toContain('No tasks in this window.')
-    })
+    expect(text.split('\n')[1]).toMatch(/^nothing ran since \d\d:\d\d/)
+    expect(text).not.toContain('Workspaces')
+    expect(text).not.toMatch(/task/i)
   })
+})
 
-  it('says so when the window is empty', () => {
-    expect(formatReport(buildReport([], WORKSPACES, SINCE, NOW))).toContain(
-      'No tasks in this window.'
-    )
+describe('digestFacts', () => {
+  it('lists the facts of each digest, leaving out the ones it has none for', () => {
+    expect(digestFacts(waiting)).toEqual([
+      'worked 1h 12m',
+      'asked for input 2×',
+      'waiting since 02:05',
+      '4 commits ahead'
+    ])
+    expect(digestFacts(stuck)).toEqual(['no work in this window', 'PR #12 draft, checks failing'])
   })
 })
 
 describe('reportCountItems', () => {
-  it('reads done, stuck, failed, needs input, paused, running, queued, PRs, time, cost', () => {
-    const tasks = (
-      ['queued', 'running', 'paused', 'failed', 'stuck', 'done', 'stopped'] as const
-    ).map((state, i) =>
-      makeTask({
-        title: `Task ${state}`,
-        state,
-        prUrl: state === 'done' ? 'https://github.com/rquellh/que/pull/67' : null,
-        costUsd: 0.3,
-        startedAt: '2026-10-13T22:00:00.000Z',
-        finishedAt: '2026-10-13T22:10:00.000Z',
-        createdAt: `2026-10-13T21:0${i}:00.000Z`,
-        updatedAt: `2026-10-13T23:0${i}:00.000Z`
-      })
-    )
-
-    const stuckDigest = {
-      ...emptyDigest,
-      id: 'ws_b',
-      status: 'stuck' as const
-    }
-
-    const waitingDigest = { ...emptyDigest, id: 'ws_c', status: 'needs_input' as const }
-
-    const items = reportCountItems(
-      buildReport(tasks, WORKSPACES, SINCE, NOW, [stuckDigest, waitingDigest])
-    )
+  it('reads sessions, stuck, needs input, open PRs, then the time worked', () => {
+    const items = reportCountItems(buildReport([waiting, stuck, worked], SINCE, NOW))
 
     expect(items.map((i) => i.label)).toEqual([
-      'done',
+      'sessions',
       'stuck',
-      'failed',
       'needs input',
-      'paused',
-      'running',
-      'queued',
-      'PR',
-      'duration',
-      'cost'
+      'PRs open',
+      'worked'
     ])
-    expect(items.map((i) => i.tone)).toEqual([
-      'muted',
-      'bad',
-      'bad',
-      'attention',
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined
-    ])
+    expect(items.map((i) => i.tone)).toEqual(['muted', 'bad', 'attention', undefined, undefined])
     expect(countLineText(items)).toBe(
-      '1 done · 2 stuck · 1 failed · 1 needs input · 1 paused · 1 running · 1 queued · 1 PR · 1h 10m · $2.10'
+      '3 sessions · 1 stuck · 1 needs input · 2 PRs open · worked 1h 35m'
     )
   })
 
-  it('leaves the zeros out, and writes PRs in the plural', () => {
-    const second = makeTask({
-      ...done,
-      id: 'tsk_01hzy9q2w8zz',
-      prUrl: 'https://github.com/rquellh/que/pull/89'
-    })
+  it('leaves the zeros out and writes one session and one PR in the singular', () => {
+    expect(countLineText(reportCountItems(buildReport([worked], SINCE, NOW)))).toBe(
+      '1 session · 1 PR open · worked 23m'
+    )
+  })
 
-    expect(
-      countLineText(reportCountItems(buildReport([done, second], WORKSPACES, SINCE, NOW)))
-    ).toBe('2 done · 2 PRs · 1h 25m · $3.64')
+  it('counts only the pull requests still open or in draft', () => {
+    const merged = digest({ id: 'ws_m', pr: pr({ state: 'merged' }) })
+    const closed = digest({ id: 'ws_c', pr: pr({ state: 'closed' }) })
+
+    expect(countLineText(reportCountItems(buildReport([merged, closed], SINCE, NOW)))).toBe(
+      '2 sessions'
+    )
   })
 
   it('has no items when nothing ran', () => {
-    expect(reportCountItems(buildReport([], WORKSPACES, SINCE, NOW))).toEqual([])
+    expect(reportCountItems(empty)).toEqual([])
   })
 })
 
@@ -383,18 +183,14 @@ describe('nothingRanLine', () => {
 
 describe('reportSummaryText', () => {
   it('is the count line in plain words, or nothing ran when it is empty', () => {
-    expect(reportSummaryText(buildReport([done, stuck], WORKSPACES, SINCE, NOW), NOW)).toBe(
-      '1 done · 1 stuck · 1 PR · 47m · $2.22'
+    expect(reportSummaryText(buildReport([waiting, stuck], SINCE, NOW), NOW)).toBe(
+      '2 sessions · 1 stuck · 1 needs input · 1 PR open · worked 1h 12m'
     )
-    expect(reportSummaryText(buildReport([], WORKSPACES, SINCE, NOW), NOW)).toMatch(
-      /^nothing ran since \d\d:\d\d/
-    )
+    expect(reportSummaryText(empty, NOW)).toMatch(/^nothing ran since \d\d:\d\d/)
   })
 })
 
 describe('summaryNotification', () => {
-  const empty = buildReport([], WORKSPACES, SINCE, NOW)
-
   it('says good morning after quiet hours, even when nothing ran', () => {
     expect(summaryNotification('scheduled', empty, NOW)).toEqual({
       title: 'que · good morning',
@@ -406,21 +202,18 @@ describe('summaryNotification', () => {
     expect(summaryNotification('manual', empty, NOW)).toBeNull()
   })
 
-  it('says quiet ended after a manual quiet with a task in it', () => {
-    expect(summaryNotification('manual', buildReport([done], WORKSPACES, SINCE, NOW), NOW)).toEqual(
-      {
-        title: 'que · quiet ended',
-        body: '1 done · 1 PR · 42m · $1.82'
-      }
-    )
+  it('says quiet ended after a manual quiet in which a session ran', () => {
+    expect(summaryNotification('manual', buildReport([worked], SINCE, NOW), NOW)).toEqual({
+      title: 'que · quiet ended',
+      body: '1 session · 1 PR open · worked 23m'
+    })
   })
 })
 
 describe('reportSince', () => {
-  it('uses the explicit time, else the last queue open, else 24 hours back', () => {
-    expect(reportSince('2026-10-13T20:00:00Z', SINCE, NOW)).toBe('2026-10-13T20:00:00.000Z')
-    expect(reportSince(undefined, SINCE, NOW)).toBe(SINCE)
-    expect(reportSince(undefined, null, NOW)).toBe('2026-10-13T07:30:00.000Z')
+  it('uses the explicit time, else 24 hours back', () => {
+    expect(reportSince('2026-10-13T20:00:00Z', NOW)).toBe('2026-10-13T20:00:00.000Z')
+    expect(reportSince(undefined, NOW)).toBe('2026-10-13T07:30:00.000Z')
   })
 })
 

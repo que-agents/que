@@ -1,4 +1,4 @@
-// The task queue: task.* / queue.* / report.get, the
+// The task queue: task.* / queue.*, the
 // dispatcher that starts queued tasks up to the concurrency cap while the
 // queue is open, the clock tick (stalls, pause expiry, sleep/wake), the
 // keep-awake, and recovery after a daemon restart. Every state change goes
@@ -8,17 +8,9 @@ import { performance } from 'node:perf_hooks'
 import { titleOf } from '../shared/brief'
 import type { UserConfig } from '../shared/config'
 import type { QuePaths } from '../shared/paths'
-import type {
-  QueueState,
-  Report,
-  TaskAddParams,
-  TaskListParams,
-  WorkspaceDigest
-} from '../shared/protocol'
-import type { Project, Task, TaskState } from '../shared/types'
-import { buildWorkspaceDigest, sortDigests } from './digest'
+import type { QueueState, TaskAddParams, TaskListParams } from '../shared/protocol'
+import type { Task, TaskState } from '../shared/types'
 import { badRequest, conflict, notFound } from './errors'
-import { buildReport, reportSince } from './report'
 import { reapOrphan, TaskRunner } from './runner'
 import type { Emit } from './bus'
 import type { StatusService } from './status'
@@ -30,7 +22,7 @@ import {
   type TaskEvent,
   type TaskHookPayload
 } from './task-machine'
-import { commitsAhead, type WorkspaceManager } from './workspaces'
+import type { WorkspaceManager } from './workspaces'
 import { findOnPath } from './wrapper'
 
 const KV_OPEN = 'queue.open'
@@ -510,48 +502,5 @@ export class TaskQueue {
 
   private emitState(): void {
     if (!this.closed) this.o.emit('queue.state', this.state())
-  }
-
-  async report(since?: string): Promise<Report> {
-    if (since !== undefined && Number.isNaN(Date.parse(since))) {
-      throw badRequest('since must be an ISO time')
-    }
-
-    const now = Date.now()
-    const from = reportSince(since, this.o.store.getKv(KV_OPENED_AT) ?? null, now)
-    const tasks = this.current(this.o.store.listTasks())
-    const open = this.o.store.listWorkspaces()
-    const names = new Map(open.map((ws) => [ws.id, ws.name]))
-
-    // An archived workspace is not in the listing; its tasks still show its name.
-    for (const t of tasks) {
-      if (!t.workspaceId || names.has(t.workspaceId)) continue
-      const ws = this.o.store.getWorkspace(t.workspaceId)
-
-      if (ws) names.set(ws.id, ws.name)
-    }
-
-    const pending: Array<Promise<WorkspaceDigest>> = []
-
-    for (const ws of open) {
-      let project: Project
-
-      try {
-        project = this.o.workspaces.project(ws.projectId)
-      } catch {
-        continue
-      }
-
-      const log = this.o.store.listStatusLog(ws.id, from)
-      const digest = buildWorkspaceDigest(ws, project, log, Date.parse(from), now)
-
-      if (digest) {
-        pending.push(commitsAhead(ws, project).then((n) => ({ ...digest, commitsAhead: n })))
-      }
-    }
-
-    const digests = await Promise.all(pending)
-
-    return buildReport(tasks, names, from, now, sortDigests(digests))
   }
 }
