@@ -86,6 +86,11 @@ terminal, pick up exactly where the screen was. A terminal handed over by a
 previous daemon (see below) is an `AdoptedTerminal` over the inherited master
 fd; `PtyHost` holds both kinds behind one interface.
 
+The renderer's xterm sends what a terminal sends, with one addition. xterm
+cannot tell Shift+Enter from Enter (both are a bare carriage return), so the
+app sends a line feed for Shift+Enter: the Ctrl+J newline Claude Code accepts
+in any terminal, and plain Enter to a shell or anything else that reads lines.
+
 ## Upgrading the daemon without ending terminals
 
 A PTY is a file descriptor, so a terminal can change owners without the shell
