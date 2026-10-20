@@ -6,6 +6,7 @@ import type {
   ConfigPatch,
   Project,
   PullRequest,
+  QuietKind,
   QuietState,
   QuietUnlock,
   PrThread,
@@ -670,8 +671,11 @@ export interface Events {
   'project.added': Project
   'project.removed': { id: string }
   'quiet.changed': QuietState
-  /** Once, when a quiet window ends and notifications.morning_summary is on. */
-  'quiet.morningSummary': { report: Report }
+  /**
+   * Once, when a quiet window ends and notifications.morning_summary is on: a
+   * scheduled one at its end, a manual one at its end or at quiet.end.
+   */
+  'quiet.morningSummary': { kind: QuietKind; report: Report }
   'config.changed': ConfigGetResult
   /** After every ticket sync, and when a ticket's workspace changes. */
   'tickets.synced': TicketsListResult

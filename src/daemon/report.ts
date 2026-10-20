@@ -4,7 +4,7 @@
 import { type CountItem, countLineText } from '../shared/count-line'
 import type { Report, ReportEntry, ReportGroup, WorkspaceDigest } from '../shared/protocol'
 import { formatCost, formatDuration as duration, formatSince, hhmm } from '../shared/format'
-import { LIVE_STATES, type Task, type TaskState } from '../shared/types'
+import { LIVE_STATES, type QuietKind, type Task, type TaskState } from '../shared/types'
 
 /** Reading order: outcomes first, what still needs a look next, stopped last; with headings. */
 export const REPORT_GROUPS: ReadonlyArray<{ group: ReportGroup; title: string }> = [
@@ -161,6 +161,24 @@ export function nothingRanLine(r: Pick<Report, 'since'>, now: number): string {
 /** The count line as plain text, or `nothing ran since …`: the morning notification's body. */
 export function reportSummaryText(r: Report, now: number): string {
   return countLineText(reportCountItems(r)) || nothingRanLine(r, now)
+}
+
+/**
+ * The notification when a quiet window ends: `que · good morning` after quiet
+ * hours, `que · quiet ended` after a manual quiet, both with the count line.
+ * A manual quiet with no tasks and nothing waiting ends silently (null).
+ */
+export function summaryNotification(
+  kind: QuietKind,
+  r: Report,
+  now: number
+): { title: string; body: string } | null {
+  if (kind === 'manual' && r.totals.tasks === 0 && r.totals.needsInput === 0) return null
+
+  return {
+    title: kind === 'scheduled' ? 'que · good morning' : 'que · quiet ended',
+    body: reportSummaryText(r, now)
+  }
 }
 
 const UNITS = new Map([

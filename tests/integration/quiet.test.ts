@@ -2,7 +2,8 @@
 // terminal subscription and refuses detail, unlock and lock (and the log),
 // an unlock that runs out on its own, headless tasks running on regardless,
 // config.set reloading live with the apply-tonight guardrail, the morning
-// summary, and a manual quiet (`quiet.start` / `quiet.end`) during the day. The clock math itself is in quiet-hours.test.ts; here the daemon
+// summary, and a manual quiet (`quiet.start` / `quiet.end`, and its summary)
+// during the day. The clock math itself is in quiet-hours.test.ts; here the daemon
 // reads a clock shifted to just before (or inside) a window.
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { DaemonClient } from '@shared/client'
@@ -43,6 +44,8 @@ const NIGHT = new Date(2026, 9, 14, 2, 0)
 
 /** Wed 14 Oct 2026, 12:00: work hours. */
 const DAY = new Date(2026, 9, 14, 12, 0)
+
+const SUMMARY = `${QUIET()}\n[notifications]\nmorning_summary = true\n`
 
 const MANUAL_REFUSAL = {
   code: 'quiet_hours',
@@ -259,6 +262,7 @@ describe('quiet hours', () => {
       const changes = recordEvents(d.client, 'quiet.changed')
 
       await expect.poll(() => summaries.length, { timeout: 10_000 }).toBe(1)
+      expect(summaries[0].kind).toBe('scheduled')
       expect(summaries[0].report.since).toBe(new Date(2026, 9, 13, 19, 0).toISOString())
       expect(changes.at(-1)).toMatchObject({ inQuietHours: false })
 
@@ -424,6 +428,45 @@ describe('quiet hours', () => {
         inQuietHours: false,
         kind: null
       })
+    }, 20_000)
+
+    it('emits one manual summary on quiet.end, with the report since the window started', async () => {
+      const d = await start(SUMMARY, DAY)
+      const summaries = recordEvents(d.client, 'quiet.morningSummary')
+      const changes = recordEvents(d.client, 'quiet.changed')
+      const started = await d.client.request('quiet.start', { minutes: 30 })
+
+      await d.client.request('quiet.end')
+
+      await expect.poll(() => summaries.length, { timeout: 10_000 }).toBe(1)
+      expect(summaries[0]).toMatchObject({
+        kind: 'manual',
+        report: { since: started.windowStart }
+      })
+
+      // Later re-evaluations never repeat it.
+      const seen = changes.length
+      await d.client.request('quiet.lock')
+      await expect.poll(() => changes.length, { timeout: 5_000 }).toBeGreaterThan(seen)
+      expect(summaries).toHaveLength(1)
+    }, 20_000)
+
+    it('emits one manual summary when its minutes run out', async () => {
+      const d = await start(SUMMARY, DAY)
+      const summaries = recordEvents(d.client, 'quiet.morningSummary')
+      const changes = recordEvents(d.client, 'quiet.changed')
+      const started = await d.client.request('quiet.start', { minutes: 0.05 })
+
+      await expect.poll(() => summaries.length, { timeout: 10_000 }).toBe(1)
+      expect(summaries[0]).toMatchObject({
+        kind: 'manual',
+        report: { since: started.windowStart }
+      })
+
+      const seen = changes.length
+      await d.client.request('quiet.lock')
+      await expect.poll(() => changes.length, { timeout: 5_000 }).toBeGreaterThan(seen)
+      expect(summaries).toHaveLength(1)
     }, 20_000)
 
     it('refuses minutes of 0 or more than 720', async () => {

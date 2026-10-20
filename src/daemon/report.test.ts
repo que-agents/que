@@ -10,7 +10,8 @@ import {
   parseSince,
   reportCountItems,
   reportSince,
-  reportSummaryText
+  reportSummaryText,
+  summaryNotification
 } from './report'
 import { countLineText } from '../shared/count-line'
 
@@ -387,6 +388,30 @@ describe('reportSummaryText', () => {
     )
     expect(reportSummaryText(buildReport([], WORKSPACES, SINCE, NOW), NOW)).toMatch(
       /^nothing ran since \d\d:\d\d/
+    )
+  })
+})
+
+describe('summaryNotification', () => {
+  const empty = buildReport([], WORKSPACES, SINCE, NOW)
+
+  it('says good morning after quiet hours, even when nothing ran', () => {
+    expect(summaryNotification('scheduled', empty, NOW)).toEqual({
+      title: 'que · good morning',
+      body: reportSummaryText(empty, NOW)
+    })
+  })
+
+  it('ends an empty manual quiet silently', () => {
+    expect(summaryNotification('manual', empty, NOW)).toBeNull()
+  })
+
+  it('says quiet ended after a manual quiet with a task in it', () => {
+    expect(summaryNotification('manual', buildReport([done], WORKSPACES, SINCE, NOW), NOW)).toEqual(
+      {
+        title: 'que · quiet ended',
+        body: '1 done · 1 PR · 42m · $1.82'
+      }
     )
   })
 })
