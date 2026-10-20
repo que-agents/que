@@ -218,8 +218,8 @@ only under the pointer.
   under the pointer. The Quiet row, at the top, starts a manual quiet: its word starts an
   hour, and at its right end, always visible, `30m`, `1h` and `2h` in mono 11px tabular
   pick a length, `1h` in `--fg-muted` as the default and the other two in `--fg-faint`,
-  each `--fg` under the pointer. The row is a `role="group"` of four buttons and takes
-  `--bg-hover` as a whole; it is absent while a quiet window is in progress. While the background service runs an older build than the app, a
+  each `--fg` under the pointer. The row is a `role="group"` of four buttons; the word fills the row up to
+  the lengths, so the row takes `--bg-hover` as a whole and the word brightens with it; it is absent while a quiet window is in progress. While the background service runs an older build than the app, a
   20px control sits at the right end of the Settings row: the 5px status dot in `--accent`
   and the word Update in 11px `--fg-muted`, hairline-bordered, `--fg` under the pointer,
   its tooltip saying why it is there. It reads Updating… at 0.4 opacity while the update

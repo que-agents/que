@@ -744,14 +744,14 @@ h2 {
 }
 
 /* Outside a quiet window: a foot row whose word starts an hour, and three lengths at its
- * right in the unlock row's voice. Four buttons; the row takes the hover surface. */
+ * right in the unlock row's voice. The word is a button filling the row up to the lengths,
+ * so the row reads and behaves like Report: the whole row takes the hover surface and
+ * the word brightens with it. */
 .quiet-row {
   box-sizing: border-box;
   display: flex;
-  align-items: center;
-  gap: 6px;
+  align-items: stretch;
   height: 26px;
-  padding: 0 8px;
   border-radius: var(--radius);
 }
 
@@ -760,20 +760,36 @@ h2 {
 }
 
 .quiet-row button {
-  padding: 0;
   background: none;
   border: none;
+  border-radius: var(--radius);
   color: var(--fg-muted);
 }
 
 .quiet-row .quiet-word {
-  margin-right: auto;
+  flex: 1;
+  min-width: 0;
+  padding: 0 8px;
+  text-align: left;
   font-weight: 400;
 }
 
-.quiet-row .quiet-chip {
+.quiet-row:hover .quiet-word:not(:disabled) {
+  color: var(--fg);
+}
+
+.quiet-row .quiet-lengths {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-right: 8px;
   font: 11px var(--mono);
   font-variant-numeric: tabular-nums;
+}
+
+.quiet-row .quiet-chip {
+  padding: 0;
+  font: inherit;
   color: var(--fg-faint);
 }
 
@@ -781,8 +797,7 @@ h2 {
   color: var(--fg-muted);
 }
 
-.quiet-row button:hover:not(:disabled) {
-  background: none;
+.quiet-row .quiet-chip:hover:not(:disabled) {
   color: var(--fg);
 }
 

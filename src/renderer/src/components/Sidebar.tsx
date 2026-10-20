@@ -93,7 +93,7 @@ const QUIET_CHIPS = [
   { minutes: 120, text: '2h', label: 'Quiet for 2 hours' }
 ] as const
 
-/** Outside a quiet window: the word starts an hour of quiet, the chips at its right a length. */
+/** Outside a quiet window: the word, filling the row, starts an hour of quiet; the lengths at its right pick one. */
 function QuietRow(): React.JSX.Element | null {
   const store = useStore()
   const connected = useQueSelector((s) => s.connected)
@@ -112,19 +112,21 @@ function QuietRow(): React.JSX.Element | null {
       >
         Quiet
       </button>
-      {QUIET_CHIPS.map((c) => (
-        <button
-          key={c.minutes}
-          type="button"
-          className={c.minutes === 60 ? 'quiet-chip default' : 'quiet-chip'}
-          data-testid={`sidebar-quiet-${c.minutes}`}
-          aria-label={c.label}
-          disabled={!connected}
-          onClick={() => void store.startQuiet(c.minutes)}
-        >
-          {c.text}
-        </button>
-      ))}
+      <span className="quiet-lengths">
+        {QUIET_CHIPS.map((c) => (
+          <button
+            key={c.minutes}
+            type="button"
+            className={c.minutes === 60 ? 'quiet-chip default' : 'quiet-chip'}
+            data-testid={`sidebar-quiet-${c.minutes}`}
+            aria-label={c.label}
+            disabled={!connected}
+            onClick={() => void store.startQuiet(c.minutes)}
+          >
+            {c.text}
+          </button>
+        ))}
+      </span>
     </div>
   )
 }
