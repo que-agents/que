@@ -14,44 +14,31 @@ import {
   summaryNotification
 } from './report'
 import { countLineText } from '../shared/count-line'
+import { makePullRequest, makeWorkspaceDigest } from '../testing/entities'
 
 const NOW = Date.parse('2026-10-14T07:30:00.000Z')
 const SINCE = '2026-10-13T22:00:00.000Z'
 const WAITING = new Date(2026, 9, 14, 2, 5).toISOString()
 
-const digest = (over: Partial<WorkspaceDigest>): WorkspaceDigest => ({
-  id: 'ws_01hzx3k9c2qf',
-  name: 'app-1432-retry-logic',
-  project: 'uploader',
-  branch: 'app-1432-retry-logic',
-  status: 'idle',
-  statusReason: null,
-  firstActivityAt: null,
-  lastActivityAt: null,
-  workingMs: 0,
-  needsInputCount: 0,
-  waitingSince: null,
-  stuckCount: 0,
-  commitsAhead: null,
-  pr: null,
-  sessionId: null,
-  ...over
-})
+/** A digest that did nothing yet, so each case states only what it did. */
+const digest = (over: Partial<WorkspaceDigest>): WorkspaceDigest =>
+  makeWorkspaceDigest({
+    firstActivityAt: null,
+    lastActivityAt: null,
+    workingMs: 0,
+    commitsAhead: null,
+    ...over
+  })
 
-const pr = (over: Partial<PullRequest>): PullRequest => ({
-  url: 'https://github.com/rquellh/que/pull/12',
-  number: 12,
-  title: 'Retry the upload on a dropped connection',
-  state: 'draft',
-  checks: 'failing',
-  review: null,
-  checkRuns: [],
-  updatedAt: null,
-  additions: null,
-  deletions: null,
-  checkedAt: '2026-10-14T02:00:00.000Z',
-  ...over
-})
+const pr = (over: Partial<PullRequest>): PullRequest =>
+  makePullRequest({
+    url: 'https://github.com/rquellh/que/pull/12',
+    number: 12,
+    title: 'Retry the upload on a dropped connection',
+    checks: 'failing',
+    checkedAt: '2026-10-14T02:00:00.000Z',
+    ...over
+  })
 
 const waiting = digest({
   status: 'needs_input',
