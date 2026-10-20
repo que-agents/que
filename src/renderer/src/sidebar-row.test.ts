@@ -165,18 +165,10 @@ describe('hoverWord', () => {
     })
   })
 
-  it("names the workspace's open pull request on a fresh finish", () => {
-    const draft = { ...fresh, pr: makePullRequest({ number: 12, state: 'draft' }) }
+  it('says the age of a fresh finish, never its pull request', () => {
     const open = { ...fresh, pr: makePullRequest({ number: 12, state: 'open' }) }
 
-    expect(hoverWord(draft, rowTone(draft), NOW).word).toBe('done · draft PR #12')
-    expect(hoverWord(open, rowTone(open), NOW).word).toBe('done · PR #12')
-  })
-
-  it('falls back to the age when the pull request is merged or closed', () => {
-    const merged = { ...fresh, pr: makePullRequest({ number: 12, state: 'merged' }) }
-
-    expect(hoverWord(merged, rowTone(merged), NOW).word).toBe('done · 12m ago')
+    expect(hoverWord(open, rowTone(open), NOW).word).toBe('done · 12m ago')
   })
 })
 

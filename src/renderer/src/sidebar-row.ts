@@ -78,20 +78,11 @@ export interface HoverWord {
 export function hoverWord(ws: Workspace, look: RowTone, now: number): HoverWord {
   const toned = look.tone === 'attention' || look.tone === 'bad' ? look.tone : null
 
-  if (look.unseen) return { word: `done · ${finishedAsk(ws, now)}`, tone: null }
+  if (look.unseen) return { word: `done · ${formatAge(ws.finishedAt, now, ' ago')}`, tone: null }
 
   if (look.background.length > 0) {
     return { word: ['idle', ...look.background].join(' · '), tone: null }
   }
 
   return { word: statusBadge(ws.status).label, tone: toned }
-}
-
-/** What a fresh finish asks of you: the workspace's open pull request, else how long ago. */
-function finishedAsk(ws: Workspace, now: number): string {
-  if (ws.pr?.state === 'draft') return `draft PR #${ws.pr.number}`
-
-  if (ws.pr?.state === 'open') return `PR #${ws.pr.number}`
-
-  return formatAge(ws.finishedAt, now, ' ago')
 }

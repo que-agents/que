@@ -183,8 +183,7 @@ only under the pointer.
 - **Under the pointer** (and on keyboard focus, and while the row's menu is open) a
   row shows an overlay at its right end, painted on the row's own hover background:
   the status word in mono 11px `--fg-faint` (its tone for needs input and stuck), then
-  ⋯. For a fresh finish the word is `done · 12m ago`, or, while the workspace has an
-  open pull request, `done · draft PR #12` or `done · PR #12`. An idle row with background work names its kinds,
+  ⋯. For a fresh finish the word is the age, `done · 12m ago`. An idle row with background work names its kinds,
   `idle · shell`, `idle · monitor`, or `idle · shell · monitor`. The overlay covers the end of a long name rather
   than reflowing it, so nothing jumps. A project head under the pointer turns its
   folder into its chevron and shows `+` and ⋯, which stay at opacity 0 until the head
