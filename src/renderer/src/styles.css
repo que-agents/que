@@ -1461,11 +1461,13 @@ body.resizing {
 .quiet-board-footer {
   display: flex;
   justify-content: flex-end;
+  gap: 12px;
 }
 
-/* Unlock is the one control and the footer's only content, drawn not to
- * tempt: a word and an icon in the board's dark grey mono, no border and no
- * fill; a hairline appears only under the pointer. */
+/* Unlock is the one control and the footer's only content (End quiet joins it
+ * in a manual window), drawn not to tempt: a word and an icon in the board's
+ * dark grey mono, no border and no fill; a hairline appears only under the
+ * pointer. */
 .quiet-board-footer button {
   display: inline-flex;
   align-items: center;

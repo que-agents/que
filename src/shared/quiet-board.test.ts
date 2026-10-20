@@ -160,4 +160,13 @@ describe('boardEmptyLine', () => {
       'nothing running · 3 queued for tonight'
     )
   })
+
+  it('counts what is queued without tonight in a manual quiet', () => {
+    expect(boardEmptyLine({ queued: 2, summaryAt: Date.parse(at(7, 0)), kind: 'manual' })).toBe(
+      'nothing running · 2 queued · summary at 07:00'
+    )
+    expect(boardEmptyLine({ queued: 2, summaryAt: null, kind: 'scheduled' })).toBe(
+      'nothing running · 2 queued for tonight'
+    )
+  })
 })

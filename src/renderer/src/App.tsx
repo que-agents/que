@@ -59,15 +59,15 @@ function Dialogs(): React.JSX.Element | null {
   }
 }
 
-/** What the (hidden) main window shows while quiet hours are locked: no detail at all. */
+/** What the (hidden) main window shows while a quiet window is locked: no detail at all. */
 function Locked(): React.JSX.Element {
   const { quiet } = useQue()
+  const label = quiet?.kind === 'manual' ? 'Quiet' : 'Quiet hours'
 
   return (
-    <section className="locked" data-testid="quiet-locked" aria-label="Quiet hours">
+    <section className="locked" data-testid="quiet-locked" aria-label={label}>
       <p>
-        Quiet hours. Detail unlocks at{' '}
-        {quiet?.windowEnd ? hhmm(Date.parse(quiet.windowEnd)) : '--:--'}.
+        {label}. Detail unlocks at {quiet?.windowEnd ? hhmm(Date.parse(quiet.windowEnd)) : '--:--'}.
       </p>
     </section>
   )

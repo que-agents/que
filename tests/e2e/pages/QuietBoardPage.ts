@@ -1,5 +1,5 @@
 // The quiet board window: the strip (header), the count line, rows keyed by
-// task or workspace id, and its one control, Unlock.
+// task or workspace id, and its controls: Unlock, and End quiet in a manual quiet.
 import type { Locator, Page } from '@playwright/test'
 
 export class QuietBoardPage {
@@ -9,6 +9,7 @@ export class QuietBoardPage {
   counts: Locator
   empty: Locator
   unlockButton: Locator
+  end: Locator
   row: (id: string) => Locator
 
   constructor(page: Page) {
@@ -18,6 +19,7 @@ export class QuietBoardPage {
     this.counts = page.getByTestId('quiet-board-counts')
     this.empty = page.getByTestId('quiet-board-empty')
     this.unlockButton = page.getByTestId('quiet-board-unlock')
+    this.end = page.getByTestId('quiet-board-end')
     this.row = (id: string) => page.getByTestId(`quiet-board-row-${id}`)
   }
 

@@ -20,7 +20,7 @@ import { handOffDaemon, handOffFailedText } from '../shared/upgrade'
 import { createBoardWindow } from './board'
 import { decodeAbsolutePath } from './ipc.decode'
 import { installMenu } from './menu'
-import { createTray, type QueTray } from './tray'
+import { createTray, type QueTray, quietTitle } from './tray'
 import { checkForUpdate } from './update-check'
 import { errorCode, errorMessage } from '../shared/errors.decode'
 
@@ -191,6 +191,9 @@ async function reply<T>(
 }
 
 function showBoard(): void {
+  // Set on every show: a manual quiet and quiet hours title the board differently.
+  const title = quietTitle(quiet) ?? 'que · quiet hours'
+
   if (!boardWindow || boardWindow.isDestroyed()) {
     boardWindow = createBoardWindow({ e2e })
     boardWindow.on('closed', () => {
@@ -205,6 +208,8 @@ function showBoard(): void {
     })
   } else if (e2e) boardWindow.showInactive()
   else boardWindow.show()
+
+  boardWindow.setTitle(title)
 }
 
 function closeBoard(): void {
@@ -421,9 +426,12 @@ app.whenReady().then(async () => {
   registerIpc()
   installMenu()
 
-  const quietCall = (method: 'quiet.unlock' | 'quiet.lock'): void => {
+  const quietCall = (
+    method: 'quiet.unlock' | 'quiet.lock' | 'quiet.start' | 'quiet.end',
+    params?: { minutes: number }
+  ): void => {
     void getClient()
-      .then((c) => c.request(method))
+      .then((c) => c.request(method, params))
       .catch((err) => console.error(`${method} failed:`, err))
   }
 
@@ -431,7 +439,9 @@ app.whenReady().then(async () => {
     show: showApp,
     quit: () => app.quit(),
     unlock: () => quietCall('quiet.unlock'),
-    lock: () => quietCall('quiet.lock')
+    lock: () => quietCall('quiet.lock'),
+    start: (minutes) => quietCall('quiet.start', { minutes }),
+    end: () => quietCall('quiet.end')
   })
 
   try {

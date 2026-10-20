@@ -8,6 +8,13 @@ import { quietTrayTitle, summarize, traySummary } from '../daemon/status-engine'
 import type { DaemonClient } from '../shared/client'
 import type { QuietState, StatusSummary, Task, Workspace } from '../shared/types'
 
+/** The tray tooltip and board window title in a quiet window, else null. */
+export function quietTitle(q: QuietState | null): string | null {
+  if (!q?.inQuietHours) return null
+
+  return q.kind === 'manual' ? 'que · quiet' : 'que · quiet hours'
+}
+
 /** A 32×32 (16pt @2x) monochrome "q": a ring with a descender, as raw BGRA. */
 function iconBitmap(): Buffer {
   const size = 32
@@ -50,6 +57,10 @@ export interface TrayOptions {
   quit: () => void
   unlock: () => void
   lock: () => void
+  /** Starts a manual quiet window of `minutes`. */
+  start: (minutes: number) => void
+  /** Ends a manual quiet window. */
+  end: () => void
 }
 
 export function createTray(opts: TrayOptions): QueTray {
@@ -70,6 +81,25 @@ export function createTray(opts: TrayOptions): QueTray {
   // Changes that arrive while the lists are in flight, replayed on top of them.
   let held: Array<() => void> | null = null
 
+  // In a window: End quiet (a manual one only) over Unlock or Lock now.
+  // Outside one: the three ways to go quiet now.
+  const quietItems = (): Electron.MenuItemConstructorOptions[] => {
+    if (!quiet?.inQuietHours) {
+      return [
+        { label: 'Quiet for 30 min', click: () => opts.start(30) },
+        { label: 'Quiet for 1 hour', click: () => opts.start(60) },
+        { label: 'Quiet for 2 hours', click: () => opts.start(120) }
+      ]
+    }
+
+    return [
+      ...(quiet.kind === 'manual' ? [{ label: 'End quiet', click: opts.end }] : []),
+      quiet.unlockedUntil
+        ? { label: 'Lock now', click: opts.lock }
+        : { label: `Unlock ${quiet.unlockMinutes} min`, click: opts.unlock }
+    ]
+  }
+
   const menu = (): Menu =>
     Menu.buildFromTemplate([
       { label: 'Open que', click: opts.show },
@@ -77,14 +107,8 @@ export function createTray(opts: TrayOptions): QueTray {
       { label: `Working: ${summary.working}`, enabled: false },
       { label: `Needs input: ${summary.needs_input}`, enabled: false },
       { label: `Stuck: ${summary.stuck}`, enabled: false },
-      ...(quiet?.inQuietHours
-        ? ([
-            { type: 'separator' },
-            quiet.unlockedUntil
-              ? { label: 'Lock now', click: opts.lock }
-              : { label: `Unlock ${quiet.unlockMinutes} min`, click: opts.unlock }
-          ] as Electron.MenuItemConstructorOptions[])
-        : []),
+      { type: 'separator' },
+      ...quietItems(),
       { type: 'separator' },
       { label: 'Quit que', click: opts.quit }
     ])
@@ -94,7 +118,7 @@ export function createTray(opts: TrayOptions): QueTray {
 
     if (tray.isDestroyed()) return
     tray.setTitle(title)
-    tray.setToolTip(quiet?.inQuietHours ? 'que · quiet hours' : 'que')
+    tray.setToolTip(quietTitle(quiet) ?? 'que')
   }
 
   // Left click brings the window forward; right click shows the menu (a

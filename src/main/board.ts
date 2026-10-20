@@ -1,6 +1,7 @@
 // The quiet board: a small frameless window that replaces the main window
-// during quiet hours. It loads the same renderer with `#board`, which renders
-// only the board (a count line and rows, no terminals, one Unlock button).
+// during quiet hours and a manual quiet. It loads the same renderer with
+// `#board`, which renders only the board (a count line and rows, no terminals,
+// Unlock, and End quiet in a manual quiet).
 import { join } from 'node:path'
 import { app, BrowserWindow } from 'electron'
 
@@ -32,6 +33,9 @@ export function createBoardWindow(opts: { e2e: boolean }): BrowserWindow {
   // No links and no navigation out of the board.
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
   win.webContents.on('will-navigate', (ev) => ev.preventDefault())
+  // The title is the main process's (`que · quiet hours`, or `que · quiet` for a
+  // manual window, set on every show), not the page's `<title>`.
+  win.on('page-title-updated', (ev) => ev.preventDefault())
 
   if (!app.isPackaged && process.env.ELECTRON_RENDERER_URL) {
     void win.loadURL(`${process.env.ELECTRON_RENDERER_URL}#${BOARD_HASH}`)
