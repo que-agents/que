@@ -79,6 +79,12 @@ function decodeTerminal(t: Record<string, unknown>, i: number): AdoptSpec {
   const workspaceId = str(t.workspaceId)
 
   if (workspaceId !== undefined) spec.workspaceId = workspaceId
+  const title = str(t.title)
+
+  if (title !== undefined) spec.title = title
+  const process = str(t.process)
+
+  if (process !== undefined) spec.process = process
 
   return spec
 }

@@ -308,6 +308,7 @@ export class DaemonServer {
           else c.sendEvent('term.data', { id, data })
         }
       }),
+      host.onUpdate((info) => this.bus.emit('term.updated', info)),
       host.onExit((id, info) => {
         this.log(`term ${id} exited code=${info.exitCode} signal=${info.signal ?? ''}`)
         this.bus.emit('term.exit', { id, exitCode: info.exitCode, signal: info.signal })

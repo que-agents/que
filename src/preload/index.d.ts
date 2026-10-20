@@ -129,7 +129,12 @@ export interface TermApi {
   onDisconnect(cb: () => void): () => void
 }
 
-export type TermEventName = 'term.data' | 'term.exit' | 'term.created' | 'term.killed'
+export type TermEventName =
+  | 'term.data'
+  | 'term.exit'
+  | 'term.created'
+  | 'term.killed'
+  | 'term.updated'
 
 export interface AppApi {
   homedir(): Promise<string>

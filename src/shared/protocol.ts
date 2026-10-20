@@ -69,6 +69,10 @@ export interface TermInfo {
   createdAt: string
   /** Set for terminals opened with workspace.openTerminal. */
   workspaceId?: string
+  /** The last title the program set (OSC 0/2), raw; absent when none, or the last was empty. */
+  title?: string
+  /** The foreground program's name (`zsh`, `claude`, `cat`); kept after the terminal exits. */
+  process?: string
 }
 
 export interface TermListParams {
@@ -641,6 +645,8 @@ export interface Events {
   'term.exit': { id: string; exitCode: number; signal?: number }
   'term.created': TermInfo
   'term.killed': { id: string }
+  /** Its title or foreground program changed. */
+  'term.updated': TermInfo
   'workspace.created': Workspace
   /** The row after any commit: status, reason, activity, session, title, branch, pull request. */
   'workspace.updated': Workspace
@@ -675,6 +681,7 @@ export const EVENTS: { [E in EventName]: { renderer: boolean } } = {
   'term.exit': { renderer: true },
   'term.created': { renderer: true },
   'term.killed': { renderer: true },
+  'term.updated': { renderer: true },
   'workspace.created': { renderer: true },
   'workspace.updated': { renderer: true },
   'workspace.removed': { renderer: true },

@@ -86,6 +86,16 @@ terminal, pick up exactly where the screen was. A terminal handed over by a
 previous daemon (see below) is an `AdoptedTerminal` over the inherited master
 fd; `PtyHost` holds both kinds behind one interface.
 
+Each terminal also reports two facts in its row (`TermInfo`): `title`, the
+last title its program set with OSC 0 or 2, raw (an empty title clears it),
+and `process`, the name of the program in its foreground (`zsh`, `claude`,
+`cat`), kept after the terminal exits. The foreground program is read with
+node-pty's native call on the master fd on every title change and once a
+second; the kernel's name can be a versioned file the launcher points at, so
+when it changes, `ps` on the terminal's tty finds the foreground group's
+leader and its argv[0]. `term.updated` carries the row whenever either fact
+changes, and only then.
+
 The renderer's xterm sends what a terminal sends, with one addition. xterm
 cannot tell Shift+Enter from Enter (both are a bare carriage return), so the
 app sends a line feed for Shift+Enter: the Ctrl+J newline Claude Code accepts
@@ -104,8 +114,8 @@ words for both surfaces (`handOffFailedText`). The running daemon then:
 1. stops reading every live terminal at the handle, so what the shells print
    from then on waits in the kernel, and serializes each mirror;
 2. writes a versioned snapshot under `QUE_HOME` (per terminal: id, workspace,
-   name, cwd, pid, size, its fd index, and the serialized screen and
-   scrollback) and spawns the new bundle detached, as `connectOrStart` would,
+   name, cwd, pid, size, its fd index, title, foreground program, and the
+   serialized screen and scrollback) and spawns the new bundle detached, as `connectOrStart` would,
    with `--handoff --snapshot <file>`, the IPC channel at fd 3 and the master
    fds from fd 4.
 

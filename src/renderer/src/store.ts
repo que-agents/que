@@ -60,6 +60,10 @@ export interface TermTab {
   /** Workspace id, or SCRATCH. */
   key: string
   createdAt: string
+  /** The last title the program set, raw; absent when none. */
+  title?: string
+  /** The foreground program's name (`zsh`, `claude`); absent until the daemon knows it. */
+  process?: string
 }
 
 export {
@@ -268,8 +272,19 @@ function toTab(t: TermInfo, reattached: boolean): TermTab {
     alive: t.alive,
     reattached,
     key: t.workspaceId ?? SCRATCH,
-    createdAt: t.createdAt
+    createdAt: t.createdAt,
+    title: t.title,
+    process: t.process
   }
+}
+
+/** The tabs with one terminal's title and process replaced; the same array when neither changed. */
+function withFacts(tabs: TermTab[], info: TermInfo): TermTab[] {
+  const tab = tabs.find((t) => t.id === info.id)
+
+  if (!tab || (tab.title === info.title && tab.process === info.process)) return tabs
+
+  return tabs.map((t) => (t === tab ? { ...t, title: info.title, process: info.process } : t))
 }
 
 function byId<T extends { id: string }>(items: readonly T[]): Record<string, T> {
@@ -568,6 +583,9 @@ export class QueStore {
         else this.addTab(info)
       }),
       term.on('term.killed', ({ id }) => this.removeTab(id)),
+      term.on('term.updated', (info) =>
+        this.setWith((s) => ({ terminals: withFacts(s.terminals, info) }))
+      ),
       term.on('term.exit', ({ id }) =>
         this.setWith((s) => ({
           terminals: s.terminals.map((t) => (t.id === id ? { ...t, alive: false } : t))

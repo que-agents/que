@@ -3,6 +3,7 @@
 // first work package's pty-host and server tests).
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DaemonClient } from '@shared/client'
+import type { TermInfo } from '@shared/protocol'
 import { recordEvents, startTestDaemon, type TestDaemon } from '../../src/testing/daemon-harness'
 
 let daemon: TestDaemon
@@ -17,7 +18,12 @@ afterEach(async () => {
   await daemon.close()
 })
 
-/** Collects every payload of one event on a client, in arrival order. */
+/** A shell without the user's profile, quick to start; `zsh` in the foreground. */
+const SHELL = { file: '/bin/zsh', args: ['-f'], cols: 80, rows: 24 }
+
+const listed = async (id: string): Promise<TermInfo | undefined> =>
+  (await client.request('term.list')).find((t) => t.id === id)
+
 describe('terminals', () => {
   describe('output', () => {
     it('mirrors program output into the snapshot and reports the exit code', async () => {
@@ -175,7 +181,8 @@ describe('terminals', () => {
       const listed = (await client.request('term.list')).find((t) => t.id === reply.id)
       expect(reply).toMatchObject({ cwd: daemon.home, alive: true })
       expect(created[0]).toEqual(reply)
-      expect(created[0]).toEqual(listed)
+      // The foreground program is read after the announcement and may be known by now.
+      expect({ ...created[0], process: listed?.process }).toEqual(listed)
     }, 20_000)
   })
 
@@ -188,6 +195,71 @@ describe('terminals', () => {
 
       await expect.poll(() => killed, { timeout: 5_000 }).toContainEqual({ id })
       expect((await client.request('term.list')).map((t) => t.id)).not.toContain(id)
+    }, 20_000)
+  })
+  describe('title and foreground program', () => {
+    it('reports the title a program sets, and drops it when the title is emptied', async () => {
+      const updates = recordEvents(client, 'term.updated')
+      const { id } = await client.request('term.create', SHELL)
+
+      await client.request('term.write', { id, data: "printf '\\033]0;QUE_TITLE_5d2c\\007'\r" })
+
+      await expect
+        .poll(() => updates.filter((u) => u.id === id).map((u) => u.title), { timeout: 10_000 })
+        .toContain('QUE_TITLE_5d2c')
+      expect((await listed(id))?.title).toBe('QUE_TITLE_5d2c')
+
+      await client.request('term.write', { id, data: "printf '\\033]0;\\007'\r" })
+
+      await expect.poll(async () => listed(id), { timeout: 10_000 }).not.toHaveProperty('title')
+      expect(updates.filter((u) => u.id === id).at(-1)).not.toHaveProperty('title')
+    }, 20_000)
+
+    it('follows the program in the foreground, announcing each change once', async () => {
+      const updates = recordEvents(client, 'term.updated')
+      const { id } = await client.request('term.create', SHELL)
+
+      await expect.poll(async () => (await listed(id))?.process, { timeout: 10_000 }).toBe('zsh')
+
+      await client.request('term.write', { id, data: 'cat\r' })
+
+      await expect.poll(async () => (await listed(id))?.process, { timeout: 10_000 }).toBe('cat')
+
+      await client.request('term.write', { id, data: '\x03' })
+
+      await expect.poll(async () => (await listed(id))?.process, { timeout: 10_000 }).toBe('zsh')
+
+      // One event per change, none repeating the one before.
+      expect(updates.filter((u) => u.id === id).map((u) => u.process)).toEqual([
+        'zsh',
+        'cat',
+        'zsh'
+      ])
+    }, 20_000)
+
+    it('keeps the last foreground program after the terminal exits', async () => {
+      const exits = recordEvents(client, 'term.exit')
+      const { id } = await client.request('term.create', SHELL)
+      await expect.poll(async () => (await listed(id))?.process, { timeout: 10_000 }).toBe('zsh')
+
+      await client.request('term.write', { id, data: 'exit\r' })
+
+      await expect.poll(() => exits.map((e) => e.id), { timeout: 10_000 }).toContain(id)
+      expect(await listed(id)).toMatchObject({ alive: false, process: 'zsh' })
+    }, 20_000)
+
+    it("reports the session's title while Claude Code runs and none after it exits", async () => {
+      vi.stubEnv('QUE_FAKE_CLAUDE_TITLE', 'QUE_SESSION_8e41')
+      const { id } = await client.request('term.create', { file: 'claude', cols: 80, rows: 24 })
+
+      await expect
+        .poll(async () => (await listed(id))?.title, { timeout: 10_000 })
+        .toBe('✳ QUE_SESSION_8e41')
+
+      await client.request('term.write', { id, data: '/exit\r' })
+
+      await expect.poll(async () => listed(id), { timeout: 10_000 }).toMatchObject({ alive: false })
+      expect(await listed(id)).not.toHaveProperty('title')
     }, 20_000)
   })
 })

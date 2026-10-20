@@ -22,6 +22,10 @@ export interface Term {
   readonly alive: boolean
   readonly cols: number
   readonly rows: number
+  /** The last title the program set (OSC 0/2); undefined when none or empty. */
+  readonly title: string | undefined
+  /** The foreground program's name; undefined until first read, kept after exit. */
+  readonly process: string | undefined
   write(data: string): void
   resize(cols: number, rows: number): void
   snapshot(): Promise<TermSnapshotResult>
@@ -45,6 +49,8 @@ export function termInfo(t: Term): TermInfo {
     pid: t.pid,
     alive: t.alive,
     createdAt: t.createdAt,
-    workspaceId: t.workspaceId || undefined
+    workspaceId: t.workspaceId || undefined,
+    title: t.title,
+    process: t.process
   }
 }

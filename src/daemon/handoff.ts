@@ -125,7 +125,9 @@ export class HandoffSender {
         cols: t.cols,
         rows: t.rows,
         fd: FIRST_FD + i,
-        serialized: serialized[i]
+        serialized: serialized[i],
+        title: t.title,
+        process: t.process
       }))
 
       fs.writeFileSync(

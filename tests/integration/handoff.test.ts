@@ -172,6 +172,36 @@ describe('daemon handoff', () => {
       ])
     })
 
+    it("carries a terminal's title and program over, and the new daemon follows its foreground", async () => {
+      const before = clients[0]
+      const term = await shell(before)
+      await before.request('term.write', {
+        id: term.id,
+        data: "printf '\\033]0;QUE_CARRIED_2f7a\\007'\r"
+      })
+      await expect
+        .poll(async () => (await before.request('term.list'))[0], { timeout: 5_000 })
+        .toMatchObject({ title: 'QUE_CARRIED_2f7a', process: expect.any(String) })
+      const { process: shellName } = (await before.request('term.list'))[0]
+
+      const r = await upgrade()
+
+      expect(r.code, r.stderr).toBe(0)
+      pids.add(Number(UPGRADE_LINE.exec(r.stdout)?.[2]))
+      const after = await connect()
+      expect((await after.request('term.list'))[0]).toMatchObject({
+        id: term.id,
+        title: 'QUE_CARRIED_2f7a',
+        process: shellName
+      })
+
+      await after.request('term.write', { id: term.id, data: 'cat\r' })
+
+      await expect
+        .poll(async () => (await after.request('term.list'))[0]?.process, { timeout: 5_000 })
+        .toBe('cat')
+    })
+
     it('carries terminals over twice, and stop afterwards ends every one of them', async () => {
       const first = await shell(clients[0])
 

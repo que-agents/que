@@ -1,12 +1,14 @@
 // What a handoff needs from a terminal's master fd beyond what node-pty
 // offers: stop and restart reading it at the handle, write to it, and resize
-// it through node-pty's own native binding.
+// it and name its foreground process through node-pty's own native binding.
 import fs from 'node:fs'
 import type tty from 'node:tty'
 import { errorCode } from '../shared/errors.decode'
 
 interface PtyBinding {
   resize(fd: number, cols: number, rows: number): void
+  /** The kernel's name of the foreground process on the master (darwin takes only the fd). */
+  process(fd: number): string | undefined
 }
 
 interface NativeLoader {
