@@ -241,6 +241,77 @@ describe('QuietBoard', () => {
     })
   })
 
+  describe('manual quiet', () => {
+    const manual = { ...quiet, kind: 'manual' as const }
+
+    it('reads Quiet and Running, and offers End quiet beside Unlock', async () => {
+      seed()
+      fakeBridge.setQuietState(manual)
+
+      render(<App board now={clock} />)
+
+      expect(await screen.findByTestId('quiet-board-header')).toHaveTextContent(
+        /^Quiet 02:00 · until 07:00$/
+      )
+      expect(screen.getByRole('region', { name: 'Quiet' })).toBeInTheDocument()
+      expect(screen.getByRole('list', { name: 'Running' })).toBeInTheDocument()
+      expect(screen.getAllByRole('button')).toEqual([
+        screen.getByTestId('quiet-board-unlock'),
+        screen.getByTestId('quiet-board-end')
+      ])
+      expect(screen.getByTestId('quiet-board-end')).toHaveTextContent(/^End quiet$/)
+      expect(screen.getByTestId('quiet-board-end')).toHaveClass('ghost')
+    })
+
+    it('still counts from the window start', async () => {
+      seed()
+      fakeBridge.setQuietState(manual)
+
+      render(<App board now={clock} />)
+
+      await waitFor(() => {
+        expect(screen.getByTestId('quiet-board-counts')).toHaveTextContent(/· 1 done ·/)
+      })
+    })
+
+    it('counts what is queued without tonight', async () => {
+      fakeBridge.seedTask(queued)
+      fakeBridge.setQuietState(manual)
+
+      render(<App board now={clock} />)
+
+      await waitFor(() => {
+        expect(screen.getByTestId('quiet-board-empty')).toHaveTextContent(
+          /^nothing running · 1 queued$/
+        )
+      })
+    })
+
+    it('ends the manual quiet with End quiet, and drops the button with it', async () => {
+      const user = userEvent.setup()
+      seed()
+      fakeBridge.setQuietState(manual)
+      render(<App board now={clock} />)
+
+      await user.click(await screen.findByRole('button', { name: 'End quiet' }))
+
+      await waitFor(() => {
+        expect(screen.queryByTestId('quiet-board-end')).not.toBeInTheDocument()
+      })
+      expect(await window.que.quiet.state()).toMatchObject({ inQuietHours: false, kind: null })
+    })
+
+    it('shows no End quiet and reads Quiet hours in a scheduled window', async () => {
+      seed()
+
+      render(<App board now={clock} />)
+
+      expect(await screen.findByTestId('quiet-board-header')).toHaveTextContent(/^Quiet hours /)
+      expect(screen.getByRole('list', { name: 'Running tonight' })).toBeInTheDocument()
+      expect(screen.queryByTestId('quiet-board-end')).not.toBeInTheDocument()
+    })
+  })
+
   describe('status updates', () => {
     it('moves a task between counts and off the rows as the daemon reports it', async () => {
       seed()

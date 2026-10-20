@@ -113,3 +113,37 @@ test('quiet hours show only the board; an unlock brings detail back until it run
     expect(queResult(queHome, 'attach', workspace.id).code).toBe(3)
   })
 })
+
+test('a manual quiet from the CLI shows the board; End quiet brings the main window back', async () => {
+  // Quiet hours stay off (the default test config): only the manual window locks.
+  launched = await launchApp()
+  const { app, queHome } = launched
+  let board: QuietBoardPage
+
+  await test.step('Start a manual quiet with the CLI: the board replaces the main window', async () => {
+    // Ten minutes, so only End quiet can close the board within the test.
+    expect(que(queHome, 'quiet', 'start', '10').trim()).toMatch(/^quiet until \d\d:\d\d$/)
+    board = new QuietBoardPage(await findWindow(app, true))
+    await board.waitForLoad()
+    await expect
+      .poll(() => windowStates(app))
+      .toEqual(
+        expect.arrayContaining([
+          { board: true, visible: true },
+          { board: false, visible: false }
+        ])
+      )
+    await expect(board.header).toHaveText(/^Quiet \d\d:\d\d · until \d\d:\d\d$/)
+    await expect
+      .poll(() =>
+        app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().map((w) => w.getTitle()))
+      )
+      .toContain('que · quiet')
+  })
+
+  await test.step('End quiet: the board closes and the main window shows', async () => {
+    await board.end.click()
+    await expect.poll(() => windowStates(app)).toEqual([{ board: false, visible: true }])
+    expect(que(queHome, 'quiet', 'status').trim()).toBe('quiet hours off')
+  })
+})

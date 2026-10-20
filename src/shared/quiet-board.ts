@@ -5,7 +5,13 @@
 // night state). Pure; the renderer turns the items into spans.
 import { type CountItem } from './count-line'
 import { hhmm } from './format'
-import { ACTIVE_STATES, LIVE_STATES, type TaskState, type WorkspaceStatus } from './types'
+import {
+  ACTIVE_STATES,
+  LIVE_STATES,
+  type QuietKind,
+  type TaskState,
+  type WorkspaceStatus
+} from './types'
 
 /** What an empty board and an all-zero count line say. */
 export const NOTHING_RUNNING = 'nothing running'
@@ -97,12 +103,21 @@ export function boardCountItems(t: BoardTally): CountItem[] {
 
 /**
  * The one line an empty board shows: `nothing running`, then what is queued
- * for tonight, then when the morning summary arrives (only when it is on).
+ * (for tonight, in quiet hours), then when the morning summary arrives (only
+ * when it is on).
  */
-export function boardEmptyLine(input: { queued: number; summaryAt: number | null }): string {
+export function boardEmptyLine(input: {
+  queued: number
+  summaryAt: number | null
+  kind?: QuietKind | null
+}): string {
   const parts = [NOTHING_RUNNING]
 
-  if (input.queued > 0) parts.push(`${input.queued} queued for tonight`)
+  if (input.queued > 0) {
+    parts.push(
+      input.kind === 'manual' ? `${input.queued} queued` : `${input.queued} queued for tonight`
+    )
+  }
 
   if (input.summaryAt !== null) parts.push(`summary at ${hhmm(input.summaryAt)}`)
 

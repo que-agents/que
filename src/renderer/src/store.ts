@@ -1140,6 +1140,16 @@ export class QueStore {
     return this.guard(async () => this.set({ quiet: await this.api.quiet.lock() }))
   }
 
+  /** Goes quiet now, as in quiet hours, for `minutes`. */
+  startQuiet(minutes: number): Promise<void> {
+    return this.guard(async () => this.set({ quiet: await this.api.quiet.start({ minutes }) }))
+  }
+
+  /** Ends a manual quiet early. */
+  endQuiet(): Promise<void> {
+    return this.guard(async () => this.set({ quiet: await this.api.quiet.end() }))
+  }
+
   fetchUnlocks(since?: string): Promise<QuietUnlock[]> {
     return this.api.quiet.log(since ? { since } : undefined)
   }

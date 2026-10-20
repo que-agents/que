@@ -32,10 +32,10 @@ function minutes(m: number): string {
 }
 
 /**
- * Quiet hours: the one question, "running and not stuck?", answered from
+ * Quiet hours (or a manual quiet): the one question, "running and not stuck?", answered from
  * across the room without pulling anyone in. A dim strip, one faint count
  * line, a dim row per live task and per workspace that is busy or has a live
- * terminal, and a ghost Unlock: no sentences, no badges, no links. Needs input
+ * terminal, and a ghost Unlock (and End quiet in a manual window): no sentences, no badges, no links. Needs input
  * is not a night state here: it reads `waiting`, with no tone.
  */
 export default function QuietBoard(): React.JSX.Element {
@@ -108,16 +108,19 @@ export default function QuietBoard(): React.JSX.Element {
 
   const summaryAt = config?.config.notifications.morningSummary ? windowEnd : null
   const unlockMinutes = quiet?.unlockMinutes ?? 20
+  // A manual quiet (`que quiet start`) is not tonight: the same board, plainer words.
+  const manual = quiet?.kind === 'manual'
+  const label = manual ? 'Quiet' : 'Quiet hours'
 
   return (
-    <section className="quiet-board" data-testid="quiet-board" aria-label="Quiet hours">
+    <section className="quiet-board" data-testid="quiet-board" aria-label={label}>
       <span className="corner tl" aria-hidden="true" />
       <span className="corner tr" aria-hidden="true" />
       <span className="corner bl" aria-hidden="true" />
       <span className="corner br" aria-hidden="true" />
       <header className="quiet-board-strip" data-testid="quiet-board-header">
         <QMarkIcon />
-        <span className="quiet-board-label">Quiet hours</span>{' '}
+        <span className="quiet-board-label">{label}</span>{' '}
         <span className="quiet-board-clock">
           {hhmm(now)} <span className="quiet-board-until">· until {until}</span>
         </span>
@@ -128,10 +131,10 @@ export default function QuietBoard(): React.JSX.Element {
       <div className="quiet-board-rows">
         {rows.length === 0 ? (
           <p className="quiet-board-empty" data-testid="quiet-board-empty">
-            {boardEmptyLine({ queued: tally.queued, summaryAt })}
+            {boardEmptyLine({ queued: tally.queued, summaryAt, kind: quiet?.kind })}
           </p>
         ) : (
-          <ul aria-label="Running tonight">
+          <ul aria-label={manual ? 'Running' : 'Running tonight'}>
             {rows.map((r) => (
               <li
                 key={r.id}
@@ -161,6 +164,17 @@ export default function QuietBoard(): React.JSX.Element {
           <UnlockIcon />
           Unlock {minutes(unlockMinutes)} min
         </button>
+        {manual && (
+          <button
+            type="button"
+            className="ghost"
+            data-testid="quiet-board-end"
+            disabled={!connected}
+            onClick={() => void store.endQuiet()}
+          >
+            End quiet
+          </button>
+        )}
       </footer>
     </section>
   )

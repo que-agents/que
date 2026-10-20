@@ -52,6 +52,16 @@ describe('quiet mode in the main window', () => {
       expect(await window.que.term.list()).toEqual([])
       expect(screen.queryByRole('alert')).not.toBeInTheDocument()
     })
+
+    it('says Quiet, not quiet hours, while a manual quiet is locked', async () => {
+      fakeBridge.setQuietState({ ...locked, kind: 'manual' })
+
+      render(<App now={clock} />)
+
+      expect(await screen.findByTestId('quiet-locked')).toHaveTextContent(
+        /^Quiet\. Detail unlocks at 07:00\.$/
+      )
+    })
   })
 
   describe('status updates', () => {

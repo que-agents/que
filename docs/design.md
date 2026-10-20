@@ -245,6 +245,13 @@ mono `--fg-faint`, no border and no fill, with a `--border` hairline and
 HH:MM` in the strip.
 Needs input is not a night state: it reads `waiting`, faint, with a neutral
 dot, and the locked tray title leaves its count out (`● 3 ✕ 0`).
+A manual quiet (`que quiet start`, or the tray's `Quiet for …`) shows the same
+board with plainer words, since it need not be night: the label reads `[ QUIET ]`
+and the list `Running` instead of `Running tonight`, an empty board says
+`N queued` without `for tonight`, and an `End quiet` button sits beside Unlock,
+drawn the same way. Those two buttons stay the board's only controls; the
+tally still counts from the window's start. The board window and the tray
+tooltip read `que · quiet`.
 
 ## Report
 
