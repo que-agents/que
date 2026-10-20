@@ -25,6 +25,11 @@ export class TerminalMirror {
     this.term.resize(cols, rows)
   }
 
+  /** Fires when the program sets the title (OSC 0 or 2); an empty title clears it. Ends with the mirror. */
+  onTitleChange(cb: (title: string) => void): void {
+    this.term.onTitleChange(cb)
+  }
+
   /**
    * Serialized screen + scrollback. The mirror's write queue is drained first
    * so the snapshot reflects every byte received before this call, and no

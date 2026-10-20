@@ -22,7 +22,9 @@ const SNAPSHOT: HandoffSnapshot = {
       cols: 132,
       rows: 41,
       fd: 4,
-      serialized: '\u001b[1mbuild ok\u001b[0m\r\n$ '
+      serialized: '\u001b[1mbuild ok\u001b[0m\r\n$ ',
+      title: '✳ Retry the uploader',
+      process: 'claude'
     },
     {
       id: '9a0b1c2d-3e4f-4a5b-8c6d-7e8f9a0b1c2d',

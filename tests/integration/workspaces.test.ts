@@ -282,7 +282,9 @@ worktree_include = ["config/local", "missing.json"]
       })
 
       const [term] = await client.request('term.list', { workspaceId: ws.id })
-      await expect.poll(() => created).toEqual([term])
+      // The foreground program is read after the announcement and may be known by the list.
+      await expect.poll(() => created.length).toBe(1)
+      expect(term).toMatchObject(created[0])
       expect(term).toMatchObject({ id: termId, workspaceId: ws.id, cwd: ws.path, alive: true })
       const killed = recordEvents(client, 'term.killed')
       const removed = recordEvents(client, 'workspace.removed')

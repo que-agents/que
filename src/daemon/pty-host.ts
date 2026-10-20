@@ -5,6 +5,7 @@ import type tty from 'node:tty'
 import * as pty from 'node-pty'
 import type { TermCreateParams, TermInfo, TermSnapshotResult } from '../shared/protocol'
 import { AdoptedTerminal, type AdoptSpec } from './adopted-terminal'
+import { TerminalFacts } from './foreground'
 import { TerminalMirror } from './mirror'
 import { holdReading, resumeReading } from './pty-fd'
 import { termInfo, type ExitInfo, type Term } from './term'
@@ -37,6 +38,7 @@ export class HostedTerminal implements Term {
   readonly proc: pty.IPty
   readonly workspaceId?: string
   private readonly mirror: TerminalMirror
+  private readonly facts: TerminalFacts
   alive = true
   cols: number
   rows: number
@@ -45,6 +47,7 @@ export class HostedTerminal implements Term {
     opts: TermCreateParams,
     onData: (data: string) => void,
     onExit: (e: ExitInfo) => void,
+    onUpdate: (info: TermInfo) => void,
     extra: TermExtra = {}
   ) {
     this.id = randomUUID()
@@ -75,8 +78,25 @@ export class HostedTerminal implements Term {
     })
     this.proc.onExit(({ exitCode, signal }) => {
       this.alive = false
+      this.facts.stop()
       onExit({ exitCode, signal })
     })
+    this.facts = new TerminalFacts({
+      pid: this.proc.pid,
+      masterFd: this.masterFd,
+      alive: () => this.alive,
+      mirror: this.mirror,
+      onChange: () => onUpdate(this.info())
+    })
+    this.facts.start()
+  }
+
+  get title(): string | undefined {
+    return this.facts.title
+  }
+
+  get process(): string | undefined {
+    return this.facts.process
   }
 
   get pid(): number {
@@ -146,6 +166,7 @@ export class HostedTerminal implements Term {
 
   dispose(): void {
     this.kill()
+    this.facts.stop()
     this.mirror.dispose()
   }
 
@@ -167,11 +188,14 @@ type DataListener = (id: string, data: string) => void
 
 type ExitListener = (id: string, info: ExitInfo) => void
 
+type UpdateListener = (info: TermInfo) => void
+
 /** Owns every terminal in the daemon; terminals outlive client connections. */
 export class PtyHost {
   private terms = new Map<string, Term>()
   private dataListeners = new Set<DataListener>()
   private exitListeners = new Set<ExitListener>()
+  private updateListeners = new Set<UpdateListener>()
 
   create(opts: TermCreateParams, extra?: TermExtra): HostedTerminal {
     let id = ''
@@ -180,6 +204,7 @@ export class PtyHost {
       opts,
       (data) => this.emitData(id, data),
       (info) => this.emitExit(id, info),
+      (info) => this.emitUpdate(info),
       extra
     )
 
@@ -198,7 +223,8 @@ export class PtyHost {
     const t = new AdoptedTerminal(
       spec,
       (data) => this.emitData(spec.id, data),
-      (info) => this.emitExit(spec.id, info)
+      (info) => this.emitExit(spec.id, info),
+      (info) => this.emitUpdate(info)
     )
 
     this.terms.set(t.id, t)
@@ -241,11 +267,22 @@ export class PtyHost {
     return () => this.exitListeners.delete(l)
   }
 
+  /** Fires when a terminal's title or foreground program changed. */
+  onUpdate(l: UpdateListener): () => void {
+    this.updateListeners.add(l)
+
+    return () => this.updateListeners.delete(l)
+  }
+
   private emitData(id: string, data: string): void {
     for (const l of this.dataListeners) l(id, data)
   }
 
   private emitExit(id: string, info: ExitInfo): void {
     for (const l of this.exitListeners) l(id, info)
+  }
+
+  private emitUpdate(info: TermInfo): void {
+    for (const l of this.updateListeners) l(info)
   }
 }

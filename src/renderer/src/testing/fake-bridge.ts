@@ -933,6 +933,14 @@ class FakeBridge {
     return this.termListCalls
   }
 
+  /** Sets a terminal's title and foreground program and emits term.updated with its row, as the daemon would. */
+  updateTerminal(id: string, facts: Pick<TermInfo, 'title' | 'process'>): void {
+    const t = this.terminal(id)
+    t.title = facts.title
+    t.process = facts.process
+    this.emit('term.updated', toInfo(t))
+  }
+
   /** Marks a terminal exited and emits term.exit, as the daemon would. */
   exitTerminal(id: string, exitCode: number): void {
     this.terminal(id).alive = false

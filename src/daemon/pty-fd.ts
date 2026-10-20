@@ -1,12 +1,30 @@
 // What a handoff needs from a terminal's master fd beyond what node-pty
 // offers: stop and restart reading it at the handle, write to it, and resize
-// it through node-pty's own native binding.
+// it and name its foreground process through node-pty's own native binding.
 import fs from 'node:fs'
 import type tty from 'node:tty'
 import { errorCode } from '../shared/errors.decode'
 
 interface PtyBinding {
   resize(fd: number, cols: number, rows: number): void
+  /** The kernel's name of the foreground process on the master (darwin takes only the fd). */
+  process(fd: number): string | undefined
+}
+
+/**
+ * The kernel's name of the process group in the terminal's foreground, read on
+ * the master fd; undefined when no group has the terminal (the binding then
+ * answers `kernel_task`, pid 0: before the shell takes it and once it is gone)
+ * or the fd is closed.
+ */
+export function foregroundProcess(fd: number): string | undefined {
+  try {
+    const name = ptyBinding().process(fd)
+
+    return name && name !== 'kernel_task' ? name : undefined
+  } catch {
+    return undefined
+  }
 }
 
 interface NativeLoader {

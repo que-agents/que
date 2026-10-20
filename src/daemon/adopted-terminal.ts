@@ -6,6 +6,7 @@
 import tty from 'node:tty'
 import type { TermInfo, TermSnapshotResult } from '../shared/protocol'
 import { errorCode } from '../shared/errors.decode'
+import { TerminalFacts } from './foreground'
 import { TerminalMirror } from './mirror'
 import { FdWriter, holdReading, ptyBinding, resumeReading } from './pty-fd'
 import { termInfo, type ExitInfo, type Term } from './term'
@@ -24,6 +25,10 @@ export interface AdoptSpec {
   fd: number
   /** The predecessor's mirror, serialized: screen and scrollback. */
   serialized: string
+  /** The last title the program set; the serialized screen does not carry it. */
+  title?: string
+  /** The foreground program's name as the predecessor last knew it. */
+  process?: string
 }
 
 export class AdoptedTerminal implements Term {
@@ -40,12 +45,14 @@ export class AdoptedTerminal implements Term {
   private readonly mirror: TerminalMirror
   private readonly stream: tty.ReadStream
   private readonly writer: FdWriter
+  private readonly facts: TerminalFacts
   private exited = false
 
   constructor(
     spec: AdoptSpec,
     onData: (data: string) => void,
-    private readonly onExit: (e: ExitInfo) => void
+    private readonly onExit: (e: ExitInfo) => void,
+    onUpdate: (info: TermInfo) => void
   ) {
     this.id = spec.id
     this.name = spec.name
@@ -58,6 +65,16 @@ export class AdoptedTerminal implements Term {
     this.rows = spec.rows
     this.mirror = new TerminalMirror(spec.cols, spec.rows)
     this.mirror.write(spec.serialized)
+    this.facts = new TerminalFacts(
+      {
+        pid: spec.pid,
+        masterFd: spec.fd,
+        alive: () => this.alive,
+        mirror: this.mirror,
+        onChange: () => onUpdate(this.info())
+      },
+      { title: spec.title, process: spec.process }
+    )
     this.writer = new FdWriter(spec.fd)
 
     // A tty stream does not read until it flows; paused first, the listener
@@ -75,6 +92,15 @@ export class AdoptedTerminal implements Term {
     this.stream.on('error', (err) => {
       if (errorCode(err) !== 'EAGAIN') this.exit()
     })
+    this.facts.start()
+  }
+
+  get title(): string | undefined {
+    return this.facts.title
+  }
+
+  get process(): string | undefined {
+    return this.facts.process
   }
 
   write(data: string): void {
@@ -128,6 +154,7 @@ export class AdoptedTerminal implements Term {
     }
 
     this.alive = false
+    this.facts.stop()
     this.writer.close()
     this.stream.destroy()
   }
@@ -145,6 +172,7 @@ export class AdoptedTerminal implements Term {
     if (this.exited) return
     this.exited = true
     this.alive = false
+    this.facts.stop()
     this.writer.close()
     // This daemon is not the shell's parent, so it cannot learn the exit
     // status; an ended terminal reports 0, as the protocol needs a number.

@@ -62,6 +62,9 @@ runs the headless scenarios above.
 UserPromptSubmit, a fake `Read` (Pre/PostToolUse), a reply, and Stop.
 `/needs-input` fires UserPromptSubmit, then the permission Notification, and waits for `y`; `/exit` fires
 SessionEnd and exits 0.
+With `QUE_FAKE_CLAUDE_TITLE=<text>` it sets the terminal title (OSC 0) as the real CLI
+does: `✳ <text>` at startup and after each Stop, `◐ <text>` when a prompt arrives, and the
+empty title on `/exit` and at the end of its input.
 
 | Command                  | Hooks                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
