@@ -301,7 +301,7 @@ h2 {
   overflow-y: auto;
 }
 
-/* Report, Tickets and Settings stay at the window's bottom edge, above a solid hairline. */
+/* Quiet, Report, Tickets and Settings stay at the window's bottom edge, above a solid hairline. */
 .sidebar-bottom {
   position: sticky;
   bottom: 0;
@@ -676,7 +676,7 @@ h2 {
   visibility: hidden;
 }
 
-/* The foot: Report, Tickets, Settings; above them, during an unlock, its countdown. */
+/* The foot: Quiet, Report, Tickets, Settings; above them, during an unlock, its countdown. */
 .sidebar-bottom .row-button {
   color: var(--fg-muted);
 }
@@ -741,6 +741,64 @@ h2 {
 .unlock-row .lock-now:hover:not(:disabled) {
   background: none;
   color: var(--fg-muted);
+}
+
+/* Outside a quiet window: a foot row whose word starts an hour, and three lengths at its
+ * right in the unlock row's voice. The word is a button filling the row up to the lengths,
+ * so the row reads and behaves like Report: the whole row takes the hover surface and
+ * the word brightens with it. */
+.quiet-row {
+  box-sizing: border-box;
+  display: flex;
+  align-items: stretch;
+  height: 26px;
+  border-radius: var(--radius);
+}
+
+.quiet-row:hover {
+  background: var(--bg-hover);
+}
+
+.quiet-row button {
+  background: none;
+  border: none;
+  border-radius: var(--radius);
+  color: var(--fg-muted);
+}
+
+.quiet-row .quiet-word {
+  flex: 1;
+  min-width: 0;
+  padding: 0 8px;
+  text-align: left;
+  font-weight: 400;
+}
+
+.quiet-row:hover .quiet-word:not(:disabled) {
+  color: var(--fg);
+}
+
+.quiet-row .quiet-lengths {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-right: 8px;
+  font: 11px var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.quiet-row .quiet-chip {
+  padding: 0;
+  font: inherit;
+  color: var(--fg-faint);
+}
+
+.quiet-row .quiet-chip.default {
+  color: var(--fg-muted);
+}
+
+.quiet-row .quiet-chip:hover:not(:disabled) {
+  color: var(--fg);
 }
 
 .menu {

@@ -86,6 +86,51 @@ function UnlockRow(): React.JSX.Element | null {
   )
 }
 
+/** The manual quiet's lengths at the row's right; the word itself starts the hour. */
+const QUIET_CHIPS = [
+  { minutes: 30, text: '30m', label: 'Quiet for 30 minutes' },
+  { minutes: 60, text: '1h', label: 'Quiet for 1 hour' },
+  { minutes: 120, text: '2h', label: 'Quiet for 2 hours' }
+] as const
+
+/** Outside a quiet window: the word, filling the row, starts an hour of quiet; the lengths at its right pick one. */
+function QuietRow(): React.JSX.Element | null {
+  const store = useStore()
+  const connected = useQueSelector((s) => s.connected)
+  const inQuiet = useQueSelector((s) => s.quiet?.inQuietHours ?? false)
+
+  if (inQuiet) return null
+
+  return (
+    <div className="quiet-row" role="group" aria-label="Quiet">
+      <button
+        type="button"
+        className="quiet-word"
+        data-testid="sidebar-quiet"
+        disabled={!connected}
+        onClick={() => void store.startQuiet(60)}
+      >
+        Quiet
+      </button>
+      <span className="quiet-lengths">
+        {QUIET_CHIPS.map((c) => (
+          <button
+            key={c.minutes}
+            type="button"
+            className={c.minutes === 60 ? 'quiet-chip default' : 'quiet-chip'}
+            data-testid={`sidebar-quiet-${c.minutes}`}
+            aria-label={c.label}
+            disabled={!connected}
+            onClick={() => void store.startQuiet(c.minutes)}
+          >
+            {c.text}
+          </button>
+        ))}
+      </span>
+    </div>
+  )
+}
+
 export default function Sidebar(): React.JSX.Element {
   const store = usePanes(SCRATCH)
   const projects = useQueSelector((s) => s.projects)
@@ -517,6 +562,7 @@ export default function Sidebar(): React.JSX.Element {
       </nav>
       <div className="sidebar-bottom" data-testid="sidebar-bottom">
         <UnlockRow />
+        <QuietRow />
         <button
           type="button"
           className="row-button report-entry"
