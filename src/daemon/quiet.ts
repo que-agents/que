@@ -5,7 +5,7 @@
 // log; refuses the
 // detail methods while quiet and locked; tells the server to drop every
 // terminal subscription the moment that starts; emits quiet.changed and, once
-// per window, quiet.morningSummary.
+// per window (scheduled or manual), quiet.morningSummary.
 import type { Report } from '../shared/protocol'
 import type {
   QuietHoursConfig,
@@ -308,9 +308,13 @@ export class QuietService {
   endManual(): QuietState {
     if (!this.manual) return this.state()
     const now = this.now()
+    const start = this.manual.start
     this.endUnlock(now)
     this.closeManual(now)
     this.evaluate(true)
+    // Ended early, the window never reaches its planned end, so the transition
+    // in evaluate() would not summarize it.
+    void this.summary('manual', start)
 
     return this.state()
   }
@@ -372,8 +376,11 @@ export class QuietService {
     const prev = this.lastWindow
     this.lastWindow = w
 
-    if (prev?.kind === 'scheduled' && !w && now >= prev.end.getTime() - 1_000) {
-      void this.morningSummary(prev)
+    // A window that reached its end, scheduled or manual. A manual one that
+    // quiet hours ended is followed by a window, so it has none: the morning
+    // summary covers the night.
+    if (prev && !w && now >= prev.end.getTime() - 1_000) {
+      void this.summary(prev.kind, prev.start.getTime())
     }
 
     const state = this.state()
@@ -387,15 +394,14 @@ export class QuietService {
     this.schedule(now, state)
   }
 
-  private async morningSummary(window: ActiveWindow): Promise<void> {
-    const start = window.start.getTime()
-
+  /** The report since a window's start, once per window (keyed on the start). */
+  private async summary(kind: QuietKind, start: number): Promise<void> {
     if (!this.o.config().notifications.morningSummary || this.summarized.has(start)) return
     this.summarized.add(start)
 
     try {
-      const report = await this.o.report(window.start.toISOString())
-      this.o.emit('quiet.morningSummary', { report })
+      const report = await this.o.report(new Date(start).toISOString())
+      this.o.emit('quiet.morningSummary', { kind, report })
     } catch (err) {
       this.o.log?.(`quiet: morning summary failed: ${errorMessage(err)}`)
     }

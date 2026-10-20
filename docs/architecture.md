@@ -374,7 +374,9 @@ any unlock); `quiet.end` ends it at once. It holds with quiet hours disabled,
 config edits never end it, and the apply-tonight guardrail covers only the
 scheduled windows. Unlocks inside it work the same and reach the daemon log,
 but the unlock log (`quiet.log`, the report's unlocks line) keeps only the
-night's.
+night's. Its end, by expiry or `quiet.end`, emits the same summary with `kind:
+'manual'`, worded for the day and skipped when nothing ran or waits; one that
+quiet hours end leaves the night to the morning summary.
 
 ## The app
 

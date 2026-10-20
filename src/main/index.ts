@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process'
 import os from 'node:os'
 import { join } from 'node:path'
 import { app, BrowserWindow, dialog, ipcMain, Notification, shell } from 'electron'
-import { reportSummaryText } from '../daemon/report'
+import { summaryNotification } from '../daemon/report'
 import { buildIdOf, daemonIsStale } from '../shared/build-id'
 import { DaemonClient, resolveDaemonScript } from '../shared/client'
 import { loginShellPath, mergePath } from '../shared/login-path'
@@ -15,7 +15,7 @@ import {
   type ParamsOf,
   type Report
 } from '../shared/protocol'
-import type { DaemonState, QuietState, UpdateInfo } from '../shared/types'
+import type { DaemonState, QuietKind, QuietState, UpdateInfo } from '../shared/types'
 import { handOffDaemon, handOffFailedText } from '../shared/upgrade'
 import { createBoardWindow } from './board'
 import { decodeAbsolutePath } from './ipc.decode'
@@ -114,7 +114,7 @@ async function connect(): Promise<DaemonClient> {
   c.on('task.removed', ({ id }) => tray?.dropTask(id))
   tray?.seed(c)
   c.on('quiet.changed', (q) => applyQuiet(q))
-  c.on('quiet.morningSummary', ({ report }) => morningSummary(report))
+  c.on('quiet.morningSummary', morningSummary)
   void c.request('quiet.state').then(applyQuiet, () => {})
   c.onClose(() => {
     if (client === c) client = null
@@ -238,14 +238,14 @@ function applyQuiet(q: QuietState): void {
   }
 }
 
-/** One notification with the night's count line, when quiet hours end. */
-function morningSummary(report: Report): void {
+/** One notification with the window's count line, when a quiet window ends. */
+function morningSummary({ kind, report }: { kind: QuietKind; report: Report }): void {
   if (e2e || !Notification.isSupported()) return
 
-  // The same words as the report page's count line.
-  const body = reportSummaryText(report, Date.now())
+  // The same words as the report page's count line; none after an empty manual quiet.
+  const note = summaryNotification(kind, report, Date.now())
 
-  new Notification({ title: 'que · good morning', body }).show()
+  if (note) new Notification(note).show()
 }
 
 function createWindow(): void {
