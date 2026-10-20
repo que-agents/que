@@ -409,6 +409,30 @@ describe('quiet hours', () => {
       })
     })
 
+    it('keeps quiet hours locked when the manual window it took over would have ended, and on quiet.end', async () => {
+      // Two seconds before 19:00, a six-second manual quiet. Quiet hours take it over at
+      // 19:00; its own end, at 19:00:04, and a quiet.end must both leave them locked.
+      const now = clockFrom(new Date(2026, 9, 14, 18, 59, 58))
+      const d = await startTestDaemon({ config: QUIET(), now })
+      daemon = d
+      const changes = recordEvents(d.client, 'quiet.changed')
+      const started = await d.client.request('quiet.start', { minutes: 0.1 })
+      const manualEnd = Date.parse(started.windowEnd ?? '')
+
+      await expect.poll(() => changes.at(-1)?.kind, { timeout: 10_000 }).toBe('scheduled')
+      await expect.poll(() => now() > manualEnd + 500, { timeout: 15_000 }).toBe(true)
+      expect(await d.client.request('quiet.state')).toMatchObject({
+        kind: 'scheduled',
+        locked: true
+      })
+
+      expect(await d.client.request('quiet.end')).toMatchObject({
+        kind: 'scheduled',
+        locked: true
+      })
+      await expect(d.client.request('term.create', cat)).rejects.toMatchObject(REFUSAL)
+    }, 30_000)
+
     it('is ended by quiet hours starting inside it, so it cannot resurface when they end', async () => {
       const d = await start(QUIET(), new Date(2026, 9, 14, 18, 59, 58))
       const changes = recordEvents(d.client, 'quiet.changed')
