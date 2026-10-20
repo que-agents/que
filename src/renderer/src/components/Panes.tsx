@@ -8,6 +8,7 @@ import {
   RATIO_MAX,
   RATIO_MIN,
   SCRATCH,
+  tabLabel,
   usePanes,
   useQueSelector,
   useStore
@@ -247,17 +248,16 @@ function Pane({
                 aria-selected={t.id === active?.id}
                 data-term-id={t.id}
                 data-testid={`terminal-tab-${t.id}-select`}
-                title={t.cwd}
+                title={[t.cwd, t.title, t.id.slice(0, 4)].filter(Boolean).join('\n')}
                 onClick={() => store.selectTerminal(termKey, t.id)}
               >
-                {/* An exited terminal's name reads faint; the testid marks it for the specs. */}
+                {/* An exited terminal's program reads faint; the testid marks it for the specs. */}
                 <span
                   className="tab-name"
                   data-testid={t.alive ? undefined : `terminal-tab-${t.id}-exited`}
                 >
-                  {t.name}
-                </span>{' '}
-                <span className="short-id">{t.id.slice(0, 4)}</span>
+                  {tabLabel(t)}
+                </span>
                 {t.reattached && (
                   <span className="badge" data-testid={`terminal-tab-${t.id}-reattached`}>
                     reattached
@@ -267,7 +267,7 @@ function Pane({
               <button
                 type="button"
                 className="close"
-                aria-label={`Close ${t.name}`}
+                aria-label={`Close ${tabLabel(t)}`}
                 data-testid={`terminal-tab-${t.id}-close`}
                 onClick={() => void store.closeTerminal(t.id)}
               >

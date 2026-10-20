@@ -21,6 +21,8 @@ export class TerminalPage {
   tabSelect: (id: string) => Locator
   tabClose: (id: string) => Locator
   tabExited: (id: string) => Locator
+  // The program (or name) a tab reads.
+  tabLabel: (id: string) => Locator
   tabReattached: (id: string) => Locator
 
   constructor(page: Page) {
@@ -34,6 +36,7 @@ export class TerminalPage {
     this.tabSelect = (id: string) => page.getByTestId(`terminal-tab-${id}-select`)
     this.tabClose = (id: string) => page.getByTestId(`terminal-tab-${id}-close`)
     this.tabExited = (id: string) => page.getByTestId(`terminal-tab-${id}-exited`)
+    this.tabLabel = (id: string) => page.getByTestId(`terminal-tab-${id}-select`)
     this.tabReattached = (id: string) => page.getByTestId(`terminal-tab-${id}-reattached`)
   }
 

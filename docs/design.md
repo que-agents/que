@@ -136,10 +136,12 @@ remove. The quiet board uses the same tones on a dot or a word, never a badge.
   toggle for a workspace, all `button.ghost.icon`; the Sessions view has the same row
   without the toggle. The `+` after the last tab is always visible; a tab's × waits at
   opacity 0 until the tab is under the pointer, holds the keyboard focus, or is the
-  active one, so the tab keeps its width. An exited terminal's name reads `--fg-faint`,
-  with no badge; `reattached` is a small mono badge. A tab's tooltip is its folder.
-  The workspace's name lives in the sidebar's selected row and the tab, its status in
-  the row's dot, and the error and update banners sit above the row.
+  active one, so the tab keeps its width. A tab reads the program running in it (`claude`,
+  `zsh`, `node`), the terminal's name standing in until the daemon knows; an exited
+  terminal keeps its last program, read in `--fg-faint`, with no badge; `reattached` is
+  a small mono badge. A tab's tooltip is its folder, the title its program set, and the
+  first four characters of its id, one to a line. The workspace's name lives in the
+  sidebar's selected row alone, its status in the row's dot, and the error and update banners sit above the row.
 
 ## Sidebar
 
