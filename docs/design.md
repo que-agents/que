@@ -51,12 +51,12 @@ so the DOM keeps the plain word.
 | `--accent`         | `#3fcdb4` | Links, the active tab's underline, focus rings, the cursor, the unlock countdown, the sidebar's working mark. |
 | `--accent-hover`   | `#6adcc7` | The accent under the pointer.                                                                                 |
 | `--inverse`        | `#e6e6e6` | The one primary button on a screen, light on dark.                                                            |
-| `--tone-busy`      | `#4f8cf5` | working, running, preparing (outside the sidebar, which draws the working mark).                              |
-| `--tone-attention` | `#f99c00` | needs input, paused.                                                                                          |
-| `--tone-bad`       | `#fb2c36` | stuck, failed, exited badly; the danger button.                                                               |
-| `--tone-good`      | `#34c26b` | done, idle after work: a sidebar row that finished since you last looked at it.                               |
-| `--tone-neutral`   | `#7a7a7a` | idle, queued.                                                                                                 |
-| `--tone-muted`     | `#5a5a5a` | stopped, exited.                                                                                              |
+| `--tone-busy`      | `#4f8cf5` | working, preparing (outside the sidebar, which draws the working mark).                                       |
+| `--tone-attention` | `#f99c00` | needs input.                                                                                                  |
+| `--tone-bad`       | `#fb2c36` | stuck, exited badly; the danger button.                                                                       |
+| `--tone-good`      | `#34c26b` | idle after work: a sidebar row that finished since you last looked at it.                                     |
+| `--tone-neutral`   | `#7a7a7a` | idle.                                                                                                         |
+| `--tone-muted`     | `#5a5a5a` | exited.                                                                                                       |
 
 The accent is a teal, apart in hue from both the done green and the working
 blue, and it is used sparingly, so it keeps meaning "this is the thing" (the

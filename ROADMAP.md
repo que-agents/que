@@ -3,12 +3,12 @@
 What comes after 0.1.0, roughly in order. Nothing here is promised; open an
 issue to argue for something, or against it.
 
-## Tasks from issue trackers
+## Workspaces from GitHub issues
 
-`que add` takes a brief from the command line or a file today. Next: pull
-briefs from an issue tracker (GitHub issues first), so labelling an issue
-queues it for tonight, and the morning report links each pull request back to
-the issue it came from.
+`que work` takes a brief from the command line, and `que tickets start` makes a
+workspace from a tracker ticket. Next: GitHub issues the same way, so a
+workspace starts from an issue and the morning report links each pull request
+back to the issue it came from.
 
 ## Split panes
 
@@ -17,7 +17,7 @@ watcher or a dev server, with the same reattach guarantees as tabs.
 
 ## A diff view
 
-See what a workspace or a finished task changed without leaving the app: the
+See what a workspace changed without leaving the app: the
 branch's diff against its base, file by file, before opening the pull request.
 
 ## An editor status-bar extension

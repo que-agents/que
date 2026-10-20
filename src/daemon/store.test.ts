@@ -24,7 +24,7 @@ afterEach(() => {
 })
 
 describe('migrations', () => {
-  it('drops the retired task queue from a database the previous release wrote, keeping its workspaces', () => {
+  it('drops the retired tasks table from a database the previous release wrote, keeping its workspaces', () => {
     const dir = fs.mkdtempSync(join(os.tmpdir(), 'que-store-'))
     const path = join(dir, 'que.db')
     const previous = new DatabaseSync(path)

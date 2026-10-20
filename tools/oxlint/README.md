@@ -16,5 +16,5 @@ above, so the diff is reviewed like any other change.
 
 Tiers in `.oxlintrc.json`: `error` for the rules with no or few hits; `off` for the four type-boundary
 rules (`no-runtime-typeof`, `no-unsafe-dictionary-type`, `no-unknown-parameters`,
-`no-known-value-widening`) until #84 gives the Claude stream, `gh` and Jira CLI JSON proper decoders,
+`no-known-value-widening`) until #84 gives the Claude Code hook, `gh` and Jira CLI JSON proper decoders,
 after which they come back at `error`; `off` for `require-safety-comment-for-type-assertion`.

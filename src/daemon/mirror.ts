@@ -1,4 +1,4 @@
-// The headless xterm that mirrors everything a terminal has printed, so an
+// The @xterm/headless terminal that mirrors everything a terminal has printed, so an
 // attach (or a successor daemon) gets the screen and scrollback as they are.
 import { Terminal as HeadlessTerminal } from '@xterm/headless'
 import { SerializeAddon } from '@xterm/addon-serialize'
@@ -12,7 +12,7 @@ export class TerminalMirror {
 
   constructor(cols: number, rows: number) {
     this.term = new HeadlessTerminal({ cols, rows, scrollback: SCROLLBACK, allowProposedApi: true })
-    // The serialize addon is typed against the browser Terminal; the headless
+    // The serialize addon is typed against the browser Terminal; the @xterm/headless
     // terminal implements the same public surface it uses.
     this.term.loadAddon(this.serializer)
   }

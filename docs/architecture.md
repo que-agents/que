@@ -1,8 +1,8 @@
 # Architecture
 
 que is three kinds of process around one long-lived daemon. The daemon owns
-everything that must outlive a window: terminals, workspaces, the overnight
-queue, statuses, and quiet hours. The app and the `que` CLI hold no state of
+everything that must outlive a window: terminals, workspaces, statuses, and
+quiet hours. The app and the `que` CLI hold no state of
 their own; they are clients of the daemon's unix socket and can come and go.
 
 ```
@@ -17,14 +17,14 @@ their own; they are clients of the daemon's unix socket and can come and go.
                                ▼
   ┌──────────────────────────────────────────────────────────────────────────────┐
   │ daemon (Electron binary as Node: ELECTRON_RUN_AS_NODE=1)                       │
-  │  DaemonServer ─ quiet gate ─┬─ PtyHost: node-pty + headless xterm mirrors     │
+  │  DaemonServer ─ quiet gate ─┬─ PtyHost: node-pty + @xterm/headless mirrors    │
   │                             ├─ Workspaces: projects, git worktrees, setup     │
   │                             ├─ Status engine: hooks + ticks → workspace status│
-  │                             ├─ Task queue: dispatcher, runner, finisher       │
+  │                             ├─ Draft PRs and pull request tracking (gh)       │
   │                             └─ Store: SQLite (node:sqlite) in QUE_HOME        │
   └──────────────────────────────────────────────────────────────────────────────┘
           │ spawns                         │ spawns                    │ spawns
-      login shells                 claude -p (stream-json)         git, gh, caffeinate
+      login shells                 claude agents --json            git, gh
 ```
 
 ## The daemon
@@ -39,7 +39,7 @@ and `node-pty` in `Resources/daemon/node_modules`, outside the asar archive.
 `que daemon install` adds an opt-in launchd agent that starts it at login.
 
 Quitting the app closes a socket connection and nothing more: terminals and
-tasks keep running, and the next window reattaches.
+the sessions in them keep running, and the next window reattaches.
 
 A rebuilt daemon bundle does not reach a daemon that is already running, so
 each side names the build it has. The daemon hashes its own bundle at start
@@ -78,7 +78,7 @@ that copes with chunks split anywhere, including inside a multi-byte character.
 ## Terminals
 
 `PtyHost` runs each terminal as a node-pty process and feeds every byte into a
-headless xterm as well as to subscribers. Attaching takes a serialized snapshot
+`@xterm/headless` terminal as well as to subscribers. Attaching takes a serialized snapshot
 of that mirror (screen, scrollback, modes) and then streams live data, with
 anything that arrives during the snapshot buffered so nothing is lost or
 duplicated. That is what lets a relaunched app, or `que attach` in another
@@ -131,16 +131,14 @@ and pid file to its successor. Clients reconnect and attach to the same
 terminal ids; the attach replays the rebuilt mirror.
 
 Carried over: every live terminal, with its id, shell, screen and scrollback.
-Not carried over: task runs (the old daemon stops them as it lets go of the
-socket, and the successor's queue recovery takes them up as after any
-restart), file watches and pollers (they start fresh), exited terminals, the
+Not carried over: file watches and pollers (they start fresh), exited terminals, the
 start time (it is a new daemon), and an adopted terminal's exit code (the new
 daemon is not the shell's parent, so an ended terminal reports 0).
 
 Every wait on the successor has a timeout. If it fails, exits or does not
 answer before `adopted`, the old daemon reads its terminals again and answers
 with the error; after it has let go of the socket, it also kills the successor
-(SIGKILL, so no shutdown of its runs), listens again with fresh services and
+(SIGKILL, so it shuts nothing down), listens again with fresh services and
 then answers. Either way no terminal ends; the error reaches the app's error
 line or the CLI's stderr, and the fallback is `que daemon restart`.
 
@@ -172,7 +170,7 @@ fires arrives at the daemon as JSON on stdin, tagged with the workspace it ran i
 
 ## What a process que starts can see
 
-The daemon, every terminal, and every headless run get a cleaned copy of the
+The daemon and every terminal get a cleaned copy of the
 environment (`src/shared/env.ts`): the markers a running coding-agent session
 leaves in the shells it spawns are removed, so a session started in que is a
 normal top-level one; the identity of whichever terminal emulator launched que
@@ -203,8 +201,7 @@ The same hooks keep a record of the sessions that are live in workspace
 terminals (`live-sessions.ts`). Every terminal carries its own id
 (`QUE_TERMINAL_ID`), which `que hook` passes along, so a session start names
 the terminal it runs in. An entry is written on the session's start and cleared
-when Claude ends the session, when the terminal exits, or when it is killed;
-headless task runs are never recorded, since the queue recovers those. The
+when Claude ends the session, when the terminal exits, or when it is killed. The
 record is saved in the store as it changes and frozen when shutdown begins, so
 a crash leaves it as current as a clean stop. At start the next daemon consumes
 each entry once and, unless the workspace is gone or archived, opens a terminal
@@ -243,8 +240,12 @@ re-checked only every fifth time. `pr-state.ts` maps the answer to state
 review decision. When the result differs from the stored one (ignoring
 `checkedAt`) it is saved in `pr_json` and `workspace.updated` is emitted. A
 failed `gh` keeps the stored value and logs one line until a call succeeds
-again. A successful `workspace.createPr` and a task reaching `done` trigger an
-immediate check of that workspace.
+again. A successful `workspace.createPr` triggers an immediate check of that
+workspace.
+
+`workspace.createPr` (Create draft PR) runs `openDraftPr` in `draft-pr.ts`:
+it commits what is left uncommitted, pushes the workspace branch (never the
+default or a protected branch), and opens a draft pull request with `gh`.
 
 Each check run and commit status from the rollup is kept too, as
 `PullRequest.checkRuns`: name, workflow, state (failing, pending, passing,
@@ -313,7 +314,7 @@ draws a random three-word name (`adjective-adjective-noun`, `names.ts`) for the
 workspace, branch and folder, drawing again on a clash up to 50 times; an
 explicit name is refused on a clash instead. The new-workspace dialog prefills
 such a name and lets the user draw another or type their own, which it sends as
-the explicit name. Tasks get random names too; tickets pass their own name. The
+the explicit name. Tickets pass their own name. The
 title is the given one, else the brief's first line (`brief.ts`), and is what the
 sidebar shows; the brief goes verbatim to `<worktree>/.que/brief.md`.
 `workspace.start` opens the workspace's first terminal when it has none, answers
@@ -337,31 +338,14 @@ new name is stored with `title_source = 'terminal'` and announced with
 user gave, at creation or with `workspace.rename` (`title_source = 'user'`),
 pins it: later session titles never replace it.
 
-## The task machine
-
-An overnight task moves `queued → preparing → running → finishing → done`, and
-may end `stuck`, `failed`, or `stopped`, or rest `paused` while a rate limit
-lasts. `task-machine.ts` is one pure function from a task and an event (a
-stream-json message, a hook, an exit, a tick) to the next task. Around it:
-
-- the **dispatcher** starts queued tasks up to `concurrency` while the queue is open;
-- the **runner** prepares a fresh workspace, runs `claude -p` with stream-json
-  output, turn and dollar caps, and que's system prompt, and kills the run when
-  the machine says so (caps, stall, stop);
-- the **finisher** commits what the agent left, pushes the task branch (never
-  the default or a protected branch), and opens a draft pull request with `gh`;
-- a **keep-awake** (`caffeinate -i -w <daemon pid>`) is held while any task is
-  active, and the clock tick resumes paused tasks when their limit resets;
-- the **report** groups the night's tasks by outcome for `que report` and the app.
-
 ## Quiet enforcement
 
 Quiet hours are enforced in the daemon, not the UI, so no client can see past
 them. While a window is in progress and not unlocked, the server refuses the
-detail methods (terminal attach and snapshot, reports, new tasks and
-terminals) with a `quiet_hours` error and drops every live terminal
-subscription the moment the window starts. Status, counts and the queue keep
-working, which is all the quiet board needs: it answers "is it running, and is
+detail methods (terminal attach and snapshot, reports, diffs and files,
+starting a session or a terminal) with a `quiet_hours` error and drops every live
+terminal subscription the moment the window starts. Status and counts keep
+working, and so do the sessions already running, which is all the quiet board needs: it answers "is it running, and is
 it stuck?" and nothing else. An unlock lasts `unlock_minutes`, is logged with
 its reason, and ends on its own. A config edit made during a window never
 shortens tonight's window unless asked to. When the window ends, the daemon

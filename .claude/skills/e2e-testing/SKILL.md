@@ -8,7 +8,7 @@ allowed-tools: Read, Edit, Write, Glob, Grep, Bash(npm run e2e*), Bash(npx playw
 
 You are an expert Playwright test engineer for que. You write, debug, run, and fix E2E tests following strict best practices.
 
-**What makes this app different from a typical E2E target:** que is a macOS Electron app (TypeScript strict, React 19, electron-vite), not a website — there is no URL and no `page.goto()`. Specs drive it through Playwright's Electron support (`_electron.launch`). The app is only a client: a long-running daemon (`src/daemon/`) owns the terminals, workspaces (git worktrees), the status engine, the task queue and headless runner, the finisher, and the quiet-hours clock, and it **outlives the app** — quitting que leaves the daemon and its terminals running, and the next launch reattaches. `npm run e2e` builds the app (`npm run build`) and then runs `playwright test`; every spec launches the built app with `QUE_HOME` pointed at a fresh temp dir (so the real daemon starts there, with its own SQLite, socket, and worktrees), `QUE_E2E=1` (so the renderer exposes `window.__que` with `activeTermId()` and `screenText()`), and `PATH` prepended with `tests/fakes/bin` (so the daemon's `claude`, `gh`, and `code` are fakes, while `git` stays real against a temp repo). Test data setup is either (a) the deterministic repo fixture from `tests/e2e/utils/repo.ts` or (b) the real `que` CLI against the test's `QUE_HOME` via `tests/e2e/utils/que.ts`. One app launch per test; everything else is in-app state, except the deliberate **relaunch** in persistence specs. Screenshots go under `test-results/`.
+**What makes this app different from a typical E2E target:** que is a macOS Electron app (TypeScript strict, React 19, electron-vite), not a website — there is no URL and no `page.goto()`. Specs drive it through Playwright's Electron support (`_electron.launch`). The app is only a client: a long-running daemon (`src/daemon/`) owns the terminals, workspaces (git worktrees), the status engine, Create draft PR, the sessions report, and the quiet-hours clock, and it **outlives the app** — quitting que leaves the daemon and its terminals running, and the next launch reattaches. `npm run e2e` builds the app (`npm run build`) and then runs `playwright test`; every spec launches the built app with `QUE_HOME` pointed at a fresh temp dir (so the real daemon starts there, with its own SQLite, socket, and worktrees), `QUE_E2E=1` (so the renderer exposes `window.__que` with `activeTermId()` and `screenText()`), and `PATH` prepended with `tests/fakes/bin` (so the daemon's `claude`, `gh`, and `code` are fakes, while `git` stays real against a temp repo). Test data setup is either (a) the deterministic repo fixture from `tests/e2e/utils/repo.ts` or (b) the real `que` CLI against the test's `QUE_HOME` via `tests/e2e/utils/que.ts`. One app launch per test; everything else is in-app state, except the deliberate **relaunch** in persistence specs. Screenshots go under `test-results/`.
 
 **Scope:** This skill covers **how** to write Playwright E2E tests. For deciding **what** to test at which layer, use the `test-planning` skill. For Vitest daemon integration, renderer component, and logic tests, use the `vitest-testing` skill.
 
@@ -36,16 +36,16 @@ You are an expert Playwright test engineer for que. You write, debug, run, and f
 
 Pattern: `{component}-{entity-id?}-{element}`
 
-| Type              | Pattern                      | Example                                                                |
-| ----------------- | ---------------------------- | ---------------------------------------------------------------------- |
-| Container         | `{component}`                | `sidebar`, `quiet-board`, `report`                                     |
-| Container element | `{component}-{element}`      | `quiet-board-unlock`, `sidebar-add-project`                            |
-| Dynamic container | `{component}-{id}`           | `sidebar-workspace-ws_01hzx3k9c2qf`, `terminal-tab-<id>`               |
-| Dynamic child     | `{component}-{id}-{element}` | `sidebar-workspace-ws_01hzx3k9c2qf-status`, `report-task-<id>-pr-link` |
+| Type              | Pattern                      | Example                                                                    |
+| ----------------- | ---------------------------- | -------------------------------------------------------------------------- |
+| Container         | `{component}`                | `sidebar`, `quiet-board`, `report`                                         |
+| Container element | `{component}-{element}`      | `quiet-board-unlock`, `sidebar-add-project`                                |
+| Dynamic container | `{component}-{id}`           | `sidebar-workspace-ws_01hzx3k9c2qf`, `terminal-tab-<id>`                   |
+| Dynamic child     | `{component}-{id}-{element}` | `sidebar-workspace-ws_01hzx3k9c2qf-status`, `report-workspace-<id>-status` |
 
 ### Which ID to use for dynamic testids
 
-Workspaces, terminals, and tasks all carry an **opaque id minted by the daemon**. **Use that id for every dynamic testid.** Do **not** use the workspace name or branch — two projects can each have a `APP-1432-retry-logic`, names can contain characters that are awkward in selectors, and a rename would silently break the locator. Never key by row position either: the sidebar sorts by activity, so position changes as statuses change.
+Workspaces and terminals all carry an **opaque id minted by the daemon**. **Use that id for every dynamic testid.** Do **not** use the workspace name or branch — two projects can each have a `APP-1432-retry-logic`, names can contain characters that are awkward in selectors, and a rename would silently break the locator. Never key by row position either: the sidebar sorts by activity, so position changes as statuses change.
 
 ### Real Examples (target state — apply when touching these components)
 
@@ -270,7 +270,7 @@ export class SidebarPage {
 ### When Methods ARE Allowed (4+ lines of complex logic)
 
 ```typescript
-// OK - a task runs through several states; wait for the terminal one and surface the history on failure
+// OK - a session runs through several states; wait for the one wanted and surface the history on failure
 async waitForWorkspaceStatus(id: string, status: string, timeout = 30_000) {
   const badge = this.workspaceStatus(id)
   await badge.waitFor({ state: 'visible' })
@@ -366,7 +366,7 @@ The "prompt has settled" wait goes away entirely: typing into the terminal befor
 1. **ALWAYS use page objects** - never call `window.getByTestId()` or `window.getByRole()` directly in test files
 2. **Wrap every action in `test.step()`** - required for debugging
 3. **Use locators directly with Playwright assertions** - via page object properties
-4. **State-first data setup** - build the repo with `utils/repo.ts` and register it or queue work with the real CLI through `utils/que.ts`; never click through a dozen dialogs to build state the test isn't about (see Section 5)
+4. **State-first data setup** - build the repo with `utils/repo.ts` and register it or create workspaces with the real CLI through `utils/que.ts`; never click through a dozen dialogs to build state the test isn't about (see Section 5)
 5. **One app launch per test** - `launchApp()` once, then drive everything through in-app state (sidebar, tabs, settings, the quiet board). The only exception is a **relaunch** in a persistence spec, which is the behavior under test.
 
 ### Page Object Requirement
@@ -392,16 +392,19 @@ await expect(terminal.tabReattached(termId)).toBeVisible()
 
 ### Correct Test Pattern
 
-This example relies on the deterministic repo fixture (Section 5): `makeRepo()` builds the same two-commit repo with a `que.toml` every run, and the fake `claude` defaults to the `success` scenario. It runs a queued task overnight-style through the CLI and checks the morning report.
+This example relies on a temp repo from `makeTempRepo()` and the fake `claude`, typed into the workspace terminal like the real one. It starts a session through the CLI and the app and checks that the morning report shows it waiting.
 
 ```typescript
-// tests/e2e/overnight-task.spec.ts
+// tests/e2e/workspace.spec.ts
 import { expect, test } from '@playwright/test'
-import { launchApp, type LaunchedApp } from './utils/app'
-import { makeRepo } from './utils/repo'
-import { que, queJson } from './utils/que'
+import type { Project, Workspace } from '../../src/shared/types'
+import { makeTempRepo } from '../../src/testing/temp-repo'
+import { AppShellPage } from './pages/AppShellPage'
 import { ReportPage } from './pages/ReportPage'
 import { SidebarPage } from './pages/SidebarPage'
+import { TerminalPage } from './pages/TerminalPage'
+import { type LaunchedApp, launchApp, tempDir } from './utils/app'
+import { que, queJson } from './utils/que'
 
 let launched: LaunchedApp
 
@@ -409,53 +412,54 @@ test.afterEach(async () => {
   await launched?.close() // quits the app AND stops the test daemon
 })
 
-test('a queued task runs headless and ends as a draft PR in the morning report', async () => {
-  const repo = makeRepo()
-  let taskId = ''
-  let workspaceId = ''
+test('a session that asks for input shows as waiting in the morning report', async () => {
+  const repo = makeTempRepo(tempDir('que-e2e-repo-'))
+  let workspace: Workspace
+  let termId = ''
 
   await test.step('Launch the app on a fresh QUE_HOME', async () => {
     launched = await launchApp()
-    await new SidebarPage(launched.window).waitForLoad()
+    await new AppShellPage(launched.window).waitForLoad()
   })
 
   const sidebar = new SidebarPage(launched.window)
+  const terminal = new TerminalPage(launched.window)
   const report = new ReportPage(launched.window)
 
-  await test.step('Queue a task with the CLI', async () => {
-    const task = queJson<{ id: string; workspaceId: string }>(
+  await test.step('Add the project and create a workspace with the CLI', async () => {
+    queJson<Project>(launched.queHome, 'project', 'add', repo, '--json')
+    workspace = queJson<Workspace>(
       launched.queHome,
-      'add',
-      '--project',
-      repo,
+      'work',
       '--name',
-      'APP-1432-retry-logic',
-      '--json',
-      'Add retry logic to the uploader'
+      'APP-1432 retry logic',
+      '-r',
+      repo,
+      '--json'
     )
-    taskId = task.id
-    workspaceId = task.workspaceId
   })
 
-  await test.step('The new workspace appears in the sidebar', async () => {
-    await expect(sidebar.workspace(workspaceId)).toBeVisible()
+  await test.step('Open its terminal and start claude', async () => {
+    termId = que(launched.queHome, 'ws', 'terminal', workspace.id).trim()
+    await sidebar.workspaceOpen(workspace.id).click()
+    await terminal.tabSelect(termId).click()
+    await terminal.input.focus()
+    await launched.window.keyboard.type('claude')
+    await launched.window.keyboard.press('Enter')
   })
 
-  await test.step('Run the queue; the task finishes', async () => {
-    que(launched.queHome, 'run')
-    await sidebar.waitForWorkspaceStatus(workspaceId, 'done')
+  await test.step('Ask for something that needs permission; the sidebar says needs input', async () => {
+    await launched.window.keyboard.type('/needs-input')
+    await launched.window.keyboard.press('Enter')
+    await sidebar.waitForWorkspaceStatus(workspace.id, 'needs_input')
   })
 
-  await test.step('The finisher opened a draft PR through gh', async () => {
-    expect(launched.ghCalls()).toContainEqual(expect.arrayContaining(['pr', 'create', '--draft']))
-  })
-
-  await test.step('The morning report shows the task with its PR link', async () => {
-    await report.openButton.click()
+  await test.step('The morning report lists the workspace as waiting', async () => {
+    await sidebar.reportButton.click()
     await report.waitForLoad()
-    await expect(report.taskState(taskId)).toHaveAttribute('data-status', 'done')
-    await expect(report.taskPrLink(taskId)).toHaveAttribute('href', /\/pull\/\d+$/)
-    await launched.window.screenshot({ path: 'test-results/overnight-task-report.png' })
+    await expect(report.workspaceState(workspace.id)).toHaveAttribute('data-status', 'needs_input')
+    await expect(report.workspaceFacts(workspace.id)).toContainText('asked for input 1×')
+    await launched.window.screenshot({ path: 'test-results/workspace-report.png' })
   })
 })
 ```
@@ -624,7 +628,7 @@ export function queJson<T>(queHome: string, ...args: string[]): T {
 }
 ```
 
-Use it both to **seed** (`que add`, `que work`) and to **assert** daemon state with no window in the way (`que term list --json`, `que status --json`) — the CLI is a real client of the same socket, so it sees exactly what the app sees.
+Use it both to **seed** (`que project add`, `que work`) and to **assert** daemon state with no window in the way (`que term list --json`, `que status --json`) — the CLI is a real client of the same socket, so it sees exactly what the app sees.
 
 ### `utils/repo.ts` - the deterministic repo fixture
 
@@ -662,14 +666,14 @@ export function makeRepo(): string {
 
 Fixed author and dates make commit hashes identical every run, so a spec may assert on them if it ever needs to.
 
-### Default pattern: a fresh home, the stock repo, the default scenario
+### Default pattern: a fresh home, the stock repo, the fake session
 
-Most specs need nothing beyond `makeRepo()` and `launchApp()`. The fake `claude` defaults to `success`; pick another scenario for the whole launch with `launchApp({ env: { QUE_FAKE_CLAUDE_SCENARIO: 'needs_input' } })` — the daemon inherits the env and passes it to every `claude` it spawns.
+Most specs need nothing beyond `makeRepo()` and `launchApp()`. The fake `claude` is an interactive session: type `claude` into a workspace terminal, then a prompt or `/needs-input`, as a user would. Knobs such as `QUE_FAKE_CLAUDE_TITLE` go in `launchApp({ env })` — the daemon inherits the env and passes it to every terminal it opens.
 
 ```typescript
 test('a session asking for permission shows needs input in the sidebar', async () => {
   const repo = makeRepo()
-  launched = await launchApp({ env: { QUE_FAKE_CLAUDE_SCENARIO: 'needs_input' } })
+  launched = await launchApp()
   const ws = queJson<{ id: string }>(
     launched.queHome,
     'work',
@@ -677,7 +681,7 @@ test('a session asking for permission shows needs input in the sidebar', async (
     'APP-1440-quiet-board',
     '--json'
   )
-  // ...open the workspace, assert sidebar.workspaceStatus(ws.id) reaches needs_input...
+  // ...open the workspace, type claude and /needs-input, assert sidebar.workspaceStatus(ws.id) reaches needs_input...
 })
 ```
 
@@ -691,13 +695,13 @@ Drive it through the UI if it **is** the flow under test (creating a workspace f
 
 The subprocess fakes in `tests/fakes/bin/` are what make E2E deterministic. They are the same binaries the Vitest integration suite uses.
 
-| Fake     | What a spec can rely on                                                                                                                                                                                                                                                                                                                                                                                           |
-| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `claude` | Headless (`-p --output-format stream-json`) emits a realistic stream ending in a `result` line; interactive mode prints a banner and a prompt into the PTY; `--settings` hooks fire with real hook JSON, so the status engine sees `UserPromptSubmit`, `Notification`, `Stop` as it would from the real thing. `QUE_FAKE_CLAUDE_SCENARIO`: `success`, `stall`, `rate_limit`, `max_turns`, `crash`, `needs_input`. |
-| `gh`     | Logs argv to `QUE_FAKE_GH_LOG` (`launched.ghCalls()` reads it back) and prints a fake PR URL from `gh pr create`.                                                                                                                                                                                                                                                                                                 |
-| `code`   | Logs its invocation, so "Open in VS Code" is assertable without an editor window appearing.                                                                                                                                                                                                                                                                                                                       |
+| Fake     | What a spec can rely on                                                                                                                                                                                                                                                                                                               |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `claude` | An interactive session only: prints a banner and a prompt into the PTY; `--settings` hooks fire with real hook JSON, so the status engine sees `UserPromptSubmit`, `Notification`, `Stop` as it would from the real thing. Typed commands drive it: a prompt runs a turn, `/needs-input` asks for permission, `/background`, `/exit`. |
+| `gh`     | Logs argv to `QUE_FAKE_GH_LOG` (`launched.ghCalls()` reads it back) and prints a fake PR URL from `gh pr create`.                                                                                                                                                                                                                     |
+| `code`   | Logs its invocation, so "Open in VS Code" is assertable without an editor window appearing.                                                                                                                                                                                                                                           |
 
-**Scenarios belong in integration tests.** E2E uses the fakes to make a journey run end to end — `success` for the overnight journey, `needs_input` for the one spec that proves a hook reaches the sidebar through the real app. Every other scenario (`stall`, `rate_limit`, `max_turns`, `crash`) is proven once in the Vitest runner integration tests; an E2E spec per scenario is the overlap the `test-planning` skill exists to prevent.
+**Session paths belong in integration tests.** E2E uses the fakes to make a journey run end to end — a prompt and `/needs-input` for the spec that proves a hook reaches the sidebar and the report through the real app. Every other path (a stall, background tasks, a resumed session) is proven once in the Vitest hooks integration tests; an E2E spec per path is the overlap the `test-planning` skill exists to prevent.
 
 **Never let a spec reach the real binaries.** `testEnv()` puts `tests/fakes/bin` first on `PATH` for the app, the daemon, and the CLI alike. A spec that builds its own env without it will run your real `claude` against a temp repo and open a real PR through your real `gh`.
 
@@ -750,7 +754,7 @@ async waitForLoad() {
 // depends on state (a fresh home has no projects; a reused one does)
 async waitForLoad() {
   await Promise.race([
-    this.taskList.waitFor({ state: 'visible' }).catch(() => {}),
+    this.workspacesSection.waitFor({ state: 'visible' }).catch(() => {}),
     this.emptyState.waitFor({ state: 'visible' }).catch(() => {}),
   ])
 }
@@ -760,7 +764,7 @@ async waitForLoad() {
 
 ```typescript
 // 1. An element reflecting daemon state - Playwright's auto-retrying assertions
-await expect(sidebar.workspaceStatus(workspaceId)).toHaveAttribute('data-status', 'done', {
+await expect(sidebar.workspaceStatus(workspaceId)).toHaveAttribute('data-status', 'idle', {
   timeout: 30_000
 })
 
@@ -769,13 +773,13 @@ await terminal.expectScreenToContain('QUE_MARKER_5c2e')
 
 // 3. Daemon state with no window involved - expect.poll over a CLI query
 await expect
-  .poll(() => queJson<{ state: string }>(launched.queHome, 'status', taskId, '--json').state, {
+  .poll(() => queJson<StatusJson>(launched.queHome, 'status', '--json').workspaces[0]?.status, {
     timeout: 30_000
   })
-  .toBe('done')
+  .toBe('needs_input')
 ```
 
-Give anything that waits on a headless run or the finisher an explicit timeout well above Playwright's default; the suite's per-test timeout (`timeout: 90_000` in `playwright.config.ts`) is the ceiling.
+Give anything that waits on a claude session or Create draft PR an explicit timeout well above Playwright's default; the suite's per-test timeout (`timeout: 90_000` in `playwright.config.ts`) is the ceiling.
 
 ### After UI Actions: Wait for the Rendered Result
 
@@ -803,14 +807,14 @@ await expect(terminal.viewport).toBeVisible()
 playwright.config.ts           # repo root: testDir 'tests/e2e', workers 1, timeout 90s, outputDir test-results/artifacts
 tests/
 ├── e2e/
-│   ├── *.spec.ts              # Specs (persistence, workspace, overnight-task, quiet-board, ...)
+│   ├── *.spec.ts              # Specs (persistence, workspace, review, quiet-mode, ...)
 │   ├── pages/                 # Page objects (locators + complex methods only)
 │   │   ├── AppShellPage.ts     # Window chrome: topbar, quiet board button, report/settings entry points
 │   │   ├── SidebarPage.ts      # Projects → workspaces, status badges, new-workspace dialog
 │   │   ├── TerminalPage.ts     # Tabs, viewport, screenText(), expectScreenToContain()
 │   │   ├── QuietBoardPage.ts   # The quiet board (main window or popover), unlock, countdown
-│   │   ├── ReportPage.ts       # The morning report, rows keyed by task id
-│   │   └── SettingsPage.ts     # Quiet hours, caps, per-day overrides
+│   │   ├── ReportPage.ts       # The morning report, rows keyed by workspace id
+│   │   └── SettingsPage.ts     # Quiet hours, per-day overrides, notifications
 │   └── utils/
 │       ├── app.ts              # launchApp(), testEnv(): QUE_HOME, QUE_E2E=1, fakes on PATH
 │       ├── que.ts              # que()/queJson(): the real CLI against the test home
@@ -818,7 +822,7 @@ tests/
 │                               # (helpers.ts alongside when a spec first needs one - Section 7)
 └── fakes/
     └── bin/
-        ├── claude              # Fake Claude Code: stream-json, hooks, scenarios
+        ├── claude              # Fake Claude Code: interactive session, hooks
         ├── gh                  # Records calls, prints a fake PR URL
         └── code                # Records calls
 test-results/                  # Screenshots and Playwright artifacts (gitignored)
@@ -832,14 +836,14 @@ test-results/                  # Screenshots and Playwright artifacts (gitignore
 
 ## 9. Commands
 
-| Command                                             | Purpose                                                                                                  |
-| --------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| `npm run e2e`                                       | Build the app, then run the full E2E suite - **DEFAULT**                                                 |
-| `npx playwright test tests/e2e/persistence.spec.ts` | Run a single spec against the current build (run `npm run build` first if source changed)                |
-| `npx playwright test -g "reattaches"`               | Run tests whose title matches                                                                            |
-| `npx playwright test --ui`                          | Open Playwright UI mode for debugging                                                                    |
-| `npx playwright show-report`                        | View the HTML report from the last run (requires the `html` reporter in `playwright.config.ts`)          |
-| `npm run smoke`                                     | Headless daemon smoke check (`scripts/smoke.mjs`) — not E2E, but the fastest "is the build alive" signal |
+| Command                                             | Purpose                                                                                         |
+| --------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `npm run e2e`                                       | Build the app, then run the full E2E suite - **DEFAULT**                                        |
+| `npx playwright test tests/e2e/persistence.spec.ts` | Run a single spec against the current build (run `npm run build` first if source changed)       |
+| `npx playwright test -g "reattaches"`               | Run tests whose title matches                                                                   |
+| `npx playwright test --ui`                          | Open Playwright UI mode for debugging                                                           |
+| `npx playwright show-report`                        | View the HTML report from the last run (requires the `html` reporter in `playwright.config.ts`) |
+| `npm run smoke`                                     | Daemon smoke check (`scripts/smoke.mjs`) — not E2E, but the fastest "is the build alive" signal |
 
 If a run is interrupted and leaves a daemon behind, stop it through the CLI with the same `QUE_HOME` the spec used (`QUE_HOME=/tmp/que-e2e-… node out/cli/index.js daemon stop`); never kill processes by name, which could hit the daemon serving your real `~/.que`.
 
@@ -879,7 +883,7 @@ If a run is interrupted and leaves a daemon behind, stop it through the CLI with
 - ❌ Sharing a `QUE_HOME` or a repo between tests, or running against the real `~/.que`
 - ❌ Letting any process in a spec find the real `claude`, `gh`, or `code`
 - ❌ Writing files into `QUE_HOME` behind the daemon's back to seed state - use the CLI, or add the missing CLI command
-- ❌ One E2E spec per fake `claude` scenario - scenarios are proven in the Vitest integration suite
+- ❌ One E2E spec per fake `claude` session path - those are proven in the Vitest integration suite
 - ❌ Clicking the tray or indexing `app.windows()` by position
 - ❌ Matching workspaces or terminals by name or position when the id is available
 - ❌ Killing daemons by process name

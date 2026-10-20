@@ -29,7 +29,7 @@ function internals(proc: pty.IPty): pty.IPty & PtyInternals {
   return proc as pty.IPty & PtyInternals
 }
 
-/** One PTY plus a headless xterm mirror of everything it has printed. */
+/** One PTY plus an @xterm/headless mirror of everything it has printed. */
 export class HostedTerminal implements Term {
   readonly id: string
   readonly name: string

@@ -71,11 +71,16 @@ All notable changes to que are recorded here. The format follows
 
 ### Removed
 
+- The overnight task queue: `que add`, `que task`, `que run`, `que queue`, the
+  headless runner and the pull requests it opened on its own. Sessions in
+  worktrees are the one model; `que report` and the morning summary describe
+  what those sessions did. The config keys `concurrency`, `max_turns` and
+  `max_budget_usd`, and the `que.toml` keys `test`, `instructions` and
+  `allowed_tools`, are ignored, so files that still set them keep loading;
+  `que config set` refuses them as unknown keys.
 - The Tonight panel in the sidebar (add task, queue control, task list) and
   the hand-off of a live session to the queue (`que handoff`, the Hand off…
-  actions, `handoff.create`). Sessions keep running in their own worktrees;
-  overnight tasks are queued and run with `que add` and `que run`, show in
-  the sidebar as the workspaces they run in, and in the report.
+  actions, `handoff.create`). Sessions keep running in their own worktrees.
 
 ### Fixed
 
