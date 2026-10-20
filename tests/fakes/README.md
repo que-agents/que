@@ -15,7 +15,7 @@ hours off.
 ## `claude`
 
 Parses the flags que uses (`--settings`, `--session-id`, `--resume`,
-`--permission-mode`, `--permission-prompts`, `--allowedTools`,
+`--permission-mode`, `--allowedTools`,
 `--append-system-prompt-file`, `--model`, `--version`) and `agents --json`. Unknown
 flags are ignored. It runs only as an interactive session; there is no print mode.
 

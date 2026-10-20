@@ -207,7 +207,6 @@ export class DaemonServer {
     this.prs = new PrService({
       store: this.store,
       workspaces: this.workspaces,
-      paths: this.paths,
       bus: this.bus,
       config: () => this.configOrDefault(),
       log: (m) => this.log(m)

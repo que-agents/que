@@ -1,7 +1,6 @@
 // Opens a draft pull request from a workspace (workspace.createPr): commit what
 // is left uncommitted, push the workspace branch, and run `gh pr create --draft`.
 // Nothing is ever pushed to the project's default branch or a protected one.
-import fs from 'node:fs'
 import { run } from '../shared/exec'
 import type { Project, Workspace } from '../shared/types'
 import { git } from './workspaces'
@@ -11,14 +10,10 @@ export type DraftPrResult = { ok: true; prUrl: string | null } | { ok: false; st
 export interface DraftPrOptions {
   /** The commit message for leftover changes and the pull request title. */
   title: string
-  /** A summary that opens the pull request body, if any. */
-  body?: string | null
   workspace: Workspace
   project: Project
   /** Config `protected_branches`. */
   protectedBranches: readonly string[]
-  /** Where the pull request body is written before `gh pr create --body-file`. */
-  bodyFile: string
   /** Reports one line of progress or the failure. */
   log: (line: string) => void
 }
@@ -30,13 +25,6 @@ export function isProtectedBranch(
   protectedBranches: readonly string[]
 ): boolean {
   return branch === defaultBranch || protectedBranches.includes(branch)
-}
-
-/** The pull request description: the summary, if any, and where it came from. */
-export function prBody(body: string | null, workspaceName: string): string {
-  const summary = (body ?? '').trim()
-
-  return `${summary ? `${summary}\n\n` : ''}Opened by que from workspace ${workspaceName}.\n`
 }
 
 const PR_URL = /https?:\/\/\S+\/pull\/\d+/
@@ -108,16 +96,14 @@ export async function openDraftPr(o: DraftPrOptions): Promise<DraftPrResult> {
   if (!pushed.ok) return fail('push', pushed.stderr)
   o.log(`finisher: pushed ${branch} (${ahead.stdout} commits ahead of ${base})`)
 
-  fs.writeFileSync(o.bodyFile, prBody(o.body ?? null, o.workspace.name))
-
   const pr = await gh(cwd, [
     'pr',
     'create',
     '--draft',
     '--title',
     o.title,
-    '--body-file',
-    o.bodyFile
+    '--body',
+    `Opened by que from workspace ${o.workspace.name}.`
   ])
 
   if (!pr.ok) return fail('pr', pr.stderr)

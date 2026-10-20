@@ -4,12 +4,9 @@
 // workspace.updated.
 // Also answers workspace.prThread: the conversation is fetched on demand and
 // cached until the tracker sees the pull request's updatedAt move.
-import fs from 'node:fs'
-import { join } from 'node:path'
 import type { UserConfig } from '../shared/config'
 import { firstLine, run } from '../shared/exec'
 import { ErrorCodes, type WorkspaceCreatePrResult } from '../shared/protocol'
-import type { QuePaths } from '../shared/paths'
 import type { JsonValue, PrThread, PullRequest, Workspace } from '../shared/types'
 import { conflict, ghFailed, notFound, RpcError } from './errors'
 import { isProtectedBranch, openDraftPr } from './draft-pr'
@@ -46,7 +43,6 @@ const SETTLED_EVERY = 5
 export interface PrServiceOptions {
   store: Store
   workspaces: Pick<WorkspaceManager, 'get' | 'project' | 'syncBranch'>
-  paths: Pick<QuePaths, 'workspaceLogsDir'>
   /** The daemon's bus: a removed workspace is forgotten. */
   bus: EventBus
   config: () => UserConfig
@@ -425,20 +421,18 @@ export class PrService {
    * as `title`, pushes, and runs gh.
    */
   async create(id: string, rawTitle: string): Promise<WorkspaceCreatePrResult> {
-    const { workspaces, store, paths } = this.opts
+    const { workspaces, store } = this.opts
     const ws = await workspaces.syncBranch(id)
     const title = rawTitle.trim()
 
     if (!title) throw new RpcError(ErrorCodes.BadRequest, 'title is required')
     const lines: string[] = []
-    fs.mkdirSync(paths.workspaceLogsDir, { recursive: true, mode: 0o700 })
 
     const result = await openDraftPr({
       title,
       workspace: ws,
       project: workspaces.project(ws.projectId),
       protectedBranches: this.opts.config().protectedBranches,
-      bodyFile: join(paths.workspaceLogsDir, `${ws.id}.pr.md`),
       log: (line) => {
         lines.push(line)
         this.opts.log?.(`workspace ${ws.id} ${line}`)
