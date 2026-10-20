@@ -13,7 +13,6 @@ export class ReportPage {
   workspace: (id: string) => Locator
   workspaceState: (id: string) => Locator
   workspaceFacts: (id: string) => Locator
-  workspacePrLink: (id: string) => Locator
 
   constructor(page: Page) {
     this.page = page
@@ -27,7 +26,6 @@ export class ReportPage {
     this.workspace = (id: string) => page.getByTestId(`report-workspace-${id}`)
     this.workspaceState = (id: string) => page.getByTestId(`report-workspace-${id}-status`)
     this.workspaceFacts = (id: string) => page.getByTestId(`report-workspace-${id}-facts`)
-    this.workspacePrLink = (id: string) => page.getByTestId(`report-workspace-${id}-pr`)
   }
 
   async waitForLoad() {

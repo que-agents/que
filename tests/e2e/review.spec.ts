@@ -12,8 +12,8 @@
 // the fake GitHub CLI) with its checks and conversation, and Refresh picks up a
 // new comment; the app quits and relaunches on the same home and the pane, its
 // tab, its width, the chosen base, the diff tab and the file tab come back; ⌘W
-// closes the diff tab and the file tab, and the pane closes and opens again on
-// the tab it was left on.
+// closes the diff tab and the file tab, the pane closes and opens again on
+// the tab it was left on, and the Pull request tab follows the pull request to merged.
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { expect, test } from '@playwright/test'
@@ -530,5 +530,15 @@ test('The review pane lists the changes beside the terminals, opens diffs as tab
     await expect(review.root).toHaveAttribute('data-tab', 'changes')
     await expect(changes.file(1)).toContainText('README.md')
     expect(await review.state()).toEqual({ open: true, tab: 'changes', width: widened })
+  })
+
+  await test.step('The Pull request tab follows the pull request to merged', async () => {
+    await review.tabPr.click()
+    await expect(pr.headerLink).toContainText('#7 · open · Add retry logic')
+    setFakePullRequest(prsFile, workspace.branch, {
+      state: 'MERGED',
+      mergedAt: '2026-10-14T03:30:00Z'
+    })
+    await expect(pr.headerLink).toContainText('#7 · merged · Add retry logic', { timeout: 15_000 })
   })
 })
