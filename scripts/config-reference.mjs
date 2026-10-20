@@ -10,6 +10,7 @@ import os from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { buildSync } from 'esbuild'
+import { formatMarkdown } from './format-markdown.mjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const target = join(root, 'docs/configuration.md')
@@ -97,6 +98,7 @@ if (!repoParsed.ok)
   throw new Error(`que.toml example does not parse: ${JSON.stringify(repoParsed.errors)}`)
 
 const blocks = { 'config-defaults': userDefaults, 'repo-example': repoExample }
+const check = process.argv.includes('--check')
 let stale = false
 
 for (const file of [target, join(root, 'README.md')]) {
@@ -110,16 +112,16 @@ for (const file of [target, join(root, 'README.md')]) {
     next = next.replace(re, `$1\`\`\`toml\n${body}\n\`\`\`\n$2`)
   }
 
-  if (next === current) continue
+  if ((check ? formatMarkdown(root, next) : next) === current) continue
   stale = true
 
-  if (!process.argv.includes('--check')) {
+  if (!check) {
     writeFileSync(file, next)
     console.log(`wrote ${file}`)
   }
 }
 
-if (process.argv.includes('--check')) {
+if (check) {
   if (stale) {
     console.error('the generated config blocks are stale; run npm run docs')
     process.exit(1)

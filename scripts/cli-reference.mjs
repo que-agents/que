@@ -8,6 +8,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import os from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { formatMarkdown } from './format-markdown.mjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const cli = join(root, 'out/cli/index.js')
@@ -121,7 +122,7 @@ const nextReadme = readme.replace(re, `$1${table}$2`)
 if (process.argv.includes('--check')) {
   const current = existsSync(target) ? readFileSync(target, 'utf8') : ''
 
-  if (current !== md || readme !== nextReadme) {
+  if (current !== formatMarkdown(root, md) || readme !== formatMarkdown(root, nextReadme)) {
     console.error('docs/cli.md or the README CLI table is stale; run npm run docs')
     process.exit(1)
   }
