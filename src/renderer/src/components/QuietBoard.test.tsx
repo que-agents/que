@@ -42,9 +42,11 @@ const retry = makeWorkspace({
   lastActivityAt: minutesAgo(now, 1)
 })
 
+// Titled, as a session's summary titles it: the board reads the title, as the sidebar does.
 const auth = makeWorkspace({
   id: 'ws_01hzx5t6y2wa',
   name: 'app-1451-token-refresh',
+  title: 'Refresh the token on a 401',
   status: 'needs_input',
   statusAt: minutesAgo(now, 34),
   lastActivityAt: minutesAgo(now, 34)
@@ -192,10 +194,23 @@ describe('QuietBoard', () => {
           'Document the upload limits uploader paused 31m ago',
           'Add retry logic to the uploader uploader running · 1h 07m 2m ago',
           'app-1432-retry-logic uploader working 1m ago',
-          'app-1451-token-refresh uploader waiting 34m ago',
+          'Refresh the token on a 401 uploader waiting 34m ago',
           'main dotfiles idle 3h ago'
         ])
       })
+    })
+
+    it('names a workspace by its title where it has one, the branch otherwise', async () => {
+      seed()
+
+      render(<App board now={clock} />)
+
+      const titled = await screen.findByTestId(`quiet-board-row-${auth.id}`)
+      expect(within(titled).getByText('Refresh the token on a 401')).toBeInTheDocument()
+      expect(within(titled).queryByText('app-1451-token-refresh')).not.toBeInTheDocument()
+      expect(
+        within(screen.getByTestId(`quiet-board-row-${retry.id}`)).getByText('app-1432-retry-logic')
+      ).toBeInTheDocument()
     })
 
     it('reads needs input as a plain waiting, with a neutral dot and no tone on the word', async () => {

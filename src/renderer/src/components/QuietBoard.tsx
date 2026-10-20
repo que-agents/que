@@ -79,7 +79,7 @@ export default function QuietBoard(): React.JSX.Element {
 
   const workspaceRow = (w: Workspace): Row => ({
     id: w.id,
-    name: w.name,
+    name: w.title ?? w.name,
     project: projectName(w.projectId),
     state: w.status,
     stateText: w.status === 'needs_input' ? 'waiting' : statusBadge(w.status).label,
