@@ -8,11 +8,11 @@ import {
   RATIO_MAX,
   RATIO_MIN,
   SCRATCH,
-  tabLabel,
   usePanes,
   useQueSelector,
   useStore
 } from '../store'
+import { tabLabel } from '../format'
 import { setPaneSource } from '../testHook'
 import DiffView from './DiffView'
 import FileView from './FileView'

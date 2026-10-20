@@ -66,11 +66,6 @@ export interface TermTab {
   process?: string
 }
 
-/** What a tab or session row calls a terminal: its program, the name until the daemon knows it. */
-export function tabLabel(t: Pick<TermTab, 'name' | 'process'>): string {
-  return t.process ?? t.name
-}
-
 export {
   diffId,
   diffPathOf,

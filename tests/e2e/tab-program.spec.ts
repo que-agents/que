@@ -21,8 +21,8 @@ test('a tab reads the program in its terminal, and the shell again once it ends'
     await new AppShellPage(launched.window).waitForLoad()
     terminal = new TerminalPage(launched.window)
     id = await terminal.waitForActiveTerminal()
-    await expect(terminal.tabLabel(id)).not.toHaveText('')
-    shell = (await terminal.tabLabel(id).textContent()) ?? ''
+    await expect(terminal.tabSelect(id)).not.toHaveText('')
+    shell = (await terminal.tabSelect(id).textContent()) ?? ''
     expect(shell).not.toBe('cat')
   })
 
@@ -30,11 +30,11 @@ test('a tab reads the program in its terminal, and the shell again once it ends'
     await terminal.input.focus()
     await launched.window.keyboard.type('cat')
     await launched.window.keyboard.press('Enter')
-    await expect.poll(() => terminal.tabLabel(id).textContent()).toBe('cat')
+    await expect.poll(() => terminal.tabSelect(id).textContent()).toBe('cat')
   })
 
   await test.step('Ctrl+C returns the tab to the shell', async () => {
     await launched.window.keyboard.press('Control+c')
-    await expect.poll(() => terminal.tabLabel(id).textContent()).toBe(shell)
+    await expect.poll(() => terminal.tabSelect(id).textContent()).toBe(shell)
   })
 })

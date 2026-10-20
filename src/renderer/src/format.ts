@@ -107,3 +107,8 @@ export function prNumberOf(prUrl: string | null | undefined): string | undefined
 
   return n === null ? undefined : String(n)
 }
+
+/** What a tab or session row calls a terminal: its program, the name until the daemon knows it. */
+export function tabLabel(t: { name: string; process?: string }): string {
+  return t.process ?? t.name
+}
