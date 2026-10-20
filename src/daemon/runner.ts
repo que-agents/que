@@ -210,7 +210,7 @@ export class TaskRunner {
 
   /**
    * The task's workspace, made from its brief. A title derived from the brief is left for
-   * create to derive again (a brief title the summariser may refresh); one the user gave
+   * create to derive again (a brief title the session's own title may replace); one the user gave
    * (`que add --title`) is passed on and stays theirs.
    */
   private createWorkspace(task: Task, project: Project): Promise<Workspace> {

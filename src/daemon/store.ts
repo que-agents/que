@@ -136,7 +136,9 @@ const MIGRATIONS: string[] = [
   `ALTER TABLE workspaces ADD COLUMN prs_json TEXT;`,
   `ALTER TABLE workspaces ADD COLUMN finished_at TEXT;
    ALTER TABLE workspaces ADD COLUMN seen_at TEXT;`,
-  `ALTER TABLE workspaces ADD COLUMN background_json TEXT;`
+  `ALTER TABLE workspaces ADD COLUMN background_json TEXT;`,
+  // Titles from the retired background labeller count as the brief's: the session's title may replace them.
+  `UPDATE workspaces SET title_source = 'brief' WHERE title_source = 'summary';`
 ]
 
 const STATUS_LOG_RETENTION_MS = 30 * 24 * 3_600_000

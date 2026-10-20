@@ -661,14 +661,6 @@ async function main() {
       process.stderr.write('Error: Input must be provided either through stdin or as a prompt argument when using --print\n')
       process.exit(1)
     }
-    if (opts.outputFormat === 'text') {
-      // A one-shot question (que's sidebar-title summariser): print the answer and exit,
-      // or never answer (until killed) under QUE_FAKE_CLAUDE_SUMMARY_HANG=1.
-      if (process.env.QUE_FAKE_CLAUDE_SUMMARY_HANG === '1') await blockForever()
-      const summary = process.env.QUE_FAKE_CLAUDE_SUMMARY ?? 'Fake summary of the session'
-      process.stdout.write(`${summary}\n`)
-      return
-    }
     await headless(prompt)
     return
   }

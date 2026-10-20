@@ -45,9 +45,6 @@ const SCHEMA: Node = section<ConfigPatch>('', {
   protectedBranches: value('protected_branches'),
   instructionsFile: value('instructions_file'),
   startPrompt: value('start_prompt'),
-  summaries: value('summaries'),
-  summaryModel: value('summary_model'),
-  summaryIntervalMinutes: value('summary_interval_minutes'),
   repos: {
     file: 'repos',
     kind: 'table',

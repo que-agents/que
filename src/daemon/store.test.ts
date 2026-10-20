@@ -1,3 +1,6 @@
+import fs from 'node:fs'
+import os from 'node:os'
+import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { makeBackgroundTask, makeTask, makeWorkspace } from '../testing/fixtures'
 import { Store } from './store'
@@ -94,6 +97,38 @@ describe('hook events', () => {
 })
 
 describe('workspaces', () => {
+  it("reads a title stored by the retired labeller as the brief's after the upgrade", () => {
+    const dir = fs.mkdtempSync(join(os.tmpdir(), 'que-store-'))
+    const path = join(dir, 'que.db')
+
+    try {
+      const old = new Store(path)
+      old.insertProject({
+        id: 'prj_01hzw7q2m4nb',
+        name: 'uploader',
+        path: '/Users/dev/src/uploader',
+        defaultBranch: 'main',
+        createdAt: '2026-10-13T21:00:00.000Z'
+      })
+      const ws = makeWorkspace({ title: 'Retry logic for the uploader', titleSource: 'brief' })
+      old.insertWorkspace(ws)
+      // The database as an older release left it: a 'summary' row, the last migration not yet run.
+      old.db.exec(`UPDATE workspaces SET title_source = 'summary';
+        DELETE FROM migrations WHERE version = (SELECT MAX(version) FROM migrations);`)
+      old.close()
+
+      const upgraded = new Store(path)
+
+      expect(upgraded.getWorkspace(ws.id)).toMatchObject({
+        title: 'Retry logic for the uploader',
+        titleSource: 'brief'
+      })
+      upgraded.close()
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
   it('lists the ids of unarchived workspaces with a stored status', () => {
     const working = makeWorkspace({ status: 'working' })
     const idle = makeWorkspace({ status: 'idle' })

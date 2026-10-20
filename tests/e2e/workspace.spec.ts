@@ -3,7 +3,7 @@
 // a Claude Code session typed into it (the fake, through que's hooks wrapper)
 // reports needs input back to `que status`, and the report lists the workspace
 // as waiting. And a workspace made from a brief in the dialog: under a random
-// three-word name, titled in the sidebar by the background summary of the session, and
+// three-word name, titled in the sidebar by the brief's first line, and
 // claude started on the brief itself in its only terminal. And the card a workspace row
 // opens under a resting pointer: its branch and its pull requests from the fake gh.
 import { expect, test } from '@playwright/test'
@@ -111,12 +111,10 @@ test('a claude session in a workspace terminal reports needs input to que status
   })
 })
 
-test('a workspace described in a brief gets a random name, a summarised title, and claude started on it', async () => {
+test('a workspace described in a brief gets a random name, the brief's title, and claude started on it', async () => {
   const repo = makeTempRepo(tempDir('que-e2e-repo-'))
   const queHome = newQueHome()
   const brief = 'Raise the upload timeout\n\nThe upload test times out on slow CI runners.'
-  // The fake claude's default answer to the background summary call.
-  const summary = 'Fake summary of the session'
   let project: Project
   let workspace: Workspace
   let name = ''
@@ -151,8 +149,8 @@ test('a workspace described in a brief gets a random name, a summarised title, a
     workspace = created as Workspace
   })
 
-  await test.step('The sidebar title becomes the summary of the session', async () => {
-    await expect(sidebar.workspaceName(workspace.id)).toHaveText(summary, { timeout: 15_000 })
+  await test.step("The sidebar title is the brief's first line", async () => {
+    await expect(sidebar.workspaceName(workspace.id)).toHaveText('Raise the upload timeout')
   })
 
   await test.step('Claude starts on the brief itself in the only terminal', async () => {

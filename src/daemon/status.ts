@@ -158,14 +158,11 @@ export class StatusService {
     })
   }
 
-  /**
-   * A hook event from `que hook`: stored, then fed to the engine. Returns the resulting status,
-   * or undefined when the workspace is not tracked.
-   */
-  hook(id: string, payload: HookEvent): Workspace['status'] | undefined {
+  /** A hook event from `que hook`: stored, then fed to the engine. */
+  hook(id: string, payload: HookEvent): void {
     const prev = this.state(id)
 
-    if (!prev) return undefined
+    if (!prev) return
     const event = payload.hook_event_name
     this.opts.store.insertHookEvent(
       id,
@@ -179,18 +176,11 @@ export class StatusService {
     else prev.transcriptPath = payload.transcript_path
 
     this.apply(id, { kind: 'hook', event, payload })
-
-    return this.state(id)?.status
   }
 
   forget(id: string): void {
     this.states.delete(id)
     this.releaseSetupWaiters(id)
-  }
-
-  /** The transcript of the workspace's main session, from its last hook that named one. */
-  transcriptPath(id: string): string | undefined {
-    return this.states.get(id)?.transcriptPath
   }
 
   private commit(id: string, prev: Tracked, next: Tracked): void {

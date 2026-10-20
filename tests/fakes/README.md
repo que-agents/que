@@ -50,14 +50,6 @@ With `QUE_FAKE_CLAUDE_COMMIT=1`, `success` also runs `git add` and `git commit`
 on the file it wrote (an agent that commits its work); without it the change is
 left uncommitted in the working tree.
 
-**One-shot text** (`-p` with an explicit `--output-format text`, as que's sidebar-title
-summariser runs it): prints `$QUE_FAKE_CLAUDE_SUMMARY` (default `Fake summary of the
-session`) and a newline, exits 0, and runs no scenario, hooks, or transcript. The call is
-still logged to `QUE_FAKE_CLAUDE_LOG`, prompt included in `argv`; `--tools ''` and
-`--no-session-persistence` are accepted. `QUE_FAKE_CLAUDE_SUMMARY_HANG=1` makes it never
-answer, blocking until it is killed, like a call stuck on the API. Without the flag, `-p`
-runs the headless scenarios above.
-
 **Interactive mode** (no `-p`): prints a banner and `> `; each line fires
 UserPromptSubmit, a fake `Read` (Pre/PostToolUse), a reply, and Stop.
 `/needs-input` fires UserPromptSubmit, then the permission Notification, and waits for `y`; `/exit` fires
