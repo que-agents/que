@@ -60,8 +60,9 @@ export interface PermissionChoice {
 }
 
 /**
- * The permission mode for a session: que.toml, else the user's default, else
- * acceptEdits. bypassPermissions needs both the repo and the user to opt in.
+ * The permission mode for a workspace session: que.toml, else the user's
+ * default, else acceptEdits. bypassPermissions needs both the repo and the
+ * user to opt in.
  */
 export function resolvePermissionMode(
   repo: { permissionMode?: PermissionMode },
@@ -343,16 +344,6 @@ export function parseConfig(text: string, env: ConfigEnv): ConfigResult<UserConf
     positive(t, 'stall_timeout_minutes', errors) ?? config.stallTimeoutMinutes
   config.statusPollSeconds = positive(t, 'status_poll_seconds', errors) ?? config.statusPollSeconds
   config.prPollSeconds = positive(t, 'pr_poll_seconds', errors) ?? config.prPollSeconds
-  const concurrency = positive(t, 'concurrency', errors)
-
-  if (concurrency !== undefined && !Number.isInteger(concurrency)) {
-    errors.push({ key: 'concurrency', message: 'must be a whole number' })
-  } else if (concurrency !== undefined) {
-    config.concurrency = concurrency
-  }
-
-  config.maxTurns = positive(t, 'max_turns', errors) ?? config.maxTurns
-  config.maxBudgetUsd = positive(t, 'max_budget_usd', errors) ?? config.maxBudgetUsd
   config.defaultPermissionMode = permissionMode(t, 'default_permission_mode', errors)
   config.allowBypassPermissions =
     optionalBool(t, 'allow_bypass_permissions', errors) ?? config.allowBypassPermissions
@@ -527,14 +518,8 @@ export interface RepoConfig {
   defaultBranch?: string
   /** Gitignored paths copied from the main checkout into new worktrees. */
   worktreeInclude: string[]
-  /** Permission mode for headless task runs. */
+  /** Permission mode for the repo's workspace sessions. */
   permissionMode?: PermissionMode
-  /** Extra instructions appended to every task brief for this repo. */
-  instructions?: string
-  /** The repo's test command, which a task must make pass. */
-  test?: string
-  /** Passed to claude as --allowedTools. */
-  allowedTools: string[]
 }
 
 /** Parses a .worktreeinclude file: one path per line, `#` comments, blanks skipped. */
@@ -557,10 +542,7 @@ export function parseRepoConfig(text: string, includeFile = ''): ConfigResult<Re
     teardown: optionalString(t, 'teardown', errors),
     defaultBranch: optionalString(t, 'default_branch', errors),
     worktreeInclude: [],
-    permissionMode: permissionMode(t, 'permission_mode', errors),
-    instructions: optionalString(t, 'instructions', errors),
-    test: optionalString(t, 'test', errors),
-    allowedTools: stringList(t, 'allowed_tools', errors) ?? []
+    permissionMode: permissionMode(t, 'permission_mode', errors)
   }
 
   config.worktreeInclude.push(...(stringList(t, 'worktree_include', errors) ?? []))

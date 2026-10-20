@@ -59,7 +59,7 @@ export async function openDraftPr(o: DraftPrOptions): Promise<DraftPrResult> {
   const branch = o.workspace.branch
 
   const fail = (step: string, stderr: string): DraftPrResult => {
-    o.log(`finisher: ${step} failed: ${stderr.trim()}`)
+    o.log(`draft PR: ${step} failed: ${stderr.trim()}`)
 
     return { ok: false, step }
   }
@@ -83,7 +83,7 @@ export async function openDraftPr(o: DraftPrOptions): Promise<DraftPrResult> {
     const committed = await git(cwd, ['commit', '-m', o.title])
 
     if (!committed.ok) return fail('commit', committed.stderr || committed.stdout)
-    o.log(`finisher: committed the remaining changes as "${o.title}"`)
+    o.log(`draft PR: committed the remaining changes as "${o.title}"`)
   }
 
   const def = o.project.defaultBranch
@@ -98,7 +98,7 @@ export async function openDraftPr(o: DraftPrOptions): Promise<DraftPrResult> {
   if (!ahead.ok) return fail('rev-list', ahead.stderr)
 
   if (Number(ahead.stdout) === 0) {
-    o.log(`finisher: no commits ahead of ${base}; nothing to push`)
+    o.log(`draft PR: no commits ahead of ${base}; nothing to push`)
 
     return { ok: true, prUrl: null }
   }
@@ -106,7 +106,7 @@ export async function openDraftPr(o: DraftPrOptions): Promise<DraftPrResult> {
   const pushed = await git(cwd, ['push', '-u', 'origin', branch], 300_000)
 
   if (!pushed.ok) return fail('push', pushed.stderr)
-  o.log(`finisher: pushed ${branch} (${ahead.stdout} commits ahead of ${base})`)
+  o.log(`draft PR: pushed ${branch} (${ahead.stdout} commits ahead of ${base})`)
 
   fs.writeFileSync(o.bodyFile, prBody(o.body ?? null, o.workspace.name))
 
@@ -124,7 +124,7 @@ export async function openDraftPr(o: DraftPrOptions): Promise<DraftPrResult> {
   const url = PR_URL.exec(pr.stdout)?.[0]
 
   if (!url) return fail('pr', `no pull request URL in gh output: ${pr.stdout}`)
-  o.log(`finisher: opened ${url}`)
+  o.log(`draft PR: opened ${url}`)
 
   return { ok: true, prUrl: url }
 }

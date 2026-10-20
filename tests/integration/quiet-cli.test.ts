@@ -80,7 +80,7 @@ describe('que config', () => {
     const set = await runCli(
       'config',
       'set',
-      'concurrency=3',
+      'stall_timeout_minutes=8',
       'notifications.chime_on_complete=false',
       'quiet_hours.unlock_minutes=0.5'
     )
@@ -88,7 +88,7 @@ describe('que config', () => {
     expect(set).toMatchObject({ code: 0, stdout: `updated ${daemon.configPath}\n` })
     const after = await daemon.client.request('config.get')
     expect(after.config).toMatchObject({
-      concurrency: 3,
+      stallTimeoutMinutes: 8,
       notifications: { chimeOnComplete: false },
       quietHours: { unlockMinutes: 0.5, enabled: true }
     })

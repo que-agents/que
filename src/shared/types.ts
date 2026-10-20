@@ -259,16 +259,11 @@ export interface UserConfig {
   prPollSeconds: number
   /** Named repositories, so `que work -r <name>` can resolve a name. */
   repos: Record<string, RepoEntry>
-  /** How many tasks run at once while the queue is open. */
-  concurrency: number
-  /** Default caps for a task that does not set its own. */
-  maxTurns: number
-  maxBudgetUsd: number
   /** Used when a repo's que.toml sets no permission_mode. */
   defaultPermissionMode?: PermissionMode
-  /** Required (with the repo opting in) before a task may run with bypassPermissions. */
+  /** Required (with the repo opting in) before a workspace session may run with bypassPermissions. */
   allowBypassPermissions: boolean
-  /** Branches the finisher never pushes, besides each project's default branch. */
+  /** Branches Create draft PR never pushes, besides each project's default branch. */
   protectedBranches: string[]
   /**
    * A file appended to every interactive session's system prompt inside a
