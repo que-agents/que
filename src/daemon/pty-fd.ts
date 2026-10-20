@@ -11,17 +11,26 @@ interface PtyBinding {
   process(fd: number): string | undefined
 }
 
+/** node-pty's helper on darwin: it takes the terminal, then execs the program. */
+const SPAWN_HELPER = 'spawn-helper'
+
 /**
- * The kernel's name of the process group in the terminal's foreground, read on
- * the master fd; undefined when no group has the terminal (the binding then
- * answers `kernel_task`, pid 0: before the shell takes it and once it is gone)
- * or the fd is closed.
+ * The program behind the kernel's name of the terminal's foreground group, or
+ * undefined while no program of the user's has the terminal: `kernel_task`
+ * (pid 0: before the shell takes it and once it is gone) and node-pty's
+ * `spawn-helper`, which holds it for a moment before the shell.
+ */
+export function programOf(name: string | undefined): string | undefined {
+  return name && name !== 'kernel_task' && name !== SPAWN_HELPER ? name : undefined
+}
+
+/**
+ * The program in the terminal's foreground, by the kernel's name of the group
+ * read on the master fd; undefined when none has it or the fd is closed.
  */
 export function foregroundProcess(fd: number): string | undefined {
   try {
-    const name = ptyBinding().process(fd)
-
-    return name && name !== 'kernel_task' ? name : undefined
+    return programOf(ptyBinding().process(fd))
   } catch {
     return undefined
   }
