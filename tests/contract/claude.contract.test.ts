@@ -6,10 +6,12 @@ import fs from 'node:fs'
 import os from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
+import { decodeHookEvent } from '../../src/shared/hook.decode'
 import { FAKES_BIN } from '../../src/testing/fakes'
 
 const CONTRACT = process.env.QUE_CONTRACT === '1'
-const HOOK_EVENTS = ['SessionStart', 'UserPromptSubmit', 'Stop', 'SessionEnd'] as const
+const LIFECYCLE_EVENTS = ['SessionStart', 'UserPromptSubmit', 'Stop', 'SessionEnd'] as const
+const HOOK_EVENTS = [...LIFECYCLE_EVENTS, 'SubagentStart', 'SubagentStop'] as const
 
 interface Run {
   code: number
@@ -127,13 +129,13 @@ describe.skipIf(!CONTRACT)('claude contract', () => {
 
     expect(r.code, r.stderr).toBe(0)
 
-    // Hooks: the four lifecycle events, in order, with the common fields and our env.
+    // Hooks: the four lifecycle events (no subagent ran), in order, with the common fields and our env.
     const entries = jsonLines(fs.readFileSync(hookLog, 'utf8')) as {
       marker: string | null
       payload: Record<string, unknown>
     }[]
 
-    expect(entries.map((e) => e.payload.hook_event_name)).toEqual([...HOOK_EVENTS])
+    expect(entries.map((e) => e.payload.hook_event_name)).toEqual([...LIFECYCLE_EVENTS])
 
     for (const { marker: seen, payload } of entries) {
       expect(seen).toBe(marker)
@@ -158,5 +160,54 @@ describe.skipIf(!CONTRACT)('claude contract', () => {
       ])
     )
     expect(new Set(entries.map((e) => e.payload.session_id))).toEqual(new Set([result?.session_id]))
+  }, 180_000)
+
+  it('lists a background shell in the Stop hook background_tasks, which the decoder keeps', async () => {
+    const log = join(dir, 'background-hooks.jsonl')
+    const command = `'${process.execPath}' '${hookScript}' '${log}'`
+
+    const hooks = Object.fromEntries(
+      HOOK_EVENTS.map((event) => [event, [{ hooks: [{ type: 'command', command }] }]])
+    )
+
+    const r = await claude(
+      [
+        '-p',
+        'Run the shell command `sleep 20` with run_in_background set to true, then reply with exactly the word OK. Do not wait for it.',
+        '--output-format',
+        'stream-json',
+        '--verbose',
+        '--max-turns',
+        '6',
+        '--allowedTools',
+        'Bash,Agent',
+        '--permission-prompts',
+        'none',
+        '--settings',
+        JSON.stringify({ hooks })
+      ],
+      { cwd: dir }
+    )
+
+    expect(r.code, r.stderr).toBe(0)
+
+    const stop = jsonLines(fs.readFileSync(log, 'utf8'))
+      .map((e) => e.payload as Record<string, unknown>)
+      .find((p) => p.hook_event_name === 'Stop')
+
+    expect(Array.isArray(stop?.background_tasks)).toBe(true)
+
+    const shell = ((stop?.background_tasks ?? []) as Record<string, unknown>[]).find(
+      (t) => t.type === 'shell'
+    )
+
+    expect(shell).toMatchObject({
+      id: expect.any(String),
+      status: expect.any(String),
+      description: expect.any(String)
+    })
+    expect(decodeHookEvent(stop)?.background_tasks).toContainEqual(
+      expect.objectContaining({ id: shell?.id, type: 'shell', status: shell?.status })
+    )
   }, 180_000)
 })

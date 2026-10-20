@@ -928,7 +928,14 @@ export class DaemonServer {
       this.liveSessions.hook(ws.id, p.terminalId, p.taskId, p.payload)
       this.status.hook(ws.id, p.payload)
 
-      if (p.payload.hook_event_name === 'Stop' && !p.payload.agent_id) this.summaries.stopped(ws.id)
+      // A Stop that left the workspace working (agents still run) is not the end of the turn.
+      if (
+        p.payload.hook_event_name === 'Stop' &&
+        !p.payload.agent_id &&
+        this.status.statusOf(ws.id) !== 'working'
+      ) {
+        this.summaries.stopped(ws.id)
+      }
 
       if (p.taskId) this.tasks.hook(p.taskId, p.payload)
 

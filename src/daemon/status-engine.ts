@@ -1,9 +1,14 @@
 // The status engine's rules, as pure functions: hook events, terminal exits,
 // clock ticks, and `claude agents --json` entries in; a workspace status out.
 // Time is always passed in (`now`, epoch ms); nothing here reads the clock.
+// A Stop that reports agent-like background tasks (subagents, workflows,
+// teammates) still running keeps the workspace working, since they wake the
+// session when they finish; shells and monitors are listed but do not count.
 import { formatMinSec } from '../shared/format'
+import type { HookBackgroundTask } from '../shared/protocol'
 import {
   ACTIVE_STATES,
+  type BackgroundTask,
   type StatusSummary,
   type TaskState,
   type WorkspaceStatus
@@ -20,6 +25,8 @@ export interface StatusState {
   sessionId: string | null
   /** When a main-session hook event last arrived; null if none ever did. */
   hookAt: number | null
+  /** What the last main Stop (or SubagentStop) reported still running. */
+  backgroundTasks: BackgroundTask[]
 }
 
 /** The subset of a hook payload the rules read. */
@@ -28,6 +35,7 @@ export interface HookPayload {
   agent_id?: string
   notification_type?: string
   error?: string
+  background_tasks?: HookBackgroundTask[]
 }
 
 /** One entry of `claude agents --json`. */
@@ -58,10 +66,12 @@ const WORKING_EVENTS = new Set([
   'PreToolUse',
   'PostToolUse',
   'PostToolUseFailure',
-  'PreCompact',
-  'SubagentStart',
-  'SubagentStop'
+  'PreCompact'
 ])
+
+// These wake the session when they finish, so a turn that ended while they run is not over;
+// `shell` and `monitor` run for the life of a session and do not count.
+export const AGENT_LIKE_KINDS = new Set(['subagent', 'workflow', 'teammate'])
 
 const NEEDS_INPUT_NOTIFICATIONS = new Set([
   'permission_prompt',
@@ -76,8 +86,35 @@ export function initialState(now: number, status: WorkspaceStatus = 'preparing')
     statusAt: now,
     lastActivityAt: null,
     sessionId: null,
-    hookAt: null
+    hookAt: null,
+    backgroundTasks: []
   }
+}
+
+/**
+ * The running entries of a reported `background_tasks` list, in reported order;
+ * a task already known keeps its `since`. Nothing reported means nothing runs.
+ */
+export function mergeTasks(
+  prev: BackgroundTask[],
+  reported: HookBackgroundTask[] | undefined,
+  now: number
+): BackgroundTask[] {
+  if (!reported) return []
+  const known = new Map(prev.map((t) => [t.id, t.since]))
+
+  return reported
+    .filter((t) => t.status === 'running')
+    .map((t) => ({
+      id: t.id,
+      kind: t.type,
+      description: t.description ?? t.command ?? t.agent_type ?? t.type,
+      since: known.get(t.id) ?? new Date(now).toISOString()
+    }))
+}
+
+function hasAgentLike(tasks: BackgroundTask[]): boolean {
+  return tasks.some((t) => AGENT_LIKE_KINDS.has(t.kind))
 }
 
 function transition(
@@ -93,8 +130,18 @@ function transition(
 }
 
 function onHook(state: StatusState, event: string, p: HookPayload, now: number): StatusState {
-  // Subagent events are recorded by the caller but never move the workspace.
-  if (p.agent_id) return { ...state }
+  // A subagent's hooks are a sign of work (so the stall tick leaves a long run alone) but never
+  // move the workspace; a SubagentStop's list is the parent's, so it refreshes the tasks.
+  if (p.agent_id) {
+    const next = { ...state, lastActivityAt: now }
+
+    if (event === 'SubagentStop' && p.background_tasks) {
+      next.backgroundTasks = mergeTasks(state.backgroundTasks, p.background_tasks, now)
+    }
+
+    return next
+  }
+
   const seen: Partial<StatusState> = { hookAt: now, sessionId: p.session_id ?? state.sessionId }
 
   if (WORKING_EVENTS.has(event)) {
@@ -103,8 +150,21 @@ function onHook(state: StatusState, event: string, p: HookPayload, now: number):
 
   switch (event) {
     case 'SessionStart':
-    case 'Stop':
-      return transition(state, 'idle', null, now, seen)
+      return transition(state, 'idle', null, now, { ...seen, backgroundTasks: [] })
+    case 'Stop': {
+      const tasks = mergeTasks(state.backgroundTasks, p.background_tasks, now)
+
+      if (hasAgentLike(tasks)) {
+        return transition(state, 'working', null, now, {
+          ...seen,
+          lastActivityAt: now,
+          backgroundTasks: tasks
+        })
+      }
+
+      return transition(state, 'idle', null, now, { ...seen, backgroundTasks: tasks })
+    }
+
     case 'PermissionRequest':
       return transition(state, 'needs_input', null, now, seen)
     case 'Notification':
@@ -118,7 +178,7 @@ function onHook(state: StatusState, event: string, p: HookPayload, now: number):
     case 'StopFailure':
       return transition(state, 'stuck', `error:${p.error || 'unknown'}`, now, seen)
     case 'SessionEnd':
-      return transition(state, 'exited', null, now, seen)
+      return transition(state, 'exited', null, now, { ...seen, backgroundTasks: [] })
     default:
       return { ...state, ...seen }
   }
@@ -132,9 +192,14 @@ function onAgentsEntry(state: StatusState, entry: AgentEntry, now: number): Stat
     return transition(state, 'needs_input', null, now)
   }
 
-  if (s === 'idle') return transition(state, 'idle', null, now)
+  if (s === 'idle') {
+    // The registry may report a main thread paused on its agents as idle.
+    if (hasAgentLike(state.backgroundTasks)) return { ...state }
 
-  if (s.includes('working') || s.includes('running')) {
+    return transition(state, 'idle', null, now)
+  }
+
+  if (s.includes('working') || s.includes('running') || s === 'busy') {
     return transition(state, 'working', null, now, { lastActivityAt: now })
   }
 
@@ -152,7 +217,7 @@ export function reduce(
     case 'hook':
       return onHook(state, input.event, input.payload, now)
     case 'terminal_exit':
-      return transition(state, 'exited', null, now)
+      return transition(state, 'exited', null, now, { backgroundTasks: [] })
     case 'tick': {
       if (state.status !== 'working') return { ...state }
       const last = state.lastActivityAt ?? state.statusAt

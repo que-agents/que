@@ -63,6 +63,11 @@ UserPromptSubmit, a fake `Read` (Pre/PostToolUse), a reply, and Stop.
 `/needs-input` fires UserPromptSubmit, then the permission Notification, and waits for `y`; `/exit` fires
 SessionEnd and exits 0.
 
+| Command                  | Hooks                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `/background <kinds...>` | UserPromptSubmit; a SubagentStart (`agent_id` a fresh hex id, `agent_type: 'Explore'`, the parent `session_id`) per `subagent`; a reply; Stop whose `background_tasks` lists each kind as `running` with an `id` and a `description` (`Explore the repo` for a subagent, `npm run dev` for a shell, `checks on #141` for a monitor), plus `command` (shell) and `agent_type` (subagent). The session remembers the list. |
+| `/background done`       | SubagentStop per remembered subagent (`agent_id`, `agent_type`, the parent `session_id`, and `background_tasks` still listing it as running, as the real CLI does), then UserPromptSubmit, then Stop with `background_tasks: []`; the list is forgotten.                                                                                                                                                                 |
+
 Other knobs: `QUE_FAKE_CLAUDE_TRANSCRIPT_DIR` (where `<session_id>.jsonl`
 transcripts go; default under the OS temp dir), `QUE_FAKE_CLAUDE_AGENTS_JSON` (a
 file whose contents `agents --json` prints instead of `[]`),

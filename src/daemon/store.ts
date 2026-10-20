@@ -8,7 +8,9 @@ import {
   type StatementResultingChanges,
   type StatementSync
 } from 'node:sqlite'
+import { objects, str } from '../shared/json.decode'
 import type {
+  BackgroundTask,
   Project,
   PullRequest,
   QuietUnlock,
@@ -132,7 +134,8 @@ const MIGRATIONS: string[] = [
   `ALTER TABLE workspaces ADD COLUMN title_source TEXT;`,
   `ALTER TABLE workspaces ADD COLUMN prs_json TEXT;`,
   `ALTER TABLE workspaces ADD COLUMN finished_at TEXT;
-   ALTER TABLE workspaces ADD COLUMN seen_at TEXT;`
+   ALTER TABLE workspaces ADD COLUMN seen_at TEXT;`,
+  `ALTER TABLE workspaces ADD COLUMN background_json TEXT;`
 ]
 
 const STATUS_LOG_RETENTION_MS = 30 * 24 * 3_600_000
@@ -238,6 +241,7 @@ interface WorkspaceRow {
   title_source: string | null
   finished_at: string | null
   seen_at: string | null
+  background_json: string | null
 }
 
 /** Task field → column, in insert order. */
@@ -342,6 +346,26 @@ function readLegacyPrs(json: string | null): PullRequest[] {
   }
 }
 
+/** The stored background tasks (background_json); none when missing, not JSON, or not a list. */
+function readBackgroundTasks(json: string | null): BackgroundTask[] {
+  if (!json) return []
+
+  try {
+    return objects(JSON.parse(json)).flatMap((v) => {
+      const id = str(v.id)
+      const kind = str(v.kind)
+      const description = str(v.description)
+      const since = str(v.since)
+
+      return id && kind && description !== undefined && since
+        ? [{ id, kind, description, since }]
+        : []
+    })
+  } catch {
+    return []
+  }
+}
+
 function toWorkspace(r: WorkspaceRow): Workspace {
   const prs = readPrList(r.prs_json ?? null) ?? readLegacyPrs(r.pr_json)
 
@@ -364,8 +388,7 @@ function toWorkspace(r: WorkspaceRow): Workspace {
     prs,
     finishedAt: r.finished_at ?? null,
     seenAt: r.seen_at ?? null,
-    // Filled in by the status engine's persistence (issue #142).
-    backgroundTasks: []
+    backgroundTasks: readBackgroundTasks(r.background_json ?? null)
   }
 
   if (r.title) ws.title = r.title
@@ -383,6 +406,7 @@ export interface StatusUpdate {
   at: string
   lastActivityAt: string | null
   sessionId: string | null
+  backgroundTasks: BackgroundTask[]
 }
 
 export class Store {
@@ -582,12 +606,13 @@ export class Store {
   updateStatus(id: string, u: StatusUpdate): void {
     this.run(
       `UPDATE workspaces SET status = ?, status_reason = ?, status_at = ?, last_activity_at = ?,
-           session_id = ? WHERE id = ?`,
+           session_id = ?, background_json = ? WHERE id = ?`,
       u.status,
       u.reason,
       u.at,
       u.lastActivityAt,
       u.sessionId,
+      u.backgroundTasks.length ? JSON.stringify(u.backgroundTasks) : null,
       id
     )
   }
