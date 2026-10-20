@@ -214,8 +214,12 @@ only under the pointer.
   and each pull request's link in its 18px column always show, the link `--accent` under
   the pointer. Every action sits on the line it belongs to, and the card never holds a
   destructive one: Remove… stays in the ⋯ menu.
-- **The foot.** Report, Tickets and Settings are 26px rows in `--fg-muted`, `--fg`
-  under the pointer. While the background service runs an older build than the app, a
+- **The foot.** Quiet, Report, Tickets and Settings are 26px rows in `--fg-muted`, `--fg`
+  under the pointer. The Quiet row, at the top, starts a manual quiet: its word starts an
+  hour, and at its right end, always visible, `30m`, `1h` and `2h` in mono 11px tabular
+  pick a length, `1h` in `--fg-muted` as the default and the other two in `--fg-faint`,
+  each `--fg` under the pointer. The row is a `role="group"` of four buttons and takes
+  `--bg-hover` as a whole; it is absent while a quiet window is in progress. While the background service runs an older build than the app, a
   20px control sits at the right end of the Settings row: the 5px status dot in `--accent`
   and the word Update in 11px `--fg-muted`, hairline-bordered, `--fg` under the pointer,
   its tooltip saying why it is there. It reads Updating… at 0.4 opacity while the update

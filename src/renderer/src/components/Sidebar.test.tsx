@@ -475,6 +475,83 @@ describe('Sidebar', () => {
     })
   })
 
+  describe('quiet row', () => {
+    const minutes = (q: { windowStart: string | null; windowEnd: string | null }): number =>
+      (Date.parse(q.windowEnd ?? '') - Date.parse(q.windowStart ?? '')) / 60_000
+
+    it('sits above Report as a group of four buttons', async () => {
+      render(<App />)
+
+      const group = await screen.findByRole('group', { name: 'Quiet' })
+      expect(
+        group.compareDocumentPosition(screen.getByTestId('sidebar-report')) &
+          Node.DOCUMENT_POSITION_FOLLOWING
+      ).toBeTruthy()
+      expect(within(group).getAllByRole('button')).toHaveLength(4)
+      expect(within(group).getByTestId('sidebar-quiet')).toHaveTextContent('Quiet')
+    })
+
+    it('offers 30m, 1h and 2h as buttons with their labels', async () => {
+      render(<App />)
+
+      const group = await screen.findByRole('group', { name: 'Quiet' })
+      expect(within(group).getByRole('button', { name: 'Quiet for 30 minutes' })).toHaveTextContent(
+        '30m'
+      )
+      expect(within(group).getByRole('button', { name: 'Quiet for 1 hour' })).toHaveTextContent(
+        '1h'
+      )
+      expect(within(group).getByRole('button', { name: 'Quiet for 2 hours' })).toHaveTextContent(
+        '2h'
+      )
+    })
+
+    it('starts an hour of manual quiet from the word, and locks the app', async () => {
+      const user = userEvent.setup()
+      render(<App />)
+
+      await user.click(await screen.findByTestId('sidebar-quiet'))
+
+      expect(await screen.findByTestId('quiet-locked')).toBeInTheDocument()
+      const quiet = await window.que.quiet.state()
+      expect(quiet).toMatchObject({ kind: 'manual', inQuietHours: true })
+      expect(minutes(quiet)).toBe(60)
+    })
+
+    it('starts thirty minutes from 30m, not the hour', async () => {
+      const user = userEvent.setup()
+      render(<App />)
+
+      await user.click(await screen.findByRole('button', { name: 'Quiet for 30 minutes' }))
+
+      expect(await screen.findByTestId('quiet-locked')).toBeInTheDocument()
+      const quiet = await window.que.quiet.state()
+      expect(quiet).toMatchObject({ kind: 'manual' })
+      expect(minutes(quiet)).toBe(30)
+    })
+
+    it('is absent during a scheduled quiet window', async () => {
+      fakeBridge.setQuietState(makeQuietState({ inQuietHours: true }))
+      await window.que.quiet.unlock({ minutes: 5, why: 'check the deploy' })
+      render(<App />)
+
+      await screen.findByTestId('sidebar-unlock')
+      expect(screen.queryByRole('group', { name: 'Quiet' })).not.toBeInTheDocument()
+    })
+
+    it('disables its buttons while the daemon is disconnected', async () => {
+      render(<App />)
+      const group = await screen.findByRole('group', { name: 'Quiet' })
+      expect(within(group).getByTestId('sidebar-quiet')).toBeEnabled()
+
+      fakeBridge.disconnect()
+
+      await waitFor(() => {
+        for (const b of within(group).getAllByRole('button')) expect(b).toBeDisabled()
+      })
+    })
+  })
+
   describe('projects added elsewhere', () => {
     it('shows a project the CLI added, live', async () => {
       seed()
