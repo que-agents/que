@@ -1,9 +1,11 @@
 // Pure entity factories shared by node-side and renderer tests: no node:fs,
 // so the renderer's fixtures can re-export them. Realistic values, opaque ids.
+import type { WorkspaceDigest } from '../shared/protocol'
 import type {
   BackgroundTask,
   PrCheck,
   PrThreadEntry,
+  PullRequest,
   Task,
   Ticket,
   Workspace
@@ -143,6 +145,48 @@ export function makePrThreadEntry(overrides: Partial<PrThreadEntry> = {}): PrThr
     path: null,
     line: null,
     hunk: null,
+    ...overrides
+  }
+}
+
+/** One workspace's line in the report: idle, 42 minutes of work, two commits ahead. */
+export function makeWorkspaceDigest(overrides: Partial<WorkspaceDigest> = {}): WorkspaceDigest {
+  const name = overrides.name ?? 'app-1432-retry-logic'
+
+  return {
+    id: 'ws_01hzx3k9c2qf',
+    name,
+    project: 'uploader',
+    branch: name,
+    status: 'idle',
+    statusReason: null,
+    firstActivityAt: '2026-10-14T01:00:00.000Z',
+    lastActivityAt: '2026-10-14T01:42:00.000Z',
+    workingMs: 42 * 60_000,
+    needsInputCount: 0,
+    waitingSince: null,
+    stuckCount: 0,
+    commitsAhead: 2,
+    pr: null,
+    sessionId: null,
+    ...overrides
+  }
+}
+
+/** A draft pull request with no checks yet and no review. */
+export function makePullRequest(overrides: Partial<PullRequest> = {}): PullRequest {
+  return {
+    url: 'https://github.com/rquellh/que/pull/41',
+    number: 41,
+    title: 'Add retry logic to the uploader',
+    state: 'draft',
+    checks: 'none',
+    review: null,
+    checkRuns: [],
+    updatedAt: null,
+    additions: null,
+    deletions: null,
+    checkedAt: '2026-10-14T01:00:00.000Z',
     ...overrides
   }
 }
