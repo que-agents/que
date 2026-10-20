@@ -1,5 +1,5 @@
 // The isolated environment every test process shares: the daemon harness,
-// the e2e app and CLI, and the soak and packaged-smoke scripts. A temp
+// the e2e app and CLI, and the packaged-smoke script. A temp
 // QUE_HOME and QUE_CONFIG, the fakes first on PATH with their logs in the
 // home, and a git identity from <home>/gitconfig, never the machine's.
 // Plain CommonJS so the .mjs scripts and the Playwright transform both load it

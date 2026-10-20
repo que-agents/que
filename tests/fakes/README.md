@@ -6,7 +6,7 @@ binaries. `git` is never faked: tests use real repos in temp dirs. All of them a
 dependency-free Node scripts.
 
 `tests/fakes/env.cjs` builds that environment once for every caller (the Vitest
-daemon harness, the Playwright `testEnv()`, the soak and packaged-smoke scripts):
+daemon harness, the Playwright `testEnv()`, the packaged-smoke script):
 `fakeEnv(home)` gives `QUE_HOME`, `QUE_CONFIG`, the `PATH`, each fake's log and
 data file under the home, and `GIT_CONFIG_GLOBAL`; `writeGitconfig(home, name)`
 writes that fixed git identity; `QUIET_OFF` is the config table that turns quiet
@@ -15,7 +15,7 @@ hours off.
 ## `claude`
 
 Parses the flags que uses (`--settings`, `--session-id`, `--resume`,
-`--permission-mode`, `--permission-prompts`, `--allowedTools`,
+`--permission-mode`, `--permission-prompts`,
 `--append-system-prompt-file`, `--model`, `--version`) and `agents --json`. Unknown
 flags are ignored. It runs only as an interactive session; there is no print mode.
 

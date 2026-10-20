@@ -42,9 +42,6 @@ worktree_root = ${toml(d.worktreeRoot.replace(HOME, '~/.que'))}
 stall_timeout_minutes = ${d.stallTimeoutMinutes}
 status_poll_seconds = ${d.statusPollSeconds}
 pr_poll_seconds = ${d.prPollSeconds}
-concurrency = ${d.concurrency}
-max_turns = ${d.maxTurns}
-max_budget_usd = ${d.maxBudgetUsd}
 # default_permission_mode = "acceptEdits"   # unset: que.toml or Claude Code decides
 allow_bypass_permissions = ${d.allowBypassPermissions}
 protected_branches = ${toml(d.protectedBranches)}
@@ -92,10 +89,7 @@ setup = "npm ci"                       # run inside a new worktree
 teardown = "./scripts/teardown.sh"     # run inside a worktree before removal
 default_branch = "main"                # base for new workspaces (else origin's HEAD)
 worktree_include = [".env.local"]      # gitignored files copied into new worktrees
-permission_mode = "acceptEdits"        # ${config.PERMISSION_MODES.join(' | ')}
-test = "npm test"                      # the command a task must make pass
-instructions = "Keep changes small."   # appended to every task brief for this repo
-allowed_tools = ["Bash(npm test)"]     # passed to claude as --allowedTools`
+permission_mode = "acceptEdits"        # ${config.PERMISSION_MODES.join(' | ')}`
 
 const repoParsed = config.parseRepoConfig(repoExample)
 

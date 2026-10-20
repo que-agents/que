@@ -3,7 +3,7 @@
   "productName": "que",
   "version": "0.1.0",
   "private": true,
-  "description": "A macOS app for running Claude Code sessions in git worktrees, with an overnight queue and a quiet mode.",
+  "description": "A macOS app for running Claude Code sessions in git worktrees, with a quiet mode.",
   "author": "Ryan Quellhorst",
   "license": "Apache-2.0",
   "repository": {
@@ -21,7 +21,6 @@
     "macos",
     "terminal",
     "agents",
-    "overnight",
     "quiet-hours"
   ],
   "engines": {
@@ -54,7 +53,6 @@
     "package": "npm run build && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac --dir",
     "dist": "npm run build && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac dmg zip",
     "smoke:packaged": "node scripts/smoke-packaged.mjs",
-    "soak": "npm run build:node && node scripts/soak.mjs",
     "release": "node scripts/release.mjs",
     "docs": "npm run build:node && node scripts/cli-reference.mjs && node scripts/config-reference.mjs && oxfmt --write docs/cli.md docs/configuration.md README.md",
     "icon": "node scripts/make-icon.mjs",
