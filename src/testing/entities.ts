@@ -30,6 +30,7 @@ export function makeWorkspace(overrides: Partial<Workspace> = {}): Workspace {
     prs: [],
     finishedAt: null,
     seenAt: null,
+    backgroundTasks: [],
     ...overrides
   }
 }

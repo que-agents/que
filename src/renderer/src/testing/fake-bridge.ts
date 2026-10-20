@@ -571,7 +571,8 @@ class FakeBridge {
             pr: null,
             prs: [],
             finishedAt: null,
-            seenAt: null
+            seenAt: null,
+            backgroundTasks: []
           }
 
           if (title) {

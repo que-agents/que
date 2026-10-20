@@ -363,7 +363,9 @@ function toWorkspace(r: WorkspaceRow): Workspace {
     pr: currentPullRequest(prs),
     prs,
     finishedAt: r.finished_at ?? null,
-    seenAt: r.seen_at ?? null
+    seenAt: r.seen_at ?? null,
+    // Filled in by the status engine's persistence (issue #142).
+    backgroundTasks: []
   }
 
   if (r.title) ws.title = r.title

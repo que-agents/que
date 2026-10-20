@@ -12,6 +12,17 @@ export interface Project {
   createdAt: string
 }
 
+/** Background work the session reported still running at its last turn end (Stop). */
+export interface BackgroundTask {
+  /** The task id the CLI reported. */
+  id: string
+  /** `shell`, `subagent`, `monitor`, `workflow`, `teammate`, or whatever the CLI calls it. */
+  kind: string
+  description: string
+  /** When the daemon first saw it (ISO). */
+  since: string
+}
+
 /** A git worktree on its own branch, with its own terminals and status. */
 export interface Workspace {
   id: string
@@ -45,6 +56,8 @@ export interface Workspace {
   finishedAt: string | null
   /** When the app last had it selected in a focused window (workspace.seen); null before. */
   seenAt: string | null
+  /** Still running after the last turn ended; agent-like kinds keep the status working, shell and monitor do not. */
+  backgroundTasks: BackgroundTask[]
   /** What the work is, in a line (shown instead of the name); absent for a workspace made from a name. */
   title?: string
   /** The description the workspace was made from (written to `.que/brief.md`). */

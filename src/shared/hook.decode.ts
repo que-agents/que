@@ -1,7 +1,12 @@
 // Decodes the hook JSON Claude Code writes to a hook command's stdin. Shared
 // by `que hook` (which decodes before forwarding) and the daemon (which
 // decodes the `hook.event` payload once as it arrives on the socket).
-import { HOOK_EVENT_NAMES, type HookEvent, type HookEventName } from './protocol'
+import {
+  HOOK_EVENT_NAMES,
+  type HookBackgroundTask,
+  type HookEvent,
+  type HookEventName
+} from './protocol'
 import { isObj, type Obj, str } from './json.decode'
 
 type OptionalFields = Omit<HookEvent, 'hook_event_name' | 'session_id' | 'cwd' | 'transcript_path'>
@@ -12,6 +17,35 @@ function isEventName(v: unknown): v is HookEventName {
 
 function decodeSource(v: unknown): HookEvent['source'] {
   return v === 'startup' || v === 'resume' || v === 'clear' || v === 'compact' ? v : undefined
+}
+
+/** The well-formed entries of `background_tasks`: string id, type and status, plus the known optional strings. */
+function decodeBackgroundTasks(v: unknown): HookBackgroundTask[] | undefined {
+  if (!Array.isArray(v)) return undefined
+  const tasks: HookBackgroundTask[] = []
+
+  for (const item of v as unknown[]) {
+    if (!isObj(item)) continue
+    const id = str(item.id)
+    const type = str(item.type)
+    const status = str(item.status)
+
+    if (id === undefined || type === undefined || status === undefined) continue
+    const task: HookBackgroundTask = { id, type, status }
+    const description = str(item.description)
+    const command = str(item.command)
+    const agentType = str(item.agent_type)
+
+    if (description !== undefined) task.description = description
+
+    if (command !== undefined) task.command = command
+
+    if (agentType !== undefined) task.agent_type = agentType
+
+    tasks.push(task)
+  }
+
+  return tasks
 }
 
 /** Copies the optional fields that are present with the right type. */
@@ -50,6 +84,10 @@ function optional(v: Obj): OptionalFields {
   if ('tool_response' in v) out.tool_response = v.tool_response
 
   if (typeof v.stop_hook_active === 'boolean') out.stop_hook_active = v.stop_hook_active
+
+  const backgroundTasks = decodeBackgroundTasks(v.background_tasks)
+
+  if (backgroundTasks !== undefined) out.background_tasks = backgroundTasks
 
   return out
 }

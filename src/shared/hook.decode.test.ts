@@ -63,6 +63,56 @@ describe('decodeHookEvent', () => {
     ).toEqual({ ...common, hook_event_name: 'Notification' })
   })
 
+  it('keeps a Stop background_tasks list with only the known fields', () => {
+    const raw = {
+      ...common,
+      hook_event_name: 'Stop',
+      background_tasks: [
+        { id: 'b1', type: 'shell', status: 'running', command: 'npm run dev', pid: 42 },
+        {
+          id: 'a1',
+          type: 'subagent',
+          status: 'running',
+          description: 'Review',
+          agent_type: 'Explore'
+        }
+      ]
+    }
+
+    expect(decodeHookEvent(raw)).toEqual({
+      ...raw,
+      background_tasks: [
+        { id: 'b1', type: 'shell', status: 'running', command: 'npm run dev' },
+        {
+          id: 'a1',
+          type: 'subagent',
+          status: 'running',
+          description: 'Review',
+          agent_type: 'Explore'
+        }
+      ]
+    })
+  })
+
+  it('drops malformed background_tasks elements and keeps the good ones', () => {
+    const good = { id: 'b1', type: 'shell', status: 'running' }
+
+    expect(
+      decodeHookEvent({
+        ...common,
+        hook_event_name: 'Stop',
+        background_tasks: ['b0', { id: 'b2', type: 'shell' }, good]
+      })
+    ).toEqual({ ...common, hook_event_name: 'Stop', background_tasks: [good] })
+  })
+
+  it('decodes a payload without background_tasks without the key', () => {
+    const decoded = decodeHookEvent({ ...common, hook_event_name: 'Stop' })
+
+    expect(decoded).toEqual({ ...common, hook_event_name: 'Stop' })
+    expect(decoded).not.toHaveProperty('background_tasks')
+  })
+
   it.each([
     ['null', null],
     ['an array', [common]],

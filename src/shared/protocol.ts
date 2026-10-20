@@ -834,6 +834,18 @@ export const HOOK_EVENT_NAMES = [
 
 export type HookEventName = (typeof HOOK_EVENT_NAMES)[number]
 
+/** One entry of a Stop or SubagentStop hook's `background_tasks`. */
+export interface HookBackgroundTask {
+  id: string
+  type: string
+  status: string
+  description?: string
+  /** shell tasks */
+  command?: string
+  /** subagent tasks */
+  agent_type?: string
+}
+
 export interface HookEvent {
   hook_event_name: HookEventName
   session_id: string
@@ -860,6 +872,8 @@ export interface HookEvent {
   /** Stop */
   last_assistant_message?: string
   stop_hook_active?: boolean
+  /** Stop, SubagentStop: the parent session's in-flight background tasks; absent when the CLI reports none. */
+  background_tasks?: HookBackgroundTask[]
   /** StopFailure */
   error?: string
   error_details?: string
