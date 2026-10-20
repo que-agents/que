@@ -19,14 +19,15 @@ import {
   UnlockIcon
 } from './icons'
 import Menu, { type MenuItem, type Point } from './Menu'
+import WorkingMark from './WorkingMark'
 import WorkspacePopout, { usePopout } from './WorkspacePopout'
 
 /** Which row's menu is open, and where: under its ⋯ button, or at the pointer. */
 type OpenMenu = { kind: 'project' | 'workspace'; id: string; at?: Point }
 
 /**
- * A workspace's status at rest: a 5px dot in its tone, or, while it works, four accent
- * dots rippling (CSS only). Its tooltip is the hover word, and why when the workspace is
+ * A workspace's status at rest: a 5px dot in its tone, or, while it works, the working
+ * mark. Its tooltip is the hover word, and why when the workspace is
  * stuck. It carries `data-status` and `data-unseen` for tests.
  */
 function StatusMark({
@@ -46,14 +47,7 @@ function StatusMark({
   }
 
   if (look.working) {
-    return (
-      <span className="working-mark" {...common}>
-        <i />
-        <i />
-        <i />
-        <i />
-      </span>
-    )
+    return <WorkingMark {...common} />
   }
 
   return <span className={`status-dot tone-${look.tone}`} {...common} />

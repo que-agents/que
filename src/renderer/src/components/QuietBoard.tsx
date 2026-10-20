@@ -12,6 +12,7 @@ import { useQue, useStore } from '../store'
 import { useNow } from '../useNow'
 import CountLine from './CountLine'
 import { QMarkIcon, UnlockIcon } from './icons'
+import WorkingMark from './WorkingMark'
 
 interface Row {
   id: string
@@ -20,6 +21,7 @@ interface Row {
   /** The raw state (`needs_input`, `running`), for data-state. */
   state: string
   stateText: string
+  /** The dot's tone; `busy` draws the working mark instead of a dot. */
   dot: Tone
   /** Only stuck takes a tone on its word. */
   stuck: boolean
@@ -35,7 +37,8 @@ function minutes(m: number): string {
  * Quiet hours (or a manual quiet): the one question, "running and not stuck?", answered from
  * across the room without pulling anyone in. A dim strip, one faint count
  * line, a dim row per live task and per workspace that is busy or has a live
- * terminal, and a ghost Unlock (and End quiet in a manual window): no sentences, no badges, no links. Needs input
+ * terminal, and a ghost Unlock (and End quiet in a manual window): no sentences, no badges, no links.
+ * A working row draws the sidebar's working mark, so "still happening" reads the same. Needs input
  * is not a night state here: it reads `waiting`, with no tone.
  */
 export default function QuietBoard(): React.JSX.Element {
@@ -138,10 +141,11 @@ export default function QuietBoard(): React.JSX.Element {
             {rows.map((r) => (
               <li
                 key={r.id}
-                className={`dot-row tone-${r.dot}`}
+                className={`dot-row tone-${r.dot}${r.dot === 'busy' ? ' working' : ''}`}
                 data-testid={`quiet-board-row-${r.id}`}
                 data-state={r.state}
               >
+                {r.dot === 'busy' && <WorkingMark data-testid={`quiet-board-mark-${r.id}`} />}
                 <span className="dot-row-name">{r.name}</span>{' '}
                 <span className="dot-row-project">{r.project}</span>{' '}
                 <span className={r.stuck ? 'dot-row-state tone-bad' : 'dot-row-state'}>
