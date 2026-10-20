@@ -96,6 +96,13 @@ export async function excludeQueDir(worktree: string): Promise<void> {
   fs.writeFileSync(file, `${current}${current && !current.endsWith('\n') ? '\n' : ''}.que/\n`)
 }
 
+/** The branch `cwd` has checked out, or '' on a detached HEAD or when it cannot be read. */
+async function currentBranch(cwd: string): Promise<string> {
+  const r = await git(cwd, ['symbolic-ref', '--short', 'HEAD'], 10_000)
+
+  return r.ok ? r.stdout : ''
+}
+
 async function detectDefaultBranch(repo: string): Promise<string> {
   const head = await git(repo, ['symbolic-ref', '--short', 'refs/remotes/origin/HEAD'])
 
@@ -110,9 +117,7 @@ async function detectDefaultBranch(repo: string): Promise<string> {
     }
   }
 
-  const current = await git(repo, ['symbolic-ref', '--short', 'HEAD'])
-
-  return current.ok && current.stdout ? current.stdout : 'main'
+  return (await currentBranch(repo)) || 'main'
 }
 
 export interface WorkspaceManagerOptions {
@@ -408,10 +413,29 @@ export class WorkspaceManager {
     return ''
   }
 
+  /**
+   * Records the branch the worktree has checked out when it is not the stored one, and
+   * announces it with workspace.updated. A detached HEAD or a missing worktree keeps it.
+   */
+  async syncBranch(id: string): Promise<Workspace> {
+    const ws = this.get(id)
+    const head = await currentBranch(ws.path)
+
+    if (!head || head === ws.branch) return ws
+    this.opts.store.setWorkspaceBranch(ws.id, head)
+    const next = this.get(ws.id)
+    this.log(`workspace ${ws.id} is on ${head} (was ${ws.branch})`)
+    this.opts.emit('workspace.updated', next)
+
+    return next
+  }
+
   /** True when the branch was never pushed: no `origin/<branch>` in the worktree. */
   async canRenameBranch(id: string): Promise<boolean> {
-    const ws = this.get(id)
+    return this.neverPushed(await this.syncBranch(id))
+  }
 
+  private async neverPushed(ws: Workspace): Promise<boolean> {
     const remote = await git(ws.path, [
       'rev-parse',
       '--verify',
@@ -427,7 +451,7 @@ export class WorkspaceManager {
    * folder keeps its name). Announces the change with workspace.updated.
    */
   async rename(p: WorkspaceRenameParams): Promise<Workspace> {
-    const ws = this.get(p.id)
+    const ws = await this.syncBranch(p.id)
     const title = p.title.trim()
 
     if (!title) throw badRequest('title is required')
@@ -438,7 +462,7 @@ export class WorkspaceManager {
         throw badRequest(`invalid branch name ${JSON.stringify(branch)}`)
       }
 
-      if (!(await this.canRenameBranch(ws.id))) {
+      if (!(await this.neverPushed(ws))) {
         throw conflict(`branch ${ws.branch} is on origin; it keeps its name`)
       }
 
@@ -503,8 +527,9 @@ export class WorkspaceManager {
     }
   }
 
+  /** Tears down and removes the worktree, and with deleteBranch the branch it has checked out. */
   async remove(p: WorkspaceRemoveParams): Promise<void> {
-    const ws = this.get(p.id)
+    const ws = await this.syncBranch(p.id)
     const project = this.opts.store.getProject(ws.projectId)
     this.opts.killTerminals(ws.id)
     const setup = this.setups.get(ws.id)

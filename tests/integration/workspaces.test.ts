@@ -10,6 +10,7 @@ import {
   recordEvents,
   startTestDaemon,
   type TestDaemon,
+  waitForStatus,
   withQuietOff
 } from '../../src/testing/daemon-harness'
 import { readFakeLog } from '../../src/testing/fakes'
@@ -300,6 +301,23 @@ worktree_include = ["config/local", "missing.json"]
         code: 'not_found'
       })
     }, 20_000)
+
+    it('deletes the branch checked out in the worktree after it was created', async () => {
+      const repo = makeTempRepo(daemon.home)
+      const project = await client.request('project.add', { path: repo })
+
+      const ws = await client.request('workspace.create', {
+        projectId: project.id,
+        name: 'app-1471-switch'
+      })
+
+      gitIn(ws.path, 'checkout', '--quiet', '-b', 'fix/upload-timeout')
+
+      await client.request('workspace.remove', { id: ws.id, deleteBranch: true })
+
+      expect(fs.existsSync(ws.path)).toBe(false)
+      expect(gitIn(repo, 'branch', '--list', 'fix/upload-timeout')).toBe('')
+    }, 20_000)
   })
 })
 
@@ -475,6 +493,9 @@ describe('workspace.rename', () => {
       brief: 'Fix the flaky upload test'
     })
 
+    // Setup's own workspace.updated is out of the way before a test records events.
+    await waitForStatus(daemon, ws.id, 'idle')
+
     return { repo, ws }
   }
 
@@ -621,6 +642,20 @@ describe('workspace.createPr', () => {
     expect(pr?.cwd).toBe(ws.path)
     expect((await client.request('workspace.get', { id: ws.id })).prUrl).toBe(result.prUrl)
     await expect.poll(() => updates.map((w) => w.prUrl)).toContain(result.prUrl)
+  }, 30_000)
+
+  it('pushes the branch checked out in the worktree after it was created', async () => {
+    const { origin, ws } = await workspaceWithOrigin()
+    gitIn(ws.path, 'checkout', '--quiet', '-b', 'fix/upload-timeout')
+    fs.writeFileSync(join(ws.path, 'timeout.ts'), 'export const timeoutMs = 30_000\n')
+
+    await client.request('workspace.createPr', { id: ws.id, title: 'Time out stalled uploads' })
+
+    expect(gitIn(origin, 'rev-parse', 'fix/upload-timeout')).toBe(
+      gitIn(ws.path, 'rev-parse', 'HEAD')
+    )
+    expect(gitIn(origin, 'branch', '--list', ws.branch)).toBe('')
+    expect((await client.request('workspace.get', { id: ws.id })).branch).toBe('fix/upload-timeout')
   }, 30_000)
 
   it('refuses a protected branch before committing anything', async () => {

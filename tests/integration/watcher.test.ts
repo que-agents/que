@@ -9,7 +9,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { DaemonClient } from '@shared/client'
 import type { Workspace } from '@shared/types'
-import { startTestDaemon, type TestDaemon } from '../../src/testing/daemon-harness'
+import { recordEvents, startTestDaemon, type TestDaemon } from '../../src/testing/daemon-harness'
 import { gitIn, makeTempRepo } from '../../src/testing/temp-repo'
 
 let daemon: TestDaemon
@@ -131,6 +131,21 @@ describe('worktree watcher', () => {
       await expect.poll(() => count(ws.id), { timeout: 10_000 }).toBe(base + 1)
       await sentinel(other, 'one.txt')
       expect(count(ws.id)).toBe(base + 1)
+    }, 30_000)
+
+    it('re-reads the branch when HEAD moves, before workspace.changed', async () => {
+      const ws = await createWorkspace('app-1607-watch-branch')
+      const other = await createWorkspace('app-1608-sentinel')
+      const base = await watchBoth(ws, other)
+      const updates = recordEvents(daemon.client, 'workspace.updated')
+
+      gitIn(ws.path, 'checkout', '--quiet', '-b', 'fix/upload-timeout')
+
+      await expect.poll(() => count(ws.id), { timeout: 10_000 }).toBe(base + 1)
+      expect(updates.some((w) => w.id === ws.id && w.branch === 'fix/upload-timeout')).toBe(true)
+      expect((await daemon.client.request('workspace.get', { id: ws.id })).branch).toBe(
+        'fix/upload-timeout'
+      )
     }, 30_000)
 
     it('ignores object writes in the repository and the worktree gitdir', async () => {

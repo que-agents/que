@@ -179,7 +179,7 @@ export class DaemonServer {
   private configError: string | null = null
   private configCheckedAt = Number.NEGATIVE_INFINITY
   /** Watches the worktrees of the workspaces clients asked for with workspace.watch (workspace.changed). */
-  readonly watcher = new WorktreeWatcher((id) => this.bus.emit('workspace.changed', { id }), {
+  readonly watcher = new WorktreeWatcher((id) => void this.worktreeChanged(id), {
     log: (m) => this.log(m)
   })
 
@@ -679,6 +679,17 @@ export class DaemonServer {
       this.workspaces.close()
       this.store.close()
     }
+  }
+
+  /** A watched worktree changed: its branch is re-read (HEAD may have moved) before clients hear of it. */
+  private async worktreeChanged(id: string): Promise<void> {
+    try {
+      await this.workspaces.syncBranch(id)
+    } catch {
+      // Removed since the change was seen.
+    }
+
+    this.bus.emit('workspace.changed', { id })
   }
 
   /**

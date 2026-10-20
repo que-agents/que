@@ -469,7 +469,7 @@ export class TaskRunner {
 
     const result = await finishTask({
       task,
-      workspace: ws,
+      workspace: await this.o.workspaces.syncBranch(ws.id),
       project,
       protectedBranches: this.o.config().protectedBranches,
       bodyFile: join(this.o.paths.taskLogsDir, `${id}.pr.md`),
