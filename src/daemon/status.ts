@@ -35,7 +35,8 @@ function fromRow(w: Workspace): Tracked {
     statusAt: Date.parse(w.statusAt),
     lastActivityAt: w.lastActivityAt ? Date.parse(w.lastActivityAt) : null,
     sessionId: w.sessionId,
-    hookAt: null
+    hookAt: null,
+    backgroundTasks: w.backgroundTasks
   }
 }
 
@@ -171,6 +172,11 @@ export class StatusService {
     this.releaseSetupWaiters(id)
   }
 
+  /** The workspace's current status, or undefined when it is not tracked. */
+  statusOf(id: string): Workspace['status'] | undefined {
+    return this.state(id)?.status
+  }
+
   /** The transcript of the workspace's main session, from its last hook that named one. */
   transcriptPath(id: string): string | undefined {
     return this.states.get(id)?.transcriptPath
@@ -183,13 +189,25 @@ export class StatusService {
     const statusChanged = prev.status !== next.status || prev.reason !== next.reason
     const sessionChanged = prev.sessionId !== next.sessionId
 
-    if (!statusChanged && !sessionChanged && prev.lastActivityAt === next.lastActivityAt) return
+    const tasksChanged =
+      JSON.stringify(prev.backgroundTasks) !== JSON.stringify(next.backgroundTasks)
+
+    if (
+      !statusChanged &&
+      !sessionChanged &&
+      !tasksChanged &&
+      prev.lastActivityAt === next.lastActivityAt
+    ) {
+      return
+    }
+
     this.opts.store.updateStatus(id, {
       status: next.status,
       reason: next.reason,
       at: new Date(next.statusAt).toISOString(),
       lastActivityAt: iso(next.lastActivityAt),
-      sessionId: next.sessionId
+      sessionId: next.sessionId,
+      backgroundTasks: next.backgroundTasks
     })
 
     if (statusChanged) {
