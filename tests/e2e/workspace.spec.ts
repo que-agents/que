@@ -115,7 +115,7 @@ test("a workspace described in a brief gets a random name, claude started on it,
   const repo = makeTempRepo(tempDir('que-e2e-repo-'))
   const queHome = newQueHome()
   const brief = 'Raise the upload timeout\n\nThe upload test times out on slow CI runners.'
-  // The name the fake claude writes to its terminal title, as Claude Code names a session.
+  // A name given to the session from inside it, which it writes to its terminal title.
   const label = 'Slow runner upload timeout'
   let project: Project
   let workspace: Workspace
@@ -123,10 +123,9 @@ test("a workspace described in a brief gets a random name, claude started on it,
   let sidebar: SidebarPage
   let terminal: TerminalPage
 
-  await test.step('Launch the app, then register the project with the CLI', async () => {
-    // The app first: it starts the daemon, and the fake reads its title from the daemon's env.
-    launched = await launchApp({ queHome, env: { QUE_FAKE_CLAUDE_TITLE: label } })
+  await test.step('Register the project with the CLI and launch the app', async () => {
     project = queJson<Project>(queHome, 'project', 'add', repo, '--json')
+    launched = await launchApp({ queHome })
     sidebar = new SidebarPage(launched.window)
     terminal = new TerminalPage(launched.window)
     await sidebar.waitForLoad()
@@ -168,8 +167,11 @@ test("a workspace described in a brief gets a random name, claude started on it,
     await expect.poll(() => terminal.activeTermId()).toBe(terms[0].id)
   })
 
-  await test.step('After the first reply, the sidebar title is the name the session gave itself', async () => {
+  await test.step('Renamed inside the session, the sidebar row takes the name', async () => {
     await terminal.expectScreenToContain('● Fake reply to: Raise the upload timeout', 30_000)
+    await terminal.input.focus()
+    await launched.window.keyboard.type(`/rename ${label}`)
+    await launched.window.keyboard.press('Enter')
     await expect(sidebar.workspaceName(workspace.id)).toHaveText(label)
     await launched.window.screenshot({ path: 'test-results/workspace-from-brief.png' })
   })

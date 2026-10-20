@@ -124,6 +124,8 @@ export interface LiveSessionsOptions {
   isWorkspaceTerminal: (terminalId: string, workspaceId: string) => boolean
   /** Opens a terminal in the workspace that resumes the session; returns its id. */
   resume: (entry: LiveSession) => string
+  /** A session went live in the terminal (its start hook landed). */
+  onLive?: (terminalId: string) => void
   log: (msg: string) => void
 }
 
@@ -204,8 +206,12 @@ export class LiveSessions {
     const next = trackLive(this.live, input)
 
     if (next === this.live) return
+    const started = next.filter((e) => !this.live.includes(e))
+
     this.live = next
     this.persist()
+
+    for (const e of started) this.o.onLive?.(e.terminalId)
   }
 
   private persist(): void {

@@ -269,6 +269,7 @@ export class DaemonServer {
 
         return t !== undefined && t.alive && t.workspaceId === wsId
       },
+      onLive: (termId) => this.labelFromTerminal(termId),
       resume: (entry) => {
         const t = this.openWorkspaceTerminal(entry.workspaceId, 120, 30)
         this.typeAfterSetup(
@@ -546,8 +547,10 @@ export class DaemonServer {
 
   /**
    * The title of a workspace terminal in which a Claude session is live names the
-   * session; it becomes the workspace's title unless the user set one. An empty title
-   * (the session exiting) or the unnamed placeholder changes nothing.
+   * session; it becomes the workspace's title unless the user set one. Run when the
+   * title changes and when a session goes live, since a resumed session writes its
+   * name before its start hook lands. An empty title (the session exiting) or the
+   * unnamed placeholder changes nothing.
    */
   private labelFromTerminal(id: string): void {
     const t = this.opts.host.get(id)
@@ -930,12 +933,6 @@ export class DaemonServer {
     'hook.event': (p) => {
       const ws = this.workspaces.get(p.workspaceId)
       this.liveSessions.hook(ws.id, p.terminalId, p.taskId, p.payload)
-
-      // A session names itself in the title, sometimes before its start hook lands (a resume).
-      if (p.payload.hook_event_name === 'SessionStart' && p.terminalId) {
-        this.labelFromTerminal(p.terminalId)
-      }
-
       this.status.hook(ws.id, p.payload)
 
       if (p.taskId) this.tasks.hook(p.taskId, p.payload)

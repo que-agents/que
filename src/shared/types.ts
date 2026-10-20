@@ -70,7 +70,9 @@ export interface Workspace {
 }
 
 /** Where a workspace's title came from. */
-export type TitleSource = 'brief' | 'terminal' | 'user'
+export const TITLE_SOURCES = ['brief', 'terminal', 'user'] as const
+
+export type TitleSource = (typeof TITLE_SOURCES)[number]
 
 export type CheckState = 'pending' | 'passing' | 'failing' | 'skipped'
 
