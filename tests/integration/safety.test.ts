@@ -226,6 +226,8 @@ const QUIET_POLICY: Record<MethodName, 'refused' | 'allowed'> = {
   'quiet.state': 'allowed',
   'quiet.unlock': 'allowed',
   'quiet.lock': 'allowed',
+  'quiet.start': 'allowed',
+  'quiet.end': 'allowed',
   'quiet.log': 'allowed',
   'config.get': 'allowed',
   'config.set': 'allowed',

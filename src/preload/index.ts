@@ -69,6 +69,8 @@ const api: QueApi = {
     state: () => call('quiet.state'),
     unlock: (p) => call('quiet.unlock', p),
     lock: () => call('quiet.lock'),
+    start: (p) => call('quiet.start', p),
+    end: () => call('quiet.end'),
     log: (p) => call('quiet.log', p),
     on: (event, cb) => subscribe(event, cb as (data: unknown) => void)
   },

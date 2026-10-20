@@ -14,6 +14,7 @@ import type {
   JsonValue,
   Project,
   PullRequest,
+  QuietKind,
   QuietUnlock,
   Task,
   TaskState,
@@ -137,7 +138,14 @@ const MIGRATIONS: string[] = [
   `ALTER TABLE workspaces ADD COLUMN prs_json TEXT;`,
   `ALTER TABLE workspaces ADD COLUMN finished_at TEXT;
    ALTER TABLE workspaces ADD COLUMN seen_at TEXT;`,
-  `ALTER TABLE workspaces ADD COLUMN background_json TEXT;`
+  `ALTER TABLE workspaces ADD COLUMN background_json TEXT;`,
+  `CREATE TABLE quiet_manual (
+     id INTEGER PRIMARY KEY,
+     at TEXT NOT NULL,
+     until TEXT NOT NULL,
+     ended_at TEXT
+   );
+   ALTER TABLE quiet_unlocks ADD COLUMN kind TEXT NOT NULL DEFAULT 'scheduled';`
 ]
 
 const STATUS_LOG_RETENTION_MS = 30 * 24 * 3_600_000
@@ -775,13 +783,20 @@ export class Store {
 
   // ---- quiet unlocks ---------------------------------------------------------
 
-  insertUnlock(u: { at: string; minutes: number; why: string | null; until: string }): number {
+  insertUnlock(u: {
+    at: string
+    minutes: number
+    why: string | null
+    until: string
+    kind: QuietKind
+  }): number {
     const r = this.run(
-      'INSERT INTO quiet_unlocks (at, minutes, why, until) VALUES (?, ?, ?, ?)',
+      'INSERT INTO quiet_unlocks (at, minutes, why, until, kind) VALUES (?, ?, ?, ?, ?)',
       u.at,
       u.minutes,
       u.why,
-      u.until
+      u.until,
+      u.kind
     )
 
     return Number(r.lastInsertRowid)
@@ -792,21 +807,45 @@ export class Store {
   }
 
   /** The unlock still open (not ended), if any. */
-  openUnlock(): { id: number; at: string; why: string | null; until: string } | undefined {
-    return this.row<{ id: number; at: string; why: string | null; until: string }>(
-      'SELECT id, at, why, until FROM quiet_unlocks WHERE ended_at IS NULL ORDER BY id DESC LIMIT 1'
+  openUnlock():
+    | { id: number; at: string; why: string | null; until: string; kind: QuietKind }
+    | undefined {
+    return this.row<{ id: number; at: string; why: string | null; until: string; kind: QuietKind }>(
+      'SELECT id, at, why, until, kind FROM quiet_unlocks WHERE ended_at IS NULL ORDER BY id DESC LIMIT 1'
     )
   }
 
-  /** Unlocks started at or after `since`, oldest first. */
+  /** Scheduled-window unlocks started at or after `since`, oldest first; a manual quiet's peeks are not in the log. */
   listUnlocks(since?: string): QuietUnlock[] {
     type UnlockRow = { at: string; minutes: number; why: string | null; ended_at: string | null }
 
     const rows = since
-      ? this.rows<UnlockRow>('SELECT * FROM quiet_unlocks WHERE at >= ? ORDER BY id', since)
-      : this.rows<UnlockRow>('SELECT * FROM quiet_unlocks ORDER BY id')
+      ? this.rows<UnlockRow>(
+          "SELECT * FROM quiet_unlocks WHERE kind = 'scheduled' AND at >= ? ORDER BY id",
+          since
+        )
+      : this.rows<UnlockRow>("SELECT * FROM quiet_unlocks WHERE kind = 'scheduled' ORDER BY id")
 
     return rows.map((r) => ({ at: r.at, minutes: r.minutes, why: r.why, endedAt: r.ended_at }))
+  }
+
+  // ---- manual quiet ------------------------------------------------------------
+
+  insertManual(m: { at: string; until: string }): number {
+    const r = this.run('INSERT INTO quiet_manual (at, until) VALUES (?, ?)', m.at, m.until)
+
+    return Number(r.lastInsertRowid)
+  }
+
+  endManual(id: number, endedAt: string): void {
+    this.run('UPDATE quiet_manual SET ended_at = ? WHERE id = ? AND ended_at IS NULL', endedAt, id)
+  }
+
+  /** The manual quiet still open (not ended), if any. */
+  openManual(): { id: number; at: string; until: string } | undefined {
+    return this.row<{ id: number; at: string; until: string }>(
+      'SELECT id, at, until FROM quiet_manual WHERE ended_at IS NULL ORDER BY id DESC LIMIT 1'
+    )
   }
 
   // ---- tickets --------------------------------------------------------------

@@ -73,6 +73,11 @@ client during those hours, so the CLI cannot peek either. `que unlock 15 --why
 ends it early. When the window ends, `que report` (or the app's report view)
 shows what the night did; `notifications.morning_summary` adds a notification.
 
+`que quiet start 45` goes quiet the same way for 45 minutes (default 60, at
+most 720), for a meeting or a shared screen, whether or not quiet hours are
+on; `que quiet end` ends it early. Unlocking inside it works as at night, and
+those daytime unlocks stay out of the night's unlock log.
+
 ## Configuration
 
 `~/.config/que/config.toml` (or `$QUE_CONFIG`); `que config set key=value` edits
@@ -189,6 +194,8 @@ Generated from `que --help`; options and arguments are in [docs/cli.md](docs/cli
 | `que unlock [options] [minutes]`            | unlock detail during quiet hours for a while (default: quiet_hours.unlock_minutes)                                                                                                         |
 | `que lock [options]`                        | end an unlock early                                                                                                                                                                        |
 | `que quiet status [options]`                | whether quiet hours are on, until when, and any unlock                                                                                                                                     |
+| `que quiet start [options] [minutes]`       | go quiet now, as in quiet hours, for a while (default 60 minutes, at most 720)                                                                                                             |
+| `que quiet end [options]`                   | end a manual quiet early                                                                                                                                                                   |
 | `que config get [options]`                  | print the config file path and the parsed config                                                                                                                                           |
 | `que config set [options] <assignments...>` | set keys (dotted, e.g. quiet_hours.default=19:00,07:00) and reload the daemon                                                                                                              |
 | `que hook [options]`                        | report a Claude Code hook event (stdin JSON) to the daemon; used by hooks.json                                                                                                             |

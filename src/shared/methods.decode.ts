@@ -156,6 +156,8 @@ export const decoders: { [M in MethodName]: (p: Params) => ParamsOf<M> } = {
   'quiet.state': none,
   'quiet.unlock': (p) => ({ minutes: optNumber(p, 'minutes'), why: optString(p, 'why') }),
   'quiet.lock': none,
+  'quiet.start': (p) => ({ minutes: optNumber(p, 'minutes') }),
+  'quiet.end': none,
   'quiet.log': (p) => ({ since: optString(p, 'since') }),
   'config.get': none,
   'config.set': (p) => {

@@ -86,6 +86,9 @@ export async function assertNotQuiet(c: DaemonClient): Promise<void> {
   const q = await c.request('quiet.state')
 
   if (q.locked && q.windowEnd) {
-    throw new DaemonError('quiet_hours', quietMessage(Date.parse(q.windowEnd), q.unlockMinutes))
+    throw new DaemonError(
+      'quiet_hours',
+      quietMessage(Date.parse(q.windowEnd), q.unlockMinutes, q.kind ?? 'scheduled')
+    )
   }
 }

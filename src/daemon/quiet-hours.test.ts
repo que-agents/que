@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { formatCountdown } from '../shared/format'
 import { makeQuietHours } from '../testing/fixtures'
 import {
+  activeWindow,
   currentWindow,
   effectiveConfig,
   formatUnlocks,
@@ -27,7 +28,8 @@ describe('currentWindow', () => {
       expect(currentWindow(ms(13, 19, 0), cfg)).toEqual({
         start: at(13, 19),
         end: at(14, 7),
-        weekday: 'tuesday'
+        weekday: 'tuesday',
+        kind: 'scheduled'
       })
       expect(isQuiet(ms(13, 23, 30), cfg)).toBe(true)
       expect(isQuiet(ms(14, 6, 59), cfg)).toBe(true)
@@ -39,7 +41,12 @@ describe('currentWindow', () => {
 
       const w = currentWindow(ms(14, 2, 0), cfg)
 
-      expect(w).toEqual({ start: at(13, 19), end: at(14, 7), weekday: 'tuesday' })
+      expect(w).toEqual({
+        start: at(13, 19),
+        end: at(14, 7),
+        weekday: 'tuesday',
+        kind: 'scheduled'
+      })
     })
 
     it('lets a per-day override replace the default window', () => {
@@ -49,7 +56,8 @@ describe('currentWindow', () => {
       expect(currentWindow(ms(12, 22, 0), cfg)).toEqual({
         start: at(12, 21, 30),
         end: at(13, 6),
-        weekday: 'monday'
+        weekday: 'monday',
+        kind: 'scheduled'
       })
       expect(isQuiet(ms(13, 6, 30), cfg)).toBe(false) // Monday's window ended at 06:00
       expect(isQuiet(ms(13, 20, 0), cfg)).toBe(true) // Tuesday is back on the default
@@ -70,7 +78,8 @@ describe('currentWindow', () => {
       expect(currentWindow(ms(14, 12, 45), cfg)).toEqual({
         start: at(14, 12),
         end: at(14, 13, 30),
-        weekday: 'wednesday'
+        weekday: 'wednesday',
+        kind: 'scheduled'
       })
       expect(isQuiet(ms(14, 13, 30), cfg)).toBe(false)
     })
@@ -109,6 +118,42 @@ describe('currentWindow', () => {
       expect(((w?.end.getTime() ?? 0) - (w?.start.getTime() ?? 0)) / 3_600_000).toBe(11)
       expect(nextBoundary(ms(8, 3, 0, 2), cfg)).toEqual(at(8, 7, 0, 2))
     })
+  })
+})
+
+describe('activeWindow', () => {
+  // Tuesday 13 Oct, a meeting from 14:00 to 15:00.
+  const meeting = { start: ms(13, 14, 0), end: ms(13, 15, 0) }
+
+  it('is the manual window, with its kind and the weekday it started on, while it lasts', () => {
+    expect(activeWindow(ms(13, 14, 30), makeQuietHours(), meeting)).toEqual({
+      start: at(13, 14),
+      end: at(13, 15),
+      weekday: 'tuesday',
+      kind: 'manual'
+    })
+  })
+
+  it('is the scheduled window when both cover the moment', () => {
+    const evening = { start: ms(13, 18, 30), end: ms(13, 20, 0) }
+
+    expect(activeWindow(ms(13, 19, 30), makeQuietHours(), evening)).toEqual({
+      start: at(13, 19),
+      end: at(14, 7),
+      weekday: 'tuesday',
+      kind: 'scheduled'
+    })
+  })
+
+  it('holds a manual window with quiet hours disabled', () => {
+    const off = makeQuietHours({ enabled: false })
+
+    expect(activeWindow(ms(13, 14, 30), off, meeting)?.kind).toBe('manual')
+  })
+
+  it('is null once the manual window has ended, and before it starts', () => {
+    expect(activeWindow(ms(13, 15, 0), makeQuietHours(), meeting)).toBeNull()
+    expect(activeWindow(ms(13, 13, 59), makeQuietHours(), meeting)).toBeNull()
   })
 })
 
@@ -234,6 +279,12 @@ describe('quietMessage', () => {
   it('names the end of the window and the unlock command', () => {
     expect(quietMessage(ms(14, 7, 0), 20)).toBe(
       'quiet hours until 07:00; run `que unlock` for 20 minutes'
+    )
+  })
+
+  it('names `que quiet end` as well during a manual quiet', () => {
+    expect(quietMessage(ms(13, 15, 0), 20, 'manual')).toBe(
+      'quiet until 15:00; run `que quiet end`, or `que unlock` for 20 minutes'
     )
   })
 })

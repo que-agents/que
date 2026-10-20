@@ -14,6 +14,7 @@ import type {
   QueueOpenParams,
   QueueState,
   QuietLogParams,
+  QuietStartParams,
   QuietUnlockParams,
   Report,
   TicketsListResult,
@@ -256,6 +257,10 @@ export interface QuietApi {
   unlock(params?: QuietUnlockParams): Promise<QuietState>
   /** Ends an unlock early. */
   lock(): Promise<QuietState>
+  /** Starts a manual quiet window for `minutes` (default 60), or replaces the one running. */
+  start(params?: QuietStartParams): Promise<QuietState>
+  /** Ends a manual quiet window and any unlock in it. */
+  end(): Promise<QuietState>
   log(params?: QuietLogParams): Promise<QuietUnlock[]>
   on(event: 'quiet.changed', cb: (data: QuietState) => void): () => void
 }

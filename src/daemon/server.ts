@@ -955,6 +955,8 @@ export class DaemonServer {
     'quiet.state': () => this.quiet.state(),
     'quiet.unlock': (p) => this.quiet.unlockFor(p?.minutes, p?.why),
     'quiet.lock': () => this.quiet.lock(),
+    'quiet.start': (p) => this.quiet.startManual(p?.minutes),
+    'quiet.end': () => this.quiet.endManual(),
     'quiet.log': (p) => this.quiet.log(p?.since),
     'tickets.list': () => this.tickets.list(),
     'tickets.sync': () => this.tickets.sync(),

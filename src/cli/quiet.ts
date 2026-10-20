@@ -1,4 +1,4 @@
-// Quiet hours and config: `que unlock`, `que lock`, `que quiet status`,
+// Quiet hours and config: `que unlock`, `que lock`, `que quiet status|start|end`,
 // `que config get|set`.
 import type { Command } from 'commander'
 import { formatCountdown, hhmm } from '../shared/format'
@@ -9,21 +9,23 @@ import { errorMessage } from '../shared/errors.decode'
 
 /** One line about quiet hours, for `que quiet status` and `que status`. */
 export function describeQuietState(q: QuietState, now = Date.now()): string {
+  // The window first: a manual quiet holds with quiet hours off.
+  if (q.inQuietHours) {
+    const until = q.windowEnd ? hhmm(Date.parse(q.windowEnd)) : '?'
+    const head = `${q.kind === 'manual' ? 'quiet' : 'quiet hours'} until ${until}`
+
+    if (q.unlockedUntil) {
+      return `${head} · unlocked, ${formatCountdown(Date.parse(q.unlockedUntil) - now)} left`
+    }
+
+    return head
+  }
+
   if (!q.enabled) return 'quiet hours off'
 
-  if (!q.inQuietHours) {
-    return q.nextBoundary
-      ? `work hours · quiet hours start ${hhmm(Date.parse(q.nextBoundary))}`
-      : 'work hours'
-  }
-
-  const until = q.windowEnd ? hhmm(Date.parse(q.windowEnd)) : '?'
-
-  if (q.unlockedUntil) {
-    return `quiet hours until ${until} · unlocked, ${formatCountdown(Date.parse(q.unlockedUntil) - now)} left`
-  }
-
-  return `quiet hours until ${until}`
+  return q.nextBoundary
+    ? `work hours · quiet hours start ${hhmm(Date.parse(q.nextBoundary))}`
+    : 'work hours'
 }
 
 function positiveMinutes(value: string): number {
@@ -78,6 +80,35 @@ export function registerQuietCommands(program: Command): void {
         const q = await c.request('quiet.state')
 
         if (opts.json) printJson(q)
+        else console.log(describeQuietState(q))
+      })
+    )
+  quiet
+    .command('start [minutes]')
+    .description('go quiet now, as in quiet hours, for a while (default 60 minutes, at most 720)')
+    .option('--json', 'print the quiet state as JSON')
+    .action((minutes: string | undefined, opts: { json?: boolean }) =>
+      withClient(async (c) => {
+        const q = await c.request('quiet.start', {
+          minutes: minutes === undefined ? undefined : positiveMinutes(minutes)
+        })
+
+        if (opts.json) printJson(q)
+        else if (q.kind === 'scheduled') console.log('already in quiet hours')
+        else console.log(describeQuietState(q))
+      })
+    )
+  quiet
+    .command('end')
+    .description('end a manual quiet early')
+    .option('--json', 'print the quiet state as JSON')
+    .action((opts: { json?: boolean }) =>
+      withClient(async (c) => {
+        const before = await c.request('quiet.state')
+        const q = await c.request('quiet.end')
+
+        if (opts.json) printJson(q)
+        else if (before.kind !== 'manual') console.log('not in a manual quiet; nothing to end')
         else console.log(describeQuietState(q))
       })
     )

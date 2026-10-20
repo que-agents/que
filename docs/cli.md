@@ -45,6 +45,8 @@ hand; run `npm run docs` after changing a command.
 | `que unlock [options] [minutes]`            | unlock detail during quiet hours for a while (default: quiet_hours.unlock_minutes)                                                                                                         |
 | `que lock [options]`                        | end an unlock early                                                                                                                                                                        |
 | `que quiet status [options]`                | whether quiet hours are on, until when, and any unlock                                                                                                                                     |
+| `que quiet start [options] [minutes]`       | go quiet now, as in quiet hours, for a while (default 60 minutes, at most 720)                                                                                                             |
+| `que quiet end [options]`                   | end a manual quiet early                                                                                                                                                                   |
 | `que config get [options]`                  | print the config file path and the parsed config                                                                                                                                           |
 | `que config set [options] <assignments...>` | set keys (dotted, e.g. quiet_hours.default=19:00,07:00) and reload the daemon                                                                                                              |
 | `que hook [options]`                        | report a Claude Code hook event (stdin JSON) to the daemon; used by hooks.json                                                                                                             |
@@ -545,6 +547,30 @@ whether quiet hours are on, until when, and any unlock
 
 Options:
   --json      print JSON
+  -h, --help  display help for command
+```
+
+### que quiet start
+
+```text
+Usage: que quiet start [options] [minutes]
+
+go quiet now, as in quiet hours, for a while (default 60 minutes, at most 720)
+
+Options:
+  --json      print the quiet state as JSON
+  -h, --help  display help for command
+```
+
+### que quiet end
+
+```text
+Usage: que quiet end [options]
+
+end a manual quiet early
+
+Options:
+  --json      print the quiet state as JSON
   -h, --help  display help for command
 ```
 
