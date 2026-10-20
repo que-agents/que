@@ -8,6 +8,27 @@ const NOW = new Date(2026, 9, 17, 21, 30).getTime()
 const idle = makeWorkspace({ id: 'ws_01hzx3k9c2qf', name: 'app-1432-retry-logic' })
 const fresh = { ...idle, finishedAt: minutesAgo(NOW, 12), seenAt: minutesAgo(NOW, 40) }
 
+const devServer = {
+  id: 'bash_01hzy2c7k4mq',
+  kind: 'shell',
+  description: 'npm run dev',
+  since: minutesAgo(NOW, 31)
+}
+
+const logTail = {
+  id: 'mon_01hzy2f9a1wd',
+  kind: 'monitor',
+  description: 'tail -f logs/api.log',
+  since: minutesAgo(NOW, 18)
+}
+
+const explorer = {
+  id: 'agent_01hzy3b5r8xn',
+  kind: 'subagent',
+  description: 'Explore the repo',
+  since: minutesAgo(NOW, 2)
+}
+
 describe('rowTone', () => {
   describe('the workspace status', () => {
     it('reads an idle workspace looked at as a grey dot and a faint name', () => {
@@ -18,7 +39,8 @@ describe('rowTone', () => {
         tone: 'neutral',
         working: false,
         unseen: false,
-        weight: 'faint'
+        weight: 'faint',
+        mark: false
       })
     })
 
@@ -53,7 +75,8 @@ describe('rowTone', () => {
         tone: 'good',
         working: false,
         unseen: true,
-        weight: 'fg'
+        weight: 'fg',
+        mark: false
       })
     })
 
@@ -84,7 +107,8 @@ describe('rowTone', () => {
         tone: 'busy',
         working: true,
         unseen: false,
-        weight: 'secondary'
+        weight: 'secondary',
+        mark: false
       })
       expect(rowTone(ws, makeTask({ workspaceId: ws.id, state: 'queued' }))).toMatchObject({
         status: 'queued',
@@ -121,9 +145,61 @@ describe('rowTone', () => {
       expect(rowTone({ ...idle, status: 'needs_input' }, done).status).toBe('needs_input')
     })
   })
+
+  describe('background tasks', () => {
+    it('marks an idle row with a background shell', () => {
+      expect(rowTone({ ...idle, backgroundTasks: [devServer] })).toMatchObject({
+        status: 'idle',
+        working: false,
+        mark: true
+      })
+      expect(rowTone(idle).mark).toBe(false)
+    })
+
+    it('marks an unseen finish too, beside its green dot', () => {
+      expect(rowTone({ ...fresh, backgroundTasks: [devServer] })).toMatchObject({
+        tone: 'good',
+        unseen: true,
+        mark: true
+      })
+    })
+
+    it('leaves the mark off while working, needing input, or running a live task', () => {
+      const running = makeTask({ workspaceId: idle.id, state: 'running' })
+
+      expect(
+        rowTone({ ...idle, status: 'working', backgroundTasks: [explorer, devServer] }).mark
+      ).toBe(false)
+      expect(rowTone({ ...idle, status: 'needs_input', backgroundTasks: [devServer] }).mark).toBe(
+        false
+      )
+      expect(rowTone({ ...idle, backgroundTasks: [devServer] }, running).mark).toBe(false)
+    })
+  })
 })
 
 describe('hoverWord', () => {
+  it('names the background kinds of an idle row, each once, in the daemon order', () => {
+    const shell = { ...idle, backgroundTasks: [devServer] }
+
+    const both = {
+      ...idle,
+      backgroundTasks: [devServer, logTail, { ...devServer, id: 'bash_01hzy4d2t6vb' }]
+    }
+
+    expect(hoverWord(shell, undefined, rowTone(shell), NOW)).toEqual({
+      word: 'idle · shell',
+      tone: null
+    })
+    expect(hoverWord(both, undefined, rowTone(both), NOW).word).toBe('idle · shell · monitor')
+  })
+
+  it('keeps the unseen finish word over the background kinds', () => {
+    const ws = { ...fresh, backgroundTasks: [devServer] }
+
+    expect(hoverWord(ws, undefined, rowTone(ws), NOW).word).toBe('done · 12m ago')
+  })
+
   it('says the status, toned only for needs input and stuck', () => {
     const working = { ...idle, status: 'working' as const }
     const asking = { ...idle, status: 'needs_input' as const }

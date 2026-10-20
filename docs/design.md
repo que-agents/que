@@ -161,7 +161,11 @@ only under the pointer.
   over 0.36s, in a 1.2s loop, so the mark is never empty). It is a CSS animation, no
   timers, and under `prefers-reduced-motion` the four dots stand still at full size.
   This is the one place status takes the accent, so `--tone-busy` never appears in the
-  sidebar. The quiet board keeps its still blue dots: nothing moves at night.
+  sidebar. The quiet board keeps its still blue dots: nothing moves at night. An idle
+  row with a shell or monitor still running in the background shows `›_` in mono 11px
+  `--fg-faint` at its right end (the session glyph: something is still running there);
+  the overlay under the pointer covers it, and a working row never shows it, since the
+  ripple already says so.
 - **The weight of a name.** `--fg` when the row needs you (finished since you last
   looked, needs input, or stuck); `--fg-secondary` while it works; `--fg-faint` once you have
   looked and nothing is new, and the same faint for an exited workspace, told apart by
@@ -180,7 +184,8 @@ only under the pointer.
   row shows an overlay at its right end, painted on the row's own hover background:
   the status word in mono 11px `--fg-faint` (its tone for needs input and stuck), then
   ⋯. For a fresh finish the word is `done · 12m ago`, or the task's ask, `done · draft
-  PR #12` or `done · no changes`. The overlay covers the end of a long name rather
+  PR #12` or `done · no changes`. An idle row with background work names its kinds,
+  `idle · shell`, `idle · monitor`, or `idle · shell · monitor`. The overlay covers the end of a long name rather
   than reflowing it, so nothing jumps. A project head under the pointer turns its
   folder into its chevron and shows `+` and ⋯, which stay at opacity 0 until the head
   is under the pointer, holds the keyboard focus, or has its menu open; the section
@@ -195,7 +200,10 @@ only under the pointer.
   the name (sans 13px 600 `--fg`, wrapping); `[ WORKTREE ]`, then the path in mono 12px
   `--fg-secondary` (`~` for home, clipped from the left) and `branch <name>` in mono 11px,
   the word `--fg-faint`; the status line in mono 11px `--fg-faint` (the dot in its tone,
-  the word, a reason, `since HH:MM`, the last activity); a hairline; and `[ PULL REQUESTS
+  the word, a reason, `since HH:MM`, the last activity); while anything runs in the
+  background, `[ BACKGROUND ]` and a line per task in mono 11px: the kind in
+  `--fg-faint`, the description in `--fg-secondary`, and its age at the right (a working
+  row lists its subagents here); a hairline; and `[ PULL REQUESTS
   ]`, newest first: `#n` in `--fg-secondary`, the state in its tone, `+added −removed` in
   `--tone-good` and `--tone-bad` at the right, then the title in sans 12px
   `--fg-secondary` over at most two lines and a failing check's name in `--fg-faint`

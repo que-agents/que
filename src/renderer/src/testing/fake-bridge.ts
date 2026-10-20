@@ -858,6 +858,11 @@ class FakeBridge {
     this.putWorkspace(next)
   }
 
+  /** Replaces a workspace's background tasks and emits workspace.updated, as the daemon would. */
+  setBackgroundTasks(id: string, tasks: Workspace['backgroundTasks']): void {
+    this.putWorkspace({ ...this.workspace(id), backgroundTasks: tasks.map((t) => ({ ...t })) })
+  }
+
   private putWorkspace(w: Workspace): void {
     this.workspaces.set(w.id, w)
     this.emit('workspace.updated', { ...w })
