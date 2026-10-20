@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isProtectedBranch, prBody } from './finisher'
+import { isProtectedBranch, prBody } from './draft-pr'
 
 describe('isProtectedBranch', () => {
   const protectedBranches = ['main', 'master', 'release']
@@ -13,7 +13,7 @@ describe('isProtectedBranch', () => {
     expect(isProtectedBranch('master', 'main', protectedBranches)).toBe(true)
   })
 
-  it('lets a task branch through', () => {
+  it('lets a workspace branch through', () => {
     expect(isProtectedBranch('add-retry-logic-to-the-uploader', 'main', protectedBranches)).toBe(
       false
     )
@@ -21,7 +21,7 @@ describe('isProtectedBranch', () => {
 })
 
 describe('prBody', () => {
-  it("is the agent's summary and a trailing line naming the workspace", () => {
+  it('is the summary and a trailing line naming the workspace', () => {
     expect(prBody('Added exponential backoff.\n', 'add-retry-logic')).toBe(
       'Added exponential backoff.\n\nOpened by que from workspace add-retry-logic.\n'
     )

@@ -24,7 +24,6 @@ function readStdin(): Promise<string> {
 function deliver(
   socketPath: string,
   workspaceId: string,
-  taskId: string | undefined,
   terminalId: string | undefined,
   payload: HookEvent
 ): Promise<void> {
@@ -32,9 +31,9 @@ function deliver(
     const socket = net.connect(socketPath)
     socket.setEncoding('utf8')
     socket.once('connect', () => {
-      // Hooks only see the environment: a headless task run sets QUE_TASK_ID, and a
-      // daemon terminal QUE_TERMINAL_ID. An unset one is left out of the frame.
-      const params = { workspaceId, taskId, terminalId, payload }
+      // Hooks only see the environment: a daemon terminal sets QUE_TERMINAL_ID.
+      // When it is unset it is left out of the frame.
+      const params = { workspaceId, terminalId, payload }
       socket.write(encode({ id: 1, method: 'hook.event', params }))
     })
     // Any reply (result or error) ends the exchange.
@@ -66,7 +65,6 @@ export async function runHook(): Promise<void> {
     await deliver(
       process.env.QUE_SOCKET || quePaths().socket,
       workspaceId,
-      process.env.QUE_TASK_ID || undefined,
       process.env.QUE_TERMINAL_ID || undefined,
       payload
     )

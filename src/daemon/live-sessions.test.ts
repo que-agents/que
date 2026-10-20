@@ -85,18 +85,6 @@ describe('trackLive', () => {
       ])
     })
 
-    it('never records a task run’s session', () => {
-      const task: LiveInput = {
-        kind: 'hook',
-        workspaceId: WS,
-        terminalId: TERM,
-        taskId: 'tsk_01hzy8m3p5rd',
-        payload: makeHookEvent('SessionStart', { session_id: SESSION })
-      }
-
-      expect(run([task])).toEqual([])
-    })
-
     it('never records a session that reports from no terminal, or a subagent', () => {
       const subagent: LiveInput = {
         kind: 'hook',
@@ -217,7 +205,7 @@ describe('LiveSessions', () => {
     expect(resumed).toEqual([previous])
     expect(saved()).toEqual([carried])
 
-    sessions.hook(WS, TERM, undefined, makeHookEvent('SessionEnd', { session_id: 'carried' }))
+    sessions.hook(WS, TERM, makeHookEvent('SessionEnd', { session_id: 'carried' }))
     expect(saved()).toEqual([])
   })
 
@@ -225,7 +213,7 @@ describe('LiveSessions', () => {
     const { sessions, resumed, state, saved } = setup([previous], true)
 
     sessions.start()
-    sessions.hook(WS, TERM, undefined, makeHookEvent('SessionStart', { session_id: 'live-now' }))
+    sessions.hook(WS, TERM, makeHookEvent('SessionStart', { session_id: 'live-now' }))
     expect(resumed).toEqual([])
     expect(saved()).toEqual([
       previous,
@@ -244,7 +232,7 @@ describe('LiveSessions', () => {
     const { sessions, saved } = setup([])
 
     sessions.start()
-    sessions.hook(WS, 'not-ours', undefined, makeHookEvent('SessionStart', { session_id: SESSION }))
+    sessions.hook(WS, 'not-ours', makeHookEvent('SessionStart', { session_id: SESSION }))
     expect(saved()).toEqual([])
   })
 
@@ -252,10 +240,10 @@ describe('LiveSessions', () => {
     const { sessions, saved } = setup([])
 
     sessions.start()
-    sessions.hook(WS, TERM, undefined, makeHookEvent('SessionStart', { session_id: SESSION }))
+    sessions.hook(WS, TERM, makeHookEvent('SessionStart', { session_id: SESSION }))
     sessions.stop()
     sessions.terminalGone(TERM)
-    sessions.hook(WS, TERM, undefined, makeHookEvent('SessionEnd', { session_id: SESSION }))
+    sessions.hook(WS, TERM, makeHookEvent('SessionEnd', { session_id: SESSION }))
 
     expect(saved()).toEqual([{ workspaceId: WS, terminalId: TERM, sessionId: SESSION }])
   })

@@ -65,15 +65,13 @@ function liveRecord(): LiveSession[] {
   }
 }
 
-/** Every run of the fake claude in a terminal (not a summary or headless call). */
+/** Every run of the fake claude. */
 function claudeRuns(): Array<{ pid: number; resume: string | null }> {
-  return readFakeLog(process.env.QUE_FAKE_CLAUDE_LOG as string)
-    .filter((call) => !call.argv.includes('-p'))
-    .map((call) => {
-      const i = call.argv.indexOf('--resume')
+  return readFakeLog(process.env.QUE_FAKE_CLAUDE_LOG as string).map((call) => {
+    const i = call.argv.indexOf('--resume')
 
-      return { pid: call.pid as number, resume: i >= 0 ? call.argv[i + 1] : null }
-    })
+    return { pid: call.pid as number, resume: i >= 0 ? call.argv[i + 1] : null }
+  })
 }
 
 async function terminalsOf(c: DaemonClient, wsId: string): Promise<TermInfo[]> {

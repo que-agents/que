@@ -1,17 +1,12 @@
 // Pull request tracking over the real socket: the daemon polls the fake gh
 // (PR state file, QUE_FAKE_GH_FAIL) for each workspace's branch, and looks up
-// the pull requests its tasks opened by number. Which one is current, the
+// the pull request workspace.createPr opened by number. Which one is current, the
 // order and the cap are pr-state.test.ts's.
 import fs from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { DaemonClient } from '@shared/client'
-import {
-  recordEvents,
-  startTestDaemon,
-  type TestDaemon,
-  waitForTaskState
-} from '../../src/testing/daemon-harness'
+import { recordEvents, startTestDaemon, type TestDaemon } from '../../src/testing/daemon-harness'
 import {
   addFakePullRequest,
   readFakeLog,
@@ -179,22 +174,20 @@ describe('pull request tracking', () => {
     ).toBe(true)
   }, 30_000)
 
-  it('adds the pull request a done task opened once it leaves the branch, never twice', async () => {
-    const projectId = await project()
+  it('adds the pull request workspace.createPr opened once it leaves the branch, never twice', async () => {
+    const ws = await workspace()
+    const wsId = ws.id
+    const branch = ws.branch
+    fs.writeFileSync(join(ws.path, 'retry.ts'), 'export const retries = 3\n')
 
-    const task = await client.request('task.add', {
-      projectId,
-      brief: 'Add retry logic to the uploader'
+    const { prUrl } = await client.request('workspace.createPr', {
+      id: wsId,
+      title: 'Add retry logic to the uploader'
     })
 
-    await client.request('queue.open')
+    expect(prUrl).toBe('https://github.com/rquellh/que/pull/1')
 
-    const done = await waitForTaskState(daemon, task.id, 'done')
-    const wsId = done.workspaceId as string
-    const branch = done.branch as string
-    expect(done.prUrl).toBe('https://github.com/rquellh/que/pull/1')
-
-    // On the branch, the task's pull request is listed once and never looked up on its own.
+    // On the branch, the recorded pull request is listed once and never looked up on its own.
     await expect.poll(() => prNumbersOf(wsId), opts).toEqual([1])
     expect(prViews()).toEqual([])
 

@@ -12,7 +12,7 @@ export const FAKE_WRAPPERS = resolve(REPO_ROOT, 'tests/fakes/wrappers')
 export interface FakeCall {
   argv: string[]
   cwd: string
-  /** Recorded by the fake `claude` (and `caffeinate`). */
+  /** Recorded by the fake `claude`. */
   pid?: number
   /** Recorded by the fake `claude`: the CLAUDE*, TERM* and QUE_* variable names it saw. */
   env?: string[]

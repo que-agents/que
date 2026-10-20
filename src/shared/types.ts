@@ -48,11 +48,11 @@ export interface Workspace {
    */
   pr: PullRequest | null
   /**
-   * Every pull request opened from this workspace: those whose head is its branch, plus any a
-   * task of it recorded as its `prUrl`. Newest first by number, at most 10.
+   * Every pull request opened from this workspace: those whose head is its branch, plus the one
+   * workspace.createPr recorded as its `prUrl`. Newest first by number, at most 10.
    */
   prs: PullRequest[]
-  /** When its last turn ended (working to idle) or its task finished; null before either. */
+  /** When its last turn ended (working to idle); null before one has. */
   finishedAt: string | null
   /** When the app last had it selected in a focused window (workspace.seen); null before. */
   seenAt: string | null
@@ -137,72 +137,6 @@ export interface PullRequest {
 
 /** Workspace counts per status, for the tray and `que status`. */
 export type StatusSummary = Record<WorkspaceStatus, number>
-
-export type TaskState =
-  | 'queued'
-  | 'preparing'
-  | 'running'
-  | 'paused'
-  | 'finishing'
-  | 'done'
-  | 'stuck'
-  | 'failed'
-  | 'stopped'
-
-/** States a task can still leave on its own (and can still be stopped). */
-export const LIVE_STATES: ReadonlySet<TaskState> = new Set([
-  'queued',
-  'preparing',
-  'running',
-  'paused',
-  'finishing'
-])
-
-/** States with a claude process (or the finisher) at work. */
-export const ACTIVE_STATES: ReadonlySet<TaskState> = new Set(['preparing', 'running', 'finishing'])
-
-/** Where a task's brief came from. */
-export type TaskSource = 'prompt' | 'file'
-
-/** An overnight task: a brief run headless by claude in its own workspace. */
-export interface Task {
-  id: string
-  projectId: string
-  /** Null until the runner has prepared (or been given) a workspace. */
-  workspaceId: string | null
-  title: string
-  brief: string
-  source: TaskSource
-  /** The session the next run resumes (crash retry, rate-limit pause). */
-  resumeSessionId: string | null
-  state: TaskState
-  /**
-   * Detail for the state: `max_turns`, `max_budget`, `no_heartbeat`, `needs_input`,
-   * `crashed`, `execution`, `worktree_refused`, `setup_failed`, `session_active`,
-   * `finisher:<step>`, `daemon_restart`, `no_changes`.
-   */
-  reason: string | null
-  sessionId: string | null
-  /** The claude process while one runs. */
-  pid: number | null
-  /** The attempt number of the current (or last) run; automatic re-queues add one. */
-  attempts: number
-  costUsd: number
-  turns: number
-  maxTurns: number
-  maxBudgetUsd: number
-  permissionMode: string | null
-  branch: string | null
-  prUrl: string | null
-  /** The final summary (the result text, else the last assistant text). */
-  resultText: string | null
-  lastActivityAt: string | null
-  startedAt: string | null
-  finishedAt: string | null
-  pausedUntil: string | null
-  createdAt: string
-  updatedAt: string
-}
 
 /** A quiet window in local wall-clock time, `HH:MM`; it may cross midnight. */
 export interface QuietWindow {
@@ -289,9 +223,9 @@ export interface JiraConfig {
 }
 
 export interface NotificationsConfig {
-  /** Chime when a session finishes a turn or a task finishes (work hours only). */
+  /** Chime when a session finishes a turn (work hours only). */
   chimeOnComplete: boolean
-  /** Chime when a session or a task needs input (work hours only). */
+  /** Chime when a session needs input (work hours only). */
   chimeOnNeedsInput: boolean
   /**
    * Let the complete chime through during a manual quiet (`que quiet start`).

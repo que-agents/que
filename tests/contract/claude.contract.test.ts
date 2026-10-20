@@ -100,7 +100,7 @@ describe.skipIf(!CONTRACT)('claude contract', () => {
     }
   }, 30_000)
 
-  it('runs headless with stream-json, firing hooks and ending in a result', async () => {
+  it('fires the lifecycle hooks in order, with the common fields, our env, and one session', async () => {
     const marker = `que-contract-${Math.random().toString(36).slice(2, 10)}`
     const command = `'${process.execPath}' '${hookScript}' '${hookLog}'`
 
@@ -112,9 +112,6 @@ describe.skipIf(!CONTRACT)('claude contract', () => {
       [
         '-p',
         'Reply with exactly the word OK and nothing else.',
-        '--output-format',
-        'stream-json',
-        '--verbose',
         '--max-turns',
         '1',
         '--permission-mode',
@@ -145,21 +142,7 @@ describe.skipIf(!CONTRACT)('claude contract', () => {
       expect(payload.cwd).toBe(dir)
     }
 
-    // Stream: system/init first, result/success with the fields que reads.
-    const stream = jsonLines(r.stdout)
-    expect(stream).toContainEqual(expect.objectContaining({ type: 'system', subtype: 'init' }))
-    const result = stream.find((m) => m.type === 'result')
-    expect(result).toMatchObject({ subtype: 'success', is_error: false })
-    expect(Object.keys(result ?? {})).toEqual(
-      expect.arrayContaining([
-        'num_turns',
-        'total_cost_usd',
-        'duration_ms',
-        'session_id',
-        'stop_reason'
-      ])
-    )
-    expect(new Set(entries.map((e) => e.payload.session_id))).toEqual(new Set([result?.session_id]))
+    expect(new Set(entries.map((e) => e.payload.session_id)).size).toBe(1)
   }, 180_000)
 
   it('lists a background shell in the Stop hook background_tasks, which the decoder keeps', async () => {
@@ -174,9 +157,6 @@ describe.skipIf(!CONTRACT)('claude contract', () => {
       [
         '-p',
         'Run the shell command `sleep 20` with run_in_background set to true, then reply with exactly the word OK. Do not wait for it.',
-        '--output-format',
-        'stream-json',
-        '--verbose',
         '--max-turns',
         '6',
         '--allowedTools',

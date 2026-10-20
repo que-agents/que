@@ -1,16 +1,8 @@
 // Pure entity factories shared by node-side and renderer tests: no node:fs,
 // so the renderer's fixtures can re-export them. Realistic values, opaque ids.
-import type {
-  BackgroundTask,
-  PrCheck,
-  PrThreadEntry,
-  Task,
-  Ticket,
-  Workspace
-} from '../shared/types'
+import type { BackgroundTask, PrCheck, PrThreadEntry, Ticket, Workspace } from '../shared/types'
 
 let wsCounter = 0
-let taskCounter = 0
 let prEntryCounter = 0
 let backgroundCounter = 0
 
@@ -52,41 +44,6 @@ export function makeBackgroundTask(overrides: Partial<BackgroundTask> = {}): Bac
     kind: 'shell',
     description: 'npm run dev',
     since: '2026-10-13T21:04:00.000Z',
-    ...overrides
-  }
-}
-
-/** A queued task with a real brief, the default caps, and an opaque id. */
-export function makeTask(overrides: Partial<Task> = {}): Task {
-  taskCounter += 1
-
-  return {
-    id: `tsk_01hzy${taskCounter.toString(36).padStart(7, '0')}`,
-    projectId: 'prj_01hzw7q2m4nb',
-    workspaceId: 'ws_01hzx3k9c2qf',
-    title: 'Add retry logic to the uploader and cover it with tests',
-    brief: 'Add retry logic to the uploader and cover it with tests.\nUse exponential backoff.',
-    source: 'prompt',
-    resumeSessionId: null,
-    state: 'queued',
-    reason: null,
-    sessionId: null,
-    pid: null,
-    attempts: 0,
-    costUsd: 0,
-    turns: 0,
-    maxTurns: 50,
-    maxBudgetUsd: 5,
-    permissionMode: null,
-    branch: null,
-    prUrl: null,
-    resultText: null,
-    lastActivityAt: null,
-    startedAt: null,
-    finishedAt: null,
-    pausedUntil: null,
-    createdAt: '2026-10-13T21:05:00.000Z',
-    updatedAt: '2026-10-13T21:05:00.000Z',
     ...overrides
   }
 }
