@@ -37,7 +37,7 @@ hand; run `npm run docs` after changing a command.
 | `que run [options]`                         | open the queue: run queued tasks until it is closed                                                                                                                                        |
 | `que queue close [options]`                 | stop starting queued tasks (running ones finish)                                                                                                                                           |
 | `que queue status [options]`                | show the queue                                                                                                                                                                             |
-| `que report [options]`                      | the morning report: what the queue did                                                                                                                                                     |
+| `que report [options]`                      | the morning report: what the sessions did                                                                                                                                                  |
 | `que tickets list [options]`                | list the cached tickets (the default)                                                                                                                                                      |
 | `que tickets sync [options]`                | fetch the queue from the tracker now                                                                                                                                                       |
 | `que tickets start [options] <key>`         | make a workspace for a ticket, write it as a brief, and start claude on it                                                                                                                 |
@@ -455,7 +455,7 @@ Options:
 ```text
 Usage: que report [options]
 
-the morning report: what the queue did
+the morning report: what the sessions did
 
 Options:
   --since <when>  ISO time or a duration back from now (12h, 90m, 2d)

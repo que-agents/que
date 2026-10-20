@@ -215,13 +215,15 @@ hours are locked the entries wait for the unlock. If a resume fails, the shell
 shows the error and nothing else is typed; the daemon log names each session
 it resumed or skipped.
 
-## The overnight digest
+## The sessions report
 
 Every change of a workspace's status or reason is also appended to the
 `workspace_status_log` table (and its creation, as `preparing`); rows older than
 30 days are pruned as new ones arrive, and a workspace's rows go with it. The
-morning report, `que report` and the morning summary build on that log, so they
-cover interactive sessions as well as queued tasks. `digest.ts` turns one
+morning report, `que report` and the morning summary build on that log alone:
+`report-service.ts` gathers every open workspace's rows for the window (by
+default the last 24 hours) and `report.ts` turns the digests into the report and
+its count line. `digest.ts` turns one
 workspace's log rows for the window (plus the last row before it, so time already
 spent in a state when the window opened counts) into a `WorkspaceDigest`: time
 spent working, how many times it asked for input, whether it is still waiting and

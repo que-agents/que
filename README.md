@@ -55,7 +55,7 @@ claude                         # in the workspace terminal; its status shows in 
 que add -r ~/code/uploader "Add retry with backoff to the uploader; keep the tests green"
 que add -r ~/code/uploader -f briefs/upload-limits.md --max-turns 30 --max-budget 3
 que run                        # open the queue; tasks run two at a time by default
-que report                     # in the morning: done, stuck, failed, PRs, cost
+que report                     # in the morning: what the sessions did, what needs a look
 ```
 
 Each task runs `claude -p` in a fresh workspace with turn and dollar caps and a
@@ -187,7 +187,7 @@ Generated from `que --help`; options and arguments are in [docs/cli.md](docs/cli
 | `que run [options]`                         | open the queue: run queued tasks until it is closed                                                                                                                                        |
 | `que queue close [options]`                 | stop starting queued tasks (running ones finish)                                                                                                                                           |
 | `que queue status [options]`                | show the queue                                                                                                                                                                             |
-| `que report [options]`                      | the morning report: what the queue did                                                                                                                                                     |
+| `que report [options]`                      | the morning report: what the sessions did                                                                                                                                                  |
 | `que tickets list [options]`                | list the cached tickets (the default)                                                                                                                                                      |
 | `que tickets sync [options]`                | fetch the queue from the tracker now                                                                                                                                                       |
 | `que tickets start [options] <key>`         | make a workspace for a ticket, write it as a brief, and start claude on it                                                                                                                 |

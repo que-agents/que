@@ -259,14 +259,17 @@ tooltip read `que · quiet`.
 
 ## Report
 
-The report is the morning page (what the night did, what needs a look, what it
-cost) and reads in the quiet board's language: a left-aligned 720px column;
+The report is the morning page (what the sessions did, what needs a look) and
+reads in the quiet board's language: a left-aligned 720px column;
 `since 19:00 yesterday` in the topbar in mono `--fg-faint` beside a refresh
-icon; one count line with only the non-zero items (`2 done · 1 stuck · 1 PR ·
-1h 07m · $1.20`, or `nothing ran since 19:00`), built by the same function as
-the morning notification so both say the same words; a faint unlocks line
-(`2 unlocks · 23:40 for 20 min · 01:12 for 11 min`) when there were any; then
-the bracketed section labels over 30px dot rows. Unlike the board, needs
+icon; one count line with only the non-zero items (`3 sessions · 1 stuck · 1
+needs input · 2 PRs open · worked 2h 10m`, or `nothing ran since 19:00`), built
+by the same function as the morning notification so both say the same words; a
+faint unlocks line (`2 unlocks · 23:40 for 20 min · 01:12 for 11 min`) when
+there were any; then the bracketed `Workspaces` label over 30px dot rows, one
+per workspace, those waiting for input first, then stuck, then working. Each
+row reads its name, its project, its state, its pull request and its facts
+(`worked 1h 12m · asked for input 2× · 3 ahead`). Unlike the board, needs
 input keeps its tone in the morning, since that is when it is acted on; still
 one tone per row, on the dot and the state, never a filled block. The pull
 request is a mono `--accent` link that reads `#67 draft` (`· checks failing`
