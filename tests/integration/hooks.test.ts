@@ -12,6 +12,7 @@ import {
   recordStatuses,
   type StatusChange,
   recordEvents,
+  runClaude,
   startTestDaemon,
   type TestDaemon,
   type TestDaemonOptions,
@@ -217,29 +218,11 @@ describe('hook delivery', () => {
   })
 })
 
-/** Starts the fake claude in a new terminal of the workspace, once its session has reported. */
-async function startClaude(d: TestDaemon, ws: Workspace): Promise<string> {
-  const { id } = await d.client.request('workspace.openTerminal', {
-    id: ws.id,
-    cols: 100,
-    rows: 30
-  })
-
-  await d.client.request('term.write', { id, data: 'claude\r' })
-  await expect
-    .poll(async () => (await d.client.request('workspace.get', { id: ws.id })).sessionId, {
-      timeout: 20_000
-    })
-    .toMatch(/^[0-9a-f-]{36}$/)
-
-  return id
-}
-
 describe('background tasks', () => {
   it('keeps the workspace working through a Stop while a subagent runs, and idles at the final Stop', async () => {
     const { d, ws, statuses } = await idleWorkspace()
     const updated = recordEvents(d.client, 'workspace.updated')
-    const id = await startClaude(d, ws)
+    const { term: id } = await runClaude(d, ws.id)
     const get = () => d.client.request('workspace.get', { id: ws.id })
 
     await d.client.request('term.write', { id, data: '/background subagent shell\r' })
@@ -275,7 +258,7 @@ describe('background tasks', () => {
 
   it('goes idle at a Stop that leaves only a shell running, and lists the shell', async () => {
     const { d, ws } = await idleWorkspace()
-    const id = await startClaude(d, ws)
+    const { term: id } = await runClaude(d, ws.id)
 
     await d.client.request('term.write', { id, data: '/background shell\r' })
 
@@ -285,6 +268,38 @@ describe('background tasks', () => {
         status: 'idle',
         backgroundTasks: [expect.objectContaining({ kind: 'shell', description: 'npm run dev' })]
       })
+  }, 45_000)
+
+  it("a subagent's hooks keep a waiting session from going stuck while they arrive", async () => {
+    const { d, ws } = await idleWorkspace({ config: 'stall_timeout_minutes = 0.005\n' })
+    const { term: id } = await runClaude(d, ws.id)
+    const get = () => d.client.request('workspace.get', { id: ws.id })
+
+    await d.client.request('term.write', { id, data: '/background subagent\r' })
+    await expect
+      .poll(async () => (await get()).backgroundTasks.map((t) => t.kind), { timeout: 15_000 })
+      .toEqual(['subagent'])
+    const agentId = (await get()).backgroundTasks[0].id
+
+    // Each round waits for a tick to fold the hook in, so the run outlasts the 300 ms stall timeout.
+    for (let i = 0; i < 15; i++) {
+      const before = (await get()).lastActivityAt
+
+      await d.client.request('hook.event', {
+        workspaceId: ws.id,
+        payload: makeHookEvent('PreToolUse', {
+          cwd: ws.path,
+          agent_id: agentId,
+          tool_name: 'Read'
+        })
+      })
+      await expect.poll(async () => (await get()).lastActivityAt).not.toBe(before)
+    }
+
+    expect(await get()).toMatchObject({ status: 'working', statusReason: null })
+
+    await waitForStatus(d, ws.id, 'stuck')
+    expect((await get()).statusReason).toBe('no_heartbeat')
   }, 45_000)
 })
 

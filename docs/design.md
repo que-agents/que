@@ -198,13 +198,13 @@ only under the pointer.
   closes 150ms after it leaves both, on Escape, on a press elsewhere, and when the row's
   ⋯ menu opens; never on a session row, and not while quiet hours lock the app. It holds
   the name (sans 13px 600 `--fg`, wrapping); `[ WORKTREE ]`, then the path in mono 12px
-  `--fg-secondary` (`~` for home, clipped from the left) and `branch <name>` in mono 11px,
-  the word `--fg-faint`; the status line in mono 11px `--fg-faint` (the dot in its tone,
-  the word, a reason, `since HH:MM`, the last activity); while anything runs in the
-  background, `[ BACKGROUND ]` and a line per task in mono 11px: the kind in
-  `--fg-faint`, the description in `--fg-secondary`, and its age at the right (a working
-  row lists its subagents here); a hairline; and `[ PULL REQUESTS
-  ]`, newest first: `#n` in `--fg-secondary`, the state in its tone, `+added −removed` in
+  `--fg-secondary` (`~` for home, clipped from the left) and `branch <name>` in mono 11px
+  (as are the status and background lines), the word `--fg-faint`; the status line in
+  `--fg-faint` (the dot in its tone, the word, a reason, `since HH:MM`, the last
+  activity); while anything runs in the background, `[ BACKGROUND ]` and a line per task:
+  the kind in `--fg-faint`, the description in `--fg-secondary`, and its age at the right
+  (a working row lists its subagents here); a hairline; and `[ PULL REQUESTS ]`, newest
+  first: `#n` in `--fg-secondary`, the state in its tone, `+added −removed` in
   `--tone-good` and `--tone-bad` at the right, then the title in sans 12px
   `--fg-secondary` over at most two lines and a failing check's name in `--fg-faint`
   (`no pull request` when there is none). The copy icons (path, branch) sit right after

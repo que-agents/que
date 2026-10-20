@@ -503,27 +503,26 @@ function interactive() {
     runHooks('Stop', { last_assistant_message: text, stop_hook_active: false, ...stopExtra })
   }
 
-  const BACKGROUND_DESCRIPTIONS = {
-    subagent: 'Explore the repo',
-    shell: 'npm run dev',
-    monitor: 'checks on #141'
-  }
-
-  const backgroundTask = (type) => {
-    const task = {
-      id: crypto.randomBytes(6).toString('hex'),
-      type,
-      status: 'running',
-      description: BACKGROUND_DESCRIPTIONS[type] ?? type
-    }
-    if (type === 'shell') task.command = 'npm run dev'
-    if (type === 'subagent') task.agent_type = 'Explore'
-    return task
-  }
-
-  const startBackground = (line, kinds) => {
+  const submitPrompt = (line) => {
     appendTranscript({ type: 'user', message: { role: 'user', content: line } })
     runHooks('UserPromptSubmit', { prompt: line, prompt_id: crypto.randomUUID() })
+  }
+
+  const BACKGROUND_TASKS = {
+    subagent: { description: 'Explore the repo', agent_type: 'Explore' },
+    shell: { description: 'npm run dev', command: 'npm run dev' },
+    monitor: { description: 'checks on #141' }
+  }
+
+  const backgroundTask = (type) => ({
+    id: crypto.randomBytes(6).toString('hex'),
+    type,
+    status: 'running',
+    ...(BACKGROUND_TASKS[type] ?? { description: type })
+  })
+
+  const startBackground = (line, kinds) => {
+    submitPrompt(line)
     background = kinds.map(backgroundTask)
     for (const t of background.filter((t) => t.type === 'subagent')) {
       runHooks('SubagentStart', { agent_id: t.id, agent_type: 'Explore' })
@@ -542,8 +541,7 @@ function interactive() {
       })
     }
     background = []
-    appendTranscript({ type: 'user', message: { role: 'user', content: line } })
-    runHooks('UserPromptSubmit', { prompt: line, prompt_id: crypto.randomUUID() })
+    submitPrompt(line)
     reply('The background work finished.', { background_tasks: [] })
   }
 
@@ -589,8 +587,7 @@ function interactive() {
     if (line === '/needs-input') {
       // A prompt whose tool call needs permission: the turn starts, then asks.
       awaitingPermission = true
-      appendTranscript({ type: 'user', message: { role: 'user', content: line } })
-      runHooks('UserPromptSubmit', { prompt: line, prompt_id: crypto.randomUUID() })
+      submitPrompt(line)
       runHooks('Notification', {
         notification_type: 'permission_prompt',
         message: 'Claude needs your permission to use Bash',
@@ -599,8 +596,7 @@ function interactive() {
       out('Claude needs your permission to use Bash. Allow? (y/n) ')
       return
     }
-    appendTranscript({ type: 'user', message: { role: 'user', content: line } })
-    runHooks('UserPromptSubmit', { prompt: line, prompt_id: crypto.randomUUID() })
+    submitPrompt(line)
     out('thinking…\r\n')
     toolCall('Read', { file_path: path.join(cwd, 'README.md') })
     reply(`Fake reply to: ${line}`)

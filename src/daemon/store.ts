@@ -11,6 +11,7 @@ import {
 import { objects, str } from '../shared/json.decode'
 import type {
   BackgroundTask,
+  JsonValue,
   Project,
   PullRequest,
   QuietUnlock,
@@ -320,50 +321,43 @@ function storedPr(v: unknown): PullRequest | null {
     : null
 }
 
-/** The stored list (prs_json); null when missing, not JSON, or not a list. */
-function readPrList(json: string | null): PullRequest[] | null {
-  if (!json) return null
+/** A stored JSON column, parsed; undefined when missing, empty, or not JSON. */
+function parseStored(json: string | null): JsonValue | undefined {
+  if (!json) return undefined
 
   try {
-    const v = JSON.parse(json) as unknown
-
-    return Array.isArray(v) ? v.flatMap((item) => storedPr(item) ?? []) : null
+    return JSON.parse(json) as JsonValue
   } catch {
-    return null
+    return undefined
   }
+}
+
+/** The stored list (prs_json); null when missing, not JSON, or not a list. */
+function readPrList(json: string | null): PullRequest[] | null {
+  const v = parseStored(json)
+
+  return Array.isArray(v) ? v.flatMap((item) => storedPr(item) ?? []) : null
 }
 
 /** A row stored before prs_json existed: its one pull request (pr_json) as a list, or none. */
 function readLegacyPrs(json: string | null): PullRequest[] {
-  if (!json) return []
+  const pr = storedPr(parseStored(json))
 
-  try {
-    const pr = storedPr(JSON.parse(json))
-
-    return pr ? [pr] : []
-  } catch {
-    return []
-  }
+  return pr ? [pr] : []
 }
 
 /** The stored background tasks (background_json); none when missing, not JSON, or not a list. */
 function readBackgroundTasks(json: string | null): BackgroundTask[] {
-  if (!json) return []
+  return objects(parseStored(json)).flatMap((v) => {
+    const id = str(v.id)
+    const kind = str(v.kind)
+    const description = str(v.description)
+    const since = str(v.since)
 
-  try {
-    return objects(JSON.parse(json)).flatMap((v) => {
-      const id = str(v.id)
-      const kind = str(v.kind)
-      const description = str(v.description)
-      const since = str(v.since)
-
-      return id && kind && description !== undefined && since
-        ? [{ id, kind, description, since }]
-        : []
-    })
-  } catch {
-    return []
-  }
+    return id && kind && description !== undefined && since
+      ? [{ id, kind, description, since }]
+      : []
+  })
 }
 
 function toWorkspace(r: WorkspaceRow): Workspace {
@@ -612,7 +606,7 @@ export class Store {
       u.at,
       u.lastActivityAt,
       u.sessionId,
-      u.backgroundTasks.length ? JSON.stringify(u.backgroundTasks) : null,
+      JSON.stringify(u.backgroundTasks),
       id
     )
   }

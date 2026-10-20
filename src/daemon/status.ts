@@ -24,6 +24,12 @@ export interface StatusServiceOptions {
 
 interface Tracked extends StatusState {
   transcriptPath?: string
+  /**
+   * When a subagent hook last arrived; in memory only. Stall detection reads `lastActivityAt`,
+   * which the tick refreshes from the transcript and from subagent hooks; registry trust reads
+   * `hookAt`, which only main-session hooks move. The split is deliberate.
+   */
+  subagentAt?: number
 }
 
 const iso = (ms: number | null): string | null => (ms === null ? null : new Date(ms).toISOString())
@@ -145,14 +151,21 @@ export class StatusService {
     if (!prev) return
     const stallTimeoutMs = this.opts.config().stallTimeoutMinutes * 60_000
     const next = reduce(prev, input, this.now(), { stallTimeoutMs })
-    this.commit(id, prev, { ...next, transcriptPath: prev.transcriptPath })
+    this.commit(id, prev, {
+      ...next,
+      transcriptPath: prev.transcriptPath,
+      subagentAt: prev.subagentAt
+    })
   }
 
-  /** A hook event from `que hook`: stored, then fed to the engine. */
-  hook(id: string, payload: HookEvent): void {
+  /**
+   * A hook event from `que hook`: stored, then fed to the engine. Returns the resulting status,
+   * or undefined when the workspace is not tracked.
+   */
+  hook(id: string, payload: HookEvent): Workspace['status'] | undefined {
     const prev = this.state(id)
 
-    if (!prev) return
+    if (!prev) return undefined
     const event = payload.hook_event_name
     this.opts.store.insertHookEvent(
       id,
@@ -162,19 +175,17 @@ export class StatusService {
       new Date(this.now()).toISOString()
     )
 
-    if (!payload.agent_id) prev.transcriptPath = payload.transcript_path
+    if (payload.agent_id) prev.subagentAt = this.now()
+    else prev.transcriptPath = payload.transcript_path
 
     this.apply(id, { kind: 'hook', event, payload })
+
+    return this.state(id)?.status
   }
 
   forget(id: string): void {
     this.states.delete(id)
     this.releaseSetupWaiters(id)
-  }
-
-  /** The workspace's current status, or undefined when it is not tracked. */
-  statusOf(id: string): Workspace['status'] | undefined {
-    return this.state(id)?.status
   }
 
   /** The transcript of the workspace's main session, from its last hook that named one. */
@@ -189,8 +200,7 @@ export class StatusService {
     const statusChanged = prev.status !== next.status || prev.reason !== next.reason
     const sessionChanged = prev.sessionId !== next.sessionId
 
-    const tasksChanged =
-      JSON.stringify(prev.backgroundTasks) !== JSON.stringify(next.backgroundTasks)
+    const tasksChanged = prev.backgroundTasks !== next.backgroundTasks
 
     if (
       !statusChanged &&
@@ -234,22 +244,19 @@ export class StatusService {
     if (row) this.opts.emit('workspace.updated', row)
   }
 
-  /** Stall check; a transcript written since the last hook counts as activity. */
+  /**
+   * Stall check; a transcript written or a subagent hook seen since the last hook counts as
+   * activity, folded in at most once per tick.
+   */
   tick(): void {
     if (this.closed) return
     const working = [...this.states].filter(([, s]) => s.status === 'working')
 
     for (const [id, s] of working) {
-      if (s.transcriptPath) {
-        try {
-          const mtime = fs.statSync(s.transcriptPath).mtimeMs
+      const seen = Math.max(transcriptMtime(s.transcriptPath) ?? 0, s.subagentAt ?? 0)
 
-          if (s.lastActivityAt === null || mtime > s.lastActivityAt) {
-            this.commit(id, s, { ...s, lastActivityAt: Math.floor(mtime) })
-          }
-        } catch {
-          // No transcript (yet); the hook timestamps are all there is.
-        }
+      if (seen > 0 && (s.lastActivityAt === null || seen > s.lastActivityAt)) {
+        this.commit(id, s, { ...s, lastActivityAt: seen })
       }
 
       this.apply(id, { kind: 'tick' })
@@ -284,6 +291,17 @@ export class StatusService {
     } finally {
       this.polling = false
     }
+  }
+}
+
+/** The transcript's mtime (whole ms); undefined when there is none (yet). */
+function transcriptMtime(path: string | undefined): number | undefined {
+  if (!path) return undefined
+
+  try {
+    return Math.floor(fs.statSync(path).mtimeMs)
+  } catch {
+    return undefined
   }
 }
 

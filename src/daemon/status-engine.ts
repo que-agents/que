@@ -20,7 +20,7 @@ export interface StatusState {
   reason: string | null
   /** When status or reason last changed. */
   statusAt: number
-  /** Last sign of work (a working hook, or transcript growth seen by the caller). */
+  /** Last sign of work (a working hook, or transcript growth or subagent hooks seen by the caller). */
   lastActivityAt: number | null
   sessionId: string | null
   /** When a main-session hook event last arrived; null if none ever did. */
@@ -71,7 +71,7 @@ const WORKING_EVENTS = new Set([
 
 // These wake the session when they finish, so a turn that ended while they run is not over;
 // `shell` and `monitor` run for the life of a session and do not count.
-export const AGENT_LIKE_KINDS = new Set(['subagent', 'workflow', 'teammate'])
+const AGENT_LIKE_KINDS = new Set(['subagent', 'workflow', 'teammate'])
 
 const NEEDS_INPUT_NOTIFICATIONS = new Set([
   'permission_prompt',
@@ -94,16 +94,16 @@ export function initialState(now: number, status: WorkspaceStatus = 'preparing')
 /**
  * The running entries of a reported `background_tasks` list, in reported order;
  * a task already known keeps its `since`. Nothing reported means nothing runs.
+ * Returns `prev` itself when the list is unchanged, so callers compare by reference.
  */
 export function mergeTasks(
   prev: BackgroundTask[],
   reported: HookBackgroundTask[] | undefined,
   now: number
 ): BackgroundTask[] {
-  if (!reported) return []
   const known = new Map(prev.map((t) => [t.id, t.since]))
 
-  return reported
+  const next = (reported ?? [])
     .filter((t) => t.status === 'running')
     .map((t) => ({
       id: t.id,
@@ -111,6 +111,21 @@ export function mergeTasks(
       description: t.description ?? t.command ?? t.agent_type ?? t.type,
       since: known.get(t.id) ?? new Date(now).toISOString()
     }))
+
+  return sameTasks(prev, next) ? prev : next
+}
+
+function sameTasks(a: BackgroundTask[], b: BackgroundTask[]): boolean {
+  return (
+    a.length === b.length &&
+    a.every(
+      (t, i) =>
+        t.id === b[i].id &&
+        t.kind === b[i].kind &&
+        t.description === b[i].description &&
+        t.since === b[i].since
+    )
+  )
 }
 
 function hasAgentLike(tasks: BackgroundTask[]): boolean {
@@ -126,20 +141,28 @@ function transition(
 ): StatusState {
   const changed = state.status !== status || state.reason !== reason
 
-  return { ...state, ...extra, status, reason, statusAt: changed ? now : state.statusAt }
+  // An exited session runs nothing in the background.
+  const backgroundTasks =
+    extra.backgroundTasks ?? (status === 'exited' ? [] : state.backgroundTasks)
+
+  return {
+    ...state,
+    ...extra,
+    status,
+    reason,
+    statusAt: changed ? now : state.statusAt,
+    backgroundTasks
+  }
 }
 
 function onHook(state: StatusState, event: string, p: HookPayload, now: number): StatusState {
-  // A subagent's hooks are a sign of work (so the stall tick leaves a long run alone) but never
-  // move the workspace; a SubagentStop's list is the parent's, so it refreshes the tasks.
+  // A subagent's hooks never move the workspace (the caller counts them as activity for the
+  // stall tick); a SubagentStop's list is the parent's, so it refreshes the tasks.
   if (p.agent_id) {
-    const next = { ...state, lastActivityAt: now }
+    if (event !== 'SubagentStop' || !p.background_tasks) return state
+    const tasks = mergeTasks(state.backgroundTasks, p.background_tasks, now)
 
-    if (event === 'SubagentStop' && p.background_tasks) {
-      next.backgroundTasks = mergeTasks(state.backgroundTasks, p.background_tasks, now)
-    }
-
-    return next
+    return tasks === state.backgroundTasks ? state : { ...state, backgroundTasks: tasks }
   }
 
   const seen: Partial<StatusState> = { hookAt: now, sessionId: p.session_id ?? state.sessionId }
@@ -150,19 +173,18 @@ function onHook(state: StatusState, event: string, p: HookPayload, now: number):
 
   switch (event) {
     case 'SessionStart':
+      // A session boundary that lands on idle: nothing from the last session still runs.
       return transition(state, 'idle', null, now, { ...seen, backgroundTasks: [] })
     case 'Stop': {
       const tasks = mergeTasks(state.backgroundTasks, p.background_tasks, now)
 
-      if (hasAgentLike(tasks)) {
-        return transition(state, 'working', null, now, {
-          ...seen,
-          lastActivityAt: now,
-          backgroundTasks: tasks
-        })
-      }
-
-      return transition(state, 'idle', null, now, { ...seen, backgroundTasks: tasks })
+      return hasAgentLike(tasks)
+        ? transition(state, 'working', null, now, {
+            ...seen,
+            lastActivityAt: now,
+            backgroundTasks: tasks
+          })
+        : transition(state, 'idle', null, now, { ...seen, backgroundTasks: tasks })
     }
 
     case 'PermissionRequest':
@@ -178,7 +200,7 @@ function onHook(state: StatusState, event: string, p: HookPayload, now: number):
     case 'StopFailure':
       return transition(state, 'stuck', `error:${p.error || 'unknown'}`, now, seen)
     case 'SessionEnd':
-      return transition(state, 'exited', null, now, { ...seen, backgroundTasks: [] })
+      return transition(state, 'exited', null, now, seen)
     default:
       return { ...state, ...seen }
   }
@@ -217,7 +239,7 @@ export function reduce(
     case 'hook':
       return onHook(state, input.event, input.payload, now)
     case 'terminal_exit':
-      return transition(state, 'exited', null, now, { backgroundTasks: [] })
+      return transition(state, 'exited', null, now)
     case 'tick': {
       if (state.status !== 'working') return { ...state }
       const last = state.lastActivityAt ?? state.statusAt

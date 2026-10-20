@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { makeTask, makeWorkspace } from '@renderer/testing/fixtures'
+import { makeBackgroundTask, makeTask, makeWorkspace } from '@renderer/testing/fixtures'
 import { minutesAgo } from '@renderer/testing/helpers'
 import { hoverWord, rowTone, unseenDone } from './sidebar-row'
 
@@ -8,26 +8,19 @@ const NOW = new Date(2026, 9, 17, 21, 30).getTime()
 const idle = makeWorkspace({ id: 'ws_01hzx3k9c2qf', name: 'app-1432-retry-logic' })
 const fresh = { ...idle, finishedAt: minutesAgo(NOW, 12), seenAt: minutesAgo(NOW, 40) }
 
-const devServer = {
-  id: 'bash_01hzy2c7k4mq',
-  kind: 'shell',
-  description: 'npm run dev',
-  since: minutesAgo(NOW, 31)
-}
+const devServer = makeBackgroundTask({ since: minutesAgo(NOW, 31) })
 
-const logTail = {
-  id: 'mon_01hzy2f9a1wd',
+const logTail = makeBackgroundTask({
   kind: 'monitor',
   description: 'tail -f logs/api.log',
   since: minutesAgo(NOW, 18)
-}
+})
 
-const explorer = {
-  id: 'agent_01hzy3b5r8xn',
+const explorer = makeBackgroundTask({
   kind: 'subagent',
   description: 'Explore the repo',
   since: minutesAgo(NOW, 2)
-}
+})
 
 describe('rowTone', () => {
   describe('the workspace status', () => {
@@ -40,7 +33,7 @@ describe('rowTone', () => {
         working: false,
         unseen: false,
         weight: 'faint',
-        mark: false
+        background: []
       })
     })
 
@@ -76,7 +69,7 @@ describe('rowTone', () => {
         working: false,
         unseen: true,
         weight: 'fg',
-        mark: false
+        background: []
       })
     })
 
@@ -108,7 +101,7 @@ describe('rowTone', () => {
         working: true,
         unseen: false,
         weight: 'secondary',
-        mark: false
+        background: []
       })
       expect(rowTone(ws, makeTask({ workspaceId: ws.id, state: 'queued' }))).toMatchObject({
         status: 'queued',
@@ -151,16 +144,16 @@ describe('rowTone', () => {
       expect(rowTone({ ...idle, backgroundTasks: [devServer] })).toMatchObject({
         status: 'idle',
         working: false,
-        mark: true
+        background: ['shell']
       })
-      expect(rowTone(idle).mark).toBe(false)
+      expect(rowTone(idle).background).toEqual([])
     })
 
     it('marks an unseen finish too, beside its green dot', () => {
       expect(rowTone({ ...fresh, backgroundTasks: [devServer] })).toMatchObject({
         tone: 'good',
         unseen: true,
-        mark: true
+        background: ['shell']
       })
     })
 
@@ -168,12 +161,12 @@ describe('rowTone', () => {
       const running = makeTask({ workspaceId: idle.id, state: 'running' })
 
       expect(
-        rowTone({ ...idle, status: 'working', backgroundTasks: [explorer, devServer] }).mark
-      ).toBe(false)
-      expect(rowTone({ ...idle, status: 'needs_input', backgroundTasks: [devServer] }).mark).toBe(
-        false
-      )
-      expect(rowTone({ ...idle, backgroundTasks: [devServer] }, running).mark).toBe(false)
+        rowTone({ ...idle, status: 'working', backgroundTasks: [explorer, devServer] }).background
+      ).toEqual([])
+      expect(
+        rowTone({ ...idle, status: 'needs_input', backgroundTasks: [devServer] }).background
+      ).toEqual([])
+      expect(rowTone({ ...idle, backgroundTasks: [devServer] }, running).background).toEqual([])
     })
   })
 })
@@ -184,7 +177,7 @@ describe('hoverWord', () => {
 
     const both = {
       ...idle,
-      backgroundTasks: [devServer, logTail, { ...devServer, id: 'bash_01hzy4d2t6vb' }]
+      backgroundTasks: [devServer, logTail, makeBackgroundTask()]
     }
 
     expect(hoverWord(shell, undefined, rowTone(shell), NOW)).toEqual({

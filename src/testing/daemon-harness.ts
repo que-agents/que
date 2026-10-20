@@ -224,6 +224,23 @@ export async function waitForStatus(
     .toBe(status)
 }
 
+/** Opens a terminal in the workspace and starts claude there; returns the terminal and session ids. */
+export async function runClaude(
+  d: TestDaemon,
+  wsId: string
+): Promise<{ term: string; session: string }> {
+  const { id } = await d.client.request('workspace.openTerminal', { id: wsId, cols: 100, rows: 30 })
+  await d.client.request('term.write', { id, data: 'claude\r' })
+  await expect
+    .poll(async () => (await d.client.request('workspace.get', { id: wsId })).sessionId, {
+      timeout: 20_000
+    })
+    .toMatch(/^[0-9a-f-]{36}$/)
+  const { sessionId } = await d.client.request('workspace.get', { id: wsId })
+
+  return { term: id, session: sessionId as string }
+}
+
 /** Polls task.get until the task is in `state`, then returns it. */
 export async function waitForTaskState(
   d: TestDaemon,

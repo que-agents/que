@@ -3,6 +3,7 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { fakeBridge } from '@renderer/testing/fake-bridge'
 import {
+  makeBackgroundTask,
   makePrCheck,
   makeProject,
   makePullRequest,
@@ -225,18 +226,12 @@ describe('WorkspacePopout', () => {
       fakeBridge.seedWorkspace({
         ...lonely,
         backgroundTasks: [
-          {
-            id: 'bash_01hzy2c7k4mq',
-            kind: 'shell',
-            description: 'npm run dev',
-            since: new Date(NOW - 31 * 60_000).toISOString()
-          },
-          {
-            id: 'mon_01hzy2f9a1wd',
+          makeBackgroundTask({ since: new Date(NOW - 31 * 60_000).toISOString() }),
+          makeBackgroundTask({
             kind: 'monitor',
             description: 'tail -f logs/api.log',
             since: new Date(NOW - 18 * 60_000).toISOString()
-          }
+          })
         ]
       })
       const store = new QueStore(window.que, { now: clock, popoutDelays: { open: 0, close: 0 } })

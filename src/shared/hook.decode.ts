@@ -7,7 +7,7 @@ import {
   type HookEvent,
   type HookEventName
 } from './protocol'
-import { isObj, type Obj, str } from './json.decode'
+import { isObj, objects, type Obj, str } from './json.decode'
 
 type OptionalFields = Omit<HookEvent, 'hook_event_name' | 'session_id' | 'cwd' | 'transcript_path'>
 
@@ -21,31 +21,33 @@ function decodeSource(v: unknown): HookEvent['source'] {
 
 /** The well-formed entries of `background_tasks`: string id, type and status, plus the known optional strings. */
 function decodeBackgroundTasks(v: unknown): HookBackgroundTask[] | undefined {
-  if (!Array.isArray(v)) return undefined
-  const tasks: HookBackgroundTask[] = []
+  return Array.isArray(v)
+    ? objects(v).flatMap((item) => {
+        const id = str(item.id)
+        const type = str(item.type)
+        const status = str(item.status)
 
-  for (const item of v as unknown[]) {
-    if (!isObj(item)) continue
-    const id = str(item.id)
-    const type = str(item.type)
-    const status = str(item.status)
+        if (id === undefined || type === undefined || status === undefined) return []
 
-    if (id === undefined || type === undefined || status === undefined) continue
-    const task: HookBackgroundTask = { id, type, status }
-    const description = str(item.description)
-    const command = str(item.command)
-    const agentType = str(item.agent_type)
+        return [
+          {
+            id,
+            type,
+            status,
+            ...optionalString('description', item.description),
+            ...optionalString('command', item.command),
+            ...optionalString('agent_type', item.agent_type)
+          }
+        ]
+      })
+    : undefined
+}
 
-    if (description !== undefined) task.description = description
+/** `{ [key]: v }` when v is a string, else nothing to spread. */
+function optionalString<K extends string>(key: K, v: unknown): { [P in K]?: string } {
+  const s = str(v)
 
-    if (command !== undefined) task.command = command
-
-    if (agentType !== undefined) task.agent_type = agentType
-
-    tasks.push(task)
-  }
-
-  return tasks
+  return s === undefined ? {} : ({ [key]: s } as { [P in K]?: string })
 }
 
 /** Copies the optional fields that are present with the right type. */

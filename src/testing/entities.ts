@@ -1,10 +1,18 @@
 // Pure entity factories shared by node-side and renderer tests: no node:fs,
 // so the renderer's fixtures can re-export them. Realistic values, opaque ids.
-import type { PrCheck, PrThreadEntry, Task, Ticket, Workspace } from '../shared/types'
+import type {
+  BackgroundTask,
+  PrCheck,
+  PrThreadEntry,
+  Task,
+  Ticket,
+  Workspace
+} from '../shared/types'
 
 let wsCounter = 0
 let taskCounter = 0
 let prEntryCounter = 0
+let backgroundCounter = 0
 
 /** A workspace whose branch and worktree path derive from its name, status idle. */
 export function makeWorkspace(overrides: Partial<Workspace> = {}): Workspace {
@@ -31,6 +39,19 @@ export function makeWorkspace(overrides: Partial<Workspace> = {}): Workspace {
     finishedAt: null,
     seenAt: null,
     backgroundTasks: [],
+    ...overrides
+  }
+}
+
+/** A background task as the daemon lists it: a dev server shell, unless overridden. */
+export function makeBackgroundTask(overrides: Partial<BackgroundTask> = {}): BackgroundTask {
+  backgroundCounter += 1
+
+  return {
+    id: `b${backgroundCounter.toString(16).padStart(5, '0')}f2e1`,
+    kind: 'shell',
+    description: 'npm run dev',
+    since: '2026-10-13T21:04:00.000Z',
     ...overrides
   }
 }

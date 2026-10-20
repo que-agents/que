@@ -162,8 +162,9 @@ function PullRequestRow({ ws, pr }: { ws: Workspace; pr: PullRequest }): React.J
 
 /**
  * The card beside a sidebar workspace row: the name, the worktree and its branch, the status,
- * the shells, monitors and subagents running in the background, and every pull request opened from it. It holds no destructive action; Remove… stays in
- * the row's ⋯ menu. Escape or a press outside the row and the card closes it.
+ * the shells, monitors and subagents running in the background, and every pull request opened
+ * from it. It holds no destructive action; Remove… stays in the row's ⋯ menu. Escape or a press
+ * outside the row and the card closes it.
  */
 export default function WorkspacePopout({
   ws,

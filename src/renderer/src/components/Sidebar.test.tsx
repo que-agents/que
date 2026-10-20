@@ -3,6 +3,7 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { fakeBridge } from '@renderer/testing/fake-bridge'
 import {
+  makeBackgroundTask,
   makeProject,
   makePullRequest,
   makeQuietState,
@@ -200,12 +201,7 @@ describe('Sidebar', () => {
   })
 
   describe('background tasks', () => {
-    const devServer = {
-      id: 'bash_01hzy2c7k4mq',
-      kind: 'shell',
-      description: 'npm run dev',
-      since: minutesAgo(NOW, 31)
-    }
+    const devServer = makeBackgroundTask({ since: minutesAgo(NOW, 31) })
 
     const serving = makeWorkspace({
       id: 'ws_01hzx9d4f6gh',
@@ -217,12 +213,11 @@ describe('Sidebar', () => {
     const exploring = {
       ...retry,
       backgroundTasks: [
-        {
-          id: 'agent_01hzy3b5r8xn',
+        makeBackgroundTask({
           kind: 'subagent',
           description: 'Explore the repo',
           since: minutesAgo(NOW, 2)
-        }
+        })
       ]
     }
 

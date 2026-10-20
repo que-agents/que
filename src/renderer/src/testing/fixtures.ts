@@ -16,6 +16,7 @@ import type {
 import { configDefaults } from '../../../shared/config-defaults'
 
 export {
+  makeBackgroundTask,
   makePrCheck,
   makePrThreadEntry,
   makeTask,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { makeHookEvent, makeTask, makeWorkspace } from '../testing/fixtures'
+import { makeBackgroundTask, makeHookEvent, makeTask, makeWorkspace } from '../testing/fixtures'
 import {
   AGENTS_JSON_MIN_AGE_MS,
   initialState,
@@ -26,12 +26,7 @@ const working: StatusState = {
 
 const running = (id: string, type: string) => ({ id, type, status: 'running' })
 
-const shellTask = {
-  id: 'b9f2e1',
-  kind: 'shell',
-  description: 'npm run dev',
-  since: new Date(T0).toISOString()
-}
+const shellTask = makeBackgroundTask({ since: new Date(T0).toISOString() })
 
 function hook(state: StatusState, ...args: Parameters<typeof makeHookEvent>) {
   const payload = makeHookEvent(...args)
@@ -126,16 +121,11 @@ describe('reduce', () => {
   describe('subagent hooks', () => {
     const subagent = { agent_id: 'a7c21f09e4b3', agent_type: 'Explore' }
 
-    it('refreshes only the activity time of a working session', () => {
-      const next = hook(working, 'PreToolUse', { ...subagent, tool_name: 'Grep' })
-
-      expect(next).toEqual({ ...working, lastActivityAt: T0 + 1_000 })
-    })
-
-    it('changes nothing but the activity time of an idle session', () => {
-      const next = hook(idle, 'PreToolUse', { ...subagent, tool_name: 'Grep' })
-
-      expect(next).toEqual({ ...idle, lastActivityAt: T0 + 1_000 })
+    it.each([
+      ['working', working],
+      ['idle', idle]
+    ])('leaves a %s session as it is on a subagent PreToolUse', (_label, state) => {
+      expect(hook(state, 'PreToolUse', { ...subagent, tool_name: 'Grep' })).toBe(state)
     })
 
     it.each([
@@ -151,14 +141,11 @@ describe('reduce', () => {
       }
     })
 
-    it('keeps a long subagent run from going stuck while its hooks keep arriving', () => {
-      const midway = reduce(
-        working,
-        { kind: 'hook', event: 'PostToolUse', payload: makeHookEvent('PostToolUse', subagent) },
-        T0 + 240_000
-      )
+    it('updates only the background tasks on a SubagentStop with a changed list', () => {
+      const busy = { ...working, backgroundTasks: [shellTask] }
+      const next = hook(busy, 'SubagentStop', { ...subagent, background_tasks: [] })
 
-      expect(reduce(midway, { kind: 'tick' }, T0 + 360_000, STALL).status).toBe('working')
+      expect(next).toEqual({ ...busy, backgroundTasks: [] })
     })
   })
 
@@ -210,7 +197,11 @@ describe('reduce', () => {
 
     it.each([
       ['an empty list', { background_tasks: [] }],
-      ['no list', {}]
+      ['no list', {}],
+      [
+        'only entries no longer running',
+        { background_tasks: [{ id: 'a1', type: 'subagent', status: 'completed' }] }
+      ]
     ])('goes idle with no tasks on a Stop with %s', (_label, overrides) => {
       const busy = { ...working, backgroundTasks: [shellTask] }
 
@@ -238,12 +229,20 @@ describe('reduce', () => {
       ])
     })
 
-    it('leaves out entries that are no longer running', () => {
-      const next = hook(working, 'Stop', {
-        background_tasks: [{ id: 'a1', type: 'subagent', status: 'completed' }]
-      })
+    it('keeps the same task list when a Stop reports the same tasks again', () => {
+      const first = hook(working, 'Stop', { background_tasks: [running('b1', 'shell')] })
 
-      expect(next).toMatchObject({ status: 'idle', backgroundTasks: [] })
+      const again = reduce(
+        first,
+        {
+          kind: 'hook',
+          event: 'Stop',
+          payload: makeHookEvent('Stop', { background_tasks: [running('b1', 'shell')] })
+        },
+        T0 + 60_000
+      )
+
+      expect(again.backgroundTasks).toBe(first.backgroundTasks)
     })
   })
 
@@ -298,7 +297,8 @@ describe('reduce', () => {
       ['waiting_for_input', 'needs_input'],
       ['blocked', 'needs_input'],
       ['idle', 'idle'],
-      ['running', 'working']
+      ['running', 'working'],
+      ['busy', 'working']
     ] as const)('maps %s to %s once the hook state is older than 30 s', (status, expected) => {
       const from = {
         ...working,
@@ -308,21 +308,17 @@ describe('reduce', () => {
       expect(reduce(from, entry(status), old).status).toBe(expected)
     })
 
-    it('maps busy to working', () => {
-      expect(reduce(idle, entry('busy'), old).status).toBe('working')
-    })
+    it.each([
+      ['subagent', 'working'],
+      ['shell', 'idle']
+    ] as const)(
+      'leaves a session with a %s running %s when the registry says idle',
+      (kind, expected) => {
+        const paused = { ...working, backgroundTasks: [makeBackgroundTask({ kind })] }
 
-    it('leaves a session paused on a running subagent working when the registry says idle', () => {
-      const waiting = { ...working, backgroundTasks: [{ ...shellTask, kind: 'subagent' }] }
-
-      expect(reduce(waiting, entry('idle'), old)).toEqual(waiting)
-    })
-
-    it('still goes idle when only a shell runs', () => {
-      const shelled = { ...working, backgroundTasks: [shellTask] }
-
-      expect(reduce(shelled, entry('idle'), old).status).toBe('idle')
-    })
+        expect(reduce(paused, entry('idle'), old).status).toBe(expected)
+      }
+    )
 
     it('applies to a workspace no hook has reported from yet', () => {
       expect(reduce(idle, entry('waiting'), T0 + 1).status).toBe('needs_input')

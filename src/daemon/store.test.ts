@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { makeTask, makeWorkspace } from '../testing/fixtures'
+import { makeBackgroundTask, makeTask, makeWorkspace } from '../testing/fixtures'
 import { Store } from './store'
 
 let store: Store
@@ -117,13 +117,8 @@ describe('workspaces', () => {
     }
 
     const tasks = [
-      {
-        id: 'a7c21f09e4b3',
-        kind: 'subagent',
-        description: 'Explore the repo',
-        since: '2026-10-20T14:01:30.000Z'
-      },
-      { id: 'b9f2e1', kind: 'shell', description: 'npm run dev', since: '2026-10-20T14:00:10.000Z' }
+      makeBackgroundTask({ kind: 'subagent', description: 'Explore the repo' }),
+      makeBackgroundTask()
     ]
 
     expect(store.getWorkspace(ws.id)?.backgroundTasks).toEqual([])

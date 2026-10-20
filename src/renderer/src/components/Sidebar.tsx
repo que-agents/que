@@ -465,7 +465,7 @@ export default function Sidebar(): React.JSX.Element {
                           <span className="name" data-testid={`sidebar-workspace-${w.id}-name`}>
                             {w.title ?? w.name}
                           </span>
-                          {look.mark && (
+                          {look.background.length > 0 && (
                             <span
                               className="bg-mark"
                               aria-hidden="true"
