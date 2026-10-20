@@ -38,7 +38,12 @@ describe('parseConfig', () => {
           days: {},
           unlockMinutes: 20
         },
-        notifications: { chimeOnComplete: true, chimeOnNeedsInput: false, morningSummary: false },
+        notifications: {
+          chimeOnComplete: true,
+          chimeOnNeedsInput: false,
+          chimeInManualQuiet: false,
+          morningSummary: false
+        },
         jira: defaultJira(),
         startPrompt: ''
       }
@@ -109,6 +114,7 @@ unlock_minutes = 0.05
 [notifications]
 chime_on_complete = false
 chime_on_needs_input = true
+chime_in_manual_quiet = true
 morning_summary = true
 `,
         env
@@ -123,6 +129,7 @@ morning_summary = true
       expect(r.ok && r.config.notifications).toEqual({
         chimeOnComplete: false,
         chimeOnNeedsInput: true,
+        chimeInManualQuiet: true,
         morningSummary: true
       })
     })

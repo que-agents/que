@@ -67,6 +67,7 @@ const SCHEMA: Node = section<ConfigPatch>('', {
   notifications: section<NonNullable<ConfigPatch['notifications']>>('notifications', {
     chimeOnComplete: value('chime_on_complete'),
     chimeOnNeedsInput: value('chime_on_needs_input'),
+    chimeInManualQuiet: value('chime_in_manual_quiet'),
     morningSummary: value('morning_summary')
   }),
   jira: section<NonNullable<ConfigPatch['jira']>>('jira', {

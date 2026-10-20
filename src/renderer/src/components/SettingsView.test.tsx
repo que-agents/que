@@ -55,7 +55,12 @@ describe('SettingsView', () => {
           days: { friday: { start: '23:00', end: '09:00' }, saturday: 'none' },
           unlockMinutes: 15
         },
-        notifications: { chimeOnComplete: false, chimeOnNeedsInput: true, morningSummary: true }
+        notifications: {
+          chimeOnComplete: false,
+          chimeOnNeedsInput: true,
+          chimeInManualQuiet: false,
+          morningSummary: true
+        }
       })
 
       await openSettings(user)
@@ -180,6 +185,34 @@ describe('SettingsView', () => {
           { patch: { protectedBranches: ['main', 'release', 'hotfix'] }, applyTonight: false }
         ])
       })
+    })
+
+    it('shows the manual-quiet chime from config and writes it on toggle', async () => {
+      const user = userEvent.setup()
+      fakeBridge.setConfig({
+        notifications: {
+          chimeOnComplete: true,
+          chimeOnNeedsInput: false,
+          chimeInManualQuiet: true,
+          morningSummary: false
+        }
+      })
+      await openSettings(user)
+
+      const toggle = await screen.findByRole('checkbox', {
+        name: /Chime when a session finishes during a manual quiet \(quiet hours stay silent\)/
+      })
+
+      expect(toggle).toBeChecked()
+
+      await user.click(toggle)
+
+      await waitFor(() => {
+        expect(fakeBridge.configSetCalls()).toEqual([
+          { patch: { notifications: { chimeInManualQuiet: false } }, applyTonight: false }
+        ])
+      })
+      expect(toggle).not.toBeChecked()
     })
 
     it('writes nothing when a field is left unchanged', async () => {

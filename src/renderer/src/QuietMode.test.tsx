@@ -206,7 +206,12 @@ describe('completion chime', () => {
     fakeBridge.seedWorkspace(retry)
     fakeBridge.seedTask(task)
     fakeBridge.setConfig({
-      notifications: { chimeOnComplete: true, chimeOnNeedsInput: true, morningSummary: false }
+      notifications: {
+        chimeOnComplete: true,
+        chimeOnNeedsInput: true,
+        chimeInManualQuiet: false,
+        morningSummary: false
+      }
     })
     render(<App now={clock} />)
     await screen.findByTestId(`sidebar-workspace-${retry.id}-status`)
@@ -224,7 +229,12 @@ describe('completion chime', () => {
     fakeBridge.seedWorkspace({ ...retry, status: 'working' })
     fakeBridge.seedTask(task)
     fakeBridge.setConfig({
-      notifications: { chimeOnComplete: true, chimeOnNeedsInput: true, morningSummary: false }
+      notifications: {
+        chimeOnComplete: true,
+        chimeOnNeedsInput: true,
+        chimeInManualQuiet: false,
+        morningSummary: false
+      }
     })
     render(<App now={clock} />)
     const badge = `sidebar-workspace-${retry.id}-status`

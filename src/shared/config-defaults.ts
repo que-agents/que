@@ -44,5 +44,10 @@ export function defaultJira(): JiraConfig {
 }
 
 export function defaultNotifications(): NotificationsConfig {
-  return { chimeOnComplete: true, chimeOnNeedsInput: false, morningSummary: false }
+  return {
+    chimeOnComplete: true,
+    chimeOnNeedsInput: false,
+    chimeInManualQuiet: false,
+    morningSummary: false
+  }
 }

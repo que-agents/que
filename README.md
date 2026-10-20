@@ -112,6 +112,7 @@ unlock_minutes = 20
 [notifications]
 chime_on_complete = true
 chime_on_needs_input = false
+chime_in_manual_quiet = false
 morning_summary = false
 
 [jira]

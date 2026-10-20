@@ -315,6 +315,7 @@ function parseNotifications(v: unknown, errors: ConfigError[]): NotificationsCon
   const sub: ConfigError[] = []
   n.chimeOnComplete = optionalBool(t, 'chime_on_complete', sub) ?? n.chimeOnComplete
   n.chimeOnNeedsInput = optionalBool(t, 'chime_on_needs_input', sub) ?? n.chimeOnNeedsInput
+  n.chimeInManualQuiet = optionalBool(t, 'chime_in_manual_quiet', sub) ?? n.chimeInManualQuiet
   n.morningSummary = optionalBool(t, 'morning_summary', sub) ?? n.morningSummary
 
   prefixed(sub, 'notifications.', errors)

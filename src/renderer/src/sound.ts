@@ -18,18 +18,25 @@ const TURN_STATES: ReadonlySet<string> = new Set(['working', 'needs_input', 'stu
  * turn: a workspace going `idle` from `working`, `needs_input` or `stuck`
  * (`idle` from anything else, or with no previous status, is not a turn
  * ending). Needing input (when chime_on_needs_input) for `needs_input` or a
- * task stuck needing input. Never during quiet hours, unlocked or not, and
- * never before the quiet state and config have loaded.
+ * task stuck needing input. Never during scheduled quiet hours, unlocked or
+ * not, and never before the quiet state and config have loaded. In a manual
+ * quiet only the complete chime, and only when chime_in_manual_quiet is on.
  */
 export function shouldChime(
   event: { state: string; reason?: string | null; prev?: string | null },
   quiet: QuietState | null,
   cfg: NotificationsConfig | undefined
 ): ChimeKind | null {
-  if (!quiet || quiet.inQuietHours || !cfg) return null
+  if (!quiet || !cfg) return null
+  const manualOpen = quiet.kind === 'manual' && cfg.chimeInManualQuiet
+
+  if (quiet.inQuietHours && !manualOpen) return null
   const turnEnded = event.state === 'idle' && TURN_STATES.has(event.prev ?? '')
 
   if (event.state === 'done' || turnEnded) return cfg.chimeOnComplete ? 'complete' : null
+
+  // Needs input never chimes in a quiet window, manual or not.
+  if (quiet.inQuietHours) return null
 
   const needsInput =
     event.state === 'needs_input' || (event.state === 'stuck' && event.reason === 'needs_input')
