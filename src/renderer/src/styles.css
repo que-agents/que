@@ -454,11 +454,19 @@ h2 {
   font: 11px var(--mono);
 }
 
-/* An idle workspace with a background shell or monitor: `›_` at the row's right end. */
-.sidebar .bg-mark {
-  flex: none;
+/* An idle workspace with a background shell or monitor: `›_` (the session glyph) at the
+ * sidebar row's right end, and after the state word on a quiet board row. */
+.bg-mark {
   font: 11px var(--mono);
   color: var(--fg-faint);
+}
+
+.sidebar .bg-mark {
+  flex: none;
+}
+
+.dot-row .bg-mark {
+  margin-left: 6px;
 }
 
 /* A row: the button, and over its right end the word and ⋯ that the pointer reveals.

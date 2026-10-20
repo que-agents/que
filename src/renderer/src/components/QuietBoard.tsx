@@ -8,6 +8,7 @@ import {
 } from '../../../shared/quiet-board'
 import { ACTIVE_STATES } from '../../../shared/types'
 import { isLiveTask, newestFirst, statusBadge, type Tone, taskBadge } from '../format'
+import { backgroundKinds } from '../sidebar-row'
 import { useQue, useStore } from '../store'
 import { useNow } from '../useNow'
 import CountLine from './CountLine'
@@ -25,6 +26,8 @@ interface Row {
   dot: Tone
   /** Only stuck takes a tone on its word. */
   stuck: boolean
+  /** The kinds still running in the background of an idle workspace: `›_` after its state word. */
+  background: string[]
   lastActivity: string | null
 }
 
@@ -38,7 +41,8 @@ function minutes(m: number): string {
  * across the room without pulling anyone in. A dim strip, one faint count
  * line, a dim row per live task and per workspace that is busy or has a live
  * terminal, and a ghost Unlock (and End quiet in a manual window): no sentences, no badges, no links.
- * A working row draws the sidebar's working mark, so "still happening" reads the same. Needs input
+ * A working row draws the sidebar's working mark, and an idle row whose session still runs a shell
+ * or monitor its `›_`, so "still happening" reads the same. Needs input
  * is not a night state here: it reads `waiting`, with no tone.
  */
 export default function QuietBoard(): React.JSX.Element {
@@ -77,6 +81,7 @@ export default function QuietBoard(): React.JSX.Element {
         : t.state,
     dot: taskBadge(t.state).tone,
     stuck: false,
+    background: [],
     lastActivity: t.lastActivityAt
   })
 
@@ -88,6 +93,7 @@ export default function QuietBoard(): React.JSX.Element {
     stateText: w.status === 'needs_input' ? 'waiting' : statusBadge(w.status).label,
     dot: w.status === 'needs_input' ? 'neutral' : statusBadge(w.status).tone,
     stuck: w.status === 'stuck',
+    background: backgroundKinds(w),
     lastActivity: w.lastActivityAt
   })
 
@@ -150,6 +156,16 @@ export default function QuietBoard(): React.JSX.Element {
                 <span className="dot-row-project">{r.project}</span>{' '}
                 <span className={r.stuck ? 'dot-row-state tone-bad' : 'dot-row-state'}>
                   {r.stateText}
+                  {r.background.length > 0 && (
+                    <span
+                      className="bg-mark"
+                      aria-hidden="true"
+                      title={r.background.join(' · ')}
+                      data-testid={`quiet-board-row-${r.id}-background`}
+                    >
+                      ›_
+                    </span>
+                  )}
                 </span>{' '}
                 <span className="dot-row-age">{formatAge(r.lastActivity, now, ' ago')}</span>
               </li>

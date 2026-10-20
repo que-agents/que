@@ -41,6 +41,15 @@ export function unseenDone(ws: Pick<Workspace, 'finishedAt' | 'seenAt'>): boolea
   return !Number.isFinite(seen) || finished > seen
 }
 
+/**
+ * The distinct kinds still running in the background of an idle workspace, in the daemon's
+ * order; none unless idle. The engine leaves only shells and monitors on an idle row, so idle
+ * with background work is the whole rule. Non-empty draws `›_`, on the sidebar and the board.
+ */
+export function backgroundKinds(ws: Pick<Workspace, 'status' | 'backgroundTasks'>): string[] {
+  return ws.status === 'idle' ? [...new Set(ws.backgroundTasks.map((t) => t.kind))] : []
+}
+
 /** Statuses that already mean "now": a fresh finish does not paint over them. */
 const URGENT: ReadonlySet<string> = new Set(['working', 'needs_input', 'stuck'])
 
@@ -75,7 +84,7 @@ export function rowTone(ws: Workspace, task?: Task, selected = false): RowTone {
       selected || unseen || ws.status === 'needs_input' || ws.status === 'stuck',
       working
     ),
-    background: ws.status === 'idle' ? [...new Set(ws.backgroundTasks.map((t) => t.kind))] : []
+    background: backgroundKinds(ws)
   }
 }
 
