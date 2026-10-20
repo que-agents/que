@@ -92,7 +92,6 @@ describe('que config', () => {
       notifications: { chimeOnComplete: false },
       quietHours: { unlockMinutes: 0.5, enabled: true }
     })
-    expect((await daemon.client.request('queue.state')).concurrency).toBe(3)
     expect((await runCli('config', 'get')).stdout).toContain('unlock 0.5 min')
   }, 30_000)
 
@@ -116,7 +115,7 @@ describe('que config', () => {
 })
 
 describe('detail commands during quiet hours', () => {
-  it('attach, open, ws terminal, ws diff, ws files, report, run and term new print the refusal and exit 3', async () => {
+  it('attach, open, ws terminal, ws diff, ws files, report and term new print the refusal and exit 3', async () => {
     const repo = makeTempRepo(daemon.home)
     expect((await runCli('work', '--name', 'app-1490-quiet-cli', '-r', repo)).code).toBe(0)
     const refusal = `quiet hours until ${windowEnd}; run \`que unlock\` for 20 minutes\n`
@@ -128,9 +127,7 @@ describe('detail commands during quiet hours', () => {
       ['ws', 'diff', 'app-1490-quiet-cli'],
       ['ws', 'files', 'app-1490-quiet-cli'],
       ['report'],
-      ['run'],
-      ['term', 'new', '--cwd', daemon.home],
-      ['add', '-r', repo, 'Add retry logic to the uploader']
+      ['term', 'new', '--cwd', daemon.home]
     ]) {
       expect(await runCli(...args), args.join(' ')).toEqual({
         code: 3,

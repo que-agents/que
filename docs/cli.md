@@ -29,15 +29,6 @@ hand; run `npm run docs` after changing a command.
 | `que status [options]`                      | summary and per-workspace status                                                                                                                                                           |
 | `que attach [options] <workspace>`          | attach to the workspace's latest terminal, opening one if needed (Ctrl-] detaches)                                                                                                         |
 | `que open [options] <workspace>`            | open the workspace with `code -n`                                                                                                                                                          |
-| `que add [options] [brief]`                 | queue an overnight task (a brief run headless by claude in its own workspace)                                                                                                              |
-| `que task list [options]`                   | list tasks                                                                                                                                                                                 |
-| `que task show [options] <id>`              | show one task                                                                                                                                                                              |
-| `que task stop [options] <id>`              | stop a task (kills its claude run)                                                                                                                                                         |
-| `que task remove [options] <id>`            | forget a task that is no longer live                                                                                                                                                       |
-| `que run [options]`                         | open the queue: run queued tasks until it is closed                                                                                                                                        |
-| `que queue close [options]`                 | stop starting queued tasks (running ones finish)                                                                                                                                           |
-| `que queue status [options]`                | show the queue                                                                                                                                                                             |
-| `que report [options]`                      | the morning report: what the sessions did                                                                                                                                                  |
 | `que tickets list [options]`                | list the cached tickets (the default)                                                                                                                                                      |
 | `que tickets sync [options]`                | fetch the queue from the tracker now                                                                                                                                                       |
 | `que tickets start [options] <key>`         | make a workspace for a ticket, write it as a brief, and start claude on it                                                                                                                 |
@@ -49,8 +40,9 @@ hand; run `npm run docs` after changing a command.
 | `que quiet end [options]`                   | end a manual quiet early                                                                                                                                                                   |
 | `que config get [options]`                  | print the config file path and the parsed config                                                                                                                                           |
 | `que config set [options] <assignments...>` | set keys (dotted, e.g. quiet_hours.default=19:00,07:00) and reload the daemon                                                                                                              |
+| `que report [options]`                      | the morning report: what the sessions did                                                                                                                                                  |
 | `que hook [options]`                        | report a Claude Code hook event (stdin JSON) to the daemon; used by hooks.json                                                                                                             |
-| `que doctor [options]`                      | check the daemon, claude, gh, git, caffeinate, node, config, and the hooks wrapper                                                                                                         |
+| `que doctor [options]`                      | check the daemon, claude, gh, git, node, config, and the hooks wrapper                                                                                                                     |
 
 ## Details
 
@@ -351,118 +343,6 @@ Options:
   -h, --help  display help for command
 ```
 
-### que add
-
-```text
-Usage: que add [options] [brief]
-
-queue an overnight task (a brief run headless by claude in its own workspace)
-
-Options:
-  -r, --repo <ref>    repo path, configured repo name, or workspace id or name
-  -f, --file <file>   read the brief from a file
-  --title <title>     title (default: the first line of the brief)
-  --max-turns <n>     turn cap
-  --max-budget <usd>  dollar cap
-  --json              print the task as JSON
-  -h, --help          display help for command
-```
-
-### que task list
-
-```text
-Usage: que task list [options]
-
-list tasks
-
-Options:
-  --json      print JSON
-  -h, --help  display help for command
-```
-
-### que task show
-
-```text
-Usage: que task show [options] <id>
-
-show one task
-
-Options:
-  --json      print JSON
-  -h, --help  display help for command
-```
-
-### que task stop
-
-```text
-Usage: que task stop [options] <id>
-
-stop a task (kills its claude run)
-
-Options:
-  -h, --help  display help for command
-```
-
-### que task remove
-
-```text
-Usage: que task remove [options] <id>
-
-forget a task that is no longer live
-
-Options:
-  -h, --help  display help for command
-```
-
-### que run
-
-```text
-Usage: que run [options]
-
-open the queue: run queued tasks until it is closed
-
-Options:
-  -j, --jobs <n>  how many tasks run at once (until the queue is closed)
-  --json          print the queue state as JSON
-  -h, --help      display help for command
-```
-
-### que queue close
-
-```text
-Usage: que queue close [options]
-
-stop starting queued tasks (running ones finish)
-
-Options:
-  -h, --help  display help for command
-```
-
-### que queue status
-
-```text
-Usage: que queue status [options]
-
-show the queue
-
-Options:
-  --json      print JSON
-  -h, --help  display help for command
-```
-
-### que report
-
-```text
-Usage: que report [options]
-
-the morning report: what the sessions did
-
-Options:
-  --since <when>  ISO time or a duration back from now (12h, 90m, 2d)
-  --json          print JSON
-  -h, --help      display help for command
-```
-
 ### que tickets list
 
 ```text
@@ -599,6 +479,19 @@ Options:
   -h, --help       display help for command
 ```
 
+### que report
+
+```text
+Usage: que report [options]
+
+the morning report: what the sessions did
+
+Options:
+  --since <when>  ISO time or a duration back from now (12h, 90m, 2d)
+  --json          print JSON
+  -h, --help      display help for command
+```
+
 ### que hook
 
 ```text
@@ -615,8 +508,7 @@ Options:
 ```text
 Usage: que doctor [options]
 
-check the daemon, claude, gh, git, caffeinate, node, config, and the hooks
-wrapper
+check the daemon, claude, gh, git, node, config, and the hooks wrapper
 
 Options:
   -h, --help  display help for command

@@ -129,9 +129,6 @@ export function registerQuietCommands(program: Command): void {
         console.log(
           `notifications   chime on complete ${cfg.notifications.chimeOnComplete} · chime on needs input ${cfg.notifications.chimeOnNeedsInput} · chime in manual quiet ${cfg.notifications.chimeInManualQuiet} · morning summary ${cfg.notifications.morningSummary}`
         )
-        console.log(`concurrency     ${cfg.concurrency}`)
-        console.log(`max turns       ${cfg.maxTurns}`)
-        console.log(`max budget      $${cfg.maxBudgetUsd}`)
         console.log(`protected       ${cfg.protectedBranches.join(', ')}`)
         console.log(`instructions    ${cfg.instructionsFile ?? 'none'}`)
       })
