@@ -1,5 +1,5 @@
 // How a sidebar row reads at rest and under the pointer: the dot (or the working
-// mark), its tone, the weight of the name, and the status word. Pure rules over the
+// mark), its tone, the weight of the name, the background mark, and the status word. Pure rules over the
 // workspace and its newest task; Sidebar.tsx draws them. docs/design.md "Sidebar".
 import type { Task, Workspace } from '../../preload/index.d'
 import { formatAge } from '../../shared/format'
@@ -19,6 +19,13 @@ export interface RowTone {
   /** Finished since the app last had it selected. */
   unseen: boolean
   weight: Weight
+  /** `›_` at the row's right end: idle, no live task, and a background shell or monitor running. */
+  mark: boolean
+}
+
+/** The distinct kinds of the workspace's background tasks, in the daemon's order. */
+export function backgroundKinds(ws: Pick<Workspace, 'backgroundTasks'>): string[] {
+  return [...new Set(ws.backgroundTasks.map((t) => t.kind))]
 }
 
 /**
@@ -50,7 +57,8 @@ export function rowTone(ws: Workspace, task?: Task, selected = false): RowTone {
       tone: taskBadge(task.state).tone,
       working: ACTIVE_STATES.has(task.state),
       unseen: false,
-      weight: selected ? 'fg' : 'secondary'
+      weight: selected ? 'fg' : 'secondary',
+      mark: false
     }
   }
 
@@ -67,7 +75,8 @@ export function rowTone(ws: Workspace, task?: Task, selected = false): RowTone {
     weight: nameWeight(
       selected || unseen || ws.status === 'needs_input' || ws.status === 'stuck',
       working
-    )
+    ),
+    mark: ws.status === 'idle' && ws.backgroundTasks.length > 0
   }
 }
 
@@ -96,6 +105,10 @@ export function hoverWord(
   if (task && isLiveTask(task.state)) return { word: taskBadge(task.state).label, tone: toned }
 
   if (look.status === 'done') return { word: 'done', tone: null }
+
+  if (ws.status === 'idle' && ws.backgroundTasks.length > 0) {
+    return { word: ['idle', ...backgroundKinds(ws)].join(' · '), tone: null }
+  }
 
   return { word: statusBadge(ws.status).label, tone: toned }
 }

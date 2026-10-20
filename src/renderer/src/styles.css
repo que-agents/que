@@ -454,6 +454,13 @@ h2 {
   font: 11px var(--mono);
 }
 
+/* An idle workspace with a background shell or monitor: `›_` at the row's right end. */
+.sidebar .bg-mark {
+  flex: none;
+  font: 11px var(--mono);
+  color: var(--fg-faint);
+}
+
 /* A row: the button, and over its right end the word and ⋯ that the pointer reveals.
  * The overlay is painted on the row's own background, so nothing under it reflows. */
 .sidebar .row {
@@ -2495,6 +2502,36 @@ button.changes-pick {
 .workspace-popout .popout-status {
   font: 11px / 16px var(--mono);
   color: var(--fg-faint);
+}
+
+/* A background task: its kind, the description, and its age at the right. */
+.workspace-popout .popout-tasks {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.workspace-popout .popout-task {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr) auto;
+  column-gap: 10px;
+  font: 11px / 18px var(--mono);
+  color: var(--fg-faint);
+}
+
+.workspace-popout .popout-task .task-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fg-secondary);
+}
+
+.workspace-popout .popout-task .task-age {
+  font-variant-numeric: tabular-nums;
 }
 
 .workspace-popout hr {

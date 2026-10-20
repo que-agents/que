@@ -162,7 +162,7 @@ function PullRequestRow({ ws, pr }: { ws: Workspace; pr: PullRequest }): React.J
 
 /**
  * The card beside a sidebar workspace row: the name, the worktree and its branch, the status,
- * and every pull request opened from it. It holds no destructive action; Remove… stays in
+ * the shells, monitors and subagents running in the background, and every pull request opened from it. It holds no destructive action; Remove… stays in
  * the row's ⋯ menu. Escape or a press outside the row and the card closes it.
  */
 export default function WorkspacePopout({
@@ -274,6 +274,22 @@ export default function WorkspacePopout({
         {formatSince(Date.parse(ws.statusAt), now)}
         {ws.lastActivityAt && ` · last activity ${formatAge(ws.lastActivityAt, now, ' ago')}`}
       </div>
+      {ws.backgroundTasks.length > 0 && (
+        <>
+          <span className="label">Background</span>
+          <ul className="popout-tasks" data-testid={`${id}-background`}>
+            {ws.backgroundTasks.map((t, i) => (
+              <li key={t.id} className="popout-task" data-testid={`${id}-background-${i}`}>
+                <span className="task-kind">{t.kind}</span>
+                <span className="task-text" title={t.description}>
+                  {t.description}
+                </span>
+                <span className="task-age">{formatAge(t.since, now, '')}</span>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
       <hr />
       <span className="label">Pull requests</span>
       {ws.prs.length === 0 ? (
