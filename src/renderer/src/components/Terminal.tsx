@@ -62,11 +62,25 @@ export default function Terminal({ id, focused = true }: Props): React.JSX.Eleme
       console.warn('WebGL renderer unavailable, using default renderer', err)
     }
 
+    // Shift+Enter inserts a newline in Claude Code. xterm sends the same bare
+    // carriage return for it as for Enter, so send a line feed instead: the
+    // Ctrl+J newline Claude Code accepts in any terminal, and plain Enter to a
+    // shell or anything else that reads lines.
+    //
     // Cmd+C copies when there is a selection. Cmd+V goes through the default
     // Edit menu's paste role into xterm's textarea, which applies bracketed
     // paste when the running program has enabled it.
     term.attachCustomKeyEventHandler((ev) => {
-      if (!isMac || ev.type !== 'keydown' || !ev.metaKey) return true
+      if (ev.type !== 'keydown') return true
+
+      if (ev.key === 'Enter' && ev.shiftKey && !ev.ctrlKey && !ev.altKey && !ev.metaKey) {
+        term.input('\n')
+        ev.preventDefault()
+
+        return false
+      }
+
+      if (!isMac || !ev.metaKey) return true
 
       if (ev.key.toLowerCase() === 'c' && term.hasSelection()) {
         void navigator.clipboard.writeText(term.getSelection())

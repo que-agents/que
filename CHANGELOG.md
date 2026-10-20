@@ -79,6 +79,7 @@ All notable changes to que are recorded here. The format follows
 
 ### Fixed
 
+- Shift+Enter in a terminal sent the same carriage return as Enter, so Claude Code submitted the prompt instead of inserting a newline. It now sends a line feed, the Ctrl+J newline Claude Code accepts in any terminal; a shell takes it as Enter.
 - The completion chime only played for queued tasks; it now also plays when a session in a workspace finishes a turn (work hours only), and a task's workspace chimes once, when the task finishes.
 - Ticket links pointed at the tracker's API host; they now use the site from the CLI's auth status or `[jira] site`.
 - Ticket sync asked the Jira CLI for `project` and `updated`, which its search refuses; que now requests only the allowed fields, takes the project from the key, and keeps the queue in the JQL's order.
