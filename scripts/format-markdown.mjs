@@ -1,6 +1,5 @@
-// `npm run docs` formats the generated docs with oxfmt after writing them, so
-// a --check compares a file with what oxfmt makes of the generated text, not
-// with the raw text.
+// The generated docs go through oxfmt before they are written or checked, so
+// a --check compares a file with exactly what a write would produce.
 import { execFileSync } from 'node:child_process'
 import { join } from 'node:path'
 

@@ -54,7 +54,7 @@
     "dist": "npm run build && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac dmg zip",
     "smoke:packaged": "node scripts/smoke-packaged.mjs",
     "release": "node scripts/release.mjs",
-    "docs": "npm run build:node && node scripts/cli-reference.mjs && node scripts/config-reference.mjs && oxfmt --write docs/cli.md docs/configuration.md README.md",
+    "docs": "npm run build:node && node scripts/cli-reference.mjs && node scripts/config-reference.mjs",
     "icon": "node scripts/make-icon.mjs",
     "postinstall": "electron-builder install-app-deps",
     "prepare": "husky"

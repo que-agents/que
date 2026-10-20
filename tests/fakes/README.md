@@ -15,9 +15,8 @@ hours off.
 ## `claude`
 
 Parses the flags que uses (`--settings`, `--session-id`, `--resume`,
-`--permission-mode`,
-`--append-system-prompt-file`, `--model`, `--version`) and `agents --json`. Unknown
-flags are ignored. It runs only as an interactive session; there is no print mode.
+`--permission-mode`, `--append-system-prompt-file`, `--model`, `--version`) and
+`agents --json`. Unknown flags are ignored. It runs only as an interactive session; there is no print mode.
 
 **Hooks.** Every `command` hook in the `--settings` `hooks` map (inline JSON or a
 file) runs through `/bin/sh -c` with the session cwd and the inherited env, with

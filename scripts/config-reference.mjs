@@ -112,7 +112,10 @@ for (const file of [target, join(root, 'README.md')]) {
     next = next.replace(re, `$1\`\`\`toml\n${body}\n\`\`\`\n$2`)
   }
 
-  if ((check ? formatMarkdown(root, next) : next) === current) continue
+  // Written and checked through the same formatting, so a check never drifts from a write.
+  next = formatMarkdown(root, next)
+
+  if (next === current) continue
   stale = true
 
   if (!check) {
