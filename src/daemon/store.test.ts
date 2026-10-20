@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { makeTask, makeWorkspace } from '../testing/fixtures'
+import { makeBackgroundTask, makeTask, makeWorkspace } from '../testing/fixtures'
 import { Store } from './store'
 
 let store: Store
@@ -102,5 +102,45 @@ describe('workspaces', () => {
     for (const w of [working, idle, archived]) store.insertWorkspace(w)
 
     expect(store.listWorkspaceIdsByStatus('working')).toEqual([working.id])
+  })
+
+  it('reads back the background tasks a status update wrote, and none after an empty one', () => {
+    const ws = makeWorkspace({ status: 'working' })
+    store.insertWorkspace(ws)
+
+    const update = {
+      status: 'working' as const,
+      reason: null,
+      at: '2026-10-20T14:02:00.000Z',
+      lastActivityAt: '2026-10-20T14:02:00.000Z',
+      sessionId: 'sess_9d41c7'
+    }
+
+    const tasks = [
+      makeBackgroundTask({ kind: 'subagent', description: 'Explore the repo' }),
+      makeBackgroundTask()
+    ]
+
+    expect(store.getWorkspace(ws.id)?.backgroundTasks).toEqual([])
+
+    store.updateStatus(ws.id, { ...update, backgroundTasks: tasks })
+
+    expect(store.getWorkspace(ws.id)?.backgroundTasks).toEqual(tasks)
+
+    store.updateStatus(ws.id, { ...update, status: 'idle', backgroundTasks: [] })
+
+    expect(store.getWorkspace(ws.id)?.backgroundTasks).toEqual([])
+  })
+
+  it.each([
+    ['not JSON', '{oops'],
+    ['not a list', '{"id":"b1"}'],
+    ['a list of malformed entries', '[{"id":"b1"},"b2",null]']
+  ])('reads a stored background list that is %s as none', (_label, json) => {
+    const ws = makeWorkspace()
+    store.insertWorkspace(ws)
+    store.db.prepare('UPDATE workspaces SET background_json = ? WHERE id = ?').run(json, ws.id)
+
+    expect(store.getWorkspace(ws.id)?.backgroundTasks).toEqual([])
   })
 })

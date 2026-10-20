@@ -1,8 +1,13 @@
 // Decodes the hook JSON Claude Code writes to a hook command's stdin. Shared
 // by `que hook` (which decodes before forwarding) and the daemon (which
 // decodes the `hook.event` payload once as it arrives on the socket).
-import { HOOK_EVENT_NAMES, type HookEvent, type HookEventName } from './protocol'
-import { isObj, type Obj, str } from './json.decode'
+import {
+  HOOK_EVENT_NAMES,
+  type HookBackgroundTask,
+  type HookEvent,
+  type HookEventName
+} from './protocol'
+import { isObj, objects, type Obj, str } from './json.decode'
 
 type OptionalFields = Omit<HookEvent, 'hook_event_name' | 'session_id' | 'cwd' | 'transcript_path'>
 
@@ -12,6 +17,37 @@ function isEventName(v: unknown): v is HookEventName {
 
 function decodeSource(v: unknown): HookEvent['source'] {
   return v === 'startup' || v === 'resume' || v === 'clear' || v === 'compact' ? v : undefined
+}
+
+/** The well-formed entries of `background_tasks`: string id, type and status, plus the known optional strings. */
+function decodeBackgroundTasks(v: unknown): HookBackgroundTask[] | undefined {
+  return Array.isArray(v)
+    ? objects(v).flatMap((item) => {
+        const id = str(item.id)
+        const type = str(item.type)
+        const status = str(item.status)
+
+        if (id === undefined || type === undefined || status === undefined) return []
+
+        return [
+          {
+            id,
+            type,
+            status,
+            ...optionalString('description', item.description),
+            ...optionalString('command', item.command),
+            ...optionalString('agent_type', item.agent_type)
+          }
+        ]
+      })
+    : undefined
+}
+
+/** `{ [key]: v }` when v is a string, else nothing to spread. */
+function optionalString<K extends string>(key: K, v: unknown): { [P in K]?: string } {
+  const s = str(v)
+
+  return s === undefined ? {} : ({ [key]: s } as { [P in K]?: string })
 }
 
 /** Copies the optional fields that are present with the right type. */
@@ -50,6 +86,10 @@ function optional(v: Obj): OptionalFields {
   if ('tool_response' in v) out.tool_response = v.tool_response
 
   if (typeof v.stop_hook_active === 'boolean') out.stop_hook_active = v.stop_hook_active
+
+  const backgroundTasks = decodeBackgroundTasks(v.background_tasks)
+
+  if (backgroundTasks !== undefined) out.background_tasks = backgroundTasks
 
   return out
 }

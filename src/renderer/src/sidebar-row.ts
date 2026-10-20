@@ -1,5 +1,5 @@
 // How a sidebar row reads at rest and under the pointer: the dot (or the working
-// mark), its tone, the weight of the name, and the status word. Pure rules over the
+// mark), its tone, the weight of the name, the background mark, and the status word. Pure rules over the
 // workspace and its newest task; Sidebar.tsx draws them. docs/design.md "Sidebar".
 import type { Task, Workspace } from '../../preload/index.d'
 import { formatAge } from '../../shared/format'
@@ -19,6 +19,12 @@ export interface RowTone {
   /** Finished since the app last had it selected. */
   unseen: boolean
   weight: Weight
+  /**
+   * The distinct kinds running in the background, in the daemon's order, while the row is idle
+   * with no live task; else none. The engine leaves only shells and monitors on an idle row, so
+   * idle with background work is the whole rule. Non-empty draws `›_` at the row's right end.
+   */
+  background: string[]
 }
 
 /**
@@ -50,7 +56,8 @@ export function rowTone(ws: Workspace, task?: Task, selected = false): RowTone {
       tone: taskBadge(task.state).tone,
       working: ACTIVE_STATES.has(task.state),
       unseen: false,
-      weight: selected ? 'fg' : 'secondary'
+      weight: selected ? 'fg' : 'secondary',
+      background: []
     }
   }
 
@@ -67,7 +74,8 @@ export function rowTone(ws: Workspace, task?: Task, selected = false): RowTone {
     weight: nameWeight(
       selected || unseen || ws.status === 'needs_input' || ws.status === 'stuck',
       working
-    )
+    ),
+    background: ws.status === 'idle' ? [...new Set(ws.backgroundTasks.map((t) => t.kind))] : []
   }
 }
 
@@ -96,6 +104,10 @@ export function hoverWord(
   if (task && isLiveTask(task.state)) return { word: taskBadge(task.state).label, tone: toned }
 
   if (look.status === 'done') return { word: 'done', tone: null }
+
+  if (look.background.length > 0) {
+    return { word: ['idle', ...look.background].join(' · '), tone: null }
+  }
 
   return { word: statusBadge(ws.status).label, tone: toned }
 }

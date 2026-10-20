@@ -379,7 +379,8 @@ export class WorkspaceManager {
       pr: null,
       prs: [],
       finishedAt: null,
-      seenAt: null
+      seenAt: null,
+      backgroundTasks: []
     }
 
     if (title) ws.title = title

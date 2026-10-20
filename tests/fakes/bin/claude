@@ -494,11 +494,55 @@ function interactive() {
 
   const rl = readline.createInterface({ input: process.stdin, terminal: false })
   let awaitingPermission = false
+  // `/background`: the tasks this session reports still running at each Stop.
+  let background = []
 
-  const reply = (text) => {
+  const reply = (text, stopExtra = {}) => {
     out(`● ${text}\r\n`)
     appendTranscript({ type: 'assistant', message: { role: 'assistant', content: text } })
-    runHooks('Stop', { last_assistant_message: text, stop_hook_active: false })
+    runHooks('Stop', { last_assistant_message: text, stop_hook_active: false, ...stopExtra })
+  }
+
+  const submitPrompt = (line) => {
+    appendTranscript({ type: 'user', message: { role: 'user', content: line } })
+    runHooks('UserPromptSubmit', { prompt: line, prompt_id: crypto.randomUUID() })
+  }
+
+  const BACKGROUND_TASKS = {
+    subagent: { description: 'Explore the repo', agent_type: 'Explore' },
+    shell: { description: 'npm run dev', command: 'npm run dev' },
+    monitor: { description: 'checks on #141' }
+  }
+
+  const backgroundTask = (type) => ({
+    id: crypto.randomBytes(6).toString('hex'),
+    type,
+    status: 'running',
+    ...(BACKGROUND_TASKS[type] ?? { description: type })
+  })
+
+  const startBackground = (line, kinds) => {
+    submitPrompt(line)
+    background = kinds.map(backgroundTask)
+    for (const t of background.filter((t) => t.type === 'subagent')) {
+      runHooks('SubagentStart', { agent_id: t.id, agent_type: 'Explore' })
+    }
+    reply(`Started ${kinds.join(', ')} in the background.`, { background_tasks: background })
+  }
+
+  const finishBackground = (line) => {
+    for (const t of background.filter((t) => t.type === 'subagent')) {
+      // Like the real CLI: the parent's list still shows the stopping agent as running.
+      runHooks('SubagentStop', {
+        agent_id: t.id,
+        agent_type: 'Explore',
+        stop_hook_active: false,
+        background_tasks: background
+      })
+    }
+    background = []
+    submitPrompt(line)
+    reply('The background work finished.', { background_tasks: [] })
   }
 
   const toolCall = (name, input) => {
@@ -533,11 +577,17 @@ function interactive() {
       runHooks('SessionEnd', { reason: 'prompt_input_exit' })
       process.exit(0)
     }
+    if (line.startsWith('/background')) {
+      const kinds = line.split(/\s+/).slice(1)
+      if (kinds.length === 1 && kinds[0] === 'done') finishBackground(line)
+      else startBackground(line, kinds)
+      out('> ')
+      return
+    }
     if (line === '/needs-input') {
       // A prompt whose tool call needs permission: the turn starts, then asks.
       awaitingPermission = true
-      appendTranscript({ type: 'user', message: { role: 'user', content: line } })
-      runHooks('UserPromptSubmit', { prompt: line, prompt_id: crypto.randomUUID() })
+      submitPrompt(line)
       runHooks('Notification', {
         notification_type: 'permission_prompt',
         message: 'Claude needs your permission to use Bash',
@@ -546,8 +596,7 @@ function interactive() {
       out('Claude needs your permission to use Bash. Allow? (y/n) ')
       return
     }
-    appendTranscript({ type: 'user', message: { role: 'user', content: line } })
-    runHooks('UserPromptSubmit', { prompt: line, prompt_id: crypto.randomUUID() })
+    submitPrompt(line)
     out('thinking…\r\n')
     toolCall('Read', { file_path: path.join(cwd, 'README.md') })
     reply(`Fake reply to: ${line}`)

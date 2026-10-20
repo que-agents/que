@@ -3,6 +3,7 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { fakeBridge } from '@renderer/testing/fake-bridge'
 import {
+  makeBackgroundTask,
   makePrCheck,
   makeProject,
   makePullRequest,
@@ -217,6 +218,52 @@ describe('WorkspacePopout', () => {
         'idle since 14:02 · last activity 2h ago'
       )
       expect(screen.queryByTestId(`${id}-reason`)).not.toBeInTheDocument()
+    })
+
+    it('lists the background shell and monitor under [ BACKGROUND ], each with its kind, description and age', async () => {
+      const user = userEvent.setup()
+      fakeBridge.seedProject(uploader)
+      fakeBridge.seedWorkspace({
+        ...lonely,
+        backgroundTasks: [
+          makeBackgroundTask({ since: new Date(NOW - 31 * 60_000).toISOString() }),
+          makeBackgroundTask({
+            kind: 'monitor',
+            description: 'tail -f logs/api.log',
+            since: new Date(NOW - 18 * 60_000).toISOString()
+          })
+        ]
+      })
+      const store = new QueStore(window.que, { now: clock, popoutDelays: { open: 0, close: 0 } })
+      store.start()
+      render(
+        <StoreContext.Provider value={store}>
+          <Sidebar />
+        </StoreContext.Provider>
+      )
+      const popout = await hoverCard(user, lonely.id)
+      const id = `sidebar-workspace-${lonely.id}-popout`
+
+      expect(within(popout).getByText('Background')).toHaveClass('label')
+      const lines = within(screen.getByTestId(`${id}-background`)).getAllByRole('listitem')
+      expect(lines.map((l) => l.textContent)).toEqual([
+        'shellnpm run dev31m',
+        'monitortail -f logs/api.log18m'
+      ])
+      expect(screen.getByTestId(`${id}-status`)).not.toContainElement(
+        screen.getByTestId(`${id}-background`)
+      )
+    })
+
+    it('has no background block when nothing runs in the background', async () => {
+      const user = userEvent.setup()
+      renderSidebar()
+      const popout = await hoverCard(user, retry.id)
+
+      expect(
+        screen.queryByTestId(`sidebar-workspace-${retry.id}-popout-background`)
+      ).not.toBeInTheDocument()
+      expect(within(popout).queryByText('Background')).not.toBeInTheDocument()
     })
 
     it('lists the pull requests in the daemon’s order, newest first, each in its tone with its line counts', async () => {

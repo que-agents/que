@@ -4,7 +4,14 @@ import type { HookEvent, HookEventName, StreamResult } from '@shared/protocol'
 import { defaultConfig, defaultQuietHours } from '@shared/config'
 import type { QuietHoursConfig, UserConfig } from '@shared/types'
 
-export { makePrCheck, makePrThreadEntry, makeTask, makeTicket, makeWorkspace } from './entities'
+export {
+  makeBackgroundTask,
+  makePrCheck,
+  makePrThreadEntry,
+  makeTask,
+  makeTicket,
+  makeWorkspace
+} from './entities'
 
 let sessionCounter = 0
 

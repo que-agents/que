@@ -3,6 +3,7 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { fakeBridge } from '@renderer/testing/fake-bridge'
 import {
+  makeBackgroundTask,
   makeProject,
   makePullRequest,
   makeQuietState,
@@ -196,6 +197,76 @@ describe('Sidebar', () => {
       expect(await screen.findByTestId('sidebar-empty')).toHaveTextContent(
         'Add a git repository to start a workspace.'
       )
+    })
+  })
+
+  describe('background tasks', () => {
+    const devServer = makeBackgroundTask({ since: minutesAgo(NOW, 31) })
+
+    const serving = makeWorkspace({
+      id: 'ws_01hzx9d4f6gh',
+      name: 'app-1488-dev-server',
+      status: 'idle',
+      backgroundTasks: [devServer]
+    })
+
+    const exploring = {
+      ...retry,
+      backgroundTasks: [
+        makeBackgroundTask({
+          kind: 'subagent',
+          description: 'Explore the repo',
+          since: minutesAgo(NOW, 2)
+        })
+      ]
+    }
+
+    const background = (id: string): HTMLElement | null =>
+      screen.queryByTestId(`sidebar-workspace-${id}-background`)
+
+    it('marks an idle row running a shell with ›_ after its name, and a working row with its ripple alone', async () => {
+      fakeBridge.seedProject(uploader)
+      fakeBridge.seedWorkspace(serving)
+      fakeBridge.seedWorkspace(exploring)
+      render(<App now={clock} />)
+
+      const open = await screen.findByTestId(`sidebar-workspace-${serving.id}-open`)
+      expect(background(serving.id)).toHaveTextContent(/^›_$/)
+      expect(open).toContainElement(background(serving.id))
+      expect(mark(serving.id)).toHaveClass('status-dot', 'tone-neutral')
+      // The word stays in the overlay the pointer reveals, not in the row at rest.
+      expect(open).not.toContainElement(word(serving.id))
+      expect(mark(exploring.id)).toHaveClass('working-mark')
+      expect(background(exploring.id)).not.toBeInTheDocument()
+    })
+
+    it('names the background kind under the pointer, and in the dot’s tooltip', async () => {
+      const user = userEvent.setup()
+      fakeBridge.seedProject(uploader)
+      fakeBridge.seedWorkspace(serving)
+      render(<App now={clock} />)
+
+      await user.hover(await screen.findByTestId(`sidebar-workspace-${serving.id}-open`))
+
+      expect(word(serving.id)).toHaveTextContent(/^idle · shell$/)
+      expect(word(serving.id)).not.toHaveClass('toned')
+      expect(mark(serving.id)).toHaveAttribute('title', 'idle · shell')
+    })
+
+    it('drops the mark when the daemon reports the shell gone', async () => {
+      fakeBridge.seedProject(uploader)
+      fakeBridge.seedWorkspace(serving)
+      render(<App now={clock} />)
+      expect(
+        await screen.findByTestId(`sidebar-workspace-${serving.id}-background`)
+      ).toBeInTheDocument()
+
+      fakeBridge.setBackgroundTasks(serving.id, [])
+
+      await waitFor(() => {
+        expect(background(serving.id)).not.toBeInTheDocument()
+      })
+      expect(word(serving.id)).toHaveTextContent(/^idle$/)
     })
   })
 

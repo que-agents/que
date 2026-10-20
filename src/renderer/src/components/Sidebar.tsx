@@ -465,6 +465,15 @@ export default function Sidebar(): React.JSX.Element {
                           <span className="name" data-testid={`sidebar-workspace-${w.id}-name`}>
                             {w.title ?? w.name}
                           </span>
+                          {look.background.length > 0 && (
+                            <span
+                              className="bg-mark"
+                              aria-hidden="true"
+                              data-testid={`sidebar-workspace-${w.id}-background`}
+                            >
+                              ›_
+                            </span>
+                          )}
                         </button>
                         <span className="reveal" data-testid={`sidebar-workspace-${w.id}-reveal`}>
                           <span

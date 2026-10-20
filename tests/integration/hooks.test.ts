@@ -12,6 +12,7 @@ import {
   recordStatuses,
   type StatusChange,
   recordEvents,
+  runClaude,
   startTestDaemon,
   type TestDaemon,
   type TestDaemonOptions,
@@ -215,6 +216,91 @@ describe('hook delivery', () => {
       })
     ).rejects.toMatchObject({ code: 'not_found' })
   })
+})
+
+describe('background tasks', () => {
+  it('keeps the workspace working through a Stop while a subagent runs, and idles at the final Stop', async () => {
+    const { d, ws, statuses } = await idleWorkspace()
+    const updated = recordEvents(d.client, 'workspace.updated')
+    const { term: id } = await runClaude(d, ws.id)
+    const get = () => d.client.request('workspace.get', { id: ws.id })
+
+    await d.client.request('term.write', { id, data: '/background subagent shell\r' })
+
+    await expect
+      .poll(async () => (await get()).backgroundTasks.map((t) => t.kind), { timeout: 15_000 })
+      .toEqual(['subagent', 'shell'])
+    const during = await get()
+    expect(during).toMatchObject({ status: 'working', finishedAt: null })
+    expect(during.backgroundTasks).toEqual([
+      expect.objectContaining({ kind: 'subagent', description: 'Explore the repo' }),
+      expect.objectContaining({ kind: 'shell', description: 'npm run dev' })
+    ])
+
+    for (const t of during.backgroundTasks) expect(t.since).toMatch(/^\d{4}-\d\d-\d\dT/)
+    expect(statusesOf(statuses, ws.id)).toEqual(['preparing', 'idle', 'working'])
+
+    await d.client.request('term.write', { id, data: '/background done\r' })
+
+    await expect
+      .poll(() => statusesOf(statuses, ws.id), { timeout: 15_000 })
+      .toEqual(['preparing', 'idle', 'working', 'idle'])
+    const after = await get()
+    expect(after).toMatchObject({ status: 'idle', backgroundTasks: [] })
+    expect(after.finishedAt).toMatch(/^\d{4}-\d\d-\d\dT/)
+
+    const finished = new Set(
+      updated.flatMap((w) => (w.id === ws.id && w.finishedAt ? [w.finishedAt] : []))
+    )
+
+    expect([...finished]).toEqual([after.finishedAt])
+  }, 45_000)
+
+  it('goes idle at a Stop that leaves only a shell running, and lists the shell', async () => {
+    const { d, ws } = await idleWorkspace()
+    const { term: id } = await runClaude(d, ws.id)
+
+    await d.client.request('term.write', { id, data: '/background shell\r' })
+
+    await expect
+      .poll(async () => d.client.request('workspace.get', { id: ws.id }), { timeout: 15_000 })
+      .toMatchObject({
+        status: 'idle',
+        backgroundTasks: [expect.objectContaining({ kind: 'shell', description: 'npm run dev' })]
+      })
+  }, 45_000)
+
+  it("a subagent's hooks keep a waiting session from going stuck while they arrive", async () => {
+    const { d, ws } = await idleWorkspace({ config: 'stall_timeout_minutes = 0.005\n' })
+    const { term: id } = await runClaude(d, ws.id)
+    const get = () => d.client.request('workspace.get', { id: ws.id })
+
+    await d.client.request('term.write', { id, data: '/background subagent\r' })
+    await expect
+      .poll(async () => (await get()).backgroundTasks.map((t) => t.kind), { timeout: 15_000 })
+      .toEqual(['subagent'])
+    const agentId = (await get()).backgroundTasks[0].id
+
+    // Each round waits for a tick to fold the hook in, so the run outlasts the 300 ms stall timeout.
+    for (let i = 0; i < 15; i++) {
+      const before = (await get()).lastActivityAt
+
+      await d.client.request('hook.event', {
+        workspaceId: ws.id,
+        payload: makeHookEvent('PreToolUse', {
+          cwd: ws.path,
+          agent_id: agentId,
+          tool_name: 'Read'
+        })
+      })
+      await expect.poll(async () => (await get()).lastActivityAt).not.toBe(before)
+    }
+
+    expect(await get()).toMatchObject({ status: 'working', statusReason: null })
+
+    await waitForStatus(d, ws.id, 'stuck')
+    expect((await get()).statusReason).toBe('no_heartbeat')
+  }, 45_000)
 })
 
 describe('status engine wiring', () => {

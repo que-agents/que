@@ -8,7 +8,12 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import type { Workspace } from '@shared/types'
 import { readFakeLog } from '../../src/testing/fakes'
-import { startTestDaemon, type TestDaemon, waitForStatus } from '../../src/testing/daemon-harness'
+import {
+  runClaude,
+  startTestDaemon,
+  type TestDaemon,
+  waitForStatus
+} from '../../src/testing/daemon-harness'
 import { makeTempRepo } from '../../src/testing/temp-repo'
 
 let daemon: TestDaemon | undefined
@@ -32,20 +37,6 @@ async function workspace(d: TestDaemon, projectId: string, name: string): Promis
   await waitForStatus(d, ws.id, 'idle')
 
   return ws
-}
-
-/** Opens a terminal in the workspace and starts claude there; returns the terminal and session ids. */
-async function runClaude(d: TestDaemon, wsId: string): Promise<{ term: string; session: string }> {
-  const { id } = await d.client.request('workspace.openTerminal', { id: wsId, cols: 100, rows: 30 })
-  await d.client.request('term.write', { id, data: 'claude\r' })
-  await expect
-    .poll(async () => (await d.client.request('workspace.get', { id: wsId })).sessionId, {
-      timeout: 20_000
-    })
-    .toMatch(/^[0-9a-f-]{36}$/)
-  const { sessionId } = await d.client.request('workspace.get', { id: wsId })
-
-  return { term: id, session: sessionId as string }
 }
 
 /** Waits until the terminal's screen shows `text`. */

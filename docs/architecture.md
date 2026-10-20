@@ -183,7 +183,9 @@ a clock tick, or a `claude agents --json` entry goes in with the previous
 status and `now`; the next status comes out. A prompt or tool use means
 working, a stop means idle, a permission prompt means needs input, and no sign
 of life for `stall_timeout_minutes` (a transcript file growing counts as life)
-means stuck. `status.ts` runs those rules per workspace, persists transitions,
+means stuck. A stop with agent-like background tasks (subagents, workflows,
+teammates) still running keeps it working; a shell or monitor does not.
+`status.ts` runs those rules per workspace, persists transitions,
 and emits `workspace.updated` with the full row. Nothing in the rules reads the clock, so they are
 tested exhaustively as plain functions.
 
