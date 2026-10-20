@@ -22,7 +22,6 @@ const VALUE_FLAGS = new Map([
   ['--settings', 'settings'],
   ['--session-id', 'sessionId'],
   ['--permission-mode', 'permissionMode'],
-  ['--permission-prompts', 'permissionPrompts'],
   ['--append-system-prompt-file', 'appendSystemPromptFile'],
   ['--append-system-prompt', 'appendSystemPrompt'],
   ['--system-prompt', 'systemPrompt'],

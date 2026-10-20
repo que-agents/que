@@ -218,7 +218,7 @@ Every change of a workspace's status or reason is also appended to the
 `workspace_status_log` table (and its creation, as `preparing`); rows older than
 30 days are pruned as new ones arrive, and a workspace's rows go with it. The
 morning report, `que report` and the morning summary build on that log alone:
-`report-service.ts` gathers every open workspace's rows for the window (by
+`gather-report.ts` gathers every open workspace's rows for the window (by
 default the last 24 hours) and `report.ts` turns the digests into the report and
 its count line. `digest.ts` turns one
 workspace's log rows for the window (plus the last row before it, so time already

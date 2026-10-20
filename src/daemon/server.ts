@@ -45,7 +45,7 @@ import { EventBus } from './bus'
 import { RpcError } from './errors'
 import type { HostedTerminal, PtyHost, Term, TermExtra } from './pty-host'
 import { QuietService } from './quiet'
-import { ReportService } from './report-service'
+import { gatherReport } from './gather-report'
 import { PrService } from './prs'
 import { LiveSessions, storedLiveSessions } from './live-sessions'
 import { StatusService } from './status'
@@ -162,7 +162,6 @@ export class DaemonServer {
   readonly prs: PrService
   readonly tickets: TicketService
   readonly workspaces: WorkspaceManager
-  readonly reports: ReportService
   readonly quiet: QuietService
   /** Workspace terminals with a live Claude session, restored after a restart. */
   readonly liveSessions: LiveSessions
@@ -205,11 +204,9 @@ export class DaemonServer {
       randomName: opts.randomWorkspaceName,
       config: () => this.strictConfig()
     })
-    this.reports = new ReportService({ store: this.store, workspaces: this.workspaces })
     this.prs = new PrService({
       store: this.store,
       workspaces: this.workspaces,
-      paths: this.paths,
       bus: this.bus,
       config: () => this.configOrDefault(),
       log: (m) => this.log(m)
@@ -236,7 +233,7 @@ export class DaemonServer {
       detachAll: () => {
         for (const c of this.conns) c.subs.clear()
       },
-      report: (since) => this.reports.report(since),
+      report: (since) => this.report(since),
       log: (m) => this.log(m),
       now: opts.now,
       tickMs: opts.quietTickMs
@@ -404,6 +401,11 @@ export class DaemonServer {
     this.bus.emit('config.changed', result)
 
     return result
+  }
+
+  /** The sessions report (report.get and the quiet summaries). */
+  private report(since?: string): ReturnType<typeof gatherReport> {
+    return gatherReport({ store: this.store, workspaces: this.workspaces }, since)
   }
 
   private createTerminal(params: TermCreateParams, extra?: TermExtra): HostedTerminal {
@@ -911,7 +913,7 @@ export class DaemonServer {
 
       return { ok: true }
     },
-    'report.get': (p) => this.reports.report(p?.since),
+    'report.get': (p) => this.report(p?.since),
     'quiet.state': () => this.quiet.state(),
     'quiet.unlock': (p) => this.quiet.unlockFor(p?.minutes, p?.why),
     'quiet.lock': () => this.quiet.lock(),

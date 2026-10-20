@@ -6,7 +6,7 @@ import type { Report, WorkspaceDigest } from '../shared/protocol'
 import { formatDuration as duration, formatSince, hhmm } from '../shared/format'
 import type { QuietKind } from '../shared/types'
 
-export const DEFAULT_REPORT_WINDOW_MS = 24 * 3_600_000
+const DEFAULT_REPORT_WINDOW_MS = 24 * 3_600_000
 
 /** The report window's start: the explicit `since`, else 24 hours ago. */
 export function reportSince(since: string | undefined, now: number): string {
