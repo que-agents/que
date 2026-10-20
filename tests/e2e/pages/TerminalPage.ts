@@ -21,6 +21,7 @@ export class TerminalPage {
   tabSelect: (id: string) => Locator
   tabClose: (id: string) => Locator
   tabExited: (id: string) => Locator
+  // The program (or name) a tab reads.
   tabReattached: (id: string) => Locator
 
   constructor(page: Page) {

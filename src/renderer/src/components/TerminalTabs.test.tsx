@@ -38,7 +38,7 @@ describe('TerminalTabs', () => {
       expect(screen.getAllByRole('tab')).toHaveLength(1)
     })
 
-    it('marks an exited terminal on its tab, with no badge, and keeps its folder as the tooltip', async () => {
+    it('marks an exited terminal on its tab, with no badge, and keeps its folder and id as the tooltip', async () => {
       fakeBridge.seedTerminal(shell)
       render(<App />)
       const tab = await screen.findByTestId(`terminal-tab-${shell.id}`)
@@ -53,7 +53,7 @@ describe('TerminalTabs', () => {
       expect(within(tab).queryByText(/exited/i)).not.toBeInTheDocument()
       expect(screen.getByTestId(`terminal-tab-${shell.id}-select`)).toHaveAttribute(
         'title',
-        '/Users/dev'
+        `/Users/dev\n${shell.id.slice(0, 4)}`
       )
     })
   })

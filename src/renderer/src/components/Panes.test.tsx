@@ -77,6 +77,44 @@ describe('Panes', () => {
     })
   })
 
+  describe('tab labels', () => {
+    it('reads the program in the terminal, the name until it is known, and keeps the last program after exit', async () => {
+      seed()
+      render(<App />)
+
+      const select = await screen.findByTestId(`terminal-tab-${one.id}-select`)
+      expect(select).toHaveTextContent(/^one/)
+
+      act(() => fakeBridge.updateTerminal(one.id, { title: undefined, process: 'claude' }))
+      await waitFor(() => expect(select).toHaveTextContent(/^claude/))
+      expect(screen.getByTestId(`terminal-tab-${one.id}-close`)).toHaveAccessibleName(
+        'Close claude'
+      )
+
+      act(() => fakeBridge.updateTerminal(one.id, { title: undefined, process: 'zsh' }))
+      await waitFor(() => expect(select).toHaveTextContent(/^zsh/))
+
+      act(() => fakeBridge.exitTerminal(one.id, 0))
+      expect(await screen.findByTestId(`terminal-tab-${one.id}-exited`)).toHaveTextContent('zsh')
+    })
+
+    it('holds the folder, the title the program set and the first four characters of the id in the tooltip', async () => {
+      seed()
+      render(<App />)
+
+      const select = await screen.findByTestId(`terminal-tab-${one.id}-select`)
+      expect(select).toHaveAttribute('title', `/Users/dev/a\n${one.id.slice(0, 4)}`)
+
+      act(() => fakeBridge.updateTerminal(one.id, { title: '✳ Fix the bug', process: 'claude' }))
+      await waitFor(() =>
+        expect(select).toHaveAttribute(
+          'title',
+          `/Users/dev/a\n✳ Fix the bug\n${one.id.slice(0, 4)}`
+        )
+      )
+    })
+  })
+
   describe('splitting', () => {
     it('Cmd+D splits beside with a new focused terminal in the second pane', async () => {
       const user = userEvent.setup()

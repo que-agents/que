@@ -1045,11 +1045,6 @@ body.resizing {
   padding-left: 6px;
 }
 
-.short-id {
-  opacity: 0.5;
-  font: 11px var(--mono);
-}
-
 .badge {
   margin-left: 6px;
   padding: 0 5px;

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Project, Workspace } from '../../../preload/index.d'
 import { formatCountdown } from '../../../shared/format'
-import { latestTasks } from '../format'
+import { latestTasks, tabLabel } from '../format'
 import { SCRATCH, usePanes, useQueSelector, useStore } from '../store'
 import { countOpenTickets } from '../ticket-tree'
 import { filterSidebar, matches, sortProjects, sortWorkspaces } from '../sidebar-order'
@@ -123,7 +123,7 @@ export default function Sidebar(): React.JSX.Element {
   const closeMenu = useCallback(() => setMenu(null), [])
   const selected = view.kind === 'terminals' ? view.key : null
   const allSessions = store.tabs(SCRATCH)
-  const sessions = allSessions.filter((t) => matches(filter, t.name, t.cwd))
+  const sessions = allSessions.filter((t) => matches(filter, tabLabel(t), t.name, t.cwd))
   const narrowed = filterSidebar(filter, projects, Object.values(workspaces))
   const shownProjects = sortProjects(narrowed.projects, Object.values(workspaces), sort)
   const activeSession = selected === SCRATCH ? store.activeTab(SCRATCH) : null
@@ -309,7 +309,7 @@ export default function Sidebar(): React.JSX.Element {
                   <span className="ico glyph" aria-hidden="true">
                     ›_
                   </span>
-                  <span className="name">{t.name}</span>
+                  <span className="name">{tabLabel(t)}</span>
                 </button>
                 {!t.alive && (
                   <span className="reveal">

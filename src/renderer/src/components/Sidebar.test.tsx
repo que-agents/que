@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { fakeBridge } from '@renderer/testing/fake-bridge'
 import {
@@ -722,6 +722,17 @@ describe('Sidebar', () => {
           'aria-selected',
           'true'
         )
+      })
+
+      it('reads a session by the program running in it', async () => {
+        fakeBridge.seedTerminal(zsh)
+        render(<App />)
+
+        const open = await screen.findByTestId(`sidebar-session-${zsh.id}-open`)
+        expect(open).toHaveTextContent(/zsh$/)
+
+        act(() => fakeBridge.updateTerminal(zsh.id, { title: undefined, process: 'claude' }))
+        await waitFor(() => expect(open).toHaveTextContent(/^›_\s*claude$/))
       })
 
       it('reads an exited session faint, with exited as its hover word and no badge', async () => {
