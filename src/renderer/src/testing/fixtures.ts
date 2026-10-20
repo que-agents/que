@@ -19,7 +19,6 @@ export {
   makeBackgroundTask,
   makePrCheck,
   makePrThreadEntry,
-  makeTask,
   makeTicket,
   makeWorkspace
 } from '../../../testing/entities'

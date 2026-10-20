@@ -12,12 +12,9 @@ import type {
   Project,
   PullRequest,
   QueApi,
-  QueueState,
   QuietState,
   QuietUnlock,
   Report,
-  Task,
-  TaskState,
   TermInfo,
   Ticket,
   TicketsListResult,
@@ -44,7 +41,6 @@ import {
   type WorkspaceRenameParams
 } from '../../../shared/protocol'
 import { workspaceSlug } from '../../../shared/slug'
-import { LIVE_STATES } from '../../../shared/types'
 import { makeQuietState, makeUserConfig } from './fixtures'
 
 export type FakeQueApi = QueApi
@@ -127,7 +123,7 @@ function currentDaemon(): DaemonState {
   }
 }
 
-function fakeId(prefix: 'prj_' | 'ws_' | 'tsk_'): string {
+function fakeId(prefix: 'prj_' | 'ws_'): string {
   idCounter += 1
 
   return `${prefix}fake${idCounter.toString(36).padStart(8, '0')}`
@@ -150,8 +146,6 @@ class FakeBridge {
   /** A test's hold or refusal on daemon.upgrade. */
   private upgradeGate = new Gate()
   private daemonStateCount = 0
-  private tasks = new Map<string, Task>()
-  private queue: QueueState = closedQueue()
   private home = '/Users/dev'
   private folder: string | null = null
   private tray = '● 0 ▸ 0 ✕ 0'
@@ -423,96 +417,6 @@ class FakeBridge {
 
           return { ok: true }
         },
-        on: (event, cb) => this.subscribe(event, cb as Listener)
-      },
-      task: {
-        add: async (p) => {
-          this.refuseIfQuiet('task.add')
-          const projectId = p.workspaceId ? this.workspace(p.workspaceId).projectId : p.projectId
-
-          if (!projectId || !this.projects.has(projectId)) {
-            throw notFound('project', projectId ?? '(none)')
-          }
-
-          if (!p.brief.trim()) throw rpcError('bad_request', 'brief is required')
-          const now = new Date().toISOString()
-
-          const task: Task = {
-            id: fakeId('tsk_'),
-            projectId,
-            workspaceId: p.workspaceId ?? null,
-            title: p.title ?? p.brief.split('\n')[0].trim().slice(0, 80),
-            brief: p.brief,
-            source: p.source ?? 'prompt',
-            resumeSessionId: p.resumeSessionId ?? null,
-            state: 'queued',
-            reason: null,
-            sessionId: null,
-            pid: null,
-            attempts: 0,
-            costUsd: 0,
-            turns: 0,
-            maxTurns: p.maxTurns ?? 50,
-            maxBudgetUsd: p.maxBudgetUsd ?? 5,
-            permissionMode: null,
-            branch: null,
-            prUrl: null,
-            resultText: null,
-            lastActivityAt: null,
-            startedAt: null,
-            finishedAt: null,
-            pausedUntil: null,
-            createdAt: now,
-            updatedAt: now
-          }
-
-          this.tasks.set(task.id, task)
-          this.emit('task.created', { ...task })
-
-          return { ...task }
-        },
-        list: async (p) =>
-          [...this.tasks.values()].flatMap((t) =>
-            !p?.state || t.state === p.state ? [{ ...t }] : []
-          ),
-        get: async ({ id }) => ({ ...this.task(id) }),
-        stop: async ({ id }) => {
-          const t = this.task(id)
-
-          if (!LIVE_STATES.has(t.state))
-            throw rpcError('conflict', `task ${id} is already ${t.state}`)
-          this.setTaskState(id, 'stopped')
-
-          return { ...this.task(id) }
-        },
-        remove: async ({ id }) => {
-          const t = this.task(id)
-
-          if (LIVE_STATES.has(t.state)) throw rpcError('conflict', `task ${id} is ${t.state}`)
-          this.tasks.delete(id)
-
-          return { ok: true }
-        },
-        on: (event, cb) => this.subscribe(event, cb as Listener)
-      },
-      queue: {
-        open: async (p) => {
-          this.refuseIfQuiet('queue.open')
-          this.setQueueState({
-            ...this.queue,
-            open: true,
-            concurrency: p?.concurrency ?? this.queue.concurrency,
-            openedAt: new Date().toISOString()
-          })
-
-          return { ...this.queue }
-        },
-        close: async () => {
-          this.setQueueState({ ...this.queue, open: false })
-
-          return { ...this.queue }
-        },
-        state: async () => ({ ...this.queue }),
         on: (event, cb) => this.subscribe(event, cb as Listener)
       },
       tickets: {
@@ -915,44 +819,6 @@ class FakeBridge {
     return this.workspaces.get(id)
   }
 
-  // ---- tasks and the queue -------------------------------------------------
-
-  /** Puts a task in the book silently: "already in the daemon". Call before render(). */
-  seedTask(task: Task): void {
-    this.tasks.set(task.id, { ...task })
-  }
-
-  /** Moves a task to a state and emits task.updated with the row, as the task machine would. */
-  setTaskState(id: string, state: TaskState, reason?: string): void {
-    const t = this.task(id)
-    const at = new Date().toISOString()
-    const terminal = !LIVE_STATES.has(state)
-
-    const next = {
-      ...t,
-      state,
-      reason: reason ?? null,
-      updatedAt: at,
-      finishedAt: terminal ? at : null
-    }
-
-    this.tasks.set(id, next)
-    this.emit('task.updated', { ...next })
-    const ws = state === 'done' && t.workspaceId ? this.workspaces.get(t.workspaceId) : undefined
-
-    if (ws) this.putWorkspace({ ...ws, finishedAt: at })
-  }
-
-  getTask(id: string): Task | undefined {
-    return this.tasks.get(id)
-  }
-
-  /** Replaces the queue state and emits queue.state. */
-  setQueueState(q: QueueState): void {
-    this.queue = { ...q }
-    this.emit('queue.state', { ...q })
-  }
-
   // ---- terminals -----------------------------------------------------------
 
   /** Puts a running terminal in the book silently, as if created before launch. */
@@ -1049,13 +915,6 @@ class FakeBridge {
   /** Marks a workspace's branch as pushed to origin, so it cannot be renamed. Call before render(). */
   setBranchPushed(id: string): void {
     this.pushedBranches.add(id)
-  }
-
-  /** Replaces a task in the book and emits task.updated (cost, turns, PR changed). */
-  updateTask(id: string, changes: Partial<Task>): void {
-    const t = { ...this.task(id), ...changes, updatedAt: new Date().toISOString() }
-    this.tasks.set(id, t)
-    this.emit('task.updated', { ...t })
   }
 
   /**
@@ -1275,8 +1134,6 @@ class FakeBridge {
     this.workspaces.clear()
     this.digests = []
     this.terminals.clear()
-    this.tasks.clear()
-    this.queue = closedQueue()
     this.listeners.clear()
     this.disconnectListeners.clear()
     this.reconnectListeners.clear()
@@ -1316,14 +1173,6 @@ class FakeBridge {
     if (!ws) throw notFound('workspace', id)
 
     return ws
-  }
-
-  private task(id: string): Task {
-    const t = this.tasks.get(id)
-
-    if (!t) throw notFound('task', id)
-
-    return t
   }
 
   /** Every seeded digest through the daemon's buildReport, with no time window. */
@@ -1414,10 +1263,6 @@ function toInfo({ input: _input, screen: _screen, ...info }: FakeTerminal): Term
 
 function defaultConfigBook(): ConfigGetResult {
   return { path: '/Users/dev/.config/que/config.toml', config: makeUserConfig() }
-}
-
-function closedQueue(): QueueState {
-  return { open: false, concurrency: 2, running: 0, queued: 0, paused: 0, openedAt: null }
 }
 
 export const fakeBridge = new FakeBridge()

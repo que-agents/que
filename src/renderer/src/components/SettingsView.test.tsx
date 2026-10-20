@@ -80,7 +80,6 @@ describe('SettingsView', () => {
       expect(screen.getByTestId('settings-path')).toHaveTextContent(
         '/Users/dev/.config/que/config.toml'
       )
-      expect(screen.queryByText('Overnight tasks')).not.toBeInTheDocument()
       expect(screen.queryByRole('button', { name: /^Save/ })).not.toBeInTheDocument()
     })
 

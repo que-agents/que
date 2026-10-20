@@ -6,7 +6,6 @@ import {
   makeProject,
   makePullRequest,
   makeQuietState,
-  makeTask,
   makeTermInfo,
   makeUserConfig,
   makeWorkspace
@@ -65,54 +64,6 @@ const dotfilesMain = makeWorkspace({
   lastActivityAt: minutesAgo(now, 180)
 })
 
-const running = makeTask({
-  id: 'tsk_01hzy0d7w3ke',
-  title: 'Add retry logic to the uploader',
-  workspaceId: retry.id,
-  state: 'running',
-  startedAt: minutesAgo(now, 67),
-  lastActivityAt: minutesAgo(now, 2),
-  turns: 14,
-  costUsd: 1.82,
-  createdAt: minutesAgo(now, 70),
-  updatedAt: minutesAgo(now, 2)
-})
-
-const paused = makeTask({
-  id: 'tsk_01hzy1f2g5mn',
-  title: 'Document the upload limits',
-  workspaceId: null,
-  state: 'paused',
-  reason: 'rate_limit',
-  pausedUntil: new Date(2026, 9, 14, 3, 0).toISOString(),
-  lastActivityAt: minutesAgo(now, 31),
-  createdAt: minutesAgo(now, 60),
-  updatedAt: minutesAgo(now, 30)
-})
-
-const stuck = makeTask({
-  id: 'tsk_01hzy2h8j4pq',
-  title: 'Fix the flaky upload test',
-  workspaceId: null,
-  state: 'stuck',
-  reason: 'no_heartbeat',
-  updatedAt: minutesAgo(now, 60)
-})
-
-const queued = makeTask({ id: 'tsk_01hzy5p8q9vw', title: 'Bump the SDK', state: 'queued' })
-
-const doneTonight = makeTask({
-  id: 'tsk_01hzy3k2l6rs',
-  state: 'done',
-  updatedAt: minutesAgo(now, 90)
-})
-
-const doneYesterday = makeTask({
-  id: 'tsk_01hzy4m5n7tu',
-  state: 'done',
-  updatedAt: minutesAgo(now, 26 * 60)
-})
-
 const shell = makeTermInfo({
   name: retry.name,
   workspaceId: retry.id,
@@ -131,8 +82,6 @@ function seed(): void {
 
   for (const w of [retry, auth, resume, dotfilesMain]) fakeBridge.seedWorkspace(w)
 
-  for (const t of [running, paused, stuck, queued, doneTonight, doneYesterday])
-    fakeBridge.seedTask(t)
   fakeBridge.seedTerminal(shell)
   fakeBridge.seedTerminal(dotShell)
   fakeBridge.setQuietState(quiet)
@@ -155,14 +104,14 @@ describe('QuietBoard', () => {
       )
     })
 
-    it('counts tonight in one line, in order, with the zeros left out', async () => {
+    it('counts the workspaces in one line, in order, with the zeros left out', async () => {
       seed()
 
       render(<App board now={clock} />)
 
       await waitFor(() => {
         expect(screen.getByTestId('quiet-board-counts')).toHaveTextContent(
-          /^2 stuck · 1 running · 1 waiting · 1 paused \(limit resets 03:00\) · 1 done · 1 idle$/
+          /^1 stuck · 1 running · 1 waiting · 1 idle$/
         )
       })
     })
@@ -174,14 +123,14 @@ describe('QuietBoard', () => {
 
       const counts = await screen.findByTestId('quiet-board-counts')
       await waitFor(() => {
-        expect(within(counts).getByText('2 stuck')).toHaveClass('tone-bad')
+        expect(within(counts).getByText('1 stuck')).toHaveClass('tone-bad')
       })
       expect(within(counts).getByText('1 running')).toHaveClass('muted')
       expect(within(counts).getByText('1 waiting')).not.toHaveAttribute('class')
-      expect(within(counts).getByText('1 done')).not.toHaveAttribute('class')
+      expect(within(counts).getByText('1 idle')).not.toHaveAttribute('class')
     })
 
-    it('lists stuck, live tasks newest first, working, waiting, then the rest, each with its state and last activity', async () => {
+    it('lists stuck, working, waiting, then the rest, each with its state and last activity', async () => {
       seed()
 
       render(<App board now={clock} />)
@@ -189,8 +138,6 @@ describe('QuietBoard', () => {
       await waitFor(() => {
         expect(rowTexts()).toEqual([
           'app-1460-upload-resume uploader stuck 50m ago',
-          'Document the upload limits uploader paused 31m ago',
-          'Add retry logic to the uploader uploader running · 1h 07m 2m ago',
           'app-1432-retry-logic uploader working 1m ago',
           'app-1451-token-refresh uploader waiting 34m ago',
           'main dotfiles idle 3h ago'
@@ -213,17 +160,14 @@ describe('QuietBoard', () => {
       ).toHaveClass('tone-bad')
     })
 
-    it('carries no PR, turns or cost, and nothing to act on but Unlock', async () => {
+    it('carries no PR, and nothing to act on but Unlock', async () => {
       seed()
       fakeBridge.setWorkspacePr(retry.id, makePullRequest({ state: 'open', checks: 'failing' }))
 
       render(<App board now={clock} />)
 
-      const row = await screen.findByTestId(`quiet-board-row-${running.id}`)
-      expect(row).not.toHaveTextContent(/\$|14|open|✕/)
-      expect(screen.getByTestId(`quiet-board-row-${retry.id}`)).not.toHaveTextContent(/open|✕/)
-      expect(screen.queryByTestId(`quiet-board-row-${stuck.id}`)).not.toBeInTheDocument()
-      expect(screen.queryByTestId(`quiet-board-row-${queued.id}`)).not.toBeInTheDocument()
+      const row = await screen.findByTestId(`quiet-board-row-${retry.id}`)
+      expect(row).not.toHaveTextContent(/open|✕/)
       expect(screen.getAllByRole('button')).toEqual([screen.getByTestId('quiet-board-unlock')])
       expect(screen.queryByRole('link')).not.toBeInTheDocument()
       expect(screen.queryByRole('tab')).not.toBeInTheDocument()
@@ -263,30 +207,6 @@ describe('QuietBoard', () => {
       expect(screen.getByTestId('quiet-board-end')).toHaveClass('ghost')
     })
 
-    it('still counts from the window start', async () => {
-      seed()
-      fakeBridge.setQuietState(manual)
-
-      render(<App board now={clock} />)
-
-      await waitFor(() => {
-        expect(screen.getByTestId('quiet-board-counts')).toHaveTextContent(/· 1 done ·/)
-      })
-    })
-
-    it('counts what is queued without tonight', async () => {
-      fakeBridge.seedTask(queued)
-      fakeBridge.setQuietState(manual)
-
-      render(<App board now={clock} />)
-
-      await waitFor(() => {
-        expect(screen.getByTestId('quiet-board-empty')).toHaveTextContent(
-          /^nothing running · 1 queued$/
-        )
-      })
-    })
-
     it('ends the manual quiet with End quiet, and drops the button with it', async () => {
       const user = userEvent.setup()
       seed()
@@ -313,19 +233,22 @@ describe('QuietBoard', () => {
   })
 
   describe('status updates', () => {
-    it('moves a task between counts and off the rows as the daemon reports it', async () => {
+    it('moves a workspace between counts as the daemon reports it', async () => {
       seed()
       render(<App board now={clock} />)
-      await screen.findByTestId(`quiet-board-row-${running.id}`)
+      await screen.findByTestId(`quiet-board-row-${retry.id}`)
 
-      fakeBridge.setTaskState(running.id, 'done')
+      fakeBridge.setStatus(retry.id, 'idle')
 
       await waitFor(() => {
         expect(screen.getByTestId('quiet-board-counts')).toHaveTextContent(
-          /^2 stuck · 1 running · 1 waiting · 1 paused \(limit resets 03:00\) · 2 done · 1 idle$/
+          /^1 stuck · 1 waiting · 2 idle$/
         )
       })
-      expect(screen.queryByTestId(`quiet-board-row-${running.id}`)).not.toBeInTheDocument()
+      expect(screen.getByTestId(`quiet-board-row-${retry.id}`)).toHaveAttribute(
+        'data-state',
+        'idle'
+      )
     })
   })
 
@@ -353,9 +276,7 @@ describe('QuietBoard', () => {
       expect(screen.getByTestId('quiet-board-counts')).toHaveTextContent(/^nothing running$/)
     })
 
-    it('adds what is queued for tonight and when the morning summary arrives', async () => {
-      fakeBridge.seedTask(queued)
-      fakeBridge.seedTask(makeTask({ id: 'tsk_01hzy6r1s2xy', state: 'queued' }))
+    it('adds when the morning summary arrives', async () => {
       fakeBridge.setConfig({
         notifications: {
           chimeOnComplete: true,
@@ -370,22 +291,19 @@ describe('QuietBoard', () => {
 
       await waitFor(() => {
         expect(screen.getByTestId('quiet-board-empty')).toHaveTextContent(
-          /^nothing running · 2 queued for tonight · summary at 07:00$/
+          /^nothing running · summary at 07:00$/
         )
       })
     })
 
     it('leaves the summary out while the morning summary is off', async () => {
-      fakeBridge.seedTask(queued)
       fakeBridge.setConfig(makeUserConfig())
       fakeBridge.setQuietState(quiet)
 
       render(<App board now={clock} />)
 
       await waitFor(() => {
-        expect(screen.getByTestId('quiet-board-empty')).toHaveTextContent(
-          /^nothing running · 1 queued for tonight$/
-        )
+        expect(screen.getByTestId('quiet-board-empty')).toHaveTextContent(/^nothing running$/)
       })
     })
   })

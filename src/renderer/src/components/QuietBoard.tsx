@@ -1,13 +1,12 @@
-import type { Task, Workspace } from '../../../preload/index.d'
-import { formatAge, formatDuration, hhmm } from '../../../shared/format'
+import type { Workspace } from '../../../preload/index.d'
+import { formatAge, hhmm } from '../../../shared/format'
 import {
   boardCountItems,
   boardEmptyLine,
   boardTally,
   NOTHING_RUNNING
 } from '../../../shared/quiet-board'
-import { ACTIVE_STATES } from '../../../shared/types'
-import { isLiveTask, newestFirst, statusBadge, type Tone, taskBadge } from '../format'
+import { statusBadge, type Tone } from '../format'
 import { useQue, useStore } from '../store'
 import { useNow } from '../useNow'
 import CountLine from './CountLine'
@@ -34,48 +33,25 @@ function minutes(m: number): string {
 /**
  * Quiet hours (or a manual quiet): the one question, "running and not stuck?", answered from
  * across the room without pulling anyone in. A dim strip, one faint count
- * line, a dim row per live task and per workspace that is busy or has a live
- * terminal, and a ghost Unlock (and End quiet in a manual window): no sentences, no badges, no links. Needs input
+ * line, a dim row per workspace that is busy or has a live terminal, and a ghost Unlock (and End quiet in a manual window): no sentences, no badges, no links. Needs input
  * is not a night state here: it reads `waiting`, with no tone.
  */
 export default function QuietBoard(): React.JSX.Element {
   const store = useStore()
-  const { quiet, tasks, workspaces, projects, terminals, connected, config } = useQue()
+  const { quiet, workspaces, projects, terminals, connected, config } = useQue()
   // Ages and elapsed times move on their own; events refresh everything else.
   const now = useNow()
-  const since = quiet?.windowStart ? Date.parse(quiet.windowStart) : now
   const windowEnd = quiet?.windowEnd ? Date.parse(quiet.windowEnd) : null
   const until = windowEnd === null ? '--:--' : hhmm(windowEnd)
   const projectName = (id: string): string => projects.find((p) => p.id === id)?.name ?? ''
   const ws = Object.values(workspaces)
   const hasTerminal = (w: Workspace): boolean => terminals.some((t) => t.key === w.id && t.alive)
 
-  const tally = boardTally({
-    tasks: Object.values(tasks),
-    workspaces: ws.map((w) => ({ id: w.id, status: w.status, hasTerminal: hasTerminal(w) })),
-    sinceMs: since
-  })
-
-  const counts = boardCountItems(tally)
-
-  // Queued tasks are not running yet: the empty line counts them instead.
-  const live = newestFirst(
-    Object.values(tasks).filter((t) => isLiveTask(t.state) && t.state !== 'queued')
+  const counts = boardCountItems(
+    boardTally({
+      workspaces: ws.map((w) => ({ id: w.id, status: w.status, hasTerminal: hasTerminal(w) }))
+    })
   )
-
-  const taskRow = (t: Task): Row => ({
-    id: t.id,
-    name: t.title,
-    project: projectName(t.projectId),
-    state: t.state,
-    stateText:
-      ACTIVE_STATES.has(t.state) && t.startedAt
-        ? `${t.state} · ${formatDuration(now - Date.parse(t.startedAt), { seconds: false })}`
-        : t.state,
-    dot: taskBadge(t.state).tone,
-    stuck: false,
-    lastActivity: t.lastActivityAt
-  })
 
   const workspaceRow = (w: Workspace): Row => ({
     id: w.id,
@@ -98,7 +74,6 @@ export default function QuietBoard(): React.JSX.Element {
 
   const rows: Row[] = [
     ...byStatus('stuck'),
-    ...live.map(taskRow),
     ...byStatus('working'),
     ...byStatus('needs_input'),
     ...shown
@@ -131,7 +106,7 @@ export default function QuietBoard(): React.JSX.Element {
       <div className="quiet-board-rows">
         {rows.length === 0 ? (
           <p className="quiet-board-empty" data-testid="quiet-board-empty">
-            {boardEmptyLine({ queued: tally.queued, summaryAt, kind: quiet?.kind })}
+            {boardEmptyLine({ summaryAt })}
           </p>
         ) : (
           <ul aria-label={manual ? 'Running' : 'Running tonight'}>

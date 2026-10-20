@@ -66,7 +66,7 @@ Nothing is ever pushed to the default branch or a protected one.
 ## Quiet mode
 
 From 19:00 to 07:00 by default, the app swaps its terminals for a quiet board:
-a dim line of what is running, waiting, stuck and done, a row for each, and
+a dim line of what is running, waiting, stuck and idle, a row for each, and
 nothing to click but Unlock. The daemon refuses terminal contents, reports and new work to every
 client during those hours, so the CLI cannot peek either. `que unlock 15 --why
 "deploy check"` (or the board's button) shows everything for a while; `que lock`

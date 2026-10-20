@@ -774,7 +774,7 @@ export default function SettingsView(): React.JSX.Element {
               checked={form.chimeComplete}
               onChange={(e) => now('chime-complete', { chimeComplete: e.target.checked })}
             />
-            Chime when a session finishes a turn or a task finishes (work hours)
+            Chime when a session finishes a turn (work hours)
             {mark('chime-complete')}
           </label>
           {error('chime-complete')}
@@ -978,8 +978,8 @@ export default function SettingsView(): React.JSX.Element {
             {error('protected-branches')}
           </label>
           <p className="hint">
-            Never pushed to by Create draft PR or by an overnight task, besides each project&apos;s
-            default branch. Comma-separated.
+            Never pushed to by Create draft PR, besides each project&apos;s default branch.
+            Comma-separated.
           </p>
         </fieldset>
       </form>

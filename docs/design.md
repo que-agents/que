@@ -155,9 +155,8 @@ only under the pointer.
   folder (`--fg-faint`) and its name in sans 12px 500 `--fg-muted` (`--fg-secondary`
   under the pointer); a session carries `›_` in mono; a workspace carries its dot.
 - **The dot.** A workspace row is a 5px dot in its tone and the name, nothing else:
-  the tone is the live task's state when there is one, else the workspace status. A
-  workspace that is working, or has a task preparing, running or finishing, shows the
-  working mark instead: four 3px `--accent` dots on a 2×2 grid at a 5px pitch, with a
+  the tone is the workspace status. A workspace that is working shows the working mark
+  instead: four 3px `--accent` dots on a 2×2 grid at a 5px pitch, with a
   diagonal ripple across them (the top-left first, the top-right and bottom-left 120ms
   later, the bottom-right 120ms after that; each grows over 0.36s, holds 0.3s, shrinks
   over 0.36s, in a 1.2s loop, so the mark is never empty). It is a CSS animation, no
@@ -174,8 +173,7 @@ only under the pointer.
   its `--tone-muted` dot. The selected row reads `--fg` on `--bg-active` whatever its
   state. Most rows sit faint most of the time; the few that need you are two steps
   brighter.
-- **Finished, not looked at.** A workspace whose turn ended (working to idle) or whose
-  task finished since the app last had it selected in a focused window shows the done
+- **Finished, not looked at.** A workspace whose turn ended (working to idle) since the app last had it selected in a focused window shows the done
   tone, `--tone-good` (the tone table's "idle after work"), on its dot and its name at
   `--fg`. Selecting it returns it to its own dot and the faint weight. Needs input and
   stuck keep their tones: orange and red already mean "now", green means "fresh". A
@@ -185,8 +183,8 @@ only under the pointer.
 - **Under the pointer** (and on keyboard focus, and while the row's menu is open) a
   row shows an overlay at its right end, painted on the row's own hover background:
   the status word in mono 11px `--fg-faint` (its tone for needs input and stuck), then
-  ⋯. For a fresh finish the word is `done · 12m ago`, or the task's ask, `done · draft
-  PR #12` or `done · no changes`. An idle row with background work names its kinds,
+  ⋯. For a fresh finish the word is `done · 12m ago`, or, while the workspace has an
+  open pull request, `done · draft PR #12` or `done · PR #12`. An idle row with background work names its kinds,
   `idle · shell`, `idle · monitor`, or `idle · shell · monitor`. The overlay covers the end of a long name rather
   than reflowing it, so nothing jumps. A project head under the pointer turns its
   folder into its chevron and shows `+` and ⋯, which stay at opacity 0 until the head
@@ -251,10 +249,9 @@ Needs input is not a night state: it reads `waiting`, faint, with a neutral
 dot, and the locked tray title leaves its count out (`● 3 ✕ 0`).
 A manual quiet (`que quiet start`, or the tray's `Quiet for …`) shows the same
 board with plainer words, since it need not be night: the label reads `[ QUIET ]`
-and the list `Running` instead of `Running tonight`, an empty board says
-`N queued` without `for tonight`, and an `End quiet` button sits beside Unlock,
-drawn the same way. Those two buttons stay the board's only controls; the
-tally still counts from the window's start. The board window and the tray
+and the list `Running` instead of `Running tonight`, and an `End quiet` button
+sits beside Unlock, drawn the same way. Those two buttons stay the board's only
+controls. The board window and the tray
 tooltip read `que · quiet`.
 
 ## Report
