@@ -40,10 +40,7 @@ describe('parseConfig', () => {
         },
         notifications: { chimeOnComplete: true, chimeOnNeedsInput: false, morningSummary: false },
         jira: defaultJira(),
-        startPrompt: '',
-        summaries: true,
-        summaryModel: 'haiku',
-        summaryIntervalMinutes: 5
+        startPrompt: ''
       }
     })
   })
@@ -61,9 +58,8 @@ default_permission_mode = "plan"
 allow_bypass_permissions = true
 protected_branches = ["main", "production"]
 start_prompt = "Read .que/brief.md and ask before editing."
+# A key from an older release: read without an error.
 summaries = false
-summary_model = " sonnet "
-summary_interval_minutes = 15
 
 [repos.uploader]
 path = "/Users/dev/code/uploader"
@@ -95,10 +91,7 @@ path = "/Users/dev/code/api"
         quietHours: expect.objectContaining({ enabled: true }),
         notifications: expect.objectContaining({ chimeOnComplete: true }),
         jira: defaultJira(),
-        startPrompt: 'Read .que/brief.md and ask before editing.',
-        summaries: false,
-        summaryModel: 'sonnet',
-        summaryIntervalMinutes: 15
+        startPrompt: 'Read .que/brief.md and ask before editing.'
       }
     })
   })
@@ -270,32 +263,6 @@ start_prompt = 3
     expect(set.ok && set.config.startPrompt).toBe('Read .que/brief.md first.')
     const again = parseConfig(stringifyConfig({ start_prompt: '' }), env)
     expect(again.ok && again.config.startPrompt).toBe('')
-  })
-
-  it('reports bad sidebar-title summary settings by key', () => {
-    const bad = parseConfig(
-      'summaries = "yes"\nsummary_model = ""\nsummary_interval_minutes = 0.5\n',
-      env
-    )
-
-    expect(!bad.ok && bad.errors.map((e) => e.key)).toEqual([
-      'summaries',
-      'summary_model',
-      'summary_interval_minutes'
-    ])
-    const zero = parseConfig('summary_interval_minutes = 0\n', env)
-    expect(!zero.ok && zero.errors[0]).toEqual({
-      key: 'summary_interval_minutes',
-      message: 'must be a whole number from 1 to 1440'
-    })
-    // Past a day, the throttle's timer delay would overflow and fire at once.
-    const long = parseConfig('summary_interval_minutes = 1441\n', env)
-    expect(!long.ok && long.errors[0]).toEqual({
-      key: 'summary_interval_minutes',
-      message: 'must be a whole number from 1 to 1440'
-    })
-    const day = parseConfig('summary_interval_minutes = 1440\n', env)
-    expect(day.ok && day.config.summaryIntervalMinutes).toBe(1440)
   })
 
   it('reports a TOML syntax error without a key', () => {
@@ -492,8 +459,6 @@ describe('patchToToml', () => {
         protectedBranches: ['main', 'hotfix'],
         instructionsFile: '~/notes/delegation.md',
         startPrompt: 'Plan first.',
-        summaryModel: 'sonnet',
-        summaryIntervalMinutes: 15,
         allowBypassPermissions: true
       })
     ).toEqual({
@@ -501,8 +466,6 @@ describe('patchToToml', () => {
       protected_branches: ['main', 'hotfix'],
       instructions_file: '~/notes/delegation.md',
       start_prompt: 'Plan first.',
-      summary_model: 'sonnet',
-      summary_interval_minutes: 15,
       allow_bypass_permissions: true
     })
   })

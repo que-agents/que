@@ -485,6 +485,19 @@ export class WorkspaceManager {
     return next
   }
 
+  /**
+   * The session in one of the workspace's terminals named itself `label`: it becomes the
+   * title unless the user set one or it is already the title. Announces a change with
+   * workspace.updated.
+   */
+  labelFromSession(id: string, label: string): void {
+    const ws = this.opts.store.getWorkspace(id)
+
+    if (!ws || ws.archivedAt || ws.titleSource === 'user' || ws.title === label) return
+    this.opts.store.setWorkspaceTitle(id, label, 'terminal')
+    this.opts.emit('workspace.updated', this.get(id))
+  }
+
   private runSetup(ws: Workspace, command: string | undefined): void {
     if (!command) {
       this.opts.status.apply(ws.id, { kind: 'setup_done' })

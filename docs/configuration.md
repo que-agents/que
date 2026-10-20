@@ -31,9 +31,6 @@ allow_bypass_permissions = false
 protected_branches = ["main", "master", "release"]
 start_prompt = "" # empty: Claude starts on the brief itself
 # instructions_file = "~/.config/que/instructions.md"   # unset: no instructions
-summaries = true # sidebar titles summarised in the background
-summary_model = "haiku"
-summary_interval_minutes = 5
 
 [quiet_hours]
 enabled = true
@@ -73,9 +70,6 @@ start_prompt = "Read .que/ticket.md, the ticket this workspace is for. Restate t
 | `allow_bypass_permissions`           | Must be `true`, and the repo must opt in, before a task may run with `bypassPermissions`.                                                                                                                                                                                    |
 | `protected_branches`                 | Branches the finisher never pushes, besides each project's default branch.                                                                                                                                                                                                   |
 | `start_prompt`                       | Empty by default: a workspace made from a brief (New workspace with "Start Claude with this brief" on) starts `claude` with the brief itself as the first prompt. Set it to send this text instead; the brief is in `.que/brief.md`, so the text can tell Claude to read it. |
-| `summaries`                          | Sidebar titles summarised in the background (see [Sidebar titles](#sidebar-titles)).                                                                                                                                                                                         |
-| `summary_model`                      | The model the summariser asks, passed to `claude --model`.                                                                                                                                                                                                                   |
-| `summary_interval_minutes`           | At most one summary per workspace in this many minutes (a whole number from 1 to 1440, a day).                                                                                                                                                                               |
 | `instructions_file`                  | A file appended to the system prompt of every session started in a workspace (see [Instructions](#instructions)). Absolute, or starting with `~`; empty means unset.                                                                                                         |
 | `quiet_hours.enabled`                | Quiet mode on or off.                                                                                                                                                                                                                                                        |
 | `quiet_hours.default`                | The nightly window, `[start, end]` in local 24-hour time. It may cross midnight.                                                                                                                                                                                             |
@@ -119,23 +113,13 @@ edit applies to new sessions; a resumed session picks it up after it compacts.
 
 ## Sidebar titles
 
-A workspace made from a brief starts with the brief's first line as its title. With
-`summaries` on (the default), the daemon then asks a small model for a label of a few
-words saying what the session is doing: once when the workspace is created, and again
-after a turn ends (the session's Stop hook), at most once per `summary_interval_minutes`
-per workspace; a turn that ends sooner leaves one refresh pending for when the interval is
-up. Each call runs `claude -p --model <summary_model> --output-format text --tools ''
---no-session-persistence` (no tools, no saved session) from `QUE_HOME`, never the worktree,
-with the start of the brief and the end of Claude's latest reply, found in the last 256 KiB
-of the session transcript. Calls run one at a time, are stopped after 60 seconds (or when
-the daemon stops), and a failed or empty answer keeps the current title.
-
-Renaming a workspace pins its title: a title you set (or one a ticket gives, `KEY
-summary`) is never replaced. Archived workspaces are never summarised.
-
-Cost: each call is a few hundred input tokens and a dozen output tokens on the small
-model, throttled per workspace as above. Turn it off in Settings → Sidebar titles or with
-`que config set summaries=false`.
+A workspace made from a brief starts with the brief's first line as its title. Once
+Claude Code runs in one of its terminals, the title becomes the name the session gives
+itself in the terminal title (from its first prompt, or `/rename`), and follows it when
+the name changes; an exit leaves the last name in place. Renaming a workspace in que
+pins its title: a title you set (or one a ticket gives, `KEY summary`) is never
+replaced. With `CLAUDE_CODE_DISABLE_TERMINAL_TITLE` set in the environment, Claude Code
+writes no title and the row keeps the brief's first line.
 
 ## The repository config: `que.toml`
 

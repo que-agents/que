@@ -7,7 +7,6 @@ import type {
 } from '../../../preload/index.d'
 import { currentWindow } from '../../../daemon/quiet-hours'
 import { SUGGESTED_START_PROMPT } from '../../../shared/brief'
-import { MAX_SUMMARY_INTERVAL_MINUTES } from '../../../shared/config-defaults'
 import { type ConfigPatch, HHMM, WEEKDAYS } from '../../../shared/types'
 import { errorMessage } from '../../../shared/errors.decode'
 import { useQue, useStore } from '../store'
@@ -39,9 +38,6 @@ interface Form {
   /** The top-level `start_prompt`, for a workspace made from a brief. */
   workspacePrompt: string
   instructionsFile: string
-  summaries: boolean
-  summaryModel: string
-  summaryInterval: string
 }
 
 /** Monday first, as people read a week. */
@@ -84,10 +80,7 @@ function toForm(c: UserConfig): Form {
     startPrompt: c.jira.startPrompt,
     useStartPrompt: c.startPrompt.trim() !== '',
     workspacePrompt: c.startPrompt,
-    instructionsFile: c.instructionsFile ?? '',
-    summaries: c.summaries,
-    summaryModel: c.summaryModel,
-    summaryInterval: String(c.summaryIntervalMinutes)
+    instructionsFile: c.instructionsFile ?? ''
   }
 }
 
@@ -266,29 +259,6 @@ const SPECS = {
   },
   'start-prompt-enabled': startPromptSpec,
   'workspace-prompt': startPromptSpec,
-  'summaries-enabled': {
-    take: own('summaries'),
-    patch: (f) => ({ summaries: f.summaries })
-  },
-  'summary-model': {
-    take: own('summaryModel'),
-    check: (f) => filled(f.summaryModel, 'The summary model cannot be empty'),
-    patch: (f) => ({ summaryModel: f.summaryModel.trim() })
-  },
-  'summary-interval': {
-    take: own('summaryInterval'),
-    check: (f) => {
-      const n = Number(f.summaryInterval)
-
-      return f.summaryInterval.trim() === '' ||
-        !Number.isInteger(n) ||
-        n < 1 ||
-        n > MAX_SUMMARY_INTERVAL_MINUTES
-        ? `Summary minutes must be a whole number from 1 to ${MAX_SUMMARY_INTERVAL_MINUTES}`
-        : null
-    },
-    patch: (f) => ({ summaryIntervalMinutes: Number(f.summaryInterval) })
-  },
   'instructions-file': {
     take: own('instructionsFile'),
     check: (f) => {
@@ -611,7 +581,7 @@ export default function SettingsView(): React.JSX.Element {
 
   /** A number field: a stepper writes at once, typing waits for blur or Enter. */
   const number =
-    (field: Field, key: 'unlockMinutes' | 'pollMinutes' | 'summaryInterval') =>
+    (field: Field, key: 'unlockMinutes' | 'pollMinutes') =>
     (e: React.ChangeEvent<HTMLInputElement>): void => {
       const next = { ...form, [key]: e.target.value }
       setForm(next)
@@ -928,49 +898,6 @@ export default function SettingsView(): React.JSX.Element {
           ) : (
             <p className="hint">Claude starts on the brief itself.</p>
           )}
-        </fieldset>
-        <fieldset disabled={off}>
-          <legend>Sidebar titles</legend>
-          <label className="check">
-            <input
-              type="checkbox"
-              data-testid="settings-summaries-enabled"
-              checked={form.summaries}
-              onChange={(e) => now('summaries-enabled', { summaries: e.target.checked })}
-            />
-            Summarise what each session is doing in its sidebar title
-            {mark('summaries-enabled')}
-          </label>
-          {error('summaries-enabled')}
-          <label>
-            {head('Model', 'summary-model')}
-            <input
-              data-testid="settings-summary-model"
-              value={form.summaryModel}
-              onChange={(e) => update({ summaryModel: e.target.value })}
-              {...text('summary-model')}
-              autoComplete="off"
-              spellCheck={false}
-            />
-            {error('summary-model')}
-          </label>
-          <label>
-            {head('At most every (minutes)', 'summary-interval')}
-            <input
-              type="number"
-              min="1"
-              max={MAX_SUMMARY_INTERVAL_MINUTES}
-              step="1"
-              data-testid="settings-summary-interval"
-              value={form.summaryInterval}
-              onChange={number('summary-interval', 'summaryInterval')}
-              {...text('summary-interval')}
-            />
-            {error('summary-interval')}
-            <span className="hint">
-              One short call to the model after a turn ends; renaming a workspace keeps your title
-            </span>
-          </label>
         </fieldset>
         <fieldset data-testid="settings-instructions" disabled={off}>
           <legend>Instructions</legend>

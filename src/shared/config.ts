@@ -21,8 +21,7 @@ import {
   configDefaults,
   defaultJira,
   defaultNotifications,
-  defaultQuietHours,
-  MAX_SUMMARY_INTERVAL_MINUTES
+  defaultQuietHours
 } from './config-defaults'
 import { errorCode, errorMessage } from './errors.decode'
 
@@ -32,8 +31,7 @@ export {
   DEFAULT_START_PROMPT,
   defaultJira,
   defaultNotifications,
-  defaultQuietHours,
-  MAX_SUMMARY_INTERVAL_MINUTES
+  defaultQuietHours
 } from './config-defaults'
 
 import { patchPathOf } from './config-keys.decode'
@@ -161,9 +159,6 @@ function prefixed(sub: ConfigError[], prefix: string, errors: ConfigError[]): vo
 const isPositive = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v) && v > 0
 
 const isString = (v: unknown): v is string => typeof v === 'string'
-
-const isSummaryInterval = (v: unknown): v is number =>
-  Number.isInteger(v) && Number(v) >= 1 && Number(v) <= MAX_SUMMARY_INTERVAL_MINUTES
 
 const isNonEmptyString = (v: unknown): v is string => typeof v === 'string' && v.length > 0
 
@@ -377,19 +372,6 @@ export function parseConfig(text: string, env: ConfigEnv): ConfigResult<UserConf
       errors.push({ key: 'start_prompt', message: 'must be a string' })
     } else config.startPrompt = startPrompt.trim() === '' ? '' : startPrompt
   }
-
-  config.summaries = optionalBool(t, 'summaries', errors) ?? config.summaries
-  config.summaryModel =
-    field(t, 'summary_model', errors, isNonBlankString, 'must be a non-empty string')?.trim() ??
-    config.summaryModel
-  config.summaryIntervalMinutes =
-    field(
-      t,
-      'summary_interval_minutes',
-      errors,
-      isSummaryInterval,
-      `must be a whole number from 1 to ${MAX_SUMMARY_INTERVAL_MINUTES}`
-    ) ?? config.summaryIntervalMinutes
 
   if (t.repos !== undefined) {
     const repos = table(t.repos, 'repos', errors)

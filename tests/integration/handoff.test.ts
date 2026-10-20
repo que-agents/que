@@ -94,7 +94,7 @@ beforeEach(async () => {
 
   for (const [name, value] of Object.entries(env)) vi.stubEnv(name, value)
   writeGitconfig(home, 'handoff')
-  fs.writeFileSync(env.QUE_CONFIG, `summaries = false\n${QUIET_OFF}`)
+  fs.writeFileSync(env.QUE_CONFIG, QUIET_OFF)
 
   const c = await DaemonClient.connectOrStart({
     paths: quePaths(),

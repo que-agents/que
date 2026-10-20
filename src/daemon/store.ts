@@ -22,6 +22,7 @@ import type {
   Workspace,
   WorkspaceStatus
 } from '../shared/types'
+import { TITLE_SOURCES } from '../shared/types'
 import { currentPullRequest } from './pr-state'
 
 const HOOK_EVENTS_PER_WORKSPACE = 500
@@ -140,6 +141,11 @@ const MIGRATIONS: string[] = [
 ]
 
 const STATUS_LOG_RETENTION_MS = 30 * 24 * 3_600_000
+
+/** A stored title source; one a retired release wrote (`summary`) reads as unset, like a row from before sources. */
+function titleSourceOf(v: string | null): TitleSource | undefined {
+  return v && (TITLE_SOURCES as readonly string[]).includes(v) ? (v as TitleSource) : undefined
+}
 
 export interface StatusLogRow {
   status: WorkspaceStatus
@@ -389,7 +395,9 @@ function toWorkspace(r: WorkspaceRow): Workspace {
 
   if (r.brief) ws.brief = r.brief
 
-  if (r.title_source) ws.titleSource = r.title_source as TitleSource
+  const source = titleSourceOf(r.title_source)
+
+  if (source) ws.titleSource = source
 
   return ws
 }

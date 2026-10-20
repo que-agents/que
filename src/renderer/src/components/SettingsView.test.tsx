@@ -199,12 +199,12 @@ describe('SettingsView', () => {
     it('reverts a field to its saved value on Escape and writes nothing', async () => {
       const user = userEvent.setup()
       await openSettings(user)
-      const model = await screen.findByTestId('settings-summary-model')
+      const site = await screen.findByTestId('settings-jira-site')
 
-      await retype(user, model, 'sonnet')
+      await retype(user, site, 'team.example.net')
       await user.keyboard('{Escape}')
 
-      expect(model).toHaveValue('haiku')
+      expect(site).toHaveValue('')
       await user.tab()
       expect(fakeBridge.configSetCalls()).toEqual([])
     })
@@ -289,18 +289,18 @@ describe('SettingsView', () => {
 
     it("shows the daemon's refusal under the field and keeps the typed text", async () => {
       const user = userEvent.setup()
-      fakeBridge.refuseConfigSet('summary_model: no model named "opus-9"')
+      fakeBridge.refuseConfigSet('jira.site: no site named "team.example.net"')
       await openSettings(user)
-      const model = await screen.findByTestId('settings-summary-model')
+      const site = await screen.findByTestId('settings-jira-site')
 
-      await retype(user, model, 'opus-9')
+      await retype(user, site, 'team.example.net')
       await user.tab()
 
-      expect(await screen.findByTestId('settings-summary-model-error')).toHaveTextContent(
-        'summary_model: no model named "opus-9"'
+      expect(await screen.findByTestId('settings-jira-site-error')).toHaveTextContent(
+        'jira.site: no site named "team.example.net"'
       )
-      expect(model).toHaveValue('opus-9')
-      expect(screen.queryByTestId('settings-summary-model-saved')).not.toBeInTheDocument()
+      expect(site).toHaveValue('team.example.net')
+      expect(screen.queryByTestId('settings-jira-site-saved')).not.toBeInTheDocument()
       expect(fakeBridge.configSetCalls()).toEqual([])
     })
 
@@ -696,54 +696,5 @@ describe('SettingsView instructions', () => {
     await waitFor(() => {
       expect(screen.getByTestId('settings-instructions-content')).toBeDisabled()
     })
-  })
-})
-
-describe('SettingsView sidebar titles', () => {
-  it('loads the summary settings and writes each control as its own top-level key', async () => {
-    const user = userEvent.setup()
-    fakeBridge.setConfig({ summaries: true, summaryModel: 'haiku', summaryIntervalMinutes: 5 })
-    await openSettings(user)
-
-    const toggle = await screen.findByRole('checkbox', {
-      name: 'Summarise what each session is doing in its sidebar title'
-    })
-
-    expect(toggle).toBeChecked()
-    expect(screen.getByLabelText('Model')).toHaveValue('haiku')
-    expect(screen.getByLabelText(/At most every \(minutes\)/)).toHaveValue(5)
-
-    await user.click(toggle)
-    await waitFor(() => expect(fakeBridge.configSetCalls()).toHaveLength(1))
-    await retype(user, screen.getByTestId('settings-summary-model'), ' sonnet ')
-    await user.tab()
-    await waitFor(() => expect(fakeBridge.configSetCalls()).toHaveLength(2))
-    await retype(user, screen.getByTestId('settings-summary-interval'), '15')
-    await user.tab()
-
-    await waitFor(() => expect(fakeBridge.configSetCalls()).toHaveLength(3))
-    expect(fakeBridge.configSetCalls().map((c) => c.patch)).toEqual([
-      { summaries: false },
-      { summaryModel: 'sonnet' },
-      { summaryIntervalMinutes: 15 }
-    ])
-  })
-
-  it('refuses an empty model or an interval that is not whole minutes, saying why', async () => {
-    const user = userEvent.setup()
-    await openSettings(user)
-
-    await user.clear(await screen.findByTestId('settings-summary-model'))
-    await user.tab()
-    await retype(user, screen.getByTestId('settings-summary-interval'), '0.5')
-    await user.tab()
-
-    expect(await screen.findByTestId('settings-summary-model-error')).toHaveTextContent(
-      'The summary model cannot be empty'
-    )
-    expect(await screen.findByTestId('settings-summary-interval-error')).toHaveTextContent(
-      'Summary minutes must be a whole number from 1 to 1440'
-    )
-    expect(fakeBridge.configSetCalls()).toEqual([])
   })
 })

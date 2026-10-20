@@ -94,6 +94,17 @@ describe('hook events', () => {
 })
 
 describe('workspaces', () => {
+  it('reads a title source a retired release wrote as unset', () => {
+    const ws = makeWorkspace({ title: 'Retry logic for the uploader', titleSource: 'brief' })
+    store.insertWorkspace(ws)
+    store.db.exec(`UPDATE workspaces SET title_source = 'summary'`)
+
+    const read = store.getWorkspace(ws.id)
+
+    expect(read).toMatchObject({ title: 'Retry logic for the uploader' })
+    expect(read?.titleSource).toBeUndefined()
+  })
+
   it('lists the ids of unarchived workspaces with a stored status', () => {
     const working = makeWorkspace({ status: 'working' })
     const idle = makeWorkspace({ status: 'idle' })

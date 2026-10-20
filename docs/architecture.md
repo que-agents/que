@@ -323,6 +323,18 @@ and a workspace without a brief gets a bare `claude`. `workspace.rename`
 changes the title and, for a branch with no `origin/<branch>`, can rename the
 branch to a name the user gives; the folder keeps its name.
 
+Once a session is running, the title is the session's own. Claude Code names a
+session from its first prompt (or `/rename`) and writes the name to the terminal
+title, `✳ <name>` when idle and `◐ <name>` while busy; `session-label.ts` drops
+the glyph, the unnamed placeholder `Claude Code` and the empty exit title. The
+daemon reads it on every `term.updated` and on each `SessionStart` hook (a
+resumed session writes its name before the hook lands), but only from a
+terminal the live-session record holds, so a shell's own title never counts. A
+new name is stored with `title_source = 'terminal'` and announced with
+`workspace.updated`; the empty title on exit leaves it in place. A title the
+user gave, at creation or with `workspace.rename` (`title_source = 'user'`),
+pins it: later session titles never replace it.
+
 ## The task machine
 
 An overnight task moves `queued → preparing → running → finishing → done`, and

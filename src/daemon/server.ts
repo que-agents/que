@@ -30,6 +30,7 @@ import {
 } from '../shared/config'
 import { decoders, ParamsError } from '../shared/methods.decode'
 import { ensureDirs, quePaths, type QuePaths } from '../shared/paths'
+import { sessionLabel } from '../shared/session-label'
 import type {
   ConfigGetResult,
   HandoffParams,
@@ -49,7 +50,6 @@ import { SYSTEM_PROMPT } from './runner'
 import { PrService } from './prs'
 import { LiveSessions, storedLiveSessions } from './live-sessions'
 import { StatusService } from './status'
-import { Summarizer } from './summarizer'
 import { TicketService } from './tickets'
 import { Store } from './store'
 import { workspaceDiff } from './diff'
@@ -90,9 +90,7 @@ export interface ServerOptions {
   queueTickMs?: number
   /** Quiet-hours re-evaluation interval. Default 15 s. */
   quietTickMs?: number
-  /** How long a sidebar-title summary call may run. Default 60 s. */
-  summaryTimeoutMs?: number
-  /** The clock quiet hours and the summary throttle read. Default Date.now. */
+  /** The clock quiet hours read. Default Date.now. */
   now?: () => number
   /** Draws the name of a workspace created without one. Default randomWorkspaceName. */
   randomWorkspaceName?: () => string
@@ -169,7 +167,6 @@ export class DaemonServer {
   readonly workspaces: WorkspaceManager
   readonly tasks: TaskQueue
   readonly quiet: QuietService
-  readonly summaries: Summarizer
   /** Workspace terminals with a live Claude session, restored after a restart. */
   readonly liveSessions: LiveSessions
   /** The last good user config, the file stamp it was read at, and when the file was last statted. */
@@ -210,16 +207,6 @@ export class DaemonServer {
       log: (m) => this.log(m),
       randomName: opts.randomWorkspaceName,
       config: () => this.strictConfig()
-    })
-    this.summaries = new Summarizer({
-      store: this.store,
-      paths: this.paths,
-      bus: this.bus,
-      config: () => this.configOrDefault(),
-      transcriptPath: (id) => this.status.transcriptPath(id),
-      log: (m) => this.log(m),
-      now: opts.now,
-      timeoutMs: opts.summaryTimeoutMs
     })
     this.tasks = new TaskQueue({
       store: this.store,
@@ -282,6 +269,7 @@ export class DaemonServer {
 
         return t !== undefined && t.alive && t.workspaceId === wsId
       },
+      onLive: (termId) => this.labelFromTerminal(termId),
       resume: (entry) => {
         const t = this.openWorkspaceTerminal(entry.workspaceId, 120, 30)
         this.typeAfterSetup(
@@ -308,7 +296,10 @@ export class DaemonServer {
           else c.sendEvent('term.data', { id, data })
         }
       }),
-      host.onUpdate((info) => this.bus.emit('term.updated', info)),
+      host.onUpdate((info) => {
+        this.bus.emit('term.updated', info)
+        this.labelFromTerminal(info.id)
+      }),
       host.onExit((id, info) => {
         this.log(`term ${id} exited code=${info.exitCode} signal=${info.signal ?? ''}`)
         this.bus.emit('term.exit', { id, exitCode: info.exitCode, signal: info.signal })
@@ -554,6 +545,22 @@ export class DaemonServer {
     return this.getInstructions()
   }
 
+  /**
+   * The title of a workspace terminal in which a Claude session is live names the
+   * session; it becomes the workspace's title unless the user set one. Run when the
+   * title changes and when a session goes live, since a resumed session writes its
+   * name before its start hook lands. An empty title (the session exiting) or the
+   * unnamed placeholder changes nothing.
+   */
+  private labelFromTerminal(id: string): void {
+    const t = this.opts.host.get(id)
+
+    if (!t?.workspaceId || !this.liveSessions.isLive(id)) return
+    const label = sessionLabel(t.title)
+
+    if (label) this.workspaces.labelFromSession(t.workspaceId, label)
+  }
+
   /** Kills every terminal of a workspace; returns how many were still alive. */
   private killWorkspaceTerminals(workspaceId: string): number {
     let alive = 0
@@ -674,7 +681,6 @@ export class DaemonServer {
       this.tickets.stop()
       await this.tickets.drain()
       await this.tasks.shutdown()
-      await this.summaries.close()
       this.status.stop()
       this.watcher.close()
       this.workspaces.close()
@@ -927,12 +933,7 @@ export class DaemonServer {
     'hook.event': (p) => {
       const ws = this.workspaces.get(p.workspaceId)
       this.liveSessions.hook(ws.id, p.terminalId, p.taskId, p.payload)
-      const status = this.status.hook(ws.id, p.payload)
-
-      // A Stop that left the workspace working (agents still run) is not the end of the turn.
-      if (p.payload.hook_event_name === 'Stop' && !p.payload.agent_id && status !== 'working') {
-        this.summaries.stopped(ws.id)
-      }
+      this.status.hook(ws.id, p.payload)
 
       if (p.taskId) this.tasks.hook(p.taskId, p.payload)
 
