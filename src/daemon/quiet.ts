@@ -1,15 +1,24 @@
 // Quiet hours in the daemon: the single source of truth for "is detail
 // allowed right now". Tracks the window in progress (and the config it started
-// under, for the apply-tonight guardrail), the unlock, and its log; refuses the
+// under, for the apply-tonight guardrail), the manual window from `que quiet
+// start` (used when no scheduled one covers the moment), the unlock, and its
+// log; refuses the
 // detail methods while quiet and locked; tells the server to drop every
 // terminal subscription the moment that starts; emits quiet.changed and, once
 // per window, quiet.morningSummary.
 import type { Report } from '../shared/protocol'
-import type { QuietHoursConfig, QuietState, QuietUnlock, UserConfig } from '../shared/types'
+import type {
+  QuietHoursConfig,
+  QuietKind,
+  QuietState,
+  QuietUnlock,
+  UserConfig
+} from '../shared/types'
+import { hhmm } from '../shared/format'
 import { badRequest, RpcError } from './errors'
 import {
   type ActiveWindow,
-  currentWindow,
+  activeWindow,
   effectiveConfig,
   isUnlocked,
   nextBoundary,
@@ -22,6 +31,10 @@ import { errorMessage } from '../shared/errors.decode'
 
 /** setTimeout's ceiling; later boundaries are reached by the tick. */
 const MAX_TIMER_MS = 2 ** 31 - 1
+
+/** A manual quiet's default and longest length, in minutes. */
+const MANUAL_DEFAULT_MINUTES = 60
+const MANUAL_MAX_MINUTES = 720
 
 export interface QuietServiceOptions {
   store: Store
@@ -46,7 +59,14 @@ interface HeldWindow {
 
 export class QuietService {
   private readonly now: () => number
-  private unlock: UnlockState & { id: number | null } = { until: null, startedAt: null, id: null }
+  private unlock: UnlockState & { id: number | null; kind: QuietKind } = {
+    until: null,
+    startedAt: null,
+    id: null,
+    kind: 'scheduled'
+  }
+  /** The manual window from `que quiet start`, while it is open. */
+  private manual: { id: number; start: number; end: number } | null = null
   private held: HeldWindow | null = null
   /** The window whose start an apply-tonight change was made in. */
   private applyTonightFor: number | null = null
@@ -65,6 +85,18 @@ export class QuietService {
 
   start(): void {
     this.stopped = false
+    const manual = this.o.store.openManual()
+
+    if (manual) {
+      const until = Date.parse(manual.until)
+
+      if (until > this.now()) {
+        this.manual = { id: manual.id, start: Date.parse(manual.at), end: until }
+      } else {
+        this.o.store.endManual(manual.id, manual.until)
+      }
+    }
+
     const open = this.o.store.openUnlock()
 
     if (open) {
@@ -75,7 +107,8 @@ export class QuietService {
           id: open.id,
           until: new Date(until),
           startedAt: new Date(open.at),
-          why: open.why ?? undefined
+          why: open.why ?? undefined,
+          kind: open.kind
         }
       } else {
         this.o.store.endUnlock(open.id, open.until)
@@ -117,8 +150,9 @@ export class QuietService {
 
   // ---- state --------------------------------------------------------------------
 
+  /** The scheduled window when one covers `now`, else the manual one. */
   private window(now: number): ActiveWindow | null {
-    return currentWindow(now, this.quietConfig(now))
+    return activeWindow(now, this.quietConfig(now), this.manual)
   }
 
   /** Quiet hours are on and no unlock is running: detail is refused. */
@@ -131,13 +165,21 @@ export class QuietService {
   state(): QuietState {
     const now = this.now()
     const cfg = this.quietConfig(now)
-    const w = currentWindow(now, cfg)
-    const next = nextBoundary(now, cfg)
+    const w = activeWindow(now, cfg, this.manual)
+    const scheduledNext = nextBoundary(now, cfg)
+
+    // A manual window ends at its end, or sooner when a scheduled one starts.
+    const next =
+      w?.kind === 'manual' && (!scheduledNext || w.end.getTime() < scheduledNext.getTime())
+        ? w.end
+        : scheduledNext
+
     const unlocked = w !== null && isUnlocked(now, this.unlock)
 
     return {
       enabled: cfg.enabled,
       inQuietHours: w !== null,
+      kind: w ? w.kind : null,
       windowStart: w ? w.start.toISOString() : null,
       windowEnd: w ? w.end.toISOString() : null,
       nextBoundary: next ? next.toISOString() : null,
@@ -156,7 +198,7 @@ export class QuietService {
     if (!w || isUnlocked(now, this.unlock)) return
     throw new RpcError(
       'quiet_hours',
-      quietMessage(w.end.getTime(), this.o.config().quietHours.unlockMinutes)
+      quietMessage(w.end.getTime(), this.o.config().quietHours.unlockMinutes, w.kind)
     )
   }
 
@@ -171,7 +213,9 @@ export class QuietService {
     }
 
     // Only meaningful during quiet hours; otherwise nothing is locked.
-    if (!this.window(now)) return this.state()
+    const w = this.window(now)
+
+    if (!w) return this.state()
     this.endUnlock(now)
     const until = now + m * 60_000
     const reason = why?.trim() || null
@@ -180,14 +224,16 @@ export class QuietService {
       at: new Date(now).toISOString(),
       minutes: m,
       why: reason,
-      until: new Date(until).toISOString()
+      until: new Date(until).toISOString(),
+      kind: w.kind
     })
 
     this.unlock = {
       id,
       until: new Date(until),
       startedAt: new Date(now),
-      why: reason ?? undefined
+      why: reason ?? undefined,
+      kind: w.kind
     }
     this.o.log?.(`quiet: unlocked for ${m} min${reason ? ` (${reason})` : ''}`)
     this.evaluate(true)
@@ -222,7 +268,59 @@ export class QuietService {
       this.o.store.endUnlock(this.unlock.id, new Date(end).toISOString())
     }
 
-    this.unlock = { until: null, startedAt: null, id: null }
+    this.unlock = { until: null, startedAt: null, id: null, kind: 'scheduled' }
+  }
+
+  // ---- manual quiet -------------------------------------------------------------
+
+  /**
+   * Opens a manual quiet window for `minutes` (default 60, at most 720), or
+   * replaces the one running, ending any unlock. Inside quiet hours the state
+   * comes back unchanged: the scheduled window already holds.
+   */
+  startManual(minutes?: number): QuietState {
+    const now = this.now()
+    const m = minutes ?? MANUAL_DEFAULT_MINUTES
+
+    if (!Number.isFinite(m) || m <= 0 || m > MANUAL_MAX_MINUTES) {
+      throw badRequest(`minutes must be more than 0 and at most ${MANUAL_MAX_MINUTES}`)
+    }
+
+    if (this.window(now)?.kind === 'scheduled') return this.state()
+    this.endUnlock(now)
+
+    if (this.manual) this.o.store.endManual(this.manual.id, new Date(now).toISOString())
+    const end = now + m * 60_000
+
+    const id = this.o.store.insertManual({
+      at: new Date(now).toISOString(),
+      until: new Date(end).toISOString()
+    })
+
+    this.manual = { id, start: now, end }
+    this.o.log?.(`quiet: manual quiet for ${m} min until ${hhmm(end)}`)
+    this.evaluate(true)
+
+    return this.state()
+  }
+
+  /** Ends the manual quiet window and any unlock in it; without one, the state is unchanged. */
+  endManual(): QuietState {
+    if (!this.manual) return this.state()
+    const now = this.now()
+    this.endUnlock(now)
+    this.closeManual(now)
+    this.evaluate(true)
+
+    return this.state()
+  }
+
+  private closeManual(at: number): void {
+    if (!this.manual) return
+    const end = Math.min(at, this.manual.end)
+    this.o.store.endManual(this.manual.id, new Date(end).toISOString())
+    this.manual = null
+    this.o.log?.('quiet: manual quiet ended')
   }
 
   // ---- the clock ----------------------------------------------------------------
@@ -232,17 +330,32 @@ export class QuietService {
     if (this.stopped) return
     const now = this.now()
     const w = this.window(now)
+    const scheduled = w?.kind === 'scheduled' ? w : null
 
-    // Remember the config each window starts under, for the guardrail.
-    if (w && (!this.held || this.held.start !== w.start.getTime() || now >= this.held.end)) {
-      this.held = { cfg: this.quietConfig(now), start: w.start.getTime(), end: w.end.getTime() }
-    } else if (!w) {
+    // A manual window ends at its end, or when quiet hours start inside it, so
+    // it cannot come back when they end.
+    if (this.manual && (now >= this.manual.end || scheduled)) this.closeManual(now)
+
+    // Remember the config each scheduled window starts under, for the guardrail.
+    if (
+      scheduled &&
+      (!this.held || this.held.start !== scheduled.start.getTime() || now >= this.held.end)
+    ) {
+      this.held = {
+        cfg: this.quietConfig(now),
+        start: scheduled.start.getTime(),
+        end: scheduled.end.getTime()
+      }
+    } else if (!scheduled) {
       this.held = null
       this.applyTonightFor = null
     }
 
-    // An unlock ends at its deadline, or with the quiet hours it was for.
-    if (this.unlock.until && (!w || now >= this.unlock.until.getTime())) {
+    // An unlock ends at its deadline, or with the window it was for.
+    if (
+      this.unlock.until &&
+      (!w || w.kind !== this.unlock.kind || now >= this.unlock.until.getTime())
+    ) {
       this.o.log?.('quiet: unlock ended')
       this.endUnlock(now)
     }
@@ -259,7 +372,9 @@ export class QuietService {
     const prev = this.lastWindow
     this.lastWindow = w
 
-    if (prev && !w && now >= prev.end.getTime() - 1_000) void this.morningSummary(prev)
+    if (prev?.kind === 'scheduled' && !w && now >= prev.end.getTime() - 1_000) {
+      void this.morningSummary(prev)
+    }
 
     const state = this.state()
     const key = JSON.stringify(state)

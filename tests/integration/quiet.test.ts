@@ -1,8 +1,8 @@
 // Quiet hours in the daemon, over the real socket: entering them drops every
 // terminal subscription and refuses detail, unlock and lock (and the log),
 // an unlock that runs out on its own, headless tasks running on regardless,
-// config.set reloading live with the apply-tonight guardrail, and the morning
-// summary. The clock math itself is in quiet-hours.test.ts; here the daemon
+// config.set reloading live with the apply-tonight guardrail, the morning
+// summary, and a manual quiet (`quiet.start` / `quiet.end`) during the day. The clock math itself is in quiet-hours.test.ts; here the daemon
 // reads a clock shifted to just before (or inside) a window.
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { DaemonClient } from '@shared/client'
@@ -40,6 +40,14 @@ const REFUSAL = {
 
 /** Wed 14 Oct 2026, 02:00: inside Tuesday's 19:00-07:00 window. */
 const NIGHT = new Date(2026, 9, 14, 2, 0)
+
+/** Wed 14 Oct 2026, 12:00: work hours. */
+const DAY = new Date(2026, 9, 14, 12, 0)
+
+const MANUAL_REFUSAL = {
+  code: 'quiet_hours',
+  message: 'quiet until 12:30; run `que quiet end`, or `que unlock` for 20 minutes'
+}
 
 async function start(config: string, now: Date): Promise<TestDaemon> {
   daemon = await startTestDaemon({ config, now: clockFrom(now) })
@@ -288,5 +296,145 @@ describe('quiet hours', () => {
         expect.objectContaining({ id: ws.id, name: ws.name, status: 'working' })
       ])
     }, 30_000)
+  })
+
+  describe('manual quiet', () => {
+    it('locks like quiet hours: drops subscriptions, refuses detail, and unlocks and locks inside it', async () => {
+      const d = await start(QUIET(), DAY)
+      const changes = recordEvents(d.client, 'quiet.changed')
+      const data = recordEvents(d.client, 'term.data')
+      const { id } = await d.client.request('term.create', cat)
+      await d.client.request('term.attach', { id, cols: 80, rows: 24 })
+
+      const q = await d.client.request('quiet.start', { minutes: 30 })
+
+      expect(q).toMatchObject({ inQuietHours: true, kind: 'manual', locked: true })
+      expect(Date.parse(q.windowEnd ?? '') - Date.parse(q.windowStart ?? '')).toBe(30 * 60_000)
+      expect(q.nextBoundary).toBe(q.windowEnd)
+      await expect.poll(() => changes.some((c) => c.kind === 'manual')).toBe(true)
+      await expect(
+        d.client.request('task.add', { projectId: 'proj_01hzx3k9c2qf', brief: 'Add retries' })
+      ).rejects.toMatchObject(MANUAL_REFUSAL)
+      await d.client.request('term.write', { id, data: 'QUE_MANUAL_7c2d\n' })
+
+      const unlocked = await d.client.request('quiet.unlock', { why: 'read the build log' })
+
+      expect(unlocked).toMatchObject({ kind: 'manual', locked: false })
+      await expect
+        .poll(async () => (await d.client.request('term.snapshot', { id })).text, {
+          timeout: 10_000
+        })
+        .toContain('QUE_MANUAL_7c2d')
+      expect(data.map((e) => e.data).join('')).not.toContain('QUE_MANUAL_7c2d')
+
+      const relocked = await d.client.request('quiet.lock')
+
+      expect(relocked).toMatchObject({ kind: 'manual', unlockedUntil: null, locked: true })
+      await expect(d.client.request('term.snapshot', { id })).rejects.toMatchObject(MANUAL_REFUSAL)
+    }, 30_000)
+
+    it('ends on quiet.end, back to work hours', async () => {
+      const d = await start(QUIET(), DAY)
+      await d.client.request('quiet.start', { minutes: 30 })
+      const changes = recordEvents(d.client, 'quiet.changed')
+
+      const q = await d.client.request('quiet.end')
+
+      expect(q).toMatchObject({ inQuietHours: false, kind: null, locked: false })
+      expect(q.nextBoundary).toBe(new Date(2026, 9, 14, 19, 0).toISOString())
+      await expect.poll(() => changes.at(-1)?.kind).toBeNull()
+      expect((await d.client.request('report.get')).totals.tasks).toBe(0)
+    })
+
+    it('ends on its own when its minutes run out', async () => {
+      const d = await start(QUIET(), DAY)
+      const changes = recordEvents(d.client, 'quiet.changed')
+
+      await d.client.request('quiet.start', { minutes: 0.05 })
+
+      await expect
+        .poll(() => changes.at(-1), { timeout: 10_000 })
+        .toMatchObject({
+          inQuietHours: false,
+          kind: null,
+          locked: false
+        })
+    }, 20_000)
+
+    it('is still locked after a restart on the same home', async () => {
+      const now = clockFrom(DAY)
+      const first = await startTestDaemon({ config: QUIET(), now })
+      daemon = first
+      const started = await first.client.request('quiet.start', { minutes: 30 })
+      await first.close({ keepHome: true })
+
+      const d = await startTestDaemon({ config: QUIET(), now, home: first.home })
+      daemon = d
+
+      expect(await d.client.request('quiet.state')).toMatchObject({
+        inQuietHours: true,
+        kind: 'manual',
+        windowEnd: started.windowEnd,
+        locked: true
+      })
+    }, 20_000)
+
+    it('stays on when quiet_hours change, and keeps its peeks out of the unlock log', async () => {
+      const d = await start(QUIET(), DAY)
+      await d.client.request('quiet.start', { minutes: 30 })
+      await d.client.request('quiet.unlock', { minutes: 5, why: 'check the deploy' })
+      await d.client.request('quiet.lock')
+
+      await d.client.request('config.set', {
+        patch: { quietHours: { default: { start: '20:00', end: '06:00' } } }
+      })
+
+      expect(await d.client.request('quiet.state')).toMatchObject({
+        kind: 'manual',
+        locked: true
+      })
+      expect(await d.client.request('quiet.log')).toEqual([])
+    })
+
+    it('leaves quiet hours unchanged when started inside them', async () => {
+      const d = await start(QUIET(), NIGHT)
+
+      const q = await d.client.request('quiet.start', { minutes: 30 })
+
+      expect(q).toMatchObject({
+        inQuietHours: true,
+        kind: 'scheduled',
+        windowEnd: new Date(2026, 9, 14, 7, 0).toISOString(),
+        locked: true
+      })
+    })
+
+    it('is ended by quiet hours starting inside it, so it cannot resurface when they end', async () => {
+      const d = await start(QUIET(), new Date(2026, 9, 14, 18, 59, 58))
+      const changes = recordEvents(d.client, 'quiet.changed')
+      await d.client.request('quiet.start', { minutes: 30 })
+
+      await expect.poll(() => changes.at(-1)?.kind, { timeout: 10_000 }).toBe('scheduled')
+      await d.client.request('config.set', {
+        patch: { quietHours: { enabled: false } },
+        applyTonight: true
+      })
+
+      expect(await d.client.request('quiet.state')).toMatchObject({
+        inQuietHours: false,
+        kind: null
+      })
+    }, 20_000)
+
+    it('refuses minutes of 0 or more than 720', async () => {
+      const d = await start(QUIET(), DAY)
+
+      for (const minutes of [0, 721]) {
+        await expect(d.client.request('quiet.start', { minutes })).rejects.toMatchObject({
+          code: 'bad_request',
+          message: 'minutes must be more than 0 and at most 720'
+        })
+      }
+    })
   })
 })

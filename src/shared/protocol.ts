@@ -403,6 +403,11 @@ export interface QuietUnlockParams {
   why?: string
 }
 
+export interface QuietStartParams {
+  /** How long the manual quiet lasts; default 60, at most 720. */
+  minutes?: number
+}
+
 export interface QuietLogParams {
   /** ISO time; defaults to everything. */
   since?: string
@@ -495,6 +500,8 @@ export interface Methods {
   'quiet.state': { params: Record<string, never> | undefined; result: QuietState }
   'quiet.unlock': { params: QuietUnlockParams | undefined; result: QuietState }
   'quiet.lock': { params: Record<string, never> | undefined; result: QuietState }
+  'quiet.start': { params: QuietStartParams | undefined; result: QuietState }
+  'quiet.end': { params: Record<string, never> | undefined; result: QuietState }
   'quiet.log': { params: QuietLogParams | undefined; result: QuietUnlock[] }
   'config.get': { params: Record<string, never> | undefined; result: ConfigGetResult }
   'config.set': { params: ConfigSetParams; result: ConfigGetResult }
@@ -606,6 +613,8 @@ export const METHODS: {
   'quiet.state': { renderer: true, quiet: false },
   'quiet.unlock': { renderer: true, quiet: false },
   'quiet.lock': { renderer: true, quiet: false },
+  'quiet.start': { renderer: true, quiet: false },
+  'quiet.end': { renderer: true, quiet: false },
   'quiet.log': { renderer: true, quiet: false },
   'config.get': { renderer: true, quiet: false },
   'config.set': { renderer: true, quiet: false },

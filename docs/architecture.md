@@ -365,6 +365,17 @@ its reason, and ends on its own. A config edit made during a window never
 shortens tonight's window unless asked to. When the window ends, the daemon
 emits one morning summary.
 
+A manual quiet (`quiet.start`, `que quiet start [minutes]`) is a second source
+of windows for the same enforcement: a start and a required end, at most 12
+hours out, persisted in `quiet_manual` so it survives a daemon restart. The
+scheduled window wins whenever both cover a moment, and one that starts during
+a manual quiet ends it for good. Starting again replaces the window (and ends
+any unlock); `quiet.end` ends it at once. It holds with quiet hours disabled,
+config edits never end it, and the apply-tonight guardrail covers only the
+scheduled windows. Unlocks inside it work the same and reach the daemon log,
+but the unlock log (`quiet.log`, the report's unlocks line) keeps only the
+night's.
+
 ## The app
 
 The main process proxies an allow-list of methods and forwards events to the

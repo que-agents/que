@@ -190,12 +190,17 @@ class FakeBridge {
           if (!this.quiet.inQuietHours) return { ...this.quiet }
           const minutes = p?.minutes ?? this.quiet.unlockMinutes
           const now = Date.now()
-          this.unlocks.push({
-            at: new Date(now).toISOString(),
-            minutes,
-            why: p?.why ?? null,
-            endedAt: null
-          })
+
+          // As in the daemon, the log keeps quiet hours' unlocks, not a manual quiet's.
+          if (this.quiet.kind !== 'manual') {
+            this.unlocks.push({
+              at: new Date(now).toISOString(),
+              minutes,
+              why: p?.why ?? null,
+              endedAt: null
+            })
+          }
+
           this.setQuietState({ unlockedUntil: new Date(now + minutes * 60_000).toISOString() })
 
           return { ...this.quiet }
@@ -205,6 +210,34 @@ class FakeBridge {
 
           if (open) open.endedAt = new Date().toISOString()
           this.setQuietState({ unlockedUntil: null })
+
+          return { ...this.quiet }
+        },
+        start: async (p) => {
+          if (this.quiet.kind === 'scheduled') return { ...this.quiet }
+          const now = Date.now()
+          const end = new Date(now + (p?.minutes ?? 60) * 60_000).toISOString()
+          this.setQuietState({
+            inQuietHours: true,
+            kind: 'manual',
+            windowStart: new Date(now).toISOString(),
+            windowEnd: end,
+            nextBoundary: end,
+            unlockedUntil: null
+          })
+
+          return { ...this.quiet }
+        },
+        end: async () => {
+          if (this.quiet.kind !== 'manual') return { ...this.quiet }
+          this.setQuietState({
+            inQuietHours: false,
+            kind: null,
+            windowStart: null,
+            windowEnd: null,
+            nextBoundary: null,
+            unlockedUntil: null
+          })
 
           return { ...this.quiet }
         },
@@ -740,6 +773,8 @@ class FakeBridge {
 
     // Unless a test sets `locked` itself, it follows the window and the unlock.
     if (!('locked' in q)) next.locked = next.inQuietHours && !next.unlockedUntil
+
+    if (!('kind' in q)) next.kind = next.inQuietHours ? (next.kind ?? 'scheduled') : null
     this.quiet = next
     this.emit('quiet.changed', { ...this.quiet })
   }
@@ -813,7 +848,10 @@ class FakeBridge {
         ? Date.parse(this.quiet.windowEnd)
         : new Date(2026, 9, 14, 7, 0).getTime()
 
-      throw rpcError('quiet_hours', quietMessage(end, this.quiet.unlockMinutes))
+      throw rpcError(
+        'quiet_hours',
+        quietMessage(end, this.quiet.unlockMinutes, this.quiet.kind ?? 'scheduled')
+      )
     }
   }
 

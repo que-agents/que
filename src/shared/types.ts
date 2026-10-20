@@ -367,9 +367,14 @@ export interface UpdateInfo {
 /** A 24-hour `HH:MM` wall-clock time, as quiet-hours windows are written. */
 export const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/
 
+/** Where a quiet window comes from: the quiet_hours config, or `que quiet start`. */
+export type QuietKind = 'scheduled' | 'manual'
+
 export interface QuietState {
   enabled: boolean
   inQuietHours: boolean
+  /** The source of the window in progress, else null. */
+  kind: QuietKind | null
   /** The window in progress (ISO), else null. */
   windowStart: string | null
   windowEnd: string | null

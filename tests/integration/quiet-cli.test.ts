@@ -1,7 +1,8 @@
 // The quiet-hours and config commands as subprocesses against an in-process
 // daemon whose quiet window is chosen around the real time (the CLI prints
 // countdowns from its own clock): unlock, lock, quiet status, config get/set,
-// the refused detail commands exiting 3, and que status's header.
+// the refused detail commands exiting 3, que status's header, and a manual
+// quiet (quiet start / quiet end) with quiet hours off.
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { ConfigGetResult } from '@shared/protocol'
 import type { QuietState } from '@shared/types'
@@ -147,4 +148,58 @@ describe('detail commands during quiet hours', () => {
     expect(text.stdout.split('\n')[0]).toBe(`quiet hours until ${windowEnd}`)
     expect(json.quiet).toMatchObject({ inQuietHours: true })
   }, 30_000)
+})
+
+describe('que quiet start and que quiet end', () => {
+  it('says already in quiet hours when started inside them', async () => {
+    expect(await runCli('quiet', 'start', '30')).toMatchObject({
+      code: 0,
+      stdout: 'already in quiet hours\n'
+    })
+  }, 30_000)
+
+  it('says there is nothing to end outside a manual quiet', async () => {
+    expect(await runCli('quiet', 'end')).toMatchObject({
+      code: 0,
+      stdout: 'not in a manual quiet; nothing to end\n'
+    })
+  }, 30_000)
+
+  describe('with quiet hours off', () => {
+    beforeEach(async () => {
+      await daemon.close()
+      daemon = await startTestDaemon()
+    })
+
+    it('starts a manual quiet for the given minutes, as text and as JSON, and ends it', async () => {
+      const text = await runCli('quiet', 'start', '30')
+      const end = (await daemon.client.request('quiet.state')).windowEnd ?? ''
+
+      expect(text).toMatchObject({ code: 0, stdout: `quiet until ${hhmm(Date.parse(end))}\n` })
+
+      const json = await runCliJson<QuietState>('quiet', 'start', '45', '--json')
+
+      expect(json).toMatchObject({ enabled: false, inQuietHours: true, kind: 'manual' })
+      expect(Date.parse(json.windowEnd ?? '') - Date.parse(json.windowStart ?? '')).toBe(
+        45 * 60_000
+      )
+
+      expect(await runCli('quiet', 'end')).toMatchObject({ code: 0, stdout: 'quiet hours off\n' })
+      expect(await daemon.client.request('quiet.state')).toMatchObject({
+        inQuietHours: false,
+        kind: null
+      })
+    }, 30_000)
+
+    it('refuses a detail command with exit 3 during a manual quiet', async () => {
+      const q = await daemon.client.request('quiet.start', { minutes: 30 })
+      const until = hhmm(Date.parse(q.windowEnd ?? ''))
+
+      expect(await runCli('report')).toEqual({
+        code: 3,
+        stdout: '',
+        stderr: `quiet until ${until}; run \`que quiet end\`, or \`que unlock\` for 20 minutes\n`
+      })
+    }, 30_000)
+  })
 })

@@ -111,8 +111,13 @@ export function makeQuietState(overrides: Partial<QuietState> = {}): QuietState 
     ...overrides
   }
 
-  // Locked unless said otherwise: quiet hours on and no unlock running.
-  return { locked: state.inQuietHours && !state.unlockedUntil, ...state }
+  // Locked unless said otherwise: quiet hours on and no unlock running; a
+  // window is a scheduled one unless said otherwise.
+  return {
+    locked: state.inQuietHours && !state.unlockedUntil,
+    kind: state.inQuietHours ? 'scheduled' : null,
+    ...state
+  }
 }
 
 /** The parsed defaults, as config.get reports them. */

@@ -2,11 +2,14 @@
 // (if any) contains a moment, when the next start or end is, the unlock
 // countdown, and the "apply tonight" guardrail. Windows are local wall-clock
 // times; a window belongs to the weekday it starts on and may cross midnight.
+// A manual window (`que quiet start`) is the second source: a fixed start and
+// end, used only when no scheduled window covers the moment.
 // No Node imports: the renderer uses this module too.
 import {
   type DayWindow,
   type QuietUnlock,
   type QuietHoursConfig,
+  type QuietKind,
   type QuietWindow,
   WEEKDAYS,
   type Weekday
@@ -18,6 +21,13 @@ export interface ActiveWindow {
   end: Date
   /** The weekday the window started on. */
   weekday: Weekday
+  kind: QuietKind
+}
+
+/** A manual quiet window: it always has an end. */
+export interface ManualWindow {
+  start: Moment
+  end: Moment
 }
 
 export interface UnlockState {
@@ -60,7 +70,7 @@ function windowStartingOn(day: Date, cfg: QuietHoursConfig): ActiveWindow | null
   const crosses = eh * 60 + em <= sh * 60 + sm
   const end = new Date(y, mo, crosses ? d + 1 : d, eh, em)
 
-  return { start, end, weekday: WEEKDAYS[day.getDay()] }
+  return { start, end, weekday: WEEKDAYS[day.getDay()], kind: 'scheduled' }
 }
 
 function addDays(t: number, days: number): Date {
@@ -80,6 +90,25 @@ export function currentWindow(now: Moment, cfg: QuietHoursConfig): ActiveWindow 
   }
 
   return null
+}
+
+/**
+ * The window in force at `now`: the scheduled one when it covers `now`, else
+ * the manual one while it lasts. A manual window ignores `cfg.enabled`.
+ */
+export function activeWindow(
+  now: Moment,
+  cfg: QuietHoursConfig,
+  manual: ManualWindow | null
+): ActiveWindow | null {
+  const scheduled = currentWindow(now, cfg)
+
+  if (scheduled) return scheduled
+
+  if (!manual || now < manual.start || now >= manual.end) return null
+  const start = new Date(manual.start)
+
+  return { start, end: new Date(manual.end), weekday: WEEKDAYS[start.getDay()], kind: 'manual' }
 }
 
 export function isQuiet(now: Moment, cfg: QuietHoursConfig): boolean {
@@ -145,8 +174,16 @@ export function shortensTonight(
   return effectiveConfig(now, current, incoming, false) === current && current !== incoming
 }
 
-/** The one-line refusal every detail command gets during quiet hours. */
-export function quietMessage(windowEnd: Moment, unlockMinutes: number): string {
+/** The one-line refusal every detail command gets during quiet hours or a manual quiet. */
+export function quietMessage(
+  windowEnd: Moment,
+  unlockMinutes: number,
+  kind: QuietKind = 'scheduled'
+): string {
+  if (kind === 'manual') {
+    return `quiet until ${hhmm(windowEnd)}; run \`que quiet end\`, or \`que unlock\` for ${unlockMinutes} minutes`
+  }
+
   return `quiet hours until ${hhmm(windowEnd)}; run \`que unlock\` for ${unlockMinutes} minutes`
 }
 
