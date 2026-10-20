@@ -10,8 +10,10 @@ const quiet = makeQuietState({
   windowEnd: new Date(2026, 9, 14, 7, 0).toISOString()
 })
 
+const manual = makeQuietState({ ...quiet, kind: 'manual' })
 const unlocked = { ...quiet, unlockedUntil: new Date(2026, 9, 14, 2, 20).toISOString() }
 const defaults = makeUserConfig().notifications
+const manualChime = { ...defaults, chimeInManualQuiet: true }
 
 describe('shouldChime', () => {
   it('chimes for a finished task in work hours', () => {
@@ -67,5 +69,32 @@ describe('shouldChime', () => {
     ).toBeNull()
     expect(shouldChime({ state: 'done' }, null, defaults)).toBeNull()
     expect(shouldChime({ state: 'done' }, workHours, undefined)).toBeNull()
+  })
+
+  describe('in a manual quiet', () => {
+    it('plays the complete chime when chime_in_manual_quiet is on', () => {
+      expect(shouldChime({ state: 'done' }, manual, manualChime)).toBe('complete')
+      expect(shouldChime({ state: 'idle', prev: 'working' }, manual, manualChime)).toBe('complete')
+    })
+
+    it('never plays the needs-input chime, whatever the toggles say', () => {
+      const both = { ...manualChime, chimeOnNeedsInput: true }
+
+      expect(shouldChime({ state: 'needs_input' }, manual, both)).toBeNull()
+      expect(shouldChime({ state: 'stuck', reason: 'needs_input' }, manual, both)).toBeNull()
+    })
+
+    it('stays silent with chime_in_manual_quiet off, or chime_on_complete off', () => {
+      expect(shouldChime({ state: 'done' }, manual, defaults)).toBeNull()
+      expect(
+        shouldChime({ state: 'done' }, manual, { ...manualChime, chimeOnComplete: false })
+      ).toBeNull()
+    })
+
+    it('leaves scheduled quiet hours silent with chime_in_manual_quiet on', () => {
+      expect(quiet.kind).toBe('scheduled')
+      expect(shouldChime({ state: 'done' }, quiet, manualChime)).toBeNull()
+      expect(shouldChime({ state: 'done' }, unlocked, manualChime)).toBeNull()
+    })
   })
 })

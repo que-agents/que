@@ -286,7 +286,12 @@ describe('QuietBoard', () => {
       fakeBridge.seedTask(queued)
       fakeBridge.seedTask(makeTask({ id: 'tsk_01hzy6r1s2xy', state: 'queued' }))
       fakeBridge.setConfig({
-        notifications: { chimeOnComplete: true, chimeOnNeedsInput: false, morningSummary: true }
+        notifications: {
+          chimeOnComplete: true,
+          chimeOnNeedsInput: false,
+          chimeInManualQuiet: false,
+          morningSummary: true
+        }
       })
       fakeBridge.setQuietState(quiet)
 

@@ -127,7 +127,7 @@ export function registerQuietCommands(program: Command): void {
         console.log(`config ${r.path}`)
         console.log(`quiet hours     ${describeQuietHours(cfg.quietHours)}`)
         console.log(
-          `notifications   chime on complete ${cfg.notifications.chimeOnComplete} · chime on needs input ${cfg.notifications.chimeOnNeedsInput} · morning summary ${cfg.notifications.morningSummary}`
+          `notifications   chime on complete ${cfg.notifications.chimeOnComplete} · chime on needs input ${cfg.notifications.chimeOnNeedsInput} · chime in manual quiet ${cfg.notifications.chimeInManualQuiet} · morning summary ${cfg.notifications.morningSummary}`
         )
         console.log(`concurrency     ${cfg.concurrency}`)
         console.log(`max turns       ${cfg.maxTurns}`)

@@ -27,6 +27,7 @@ interface Form {
   unlockMinutes: string
   chimeComplete: boolean
   chimeNeedsInput: boolean
+  chimeManualQuiet: boolean
   morningSummary: boolean
   protectedBranches: string
   jql: string
@@ -72,6 +73,7 @@ function toForm(c: UserConfig): Form {
     unlockMinutes: String(q.unlockMinutes),
     chimeComplete: c.notifications.chimeOnComplete,
     chimeNeedsInput: c.notifications.chimeOnNeedsInput,
+    chimeManualQuiet: c.notifications.chimeInManualQuiet,
     morningSummary: c.notifications.morningSummary,
     protectedBranches: c.protectedBranches.join(', '),
     jql: c.jira.jql,
@@ -234,6 +236,10 @@ const SPECS = {
   'chime-needs-input': {
     take: own('chimeNeedsInput'),
     patch: (f) => ({ notifications: { chimeOnNeedsInput: f.chimeNeedsInput } })
+  },
+  'chime-manual-quiet': {
+    take: own('chimeManualQuiet'),
+    patch: (f) => ({ notifications: { chimeInManualQuiet: f.chimeManualQuiet } })
   },
   'morning-summary': {
     take: own('morningSummary'),
@@ -783,6 +789,17 @@ export default function SettingsView(): React.JSX.Element {
             {mark('chime-needs-input')}
           </label>
           {error('chime-needs-input')}
+          <label className="check">
+            <input
+              type="checkbox"
+              data-testid="settings-chime-manual-quiet"
+              checked={form.chimeManualQuiet}
+              onChange={(e) => now('chime-manual-quiet', { chimeManualQuiet: e.target.checked })}
+            />
+            Chime when a session finishes during a manual quiet (quiet hours stay silent)
+            {mark('chime-manual-quiet')}
+          </label>
+          {error('chime-manual-quiet')}
           <label className="check">
             <input
               type="checkbox"

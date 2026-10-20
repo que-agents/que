@@ -293,6 +293,11 @@ export interface NotificationsConfig {
   chimeOnComplete: boolean
   /** Chime when a session or a task needs input (work hours only). */
   chimeOnNeedsInput: boolean
+  /**
+   * Let the complete chime through during a manual quiet (`que quiet start`).
+   * Scheduled quiet hours stay silent, and needs input never chimes in a window.
+   */
+  chimeInManualQuiet: boolean
   /** One notification with the night's totals when quiet hours end. */
   morningSummary: boolean
 }

@@ -61,6 +61,7 @@ unlock_minutes = ${d.quietHours.unlockMinutes}
 [notifications]
 chime_on_complete = ${d.notifications.chimeOnComplete}
 chime_on_needs_input = ${d.notifications.chimeOnNeedsInput}
+chime_in_manual_quiet = ${d.notifications.chimeInManualQuiet}
 morning_summary = ${d.notifications.morningSummary}
 
 [jira]
