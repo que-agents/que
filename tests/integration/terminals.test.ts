@@ -181,8 +181,8 @@ describe('terminals', () => {
       const listed = (await client.request('term.list')).find((t) => t.id === reply.id)
       expect(reply).toMatchObject({ cwd: daemon.home, alive: true })
       expect(created[0]).toEqual(reply)
-      // The foreground program is read after the announcement and may be known by now.
-      expect({ ...created[0], process: listed?.process }).toEqual(listed)
+      // The foreground program is resolved after the announcement, so the row may know it by now.
+      expect(listed).toMatchObject(created[0])
     }, 20_000)
   })
 

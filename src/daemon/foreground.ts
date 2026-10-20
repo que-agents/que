@@ -7,8 +7,11 @@
 // terminal's tty finds the foreground group's leader and its argv[0], the name
 // a terminal app shows (the kernel's name can be a versioned file the launcher
 // symlink points at).
+import { basename } from 'node:path'
 import { run } from '../shared/exec'
 import type { TermInfo } from '../shared/protocol'
+import type { TerminalMirror } from './mirror'
+import { foregroundProcess } from './pty-fd'
 
 const POLL_MS = 1000
 const PS = '/bin/ps'
@@ -29,7 +32,7 @@ export function foregroundName(psOutput: string, raw: string): string | null {
     const comm = m[3].slice(raw.length)
 
     if (!/^\s/.test(comm)) continue
-    const base = comm.trim().split('/').pop() ?? ''
+    const base = basename(comm.trim())
     const name = base.startsWith('-') ? base.slice(1) : base
 
     if (name) return name
@@ -38,12 +41,14 @@ export function foregroundName(psOutput: string, raw: string): string | null {
   return null
 }
 
-/** Where a terminal's facts come from, and where a change goes. */
+/** The terminal whose facts are kept. */
 export interface FactsSource {
   /** The shell's pid, to find the terminal's tty. */
   pid: number
-  /** The kernel's name of the foreground program; undefined (or a throw) when unknown. */
-  readRaw: () => string | undefined
+  masterFd: number
+  alive: () => boolean
+  /** Its screen mirror, which sees the titles the program sets. */
+  mirror: TerminalMirror
   /** Called after title or process changed. */
   onChange: () => void
 }
@@ -52,13 +57,10 @@ export interface FactsSource {
 export class TerminalFacts {
   title: string | undefined
   process: string | undefined
+  /** The kernel's name the current process name was resolved for. */
   private raw: string | undefined
-  /** The raw name the current process name was resolved for. */
-  private resolvedFor: string | undefined
-  private resolving = false
-  private tty: string | null | undefined
+  private tty: Promise<string | null> | undefined
   private timer: NodeJS.Timeout | null = null
-  private disposed = false
 
   constructor(
     private readonly source: FactsSource,
@@ -66,19 +68,25 @@ export class TerminalFacts {
   ) {
     this.title = carried.title || undefined
     this.process = carried.process || undefined
+    source.mirror.onTitleChange((title) => this.titleChanged(title))
   }
 
   /** Starts the once-a-second poll and reads the foreground program now. */
   start(): void {
-    if (this.disposed || this.timer) return
+    if (this.timer) return
     this.timer = setInterval(() => this.check(), POLL_MS)
     this.timer.unref()
     this.check()
   }
 
+  /** The terminal ended: polling stops, the last process name stays. */
+  stop(): void {
+    if (this.timer) clearInterval(this.timer)
+    this.timer = null
+  }
+
   /** The program set a title (OSC 0 or 2); empty clears it. */
-  titleChanged(title: string): void {
-    if (this.disposed) return
+  private titleChanged(title: string): void {
     const next = title || undefined
 
     if (next !== this.title) {
@@ -90,59 +98,26 @@ export class TerminalFacts {
     this.check()
   }
 
-  /** The terminal ended: polling stops, the last process name stays. */
-  stop(): void {
-    if (this.timer) clearInterval(this.timer)
-    this.timer = null
-  }
-
-  dispose(): void {
-    this.stop()
-    this.disposed = true
-  }
-
   private check(): void {
-    if (this.disposed) return
-    let raw: string | undefined
+    if (!this.timer || !this.source.alive()) return
+    const raw = foregroundProcess(this.source.masterFd)
 
-    try {
-      raw = this.source.readRaw()
-    } catch {
-      return
-    }
-
-    // `kernel_task` is pid 0: no process group has the terminal yet (or any more).
-    if (!raw || raw === 'kernel_task' || raw === this.raw) return
+    if (!raw || raw === this.raw) return
     this.raw = raw
-    void this.resolve()
+    void this.resolve(raw)
   }
 
-  /** One resolve at a time; a raw change while one runs runs it again afterwards. */
-  private async resolve(): Promise<void> {
-    if (this.resolving) return
-    this.resolving = true
+  /** The latest raw name wins: a resolve the name moved past publishes nothing. */
+  private async resolve(raw: string): Promise<void> {
+    const name = await this.displayName(raw)
 
-    try {
-      while (this.raw !== undefined && this.raw !== this.resolvedFor && !this.disposed) {
-        const raw = this.raw
-        const name = await this.displayName(raw)
-
-        this.resolvedFor = raw
-
-        if (this.disposed || this.raw !== raw) continue
-
-        if (name !== this.process) {
-          this.process = name
-          this.source.onChange()
-        }
-      }
-    } finally {
-      this.resolving = false
-    }
+    if (!this.timer || raw !== this.raw || name === this.process) return
+    this.process = name
+    this.source.onChange()
   }
 
   private async displayName(raw: string): Promise<string> {
-    const tty = await this.ttyName()
+    const tty = await (this.tty ??= ttyOf(this.source.pid))
 
     if (!tty) return raw
 
@@ -152,21 +127,12 @@ export class TerminalFacts {
 
     return (r.ok && foregroundName(r.stdout, raw)) || raw
   }
+}
 
-  /** The terminal's tty (`ttys016`), asked of `ps` once. */
-  private async ttyName(): Promise<string | null> {
-    if (this.tty !== undefined) return this.tty
+/** The terminal's tty (`ttys016`) by its shell's pid; null when it has none (`??`). */
+async function ttyOf(pid: number): Promise<string | null> {
+  const r = await run(PS, ['-o', 'tty=', '-p', String(pid)], { timeoutMs: PS_TIMEOUT_MS })
+  const name = r.ok ? r.stdout.trim() : ''
 
-    const r = await run(PS, ['-o', 'tty=', '-p', String(this.source.pid)], {
-      timeoutMs: PS_TIMEOUT_MS
-    })
-
-    // A failed ask is asked again next time; a process without a tty says `??`.
-    if (!r.ok) return null
-    const name = r.stdout.trim()
-
-    this.tty = name && !name.startsWith('?') ? name : null
-
-    return this.tty
-  }
+  return name && !name.startsWith('?') ? name : null
 }

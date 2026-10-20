@@ -7,7 +7,7 @@ import type { TermCreateParams, TermInfo, TermSnapshotResult } from '../shared/p
 import { AdoptedTerminal, type AdoptSpec } from './adopted-terminal'
 import { TerminalFacts } from './foreground'
 import { TerminalMirror } from './mirror'
-import { holdReading, ptyBinding, resumeReading } from './pty-fd'
+import { holdReading, resumeReading } from './pty-fd'
 import { termInfo, type ExitInfo, type Term } from './term'
 
 export type { ExitInfo, Term } from './term'
@@ -39,7 +39,6 @@ export class HostedTerminal implements Term {
   readonly workspaceId?: string
   private readonly mirror: TerminalMirror
   private readonly facts: TerminalFacts
-  private readonly offTitle: () => void
   alive = true
   cols: number
   rows: number
@@ -48,7 +47,7 @@ export class HostedTerminal implements Term {
     opts: TermCreateParams,
     onData: (data: string) => void,
     onExit: (e: ExitInfo) => void,
-    onUpdate: () => void,
+    onUpdate: (info: TermInfo) => void,
     extra: TermExtra = {}
   ) {
     this.id = randomUUID()
@@ -84,12 +83,11 @@ export class HostedTerminal implements Term {
     })
     this.facts = new TerminalFacts({
       pid: this.proc.pid,
-      // The binding rather than IPty.process, which names the spawned file while no
-      // process group has the terminal yet (the kernel answers with pid 0).
-      readRaw: () => (this.alive ? ptyBinding().process(this.masterFd) : undefined),
-      onChange: onUpdate
+      masterFd: this.masterFd,
+      alive: () => this.alive,
+      mirror: this.mirror,
+      onChange: () => onUpdate(this.info())
     })
-    this.offTitle = this.mirror.onTitleChange((title) => this.facts.titleChanged(title))
     this.facts.start()
   }
 
@@ -168,8 +166,7 @@ export class HostedTerminal implements Term {
 
   dispose(): void {
     this.kill()
-    this.offTitle()
-    this.facts.dispose()
+    this.facts.stop()
     this.mirror.dispose()
   }
 
@@ -207,7 +204,7 @@ export class PtyHost {
       opts,
       (data) => this.emitData(id, data),
       (info) => this.emitExit(id, info),
-      () => this.emitUpdate(id),
+      (info) => this.emitUpdate(info),
       extra
     )
 
@@ -227,7 +224,7 @@ export class PtyHost {
       spec,
       (data) => this.emitData(spec.id, data),
       (info) => this.emitExit(spec.id, info),
-      () => this.emitUpdate(spec.id)
+      (info) => this.emitUpdate(info)
     )
 
     this.terms.set(t.id, t)
@@ -285,12 +282,7 @@ export class PtyHost {
     for (const l of this.exitListeners) l(id, info)
   }
 
-  private emitUpdate(id: string): void {
-    const t = this.terms.get(id)
-
-    if (!t) return
-    const info = t.info()
-
+  private emitUpdate(info: TermInfo): void {
     for (const l of this.updateListeners) l(info)
   }
 }

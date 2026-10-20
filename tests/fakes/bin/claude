@@ -491,14 +491,14 @@ function interactive() {
   // QUE_FAKE_CLAUDE_TITLE: the window title (OSC 0) the real CLI sets, `✳` idle, `◐` while a
   // reply is in flight, and the empty title on the way out.
   const titleText = process.env.QUE_FAKE_CLAUDE_TITLE
-  const setTitle = (glyph) => {
-    if (titleText) out(`\x1b]0;${glyph ? `${glyph} ${titleText}` : ''}\x07`)
+  let busy = false
+  const setTitle = () => {
+    if (titleText) out(`\x1b]0;${busy ? '◐' : '✳'} ${titleText}\x07`)
   }
-  const quit = () => {
-    setTitle('')
-    process.exit(0)
-  }
-  setTitle('✳')
+  process.on('exit', () => {
+    if (titleText) out('\x1b]0;\x07')
+  })
+  setTitle()
   out(`✻ Claude Code v${VERSION} (fake) · ${model} · ${cwd}\r\n`)
   runHooks('SessionStart', { source: resumed ? 'resume' : 'startup', model })
   out('> ')
@@ -512,11 +512,13 @@ function interactive() {
     out(`● ${text}\r\n`)
     appendTranscript({ type: 'assistant', message: { role: 'assistant', content: text } })
     runHooks('Stop', { last_assistant_message: text, stop_hook_active: false, ...stopExtra })
-    setTitle('✳')
+    busy = false
+    setTitle()
   }
 
   const submitPrompt = (line) => {
-    setTitle('◐')
+    busy = true
+    setTitle()
     appendTranscript({ type: 'user', message: { role: 'user', content: line } })
     runHooks('UserPromptSubmit', { prompt: line, prompt_id: crypto.randomUUID() })
   }
@@ -588,7 +590,7 @@ function interactive() {
     }
     if (line === '/exit') {
       runHooks('SessionEnd', { reason: 'prompt_input_exit' })
-      quit()
+      process.exit(0)
     }
     if (line.startsWith('/background')) {
       const kinds = line.split(/\s+/).slice(1)
@@ -624,7 +626,7 @@ function interactive() {
   }
   rl.on('close', () => {
     runHooks('SessionEnd', { reason: 'other' })
-    quit()
+    process.exit(0)
   })
 }
 

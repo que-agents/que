@@ -46,14 +46,13 @@ export class AdoptedTerminal implements Term {
   private readonly stream: tty.ReadStream
   private readonly writer: FdWriter
   private readonly facts: TerminalFacts
-  private readonly offTitle: () => void
   private exited = false
 
   constructor(
     spec: AdoptSpec,
     onData: (data: string) => void,
     private readonly onExit: (e: ExitInfo) => void,
-    onUpdate: () => void
+    onUpdate: (info: TermInfo) => void
   ) {
     this.id = spec.id
     this.name = spec.name
@@ -69,13 +68,13 @@ export class AdoptedTerminal implements Term {
     this.facts = new TerminalFacts(
       {
         pid: spec.pid,
-        readRaw: () => (this.alive ? ptyBinding().process(this.masterFd) : undefined),
-        onChange: onUpdate
+        masterFd: spec.fd,
+        alive: () => this.alive,
+        mirror: this.mirror,
+        onChange: () => onUpdate(this.info())
       },
       { title: spec.title, process: spec.process }
     )
-    // Subscribed after the replay: the screen carries no title to clear the carried one.
-    this.offTitle = this.mirror.onTitleChange((title) => this.facts.titleChanged(title))
     this.writer = new FdWriter(spec.fd)
 
     // A tty stream does not read until it flows; paused first, the listener
@@ -162,8 +161,6 @@ export class AdoptedTerminal implements Term {
 
   dispose(): void {
     this.kill()
-    this.offTitle()
-    this.facts.dispose()
     this.mirror.dispose()
   }
 
