@@ -189,6 +189,11 @@ export class LiveSessions {
     this.apply({ kind: 'hook', workspaceId, terminalId: term, taskId, payload })
   }
 
+  /** A main Claude session is live in the terminal. */
+  isLive(terminalId: string): boolean {
+    return this.live.some((e) => e.terminalId === terminalId)
+  }
+
   /** The terminal exited or was killed. */
   terminalGone(terminalId: string): void {
     this.apply({ kind: 'terminal_gone', terminalId })

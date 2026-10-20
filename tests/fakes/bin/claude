@@ -489,8 +489,8 @@ async function headless(prompt) {
 function interactive() {
   const out = (s) => process.stdout.write(s)
   // QUE_FAKE_CLAUDE_TITLE: the window title (OSC 0) the real CLI sets, `✳` idle, `◐` while a
-  // reply is in flight, and the empty title on the way out.
-  const titleText = process.env.QUE_FAKE_CLAUDE_TITLE
+  // reply is in flight, and the empty title on the way out. `/rename <name>` replaces it.
+  let titleText = process.env.QUE_FAKE_CLAUDE_TITLE
   let busy = false
   const setTitle = () => {
     if (titleText) out(`\x1b]0;${busy ? '◐' : '✳'} ${titleText}\x07`)
@@ -591,6 +591,13 @@ function interactive() {
     if (line === '/exit') {
       runHooks('SessionEnd', { reason: 'prompt_input_exit' })
       process.exit(0)
+    }
+    if (line.startsWith('/rename ')) {
+      // A local command, like the real one: no turn, no hooks; the title takes the new name.
+      titleText = line.slice('/rename '.length).trim()
+      setTitle()
+      out(`Session renamed to: ${titleText}\r\n> `)
+      return
     }
     if (line.startsWith('/background')) {
       const kinds = line.split(/\s+/).slice(1)

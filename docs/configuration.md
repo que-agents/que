@@ -111,6 +111,16 @@ Inside a workspace, que's `claude` wrapper (`<QUE_HOME>/bin/claude`) then adds
 Claude Code records the system prompt on a conversation's first request, so an
 edit applies to new sessions; a resumed session picks it up after it compacts.
 
+## Sidebar titles
+
+A workspace made from a brief starts with the brief's first line as its title. Once
+Claude Code runs in one of its terminals, the title becomes the name the session gives
+itself in the terminal title (from its first prompt, or `/rename`), and follows it when
+the name changes; an exit leaves the last name in place. Renaming a workspace in que
+pins its title: a title you set (or one a ticket gives, `KEY summary`) is never
+replaced. With `CLAUDE_CODE_DISABLE_TERMINAL_TITLE` set in the environment, Claude Code
+writes no title and the row keeps the brief's first line.
+
 ## The repository config: `que.toml`
 
 Put `que.toml` at the root of a repository. A `.worktreeinclude` file next to it

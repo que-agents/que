@@ -3,8 +3,8 @@
 // a Claude Code session typed into it (the fake, through que's hooks wrapper)
 // reports needs input back to `que status`, and the report lists the workspace
 // as waiting. And a workspace made from a brief in the dialog: under a random
-// three-word name, titled in the sidebar by the brief's first line, and
-// claude started on the brief itself in its only terminal. And the card a workspace row
+// three-word name, claude started on the brief itself in its only terminal, and
+// titled in the sidebar by the name the session gives itself in its terminal title. And the card a workspace row
 // opens under a resting pointer: its branch and its pull requests from the fake gh.
 import { expect, test } from '@playwright/test'
 import type { StatusJson } from '../../src/cli/workspaces'
@@ -111,19 +111,22 @@ test('a claude session in a workspace terminal reports needs input to que status
   })
 })
 
-test('a workspace described in a brief gets a random name, the brief's title, and claude started on it', async () => {
+test("a workspace described in a brief gets a random name, claude started on it, and the session's own title", async () => {
   const repo = makeTempRepo(tempDir('que-e2e-repo-'))
   const queHome = newQueHome()
   const brief = 'Raise the upload timeout\n\nThe upload test times out on slow CI runners.'
+  // The name the fake claude writes to its terminal title, as Claude Code names a session.
+  const label = 'Slow runner upload timeout'
   let project: Project
   let workspace: Workspace
   let name = ''
   let sidebar: SidebarPage
   let terminal: TerminalPage
 
-  await test.step('Register the project with the CLI and launch the app', async () => {
+  await test.step('Launch the app, then register the project with the CLI', async () => {
+    // The app first: it starts the daemon, and the fake reads its title from the daemon's env.
+    launched = await launchApp({ queHome, env: { QUE_FAKE_CLAUDE_TITLE: label } })
     project = queJson<Project>(queHome, 'project', 'add', repo, '--json')
-    launched = await launchApp({ queHome })
     sidebar = new SidebarPage(launched.window)
     terminal = new TerminalPage(launched.window)
     await sidebar.waitForLoad()
@@ -149,10 +152,6 @@ test('a workspace described in a brief gets a random name, the brief's title, an
     workspace = created as Workspace
   })
 
-  await test.step("The sidebar title is the brief's first line", async () => {
-    await expect(sidebar.workspaceName(workspace.id)).toHaveText('Raise the upload timeout')
-  })
-
   await test.step('Claude starts on the brief itself in the only terminal', async () => {
     await expect
       .poll(() => launched.claudeCalls().some((argv) => argv.at(-1) === brief), {
@@ -167,6 +166,11 @@ test('a workspace described in a brief gets a random name, the brief's title, an
 
     expect(terms).toHaveLength(1)
     await expect.poll(() => terminal.activeTermId()).toBe(terms[0].id)
+  })
+
+  await test.step('After the first reply, the sidebar title is the name the session gave itself', async () => {
+    await terminal.expectScreenToContain('● Fake reply to: Raise the upload timeout', 30_000)
+    await expect(sidebar.workspaceName(workspace.id)).toHaveText(label)
     await launched.window.screenshot({ path: 'test-results/workspace-from-brief.png' })
   })
 })

@@ -30,6 +30,7 @@ import {
 } from '../shared/config'
 import { decoders, ParamsError } from '../shared/methods.decode'
 import { ensureDirs, quePaths, type QuePaths } from '../shared/paths'
+import { sessionLabel } from '../shared/session-label'
 import type {
   ConfigGetResult,
   HandoffParams,
@@ -294,7 +295,10 @@ export class DaemonServer {
           else c.sendEvent('term.data', { id, data })
         }
       }),
-      host.onUpdate((info) => this.bus.emit('term.updated', info)),
+      host.onUpdate((info) => {
+        this.bus.emit('term.updated', info)
+        this.labelFromTerminal(info.id)
+      }),
       host.onExit((id, info) => {
         this.log(`term ${id} exited code=${info.exitCode} signal=${info.signal ?? ''}`)
         this.bus.emit('term.exit', { id, exitCode: info.exitCode, signal: info.signal })
@@ -538,6 +542,20 @@ export class DaemonServer {
     this.log(`instructions ${path} updated`)
 
     return this.getInstructions()
+  }
+
+  /**
+   * The title of a workspace terminal in which a Claude session is live names the
+   * session; it becomes the workspace's title unless the user set one. An empty title
+   * (the session exiting) or the unnamed placeholder changes nothing.
+   */
+  private labelFromTerminal(id: string): void {
+    const t = this.opts.host.get(id)
+
+    if (!t?.workspaceId || !this.liveSessions.isLive(id)) return
+    const label = sessionLabel(t.title)
+
+    if (label) this.workspaces.labelFromSession(t.workspaceId, label)
   }
 
   /** Kills every terminal of a workspace; returns how many were still alive. */
@@ -912,6 +930,12 @@ export class DaemonServer {
     'hook.event': (p) => {
       const ws = this.workspaces.get(p.workspaceId)
       this.liveSessions.hook(ws.id, p.terminalId, p.taskId, p.payload)
+
+      // A session names itself in the title, sometimes before its start hook lands (a resume).
+      if (p.payload.hook_event_name === 'SessionStart' && p.terminalId) {
+        this.labelFromTerminal(p.terminalId)
+      }
+
       this.status.hook(ws.id, p.payload)
 
       if (p.taskId) this.tasks.hook(p.taskId, p.payload)
