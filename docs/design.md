@@ -256,6 +256,10 @@ and the list `Running` instead of `Running tonight`, an empty board says
 drawn the same way. Those two buttons stay the board's only controls; the
 tally still counts from the window's start. The board window and the tray
 tooltip read `que · quiet`.
+The board is frameless and drags by its strip, its count line and its
+margins; the list of rows opts out of the drag region, since a draggable area
+swallows pointer events, the wheel included, and the list must scroll when it
+is taller than the window.
 
 ## Report
 

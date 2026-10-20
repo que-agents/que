@@ -114,6 +114,61 @@ test('quiet hours show only the board; an unlock brings detail back until it run
   })
 })
 
+test('a board with more rows than fit scrolls them under the wheel', async () => {
+  const repo = makeTempRepo(tempDir('que-e2e-repo-'))
+  const now = Date.now()
+  const queHome = newQueHome()
+  let board: QuietBoardPage
+
+  await test.step('Ten workspaces with running terminals, made with the CLI', async () => {
+    for (let i = 0; i < 10; i++) {
+      const w = queJson<Workspace>(
+        queHome,
+        'work',
+        '--name',
+        `app-15${i}0-board-row`,
+        '-r',
+        repo,
+        '--json'
+      )
+
+      expect(que(queHome, 'ws', 'terminal', w.id).trim()).toMatch(/^[0-9a-f-]{36}$/)
+    }
+
+    que(
+      queHome,
+      'config',
+      'set',
+      'quiet_hours.enabled=true',
+      `quiet_hours.default=${hhmm(now - 60 * 60_000)},${hhmm(now + 60 * 60_000)}`
+    )
+  })
+
+  await test.step("Launch at the board's own size: the last row is below the fold", async () => {
+    launched = await launchApp({ queHome })
+    const page = await findWindow(launched.app, true)
+    board = new QuietBoardPage(page)
+    await board.waitForLoad()
+    // launchApp sizes the first window for the specs; the board is 600×400 in the app.
+    const win = await launched.app.browserWindow(page)
+    await win.evaluate((w) => w.setSize(600, 400))
+    await expect(board.counts).toHaveText('10 idle')
+    await expect(board.rows.locator('li')).toHaveCount(10)
+    await expect(board.rows.locator('li').last()).not.toBeInViewport()
+  })
+
+  await test.step('A wheel over the rows scrolls the last row into view', async () => {
+    const box = await board.rows.boundingBox()
+
+    if (!box) throw new Error('the rows have no box')
+    await board.page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+    await board.page.mouse.wheel(0, 400)
+    await expect.poll(() => board.rows.evaluate((el) => el.scrollTop)).toBeGreaterThan(0)
+    await expect(board.rows.locator('li').last()).toBeInViewport()
+    await board.page.screenshot({ path: 'test-results/quiet-board-scrolled.png' })
+  })
+})
+
 test('a manual quiet from the CLI shows the board; End quiet brings the main window back', async () => {
   // Quiet hours stay off (the default test config): only the manual window locks.
   launched = await launchApp()
