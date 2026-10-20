@@ -97,12 +97,17 @@ export default function ReportView(): React.JSX.Element {
     }
   }, [store])
 
-  // Refreshes whenever a workspace's status, reason or PR changes (the store's workspaces).
+  // Refreshes when a workspace's status, reason or pull request changes, and
+  // not on any other field: every load asks git for each workspace's commits ahead.
+  const watched = Object.values(workspaces)
+    .map((w) => [w.id, w.status, w.statusReason, w.pr?.state, w.pr?.checks].join(':'))
+    .join(' ')
+
   useEffect(() => {
-    void workspaces
+    void watched
     // oxlint-disable-next-line react/set-state-in-effect -- load awaits the daemon before it sets state, so nothing renders twice synchronously
     void load()
-  }, [load, workspaces])
+  }, [load, watched])
 
   const empty = report !== null && report.workspaces.length === 0
 
