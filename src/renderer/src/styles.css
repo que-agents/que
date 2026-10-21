@@ -454,11 +454,19 @@ h2 {
   font: 11px var(--mono);
 }
 
-/* An idle workspace with a background shell or monitor: `›_` at the row's right end. */
-.sidebar .bg-mark {
-  flex: none;
+/* An idle workspace with a background shell or monitor: `›_` (the session glyph) at the
+ * sidebar row's right end, and after the state word on a quiet board row. */
+.bg-mark {
   font: 11px var(--mono);
   color: var(--fg-faint);
+}
+
+.sidebar .bg-mark {
+  flex: none;
+}
+
+.dot-row .bg-mark {
+  margin-left: 6px;
 }
 
 /* A row: the button, and over its right end the word and ⋯ that the pointer reveals.
@@ -547,9 +555,10 @@ h2 {
 }
 
 /* Status at rest: a 5px dot in its tone, centred in the icon column. A pull request
- * check's dot is the same, taking its tone from its row. */
+ * check's dot and a dim row's dot are the same, taking their tone from their row. */
 .status-dot,
-.pr-dot {
+.pr-dot,
+.dot-row-dot {
   flex: none;
   width: 5px;
   height: 5px;
@@ -562,7 +571,8 @@ h2 {
 }
 
 /* Working: four accent dots on a 2×2 grid at a 5px pitch, and a diagonal ripple across
- * them (top-left, then top-right and bottom-left, then bottom-right). CSS only. */
+ * them (top-left, then top-right and bottom-left, then bottom-right). CSS only. The
+ * sidebar and the quiet board draw it (WorkingMark). */
 .working-mark {
   display: grid;
   grid-template-columns: 3px 3px;
@@ -1351,14 +1361,14 @@ body.resizing {
   color: var(--tone);
 }
 
-/* A dim row: a 5px dot in its tone (`.tone-*` on the row), the name with the
- * project right after it, the state word at the right and a fixed-width age
- * column, over a hairline. The name takes its own width up to just over half
- * the row, then ellipsises; the project column absorbs the slack. The state
- * word is faint; give it a `.tone-*` to colour it. */
+/* A dim row: its dot (`.dot-row-dot` in the row's `.tone-*`, or the working mark)
+ * centred in an 8px column, the name with the project right after it, the state
+ * word at the right and a fixed-width age column, over a hairline. The name takes
+ * its own width up to just over half the row, then ellipsises; the project column
+ * absorbs the slack. The state word is faint; give it a `.tone-*` to colour it. */
 .dot-row {
   display: grid;
-  grid-template-columns: 5px fit-content(55%) minmax(0, 1fr) auto 8ch;
+  grid-template-columns: 8px fit-content(55%) minmax(0, 1fr) auto 8ch;
   align-items: center;
   column-gap: 10px;
   height: 30px;
@@ -1369,12 +1379,9 @@ body.resizing {
   white-space: nowrap;
 }
 
-.dot-row::before {
-  content: '';
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--tone);
+.dot-row > .dot-row-dot,
+.dot-row > .working-mark {
+  justify-self: center;
 }
 
 .dot-row > span {
@@ -1416,7 +1423,7 @@ body.resizing {
   display: grid;
   /* The title column fits the section's longest title (capped), so the
    * workspace follows the titles instead of sitting at a fixed column. */
-  grid-template-columns: 5px fit-content(45%) minmax(0, 1fr) auto auto minmax(25ch, auto);
+  grid-template-columns: 8px fit-content(45%) minmax(0, 1fr) auto auto minmax(25ch, auto);
   column-gap: 10px;
   /* The facts column's `ch` is a mono 11px character, as in the row. */
   font: 11px var(--mono);
@@ -1466,7 +1473,7 @@ body.resizing {
   gap: 14px;
   padding: 22px 28px 20px;
   background: var(--bg-side);
-  /* Frameless: the board drags by its body. */
+  /* Frameless: the board drags by its strip, its count line and its margins. */
   -webkit-app-region: drag;
 }
 
@@ -1501,10 +1508,13 @@ body.resizing {
   border-top: 1px solid var(--border);
 }
 
+/* A draggable region swallows pointer events, the wheel included, so the list
+ * opts out: it scrolls, and the empty space under a short list still drags. */
 .quiet-board-rows ul {
   margin: 0;
   padding: 0;
   list-style: none;
+  -webkit-app-region: no-drag;
 }
 
 .quiet-board-empty {

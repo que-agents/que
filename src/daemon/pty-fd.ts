@@ -12,16 +12,25 @@ interface PtyBinding {
 }
 
 /**
- * The kernel's name of the process group in the terminal's foreground, read on
- * the master fd; undefined when no group has the terminal (the binding then
- * answers `kernel_task`, pid 0: before the shell takes it and once it is gone)
- * or the fd is closed.
+ * Names the kernel gives the foreground group while no program of the user's
+ * has the terminal: `kernel_task` (pid 0: before the shell takes it and once
+ * it is gone) and node-pty's `spawn-helper` on darwin, which holds it for a
+ * moment before it execs the shell.
+ */
+const NOBODY: ReadonlySet<string> = new Set(['kernel_task', 'spawn-helper'])
+
+/** The program behind the kernel's name of the terminal's foreground group, or undefined while nobody has it. */
+export function programOf(name: string | undefined): string | undefined {
+  return name && !NOBODY.has(name) ? name : undefined
+}
+
+/**
+ * The program in the terminal's foreground, by the kernel's name of the group
+ * read on the master fd; undefined when none has it or the fd is closed.
  */
 export function foregroundProcess(fd: number): string | undefined {
   try {
-    const name = ptyBinding().process(fd)
-
-    return name && name !== 'kernel_task' ? name : undefined
+    return programOf(ptyBinding().process(fd))
   } catch {
     return undefined
   }

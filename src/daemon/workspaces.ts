@@ -13,6 +13,7 @@ import {
   type UserConfig
 } from '../shared/config'
 import { run } from '../shared/exec'
+import { loginShell } from '../shared/login-path'
 import type { QuePaths } from '../shared/paths'
 import type {
   ProjectAddParams,
@@ -682,9 +683,8 @@ export function workspaceTerminalEnv(
   const real = findOnPath('claude', process.env.PATH, [paths.binDir])
 
   if (real) env.QUE_REAL_CLAUDE = real
-  const shell = process.env.SHELL || '/bin/zsh'
 
-  if (basename(shell) === 'zsh') {
+  if (basename(loginShell()) === 'zsh') {
     env.ZDOTDIR = zshDir(paths)
 
     if (process.env.ZDOTDIR) env.QUE_USER_ZDOTDIR = process.env.ZDOTDIR

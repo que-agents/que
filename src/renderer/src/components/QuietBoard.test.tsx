@@ -3,6 +3,7 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { fakeBridge } from '@renderer/testing/fake-bridge'
 import {
+  makeBackgroundTask,
   makeProject,
   makePullRequest,
   makeQuietState,
@@ -42,9 +43,11 @@ const retry = makeWorkspace({
   lastActivityAt: minutesAgo(now, 1)
 })
 
+// Titled, as a session's summary titles it: the board reads the title, as the sidebar does.
 const auth = makeWorkspace({
   id: 'ws_01hzx5t6y2wa',
   name: 'app-1451-token-refresh',
+  title: 'Refresh the token on a 401',
   status: 'needs_input',
   statusAt: minutesAgo(now, 34),
   lastActivityAt: minutesAgo(now, 34)
@@ -192,10 +195,23 @@ describe('QuietBoard', () => {
           'Document the upload limits uploader paused 31m ago',
           'Add retry logic to the uploader uploader running · 1h 07m 2m ago',
           'app-1432-retry-logic uploader working 1m ago',
-          'app-1451-token-refresh uploader waiting 34m ago',
+          'Refresh the token on a 401 uploader waiting 34m ago',
           'main dotfiles idle 3h ago'
         ])
       })
+    })
+
+    it('names a workspace by its title where it has one, the branch otherwise', async () => {
+      seed()
+
+      render(<App board now={clock} />)
+
+      const titled = await screen.findByTestId(`quiet-board-row-${auth.id}`)
+      expect(within(titled).getByText('Refresh the token on a 401')).toBeInTheDocument()
+      expect(within(titled).queryByText('app-1451-token-refresh')).not.toBeInTheDocument()
+      expect(
+        within(screen.getByTestId(`quiet-board-row-${retry.id}`)).getByText('app-1432-retry-logic')
+      ).toBeInTheDocument()
     })
 
     it('reads needs input as a plain waiting, with a neutral dot and no tone on the word', async () => {
@@ -211,6 +227,44 @@ describe('QuietBoard', () => {
       expect(
         within(screen.getByTestId(`quiet-board-row-${resume.id}`)).getByText('stuck')
       ).toHaveClass('tone-bad')
+    })
+
+    it('draws the working mark on working rows, as the sidebar does, and a still dot elsewhere', async () => {
+      seed()
+
+      render(<App board now={clock} />)
+
+      const workspaceRow = await screen.findByTestId(`quiet-board-row-${retry.id}`)
+      expect(within(workspaceRow).getByTestId(`quiet-board-mark-${retry.id}`)).toHaveClass(
+        'working-mark'
+      )
+
+      const taskRow = screen.getByTestId(`quiet-board-row-${running.id}`)
+      expect(within(taskRow).getByTestId(`quiet-board-mark-${running.id}`)).toHaveClass(
+        'working-mark'
+      )
+
+      const idleRow = screen.getByTestId(`quiet-board-row-${dotfilesMain.id}`)
+      expect(idleRow).toHaveClass('tone-neutral')
+      expect(screen.queryByTestId(`quiet-board-mark-${dotfilesMain.id}`)).not.toBeInTheDocument()
+    })
+
+    it("marks an idle row whose session still runs a shell with the sidebar's ›_, never a working one", async () => {
+      seed()
+      fakeBridge.setBackgroundTasks(dotfilesMain.id, [
+        makeBackgroundTask({ kind: 'shell', description: 'npm run dev' })
+      ])
+      fakeBridge.setBackgroundTasks(retry.id, [
+        makeBackgroundTask({ kind: 'subagent', description: 'Explore the uploader' })
+      ])
+
+      render(<App board now={clock} />)
+
+      const idleRow = await screen.findByTestId(`quiet-board-row-${dotfilesMain.id}`)
+      const mark = within(idleRow).getByTestId(`quiet-board-row-${dotfilesMain.id}-background`)
+      expect(mark).toHaveTextContent('›_')
+      expect(mark).toHaveAttribute('title', 'shell')
+      expect(screen.queryByTestId(`quiet-board-row-${retry.id}-background`)).not.toBeInTheDocument()
     })
 
     it('carries no PR, turns or cost, and nothing to act on but Unlock', async () => {
