@@ -7,7 +7,6 @@ import {
   makeProject,
   makePullRequest,
   makeQuietState,
-  makeTask,
   makeTicket,
   makeTermInfo,
   makeWorkspace
@@ -391,55 +390,6 @@ describe('Sidebar', () => {
       const count = screen.getByTestId(`sidebar-project-${uploader.id}-count`)
       expect(count).toHaveTextContent(/^1 done · 2$/)
       expect(within(count).getByText('1 done')).toHaveClass('done')
-    })
-  })
-
-  describe('overnight tasks', () => {
-    const owned = makeWorkspace({
-      id: 'ws_01hzx6v8b3xc',
-      name: 'add-retry-logic',
-      status: 'exited'
-    })
-
-    const task = makeTask({
-      id: 'tsk_01hzy0d7w3ke',
-      title: 'Add retry logic to the uploader',
-      workspaceId: owned.id,
-      state: 'running'
-    })
-
-    it('ripples while its task runs, then reads done with its pull request until looked at', async () => {
-      seed()
-      fakeBridge.seedWorkspace(owned)
-      fakeBridge.seedTask(task)
-      render(<App />)
-      await screen.findByTestId(`sidebar-workspace-${owned.id}`)
-      expect(mark(owned.id)).toHaveAttribute('data-status', 'running')
-      expect(mark(owned.id)).toHaveClass('working-mark')
-      expect(word(owned.id)).toHaveTextContent('running')
-      expect(row(owned.id)).toHaveClass('weight-secondary')
-
-      fakeBridge.updateTask(task.id, { prUrl: 'https://github.com/rquellh/que/pull/88' })
-      fakeBridge.setTaskState(task.id, 'done')
-
-      await waitFor(() => {
-        expect(mark(owned.id)).toHaveAttribute('data-status', 'done')
-      })
-      expect(mark(owned.id)).toHaveAttribute('data-unseen', 'true')
-      expect(mark(owned.id)).toHaveClass('status-dot', 'tone-good')
-      expect(word(owned.id)).toHaveTextContent('done · draft PR #88')
-      expect(within(row(owned.id)).queryByRole('link')).not.toBeInTheDocument()
-    })
-
-    it('shows the workspace status again for a task that ended without finishing', async () => {
-      seed()
-      fakeBridge.seedWorkspace(owned)
-      fakeBridge.seedTask({ ...task, state: 'failed', reason: 'crashed' })
-      render(<App />)
-
-      await screen.findByTestId(`sidebar-workspace-${owned.id}`)
-      expect(mark(owned.id)).toHaveAttribute('data-status', 'exited')
-      expect(word(owned.id)).toHaveTextContent('exited')
     })
   })
 

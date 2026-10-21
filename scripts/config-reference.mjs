@@ -10,6 +10,7 @@ import os from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { buildSync } from 'esbuild'
+import { formatMarkdown } from './format-markdown.mjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const target = join(root, 'docs/configuration.md')
@@ -42,9 +43,6 @@ worktree_root = ${toml(d.worktreeRoot.replace(HOME, '~/.que'))}
 stall_timeout_minutes = ${d.stallTimeoutMinutes}
 status_poll_seconds = ${d.statusPollSeconds}
 pr_poll_seconds = ${d.prPollSeconds}
-concurrency = ${d.concurrency}
-max_turns = ${d.maxTurns}
-max_budget_usd = ${d.maxBudgetUsd}
 # default_permission_mode = "acceptEdits"   # unset: que.toml or Claude Code decides
 allow_bypass_permissions = ${d.allowBypassPermissions}
 protected_branches = ${toml(d.protectedBranches)}
@@ -92,10 +90,7 @@ setup = "npm ci"                       # run inside a new worktree
 teardown = "./scripts/teardown.sh"     # run inside a worktree before removal
 default_branch = "main"                # base for new workspaces (else origin's HEAD)
 worktree_include = [".env.local"]      # gitignored files copied into new worktrees
-permission_mode = "acceptEdits"        # ${config.PERMISSION_MODES.join(' | ')}
-test = "npm test"                      # the command a task must make pass
-instructions = "Keep changes small."   # appended to every task brief for this repo
-allowed_tools = ["Bash(npm test)"]     # passed to claude as --allowedTools`
+permission_mode = "acceptEdits"        # ${config.PERMISSION_MODES.join(' | ')}`
 
 const repoParsed = config.parseRepoConfig(repoExample)
 
@@ -103,6 +98,7 @@ if (!repoParsed.ok)
   throw new Error(`que.toml example does not parse: ${JSON.stringify(repoParsed.errors)}`)
 
 const blocks = { 'config-defaults': userDefaults, 'repo-example': repoExample }
+const check = process.argv.includes('--check')
 let stale = false
 
 for (const file of [target, join(root, 'README.md')]) {
@@ -116,16 +112,19 @@ for (const file of [target, join(root, 'README.md')]) {
     next = next.replace(re, `$1\`\`\`toml\n${body}\n\`\`\`\n$2`)
   }
 
+  // Written and checked through the same formatting, so a check never drifts from a write.
+  next = formatMarkdown(root, next)
+
   if (next === current) continue
   stale = true
 
-  if (!process.argv.includes('--check')) {
+  if (!check) {
     writeFileSync(file, next)
     console.log(`wrote ${file}`)
   }
 }
 
-if (process.argv.includes('--check')) {
+if (check) {
   if (stale) {
     console.error('the generated config blocks are stale; run npm run docs')
     process.exit(1)

@@ -1,14 +1,14 @@
 # que
 
 que is an open-source macOS Electron app for running Claude Code sessions in git worktrees.
-A long-running daemon owns every terminal, workspace, overnight task, and the status engine,
+A long-running daemon owns every terminal, workspace, the status engine, and quiet hours,
 so sessions outlive the app; the app and the `que` CLI are thin clients of its unix socket.
 
 ## Layout
 
 ```
 src/daemon/         daemon: PtyHost (node-pty + @xterm/headless mirror), DaemonServer (socket API),
-                    workspaces, status engine, task queue (task-machine, runner, finisher, report)
+                    workspaces, status engine, quiet hours, draft PRs, the sessions report
 src/shared/         protocol.ts (Methods, Events, framing), client.ts (DaemonClient), paths.ts, types.ts
 src/cli/            the `que` CLI (commander), a DaemonClient
 src/main/           Electron main: proxies the renderer's calls and events to the daemon
@@ -18,10 +18,10 @@ src/testing/        node-side test code: fixtures, daemon harness, leak check, t
 tests/integration/  daemon integration tests (in-process daemon, real pty/socket/git)
 tests/contract/     opt-in tests against the real Claude Code CLI
 tests/e2e/          Playwright Electron specs, pages/ (page objects), utils/ (app, que, repo)
-tests/fakes/bin/    fake claude, gh, code, caffeinate (see tests/fakes/README.md)
+tests/fakes/bin/    fake claude, gh, code, acli (see tests/fakes/README.md)
 tools/oxlint/       the vendored anti-slop oxlint rules (see its README); config in .oxlintrc.json
 scripts/            build-node.mjs (daemon, CLI, client bundles), smoke.mjs, verify.mjs,
-                    smoke-packaged.mjs, install-local.mjs, soak.mjs, flake-hunt.mjs, docs generators,
+                    smoke-packaged.mjs, install-local.mjs, flake-hunt.mjs, docs generators,
                     release.mjs
 build/              the app icon (scripts/make-icon.mjs); electron-builder.yml packages the app
 ```
@@ -46,7 +46,6 @@ Path aliases: `@shared/*`, `@daemon/*`, `@renderer/*`.
 | `npm run package`        | An unsigned `que.app` in `release/mac-arm64` (`npm run dist`: DMG + zip)                              |
 | `npm run smoke:packaged` | Package, launch the real app bundle, check daemon/terminal/tray/CLI                                   |
 | `npm run install:local`  | Package, replace /Applications/que.app, link `que`, reopen; daemon untouched                          |
-| `npm run soak`           | Long queue run against the fakes (`-- --minutes 10 --tasks 6`); RSS, leaks                            |
 | `npm run docs`           | Regenerate `docs/cli.md` and the config/CLI blocks in the docs                                        |
 
 ## Rules

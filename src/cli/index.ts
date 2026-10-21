@@ -11,8 +11,9 @@ import { attach } from './attach'
 import { CliError, printJson, printTable, withClient } from './common'
 import { runDoctor } from './doctor'
 import { runHook } from './hook'
+import { registerLaunchdCommands } from './launchd'
 import { registerQuietCommands } from './quiet'
-import { registerTaskCommands } from './tasks'
+import { registerReportCommand } from './report'
 import { registerTicketCommands } from './tickets'
 import { registerUpgradeCommand } from './upgrade'
 import { registerWorkspaceCommands } from './workspaces'
@@ -179,6 +180,7 @@ async function main(): Promise<void> {
     })
 
   registerUpgradeCommand(daemon)
+  registerLaunchdCommands(daemon)
 
   const term = program.command('term').description('manage terminals')
   term
@@ -241,9 +243,9 @@ async function main(): Promise<void> {
     .action((id: string) => attach(id))
 
   registerWorkspaceCommands(program)
-  registerTaskCommands(program, daemon)
   registerTicketCommands(program)
   registerQuietCommands(program)
+  registerReportCommand(program)
 
   program
     .command('hook')
@@ -254,9 +256,7 @@ async function main(): Promise<void> {
 
   program
     .command('doctor')
-    .description(
-      'check the daemon, claude, gh, git, caffeinate, node, config, and the hooks wrapper'
-    )
+    .description('check the daemon, claude, gh, git, node, config, and the hooks wrapper')
     .action(async () => {
       process.exitCode = await runDoctor()
     })

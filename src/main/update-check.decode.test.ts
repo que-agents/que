@@ -14,7 +14,7 @@ const LATEST = {
   created_at: '2026-10-14T08:40:00Z',
   published_at: '2026-10-14T08:45:00Z',
   assets: [],
-  body: 'Overnight queue fixes.'
+  body: 'Quiet mode fixes.'
 }
 
 describe('decodeRelease', () => {

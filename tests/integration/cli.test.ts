@@ -265,7 +265,7 @@ describe('que status', () => {
 })
 
 describe('que doctor', () => {
-  it('passes when the daemon, claude, gh, git, caffeinate, config, and wrapper are all there', async () => {
+  it('passes when the daemon, claude, gh, git, config, and wrapper are all there', async () => {
     const r = await runCli('doctor')
 
     expect(r.code).toBe(0)
@@ -277,7 +277,6 @@ describe('que doctor', () => {
       'ok claude',
       'ok gh',
       'ok git',
-      'ok caffeinate',
       'ok node',
       'ok config',
       'ok quiet',

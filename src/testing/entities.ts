@@ -1,16 +1,16 @@
 // Pure entity factories shared by node-side and renderer tests: no node:fs,
 // so the renderer's fixtures can re-export them. Realistic values, opaque ids.
+import type { WorkspaceDigest } from '../shared/protocol'
 import type {
   BackgroundTask,
   PrCheck,
   PrThreadEntry,
-  Task,
+  PullRequest,
   Ticket,
   Workspace
 } from '../shared/types'
 
 let wsCounter = 0
-let taskCounter = 0
 let prEntryCounter = 0
 let backgroundCounter = 0
 
@@ -52,41 +52,6 @@ export function makeBackgroundTask(overrides: Partial<BackgroundTask> = {}): Bac
     kind: 'shell',
     description: 'npm run dev',
     since: '2026-10-13T21:04:00.000Z',
-    ...overrides
-  }
-}
-
-/** A queued task with a real brief, the default caps, and an opaque id. */
-export function makeTask(overrides: Partial<Task> = {}): Task {
-  taskCounter += 1
-
-  return {
-    id: `tsk_01hzy${taskCounter.toString(36).padStart(7, '0')}`,
-    projectId: 'prj_01hzw7q2m4nb',
-    workspaceId: 'ws_01hzx3k9c2qf',
-    title: 'Add retry logic to the uploader and cover it with tests',
-    brief: 'Add retry logic to the uploader and cover it with tests.\nUse exponential backoff.',
-    source: 'prompt',
-    resumeSessionId: null,
-    state: 'queued',
-    reason: null,
-    sessionId: null,
-    pid: null,
-    attempts: 0,
-    costUsd: 0,
-    turns: 0,
-    maxTurns: 50,
-    maxBudgetUsd: 5,
-    permissionMode: null,
-    branch: null,
-    prUrl: null,
-    resultText: null,
-    lastActivityAt: null,
-    startedAt: null,
-    finishedAt: null,
-    pausedUntil: null,
-    createdAt: '2026-10-13T21:05:00.000Z',
-    updatedAt: '2026-10-13T21:05:00.000Z',
     ...overrides
   }
 }
@@ -143,6 +108,48 @@ export function makePrThreadEntry(overrides: Partial<PrThreadEntry> = {}): PrThr
     path: null,
     line: null,
     hunk: null,
+    ...overrides
+  }
+}
+
+/** One workspace's line in the report: idle, 42 minutes of work, two commits ahead. */
+export function makeWorkspaceDigest(overrides: Partial<WorkspaceDigest> = {}): WorkspaceDigest {
+  const name = overrides.name ?? 'app-1432-retry-logic'
+
+  return {
+    id: 'ws_01hzx3k9c2qf',
+    name,
+    project: 'uploader',
+    branch: name,
+    status: 'idle',
+    statusReason: null,
+    firstActivityAt: '2026-10-14T01:00:00.000Z',
+    lastActivityAt: '2026-10-14T01:42:00.000Z',
+    workingMs: 42 * 60_000,
+    needsInputCount: 0,
+    waitingSince: null,
+    stuckCount: 0,
+    commitsAhead: 2,
+    pr: null,
+    sessionId: null,
+    ...overrides
+  }
+}
+
+/** A draft pull request with no checks yet and no review. */
+export function makePullRequest(overrides: Partial<PullRequest> = {}): PullRequest {
+  return {
+    url: 'https://github.com/rquellh/que/pull/41',
+    number: 41,
+    title: 'Add retry logic to the uploader',
+    state: 'draft',
+    checks: 'none',
+    review: null,
+    checkRuns: [],
+    updatedAt: null,
+    additions: null,
+    deletions: null,
+    checkedAt: '2026-10-14T01:00:00.000Z',
     ...overrides
   }
 }

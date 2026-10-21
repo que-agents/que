@@ -10,9 +10,6 @@ import type {
   QuietState,
   QuietUnlock,
   PrThread,
-  Task,
-  TaskSource,
-  TaskState,
   Ticket,
   TicketsSyncState,
   UserConfig,
@@ -273,45 +270,10 @@ export interface WorkspaceCreatePrResult {
 
 export interface HookEventParams {
   workspaceId: string
-  /** Set when the hook fired inside a headless task run (QUE_TASK_ID). */
-  taskId?: string
   /** The daemon terminal the hook fired in (QUE_TERMINAL_ID), when it fired in one. */
   terminalId?: string
   /** The hook JSON Claude Code wrote to the hook's stdin. */
   payload: HookEvent
-}
-
-export interface TaskAddParams {
-  /** Exactly one of projectId (a new workspace per task) or workspaceId (run in it). */
-  projectId?: string
-  workspaceId?: string
-  /** Defaults to the first line of the brief, 80 characters at most. */
-  title?: string
-  brief: string
-  source?: TaskSource
-  resumeSessionId?: string
-  maxTurns?: number
-  maxBudgetUsd?: number
-}
-
-export interface TaskListParams {
-  state?: TaskState
-}
-
-export interface QueueOpenParams {
-  /** Overrides the configured concurrency until the queue is closed. */
-  concurrency?: number
-}
-
-export interface QueueState {
-  open: boolean
-  concurrency: number
-  /** Tasks preparing, running, or finishing. */
-  running: number
-  queued: number
-  paused: number
-  /** When the queue was last opened. */
-  openedAt: string | null
 }
 
 export interface TicketsStartParams {
@@ -334,26 +296,8 @@ export interface TicketsListResult {
 }
 
 export interface ReportParams {
-  /** ISO time; defaults to the last queue.open, else 24 hours ago. */
+  /** ISO time; defaults to 24 hours ago. */
   since?: string
-}
-
-export type ReportGroup = 'done' | 'stuck' | 'failed' | 'stopped' | 'paused' | 'running' | 'queued'
-
-export interface ReportEntry {
-  id: string
-  title: string
-  state: TaskState
-  reason: string | null
-  workspace: string | null
-  workspaceId: string | null
-  branch: string | null
-  prUrl: string | null
-  /** When a paused task's rate limit resets; null unless it is paused on one. */
-  pausedUntil: string | null
-  durationMs: number | null
-  turns: number
-  costUsd: number
 }
 
 /** What one workspace (an interactive session in its worktree) did in the window. */
@@ -383,15 +327,9 @@ export interface WorkspaceDigest {
 export interface Report {
   since: string
   generatedAt: string
-  groups: Record<ReportGroup, ReportEntry[]>
   /** Workspaces with activity in the window, those needing attention first. */
   workspaces: WorkspaceDigest[]
   totals: {
-    tasks: number
-    prs: number
-    turns: number
-    costUsd: number
-    durationMs: number
     workspaces: number
     needsInput: number
   }
@@ -489,14 +427,6 @@ export interface Methods {
   'workspace.watch': { params: { id: string }; result: Ok }
   'workspace.unwatch': { params: { id: string }; result: Ok }
   'hook.event': { params: HookEventParams; result: Ok }
-  'task.add': { params: TaskAddParams; result: Task }
-  'task.list': { params: TaskListParams | undefined; result: Task[] }
-  'task.get': { params: { id: string }; result: Task }
-  'task.stop': { params: { id: string }; result: Task }
-  'task.remove': { params: { id: string }; result: Ok }
-  'queue.open': { params: QueueOpenParams | undefined; result: QueueState }
-  'queue.close': { params: Record<string, never> | undefined; result: QueueState }
-  'queue.state': { params: Record<string, never> | undefined; result: QueueState }
   'report.get': { params: ReportParams | undefined; result: Report }
   'quiet.state': { params: Record<string, never> | undefined; result: QuietState }
   'quiet.unlock': { params: QuietUnlockParams | undefined; result: QuietState }
@@ -602,14 +532,6 @@ export const METHODS: {
     quiet: false
   },
   'hook.event': { renderer: false, quiet: false },
-  'task.add': { renderer: true, quiet: true },
-  'task.list': { renderer: true, quiet: false },
-  'task.get': { renderer: true, quiet: false },
-  'task.stop': { renderer: true, quiet: false },
-  'task.remove': { renderer: true, quiet: false },
-  'queue.open': { renderer: true, quiet: true },
-  'queue.close': { renderer: true, quiet: false },
-  'queue.state': { renderer: true, quiet: false },
   'report.get': { renderer: true, quiet: true },
   'quiet.state': { renderer: true, quiet: false },
   'quiet.unlock': { renderer: true, quiet: false },
@@ -663,11 +585,6 @@ export interface Events {
   'workspace.removed': { id: string }
   /** Its worktree changed on disk (a write, a commit): the daemon computes nothing until asked. */
   'workspace.changed': { id: string }
-  'task.created': Task
-  /** The row after any commit; a run's activity stamps arrive once per flush, not per chunk. */
-  'task.updated': Task
-  'task.removed': { id: string }
-  'queue.state': QueueState
   'project.added': Project
   'project.removed': { id: string }
   'quiet.changed': QuietState
@@ -699,10 +616,6 @@ export const EVENTS: { [E in EventName]: { renderer: boolean } } = {
   'workspace.updated': { renderer: true },
   'workspace.removed': { renderer: true },
   'workspace.changed': { renderer: true },
-  'task.created': { renderer: true },
-  'task.updated': { renderer: true },
-  'task.removed': { renderer: true },
-  'queue.state': { renderer: true },
   'project.added': { renderer: true },
   'project.removed': { renderer: true },
   'quiet.changed': { renderer: true },
@@ -833,8 +746,7 @@ export function isEvent(msg: ServerMessage): msg is EventMessage {
 }
 
 // ---- Claude Code payloads -------------------------------------------------
-// Shapes que receives from Claude Code: hook JSON on stdin and the final
-// stream-json `result` line of a headless run.
+// Shapes que receives from Claude Code: the hook JSON on stdin.
 
 export const HOOK_EVENT_NAMES = [
   'SessionStart',
@@ -899,19 +811,4 @@ export interface HookEvent {
   error_details?: string
   /** SessionEnd */
   reason?: string
-}
-
-// A type alias (not an interface) so it is assignable to a generic stream message.
-export type StreamResult = {
-  type: 'result'
-  subtype: 'success' | 'error_max_turns' | 'error_during_execution' | 'error_max_budget_usd'
-  is_error: boolean
-  num_turns: number
-  total_cost_usd: number
-  duration_ms: number
-  session_id: string
-  stop_reason: string | null
-  result?: string
-  /** Set on error_during_execution when the session could not start (e.g. worktree refused). */
-  startup_failure_reason?: string
 }

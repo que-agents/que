@@ -26,9 +26,6 @@ describe('parseConfig', () => {
         statusPollSeconds: 10,
         prPollSeconds: 60,
         repos: {},
-        concurrency: 2,
-        maxTurns: 50,
-        maxBudgetUsd: 5,
         defaultPermissionMode: undefined,
         allowBypassPermissions: false,
         protectedBranches: ['main', 'master', 'release'],
@@ -56,9 +53,6 @@ describe('parseConfig', () => {
 stall_timeout_minutes = 0.5
 status_poll_seconds = 30
 theme = "dark"
-concurrency = 3
-max_turns = 80
-max_budget_usd = 12.5
 default_permission_mode = "plan"
 allow_bypass_permissions = true
 protected_branches = ["main", "production"]
@@ -87,9 +81,6 @@ path = "/Users/dev/code/api"
           uploader: { path: '/Users/dev/code/uploader', defaultBranch: 'develop' },
           api: { path: '/Users/dev/code/api', defaultBranch: undefined }
         },
-        concurrency: 3,
-        maxTurns: 80,
-        maxBudgetUsd: 12.5,
         defaultPermissionMode: 'plan',
         allowBypassPermissions: true,
         protectedBranches: ['main', 'production'],
@@ -99,6 +90,22 @@ path = "/Users/dev/code/api"
         startPrompt: 'Read .que/brief.md and ask before editing.'
       }
     })
+  })
+
+  it('reads a file that still sets the retired queue keys, without an error or those fields', () => {
+    const r = parseConfig(
+      `concurrency = 3
+max_turns = 80
+max_budget_usd = 12.5
+stall_timeout_minutes = 8
+`,
+      env
+    )
+
+    expect(r).toMatchObject({ ok: true, config: { stallTimeoutMinutes: 8 } })
+    expect(r.ok && r.config).not.toHaveProperty('concurrency')
+    expect(r.ok && r.config).not.toHaveProperty('maxTurns')
+    expect(r.ok && r.config).not.toHaveProperty('maxBudgetUsd')
   })
 
   describe('quiet hours and notifications', () => {
@@ -185,10 +192,9 @@ default_branch = "main"
     })
   })
 
-  it('reports bad task settings by key', () => {
+  it('reports bad permission, branch and prompt settings by key', () => {
     const r = parseConfig(
-      `concurrency = 1.5
-default_permission_mode = "yolo"
+      `default_permission_mode = "yolo"
 allow_bypass_permissions = "yes"
 protected_branches = "main"
 start_prompt = 3
@@ -199,7 +205,6 @@ start_prompt = 3
     expect(r).toEqual({
       ok: false,
       errors: [
-        { key: 'concurrency', message: 'must be a whole number' },
         {
           key: 'default_permission_mode',
           message: 'must be one of default, acceptEdits, plan, bypassPermissions, dontAsk, auto'
@@ -245,10 +250,13 @@ start_prompt = 3
       const patch = parseConfigAssignment('instructions_file=~/notes/delegation.md')
       expect(patch).toEqual({ instructionsFile: '~/notes/delegation.md' })
 
-      const merged = mergeConfigPatch({ concurrency: 3 }, patchToToml(patch))
+      const merged = mergeConfigPatch({ stall_timeout_minutes: 3 }, patchToToml(patch))
       expect(parseConfig(stringifyConfig(merged), env)).toMatchObject({
         ok: true,
-        config: { concurrency: 3, instructionsFile: join(os.homedir(), 'notes/delegation.md') }
+        config: {
+          stallTimeoutMinutes: 3,
+          instructionsFile: join(os.homedir(), 'notes/delegation.md')
+        }
       })
 
       const removed = mergeConfigPatch(
@@ -256,7 +264,7 @@ start_prompt = 3
         patchToToml(parseConfigAssignment('instructions_file=null'))
       )
 
-      expect(removed).toEqual({ concurrency: 3 })
+      expect(removed).toEqual({ stall_timeout_minutes: 3 })
     })
   })
 
@@ -288,9 +296,6 @@ teardown = "docker compose down"
 default_branch = "trunk"
 worktree_include = [".env", "config/local"]
 permission_mode = "bypassPermissions"
-instructions = "Follow docs/STYLE.md."
-test = "npm test"
-allowed_tools = ["Bash(npm test)", "Edit"]
 `,
       '# local secrets\n.env\n\n.npmrc\n'
     )
@@ -302,12 +307,21 @@ allowed_tools = ["Bash(npm test)", "Edit"]
         teardown: 'docker compose down',
         defaultBranch: 'trunk',
         worktreeInclude: ['.env', 'config/local', '.npmrc'],
-        permissionMode: 'bypassPermissions',
-        instructions: 'Follow docs/STYLE.md.',
-        test: 'npm test',
-        allowedTools: ['Bash(npm test)', 'Edit']
+        permissionMode: 'bypassPermissions'
       }
     })
+  })
+
+  it('reads a que.toml that still sets the retired task keys, without an error or those fields', () => {
+    const r = parseRepoConfig(
+      `setup = "npm ci"
+instructions = "Follow docs/STYLE.md."
+test = "npm test"
+allowed_tools = ["Bash(npm test)", "Edit"]
+`
+    )
+
+    expect(r).toEqual({ ok: true, config: { setup: 'npm ci', worktreeInclude: [] } })
   })
 
   it('rejects a worktree_include that is not a list of strings', () => {
@@ -374,7 +388,7 @@ describe('parseWorktreeInclude', () => {
 describe('config patches', () => {
   it('deep-merges a patch into the file table, removing keys set to null, without mutating it', () => {
     const raw = {
-      concurrency: 2,
+      stall_timeout_minutes: 2,
       quiet_hours: { enabled: true, default: ['19:00', '07:00'], saturday: 'none' },
       repos: { uploader: { path: '/Users/dev/code/uploader' } }
     }
@@ -382,12 +396,12 @@ describe('config patches', () => {
     const before = structuredClone(raw)
 
     const merged = mergeConfigPatch(raw, {
-      concurrency: 4,
+      stall_timeout_minutes: 4,
       quiet_hours: { default: ['20:00', '06:00'], saturday: null, monday: ['21:00', '06:30'] }
     })
 
     expect(merged).toEqual({
-      concurrency: 4,
+      stall_timeout_minutes: 4,
       quiet_hours: { enabled: true, default: ['20:00', '06:00'], monday: ['21:00', '06:30'] },
       repos: { uploader: { path: '/Users/dev/code/uploader' } }
     })
@@ -395,7 +409,7 @@ describe('config patches', () => {
     expect(parseConfig(stringifyConfig(merged), env)).toMatchObject({
       ok: true,
       config: {
-        concurrency: 4,
+        stallTimeoutMinutes: 4,
         quietHours: {
           default: { start: '20:00', end: '06:00' },
           days: { monday: expect.any(Object) }
@@ -432,7 +446,7 @@ describe('config patches', () => {
     expect(parseConfigAssignment('repos.uploader.default_branch=develop')).toEqual({
       repos: { uploader: { defaultBranch: 'develop' } }
     })
-    expect(() => parseConfigAssignment('concurrency')).toThrow('expected key=value')
+    expect(() => parseConfigAssignment('stall_timeout_minutes')).toThrow('expected key=value')
   })
 
   it('refuses an assignment to a key the config does not have, or a window of the wrong shape', () => {
@@ -442,6 +456,14 @@ describe('config patches', () => {
     )
     expect(() => parseConfigAssignment('quiet_hours.default=19:00')).toThrow(
       'quiet_hours.default: must be ["HH:MM", "HH:MM"] (start, end)'
+    )
+  })
+
+  it('refuses the retired queue keys as unknown', () => {
+    expect(() => parseConfigAssignment('concurrency=3')).toThrow('unknown config key "concurrency"')
+    expect(() => parseConfigAssignment('max_turns=80')).toThrow('unknown config key "max_turns"')
+    expect(() => parseConfigAssignment('max_budget_usd=5')).toThrow(
+      'unknown config key "max_budget_usd"'
     )
   })
 
@@ -545,7 +567,7 @@ describe('patchToToml', () => {
 
   it('keeps null as a removal when merged into the file, and leaves other keys alone', () => {
     const file = {
-      concurrency: 2,
+      stall_timeout_minutes: 2,
       instructions_file: '/Users/dev/notes.md',
       quiet_hours: { enabled: true, saturday: 'none' },
       repos: { uploader: { path: '/Users/dev/code/uploader' }, old: { path: '/Users/dev/old' } }
@@ -561,7 +583,7 @@ describe('patchToToml', () => {
     )
 
     expect(merged).toEqual({
-      concurrency: 2,
+      stall_timeout_minutes: 2,
       quiet_hours: { enabled: true },
       repos: { uploader: { path: '/Users/dev/code/uploader' } }
     })
@@ -579,7 +601,7 @@ describe('patchToToml', () => {
 
   it('produces a file that reads back as the config the patch described', () => {
     const file = patchToToml({
-      concurrency: 4,
+      stallTimeoutMinutes: 4,
       quietHours: { default: { start: '20:00', end: '06:00' }, days: { monday: 'none' } },
       jira: { projects: { APP: 'uploader' } },
       repos: { uploader: { path: '/Users/dev/code/uploader', defaultBranch: 'develop' } }
@@ -588,7 +610,7 @@ describe('patchToToml', () => {
     expect(parseConfig(stringifyConfig(file), env)).toMatchObject({
       ok: true,
       config: {
-        concurrency: 4,
+        stallTimeoutMinutes: 4,
         quietHours: { default: { start: '20:00', end: '06:00' }, days: { monday: 'none' } },
         jira: { projects: { APP: 'uploader' } },
         repos: { uploader: { path: '/Users/dev/code/uploader', defaultBranch: 'develop' } }

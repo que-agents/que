@@ -1,8 +1,6 @@
-// Pure display rules for the renderer: badge labels and tones, and the order
-// things are listed in. Money and durations are in shared/format.
-import type { PullRequest, Task, TaskState, WorkspaceStatus } from '../../preload/index.d'
+// Pure display rules for the renderer: badge labels and tones. Money and durations are in shared/format.
+import type { PullRequest, WorkspaceStatus } from '../../preload/index.d'
 import { prUrlNumber } from '../../shared/pr-url'
-import { LIVE_STATES } from '../../shared/types'
 
 export type Tone = 'neutral' | 'busy' | 'attention' | 'bad' | 'good' | 'muted'
 
@@ -15,50 +13,8 @@ const STATUS: Record<WorkspaceStatus, { label: string; tone: Tone }> = {
   exited: { label: 'exited', tone: 'muted' }
 }
 
-const TASK: Record<TaskState, { label: string; tone: Tone }> = {
-  queued: { label: 'queued', tone: 'neutral' },
-  preparing: { label: 'preparing', tone: 'busy' },
-  running: { label: 'running', tone: 'busy' },
-  paused: { label: 'paused', tone: 'attention' },
-  finishing: { label: 'finishing', tone: 'busy' },
-  done: { label: 'done', tone: 'good' },
-  stuck: { label: 'stuck', tone: 'bad' },
-  failed: { label: 'failed', tone: 'bad' },
-  stopped: { label: 'stopped', tone: 'muted' }
-}
-
 export function statusBadge(status: WorkspaceStatus): { label: string; tone: Tone } {
   return STATUS[status]
-}
-
-export function taskBadge(state: TaskState): { label: string; tone: Tone } {
-  return TASK[state]
-}
-
-/** True while a task can still be stopped. */
-export function isLiveTask(state: TaskState): boolean {
-  return LIVE_STATES.has(state)
-}
-
-/** The newest task that ran (or runs) in each workspace. */
-export function latestTasks(tasks: Record<string, Task>): Map<string, Task> {
-  const out = new Map<string, Task>()
-
-  for (const t of Object.values(tasks)) {
-    if (!t.workspaceId) continue
-    const prev = out.get(t.workspaceId)
-
-    if (!prev || t.createdAt > prev.createdAt) out.set(t.workspaceId, t)
-  }
-
-  return out
-}
-
-/** Newest first, ties broken by id so the order is stable. */
-export function newestFirst(tasks: readonly Task[]): Task[] {
-  return [...tasks].sort(
-    (a, b) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id)
-  )
 }
 
 const REVIEW_TEXT = {

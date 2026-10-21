@@ -175,14 +175,13 @@ export class TicketService {
     if (this.stopped) return this.list()
 
     if (!this.running) {
-      this.running = this.poller.track(this.syncOnce()).finally(() => {
+      this.running = this.syncOnce().finally(() => {
         this.running = null
       })
     }
 
-    await this.running
-
-    return this.list()
+    // Tracked through the read that follows, so drain() outlasts it and the store is still open.
+    return this.poller.track(this.running.then(() => this.list()))
   }
 
   private async syncOnce(): Promise<void> {

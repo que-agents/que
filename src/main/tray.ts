@@ -4,9 +4,9 @@
 // unlock countdown while one runs. Clicking it
 // brings the window forward (the quiet board during quiet hours).
 import { Menu, nativeImage, Tray } from 'electron'
-import { quietTrayTitle, summarize, traySummary } from '../daemon/status-engine'
+import { quietTrayTitle, summarize } from '../daemon/status-engine'
 import type { DaemonClient } from '../shared/client'
-import type { QuietState, StatusSummary, Task, Workspace } from '../shared/types'
+import type { QuietState, StatusSummary, Workspace } from '../shared/types'
 
 /** The tray tooltip and board window title in a quiet window, else null. */
 export function quietTitle(q: QuietState | null): string | null {
@@ -43,10 +43,6 @@ export interface QueTray {
   putWorkspace(w: Workspace): void
   /** A workspace was removed. */
   dropWorkspace(id: string): void
-  /** A task was created or updated. */
-  putTask(t: Task): void
-  /** A task was removed. */
-  dropTask(id: string): void
   /** The daemon's quiet state changed. */
   setQuiet(q: QuietState | null): void
   destroy(): void
@@ -77,8 +73,7 @@ export function createTray(opts: TrayOptions): QueTray {
   let countdown: NodeJS.Timeout | null = null
   let title = quietTrayTitle(summary, quiet, Date.now())
   const workspaces = new Map<string, Workspace>()
-  const tasks = new Map<string, Task>()
-  // Changes that arrive while the lists are in flight, replayed on top of them.
+  // Changes that arrive while the list is in flight, replayed on top of them.
   let held: Array<() => void> | null = null
 
   // In a window: End quiet (a manual one only) over Unlock or Lock now.
@@ -128,23 +123,21 @@ export function createTray(opts: TrayOptions): QueTray {
   render()
 
   const recount = (): void => {
-    summary = traySummary([...workspaces.values()], [...tasks.values()])
+    summary = summarize([...workspaces.values()])
     render()
   }
 
   const seed = (client: DaemonClient): void => {
     const mine: Array<() => void> = []
     held = mine
-    void Promise.all([client.request('workspace.list'), client.request('task.list')])
-      .then(([wsList, taskList]) => {
+    void client
+      .request('workspace.list')
+      .then((wsList) => {
         if (held !== mine) return
         held = null
         workspaces.clear()
-        tasks.clear()
 
         for (const w of wsList) workspaces.set(w.id, w)
-
-        for (const t of taskList) tasks.set(t.id, t)
 
         for (const replay of mine) replay()
 
@@ -156,7 +149,7 @@ export function createTray(opts: TrayOptions): QueTray {
       })
   }
 
-  // Applies a change now, or holds it for the seed to replay while the lists are in flight.
+  // Applies a change now, or holds it for the seed to replay while the list is in flight.
   const change = (fn: () => void): void => {
     if (held) {
       held.push(fn)
@@ -188,8 +181,6 @@ export function createTray(opts: TrayOptions): QueTray {
     seed,
     putWorkspace: (w) => change(() => workspaces.set(w.id, w)),
     dropWorkspace: (id) => change(() => workspaces.delete(id)),
-    putTask: (t) => change(() => tasks.set(t.id, t)),
-    dropTask: (id) => change(() => tasks.delete(id)),
     setQuiet,
     destroy: () => {
       if (countdown) clearInterval(countdown)

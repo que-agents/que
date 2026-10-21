@@ -10,9 +10,6 @@
 //   new: bind the socket, write the pid file, start the services, read
 //        the terminals                                     → { type: 'ready' }
 //   old: answer the caller, exit without ending anything
-//
-// Task runs are not handed over: the old daemon stops them as it releases the
-// socket, and the successor's queue recovery takes them up as after a restart.
 import { spawn, type ChildProcess, type Serializable } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'

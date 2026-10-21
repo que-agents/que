@@ -1,6 +1,10 @@
+import fs from 'node:fs'
+import os from 'node:os'
+import { join } from 'node:path'
+import { DatabaseSync } from 'node:sqlite'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { makeBackgroundTask, makeTask, makeWorkspace } from '../testing/fixtures'
-import { Store } from './store'
+import { makeBackgroundTask, makeWorkspace } from '../testing/fixtures'
+import { MIGRATIONS, Store } from './store'
 
 let store: Store
 
@@ -19,53 +23,66 @@ afterEach(() => {
   store.close()
 })
 
-describe('tasks', () => {
-  it('reads back every field it wrote, after an insert and after an update', () => {
-    const task = makeTask({ title: 'Retry uploads on 503', maxBudgetUsd: 2.5 })
+describe('migrations', () => {
+  it('drops the retired tasks table from a database the previous release wrote, keeping its workspaces', () => {
+    const dir = fs.mkdtempSync(join(os.tmpdir(), 'que-store-'))
+    const path = join(dir, 'que.db')
+    const previous = new DatabaseSync(path)
+    previous.exec('CREATE TABLE migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)')
 
-    store.insertTask(task)
+    MIGRATIONS.slice(0, -1).forEach((sql, i) => {
+      previous.exec(sql)
+      previous
+        .prepare('INSERT INTO migrations (version, applied_at) VALUES (?, ?)')
+        .run(i + 1, '2026-10-19T21:00:00.000Z')
+    })
 
-    expect(store.getTask(task.id)).toStrictEqual(task)
+    previous.exec(`
+      INSERT INTO projects (id, name, path, default_branch, created_at)
+        VALUES ('prj_01hzw7q2m4nb', 'uploader', '/Users/dev/src/uploader', 'main', '2026-10-13T21:00:00.000Z');
+      INSERT INTO workspaces (id, project_id, name, branch, path, base_ref, status, status_at, created_at)
+        VALUES ('ws_01hzx3k9c2qf', 'prj_01hzw7q2m4nb', 'APP-1432-retry-logic', 'APP-1432-retry-logic',
+          '/Users/dev/.que/worktrees/uploader/APP-1432-retry-logic', 'main', 'idle',
+          '2026-10-13T21:05:00.000Z', '2026-10-13T21:05:00.000Z');
+      INSERT INTO tasks (id, project_id, workspace_id, title, brief, source, state, max_turns,
+          max_budget_usd, pr_url, created_at, updated_at)
+        VALUES ('task-01hzy8m3p5rd', 'prj_01hzw7q2m4nb', 'ws_01hzx3k9c2qf', 'Retry uploads on 503',
+          'Retry uploads on 503 with backoff', 'prompt', 'done', 40, 5,
+          'https://github.com/rquellh/uploader/pull/12', '2026-10-13T21:10:00.000Z',
+          '2026-10-14T03:00:00.000Z');
+      INSERT INTO kv (key, value) VALUES
+        ('queue.open', '1'),
+        ('queue.opened_at', '2026-10-13T22:00:00.000Z'),
+        ('concurrency', '3'),
+        ('tickets.last_sync_at', '2026-10-14T08:00:00.000Z');
+    `)
 
-    const updated = {
-      ...task,
-      state: 'done' as const,
-      reason: 'no_changes',
-      sessionId: 'sess_8f2c1d',
-      pid: 48213,
-      attempts: 2,
-      costUsd: 1.37,
-      turns: 14,
-      permissionMode: 'acceptEdits',
-      branch: 'que/retry-uploads-on-503',
-      prUrl: 'https://example.test/pr/42',
-      resultText: 'Added backoff.',
-      startedAt: '2026-10-13T21:06:00.000Z',
-      finishedAt: '2026-10-13T21:40:00.000Z',
-      updatedAt: '2026-10-13T21:40:00.000Z'
+    previous.close()
+
+    const reopened = new Store(path)
+
+    const tasksTable = reopened.db
+      .prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'tasks'`)
+      .get()
+
+    const kept = {
+      workspace: reopened.getWorkspace('ws_01hzx3k9c2qf')?.name,
+      queueOpen: reopened.getKv('queue.open'),
+      queueOpenedAt: reopened.getKv('queue.opened_at'),
+      concurrency: reopened.getKv('concurrency'),
+      lastSync: reopened.getKv('tickets.last_sync_at')
     }
 
-    store.updateTask(updated)
+    reopened.close()
+    fs.rmSync(dir, { recursive: true, force: true })
 
-    expect(store.getTask(task.id)).toStrictEqual(updated)
-    expect(Object.keys(store.listTasks(['done'])[0])).toEqual(Object.keys(task))
-  })
-
-  it('counts tasks by state, zero for the states with none', () => {
-    store.insertTask(makeTask({ state: 'queued' }))
-    store.insertTask(makeTask({ state: 'queued' }))
-    store.insertTask(makeTask({ state: 'running' }))
-
-    expect(store.countTasksByState()).toEqual({
-      queued: 2,
-      preparing: 0,
-      running: 1,
-      paused: 0,
-      finishing: 0,
-      done: 0,
-      stuck: 0,
-      failed: 0,
-      stopped: 0
+    expect(tasksTable).toBeUndefined()
+    expect(kept).toEqual({
+      workspace: 'APP-1432-retry-logic',
+      queueOpen: undefined,
+      queueOpenedAt: undefined,
+      concurrency: undefined,
+      lastSync: '2026-10-14T08:00:00.000Z'
     })
   })
 })

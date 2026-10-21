@@ -34,8 +34,8 @@ describe('decoders', () => {
 
   it('accepts missing params where every field is optional', () => {
     expect(decoders['daemon.ping'](undefined)).toBeUndefined()
-    expect(decoders['task.list'](undefined)).toEqual({ state: undefined })
-    expect(decoders['queue.open']({})).toEqual({ concurrency: undefined })
+    expect(decoders['quiet.unlock'](undefined)).toEqual({ minutes: undefined, why: undefined })
+    expect(decoders['report.get']({})).toEqual({ since: undefined })
   })
 
   it('rejects missing params where a field is required', () => {

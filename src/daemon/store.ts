@@ -1,4 +1,4 @@
-// SQLite store (node:sqlite) for projects, workspaces, hook events, tasks, and kv. A
+// SQLite store (node:sqlite) for projects, workspaces, hook events, and kv. A
 // small typed layer over prepared statements; migrations are numbered and
 // recorded in the `migrations` table.
 import { randomBytes } from 'node:crypto'
@@ -16,8 +16,6 @@ import type {
   PullRequest,
   QuietKind,
   QuietUnlock,
-  Task,
-  TaskState,
   Ticket,
   TitleSource,
   Workspace,
@@ -28,7 +26,8 @@ import { currentPullRequest } from './pr-state'
 
 const HOOK_EVENTS_PER_WORKSPACE = 500
 
-const MIGRATIONS: string[] = [
+/** Applied in order by index and recorded in `migrations`: append only, never edit or reorder. */
+export const MIGRATIONS: readonly string[] = [
   `CREATE TABLE projects (
      id TEXT PRIMARY KEY,
      name TEXT NOT NULL,
@@ -145,7 +144,9 @@ const MIGRATIONS: string[] = [
      until TEXT NOT NULL,
      ended_at TEXT
    );
-   ALTER TABLE quiet_unlocks ADD COLUMN kind TEXT NOT NULL DEFAULT 'scheduled';`
+   ALTER TABLE quiet_unlocks ADD COLUMN kind TEXT NOT NULL DEFAULT 'scheduled';`,
+  `DROP TABLE IF EXISTS tasks;
+   DELETE FROM kv WHERE key IN ('queue.open', 'queue.opened_at', 'concurrency');`
 ]
 
 const STATUS_LOG_RETENTION_MS = 30 * 24 * 3_600_000
@@ -164,7 +165,7 @@ export interface StatusLogRow {
 const ID_ALPHABET = 'abcdefghijklmnopqrstuvwxyz234567'
 
 /** `<prefix>` + 12 random base32 characters. */
-export function newId(prefix: 'prj_' | 'ws_' | 'tsk_'): string {
+export function newId(prefix: 'prj_' | 'ws_'): string {
   const bytes = randomBytes(12)
   let out = prefix
 
@@ -257,52 +258,6 @@ interface WorkspaceRow {
   finished_at: string | null
   seen_at: string | null
   background_json: string | null
-}
-
-/** Task field → column, in insert order. */
-const TASK_COLUMNS: Array<[keyof Task, string]> = [
-  ['id', 'id'],
-  ['projectId', 'project_id'],
-  ['workspaceId', 'workspace_id'],
-  ['title', 'title'],
-  ['brief', 'brief'],
-  ['source', 'source'],
-  ['resumeSessionId', 'resume_session_id'],
-  ['state', 'state'],
-  ['reason', 'reason'],
-  ['sessionId', 'session_id'],
-  ['pid', 'pid'],
-  ['attempts', 'attempts'],
-  ['costUsd', 'cost_usd'],
-  ['turns', 'turns'],
-  ['maxTurns', 'max_turns'],
-  ['maxBudgetUsd', 'max_budget_usd'],
-  ['permissionMode', 'permission_mode'],
-  ['branch', 'branch'],
-  ['prUrl', 'pr_url'],
-  ['resultText', 'result_text'],
-  ['lastActivityAt', 'last_activity_at'],
-  ['startedAt', 'started_at'],
-  ['finishedAt', 'finished_at'],
-  ['pausedUntil', 'paused_until'],
-  ['createdAt', 'created_at'],
-  ['updatedAt', 'updated_at']
-]
-
-const INSERT_TASK_SQL = `INSERT INTO tasks (${TASK_COLUMNS.map(([, c]) => c).join(', ')})
-  VALUES (${TASK_COLUMNS.map(() => '?').join(', ')})`
-
-const TASK_FIELDS_BUT_ID = TASK_COLUMNS.filter(([k]) => k !== 'id')
-
-const UPDATE_TASK_SQL = `UPDATE tasks SET ${TASK_FIELDS_BUT_ID.map(([, c]) => `${c} = ?`).join(', ')}
-  WHERE id = ?`
-
-/** Selects a tasks row as a Task: each column comes back under its field name, in column order. */
-const SELECT_TASK = `SELECT ${TASK_COLUMNS.map(([k, c]) => `${c} AS ${k}`).join(', ')} FROM tasks`
-
-/** node:sqlite rows have a null prototype; a Task is a plain object. */
-function toTask(r: Task): Task {
-  return { ...r }
 }
 
 export interface HookEventRow {
@@ -627,7 +582,7 @@ export class Store {
     )
   }
 
-  /** A turn ended or the workspace's task finished: it has something new to look at. */
+  /** A turn ended: the workspace has something new to look at. */
   setWorkspaceFinished(id: string, at: string): void {
     this.run('UPDATE workspaces SET finished_at = ? WHERE id = ?', at, id)
   }
@@ -737,48 +692,6 @@ export class Store {
       payload: r.payload,
       receivedAt: r.received_at
     }))
-  }
-
-  // ---- tasks ----------------------------------------------------------------
-
-  insertTask(t: Task): void {
-    this.run(INSERT_TASK_SQL, ...TASK_COLUMNS.map(([k]) => t[k]))
-  }
-
-  /** Writes every field of the task (it must exist). */
-  updateTask(t: Task): void {
-    this.run(UPDATE_TASK_SQL, ...TASK_FIELDS_BUT_ID.map(([k]) => t[k]), t.id)
-  }
-
-  getTask(id: string): Task | undefined {
-    const r = this.row<Task>(`${SELECT_TASK} WHERE id = ?`, id)
-
-    return r ? toTask(r) : undefined
-  }
-
-  /** Oldest first (insertion order breaks ties within a millisecond). */
-  listTasks(states?: readonly TaskState[]): Task[] {
-    const rows =
-      states && states.length > 0
-        ? this.rows<Task>(
-            `${SELECT_TASK} WHERE state IN (${states.map(() => '?').join(', ')}) ORDER BY created_at, rowid`,
-            ...states
-          )
-        : this.rows<Task>(`${SELECT_TASK} ORDER BY created_at, rowid`)
-
-    return rows.map(toTask)
-  }
-
-  /** The pull request URLs this workspace's tasks recorded, oldest task first. */
-  listTaskPrUrls(workspaceId: string): string[] {
-    return this.rows<{ pr_url: string }>(
-      'SELECT pr_url FROM tasks WHERE workspace_id = ? AND pr_url IS NOT NULL ORDER BY created_at, rowid',
-      workspaceId
-    ).map((r) => r.pr_url)
-  }
-
-  deleteTask(id: string): void {
-    this.run('DELETE FROM tasks WHERE id = ?', id)
   }
 
   // ---- quiet unlocks ---------------------------------------------------------
@@ -960,31 +873,6 @@ export class Store {
         key,
         value
       )
-  }
-
-  // ---- counts ---------------------------------------------------------------
-
-  /** How many tasks sit in each state (zero for a state with none). */
-  countTasksByState(): Record<TaskState, number> {
-    const counts: Record<TaskState, number> = {
-      queued: 0,
-      preparing: 0,
-      running: 0,
-      paused: 0,
-      finishing: 0,
-      done: 0,
-      stuck: 0,
-      failed: 0,
-      stopped: 0
-    }
-
-    for (const r of this.rows<{ state: TaskState; n: number }>(
-      'SELECT state, COUNT(*) AS n FROM tasks GROUP BY state'
-    )) {
-      counts[r.state] = r.n
-    }
-
-    return counts
   }
 
   /** Ids of the unarchived workspaces whose stored status is `status`, oldest first. */

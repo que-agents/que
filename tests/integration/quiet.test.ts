@@ -1,21 +1,19 @@
 // Quiet hours in the daemon, over the real socket: entering them drops every
 // terminal subscription and refuses detail, unlock and lock (and the log),
-// an unlock that runs out on its own, headless tasks running on regardless,
-// config.set reloading live with the apply-tonight guardrail, the morning
+// an unlock that runs out on its own, config.set reloading live with the apply-tonight guardrail, the morning
 // summary, and a manual quiet (`quiet.start` / `quiet.end`, and its summary)
 // during the day. The clock math itself is in quiet-hours.test.ts; here the daemon
 // reads a clock shifted to just before (or inside) a window.
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import { DaemonClient } from '@shared/client'
 import {
   recordEvents,
   startTestDaemon,
   type TestDaemon,
-  waitForStatus,
-  waitForTaskState
+  waitForStatus
 } from '../../src/testing/daemon-harness'
 import { makeHookEvent } from '../../src/testing/fixtures'
-import { addBareOrigin, makeTempRepo } from '../../src/testing/temp-repo'
+import { makeTempRepo } from '../../src/testing/temp-repo'
 
 let daemon: TestDaemon | undefined
 
@@ -169,44 +167,16 @@ describe('quiet hours', () => {
     })
   })
 
-  describe('headless tasks', () => {
-    it('refuses report.get and task.add while quiet, but a running task runs on to done', async () => {
-      vi.stubEnv('QUE_FAKE_CLAUDE_DELAY_MS', '250')
-      const d = await start(QUIET(), NIGHT)
-      const repo = makeTempRepo(d.home)
-      addBareOrigin(repo)
-      const { id: projectId } = await d.client.request('project.add', { path: repo })
-      await d.client.request('quiet.unlock', { why: 'queue tonight' })
-
-      const task = await d.client.request('task.add', {
-        projectId,
-        brief: 'Add retry logic to the uploader'
-      })
-
-      await d.client.request('queue.open')
-      await waitForTaskState(d, task.id, 'running', 15_000)
-
-      await d.client.request('quiet.lock')
-
-      await expect(d.client.request('report.get')).rejects.toMatchObject(REFUSAL)
-      await expect(
-        d.client.request('task.add', { projectId, brief: 'Document the upload limits' })
-      ).rejects.toMatchObject(REFUSAL)
-      await waitForTaskState(d, task.id, 'done', 30_000)
-      expect((await d.client.request('task.list')).map((t) => t.id)).toEqual([task.id])
-    }, 45_000)
-  })
-
   describe('config.set', () => {
-    it('reloads concurrency live and emits config.changed', async () => {
+    it('reloads the config live and emits config.changed', async () => {
       const d = await start(QUIET(), new Date(2026, 9, 14, 12, 0))
       const changed = recordEvents(d.client, 'config.changed')
-      expect((await d.client.request('queue.state')).concurrency).toBe(2)
+      expect((await d.client.request('config.get')).config.prPollSeconds).toBe(60)
 
-      const r = await d.client.request('config.set', { patch: { concurrency: 3 } })
+      const r = await d.client.request('config.set', { patch: { prPollSeconds: 90 } })
 
-      expect(r.config.concurrency).toBe(3)
-      expect((await d.client.request('queue.state')).concurrency).toBe(3)
+      expect(r.config.prPollSeconds).toBe(90)
+      expect((await d.client.request('config.get')).config.prPollSeconds).toBe(90)
       await expect.poll(() => changed.length).toBe(1)
       expect(changed[0].path).toBe(d.configPath)
     })
@@ -247,7 +217,7 @@ describe('quiet hours', () => {
         inQuietHours: false,
         nextBoundary: new Date(2026, 9, 14, 19, 0).toISOString()
       })
-      expect((await d.client.request('report.get')).totals.tasks).toBe(0)
+      expect((await d.client.request('report.get')).totals.workspaces).toBe(0)
     })
   })
 
@@ -316,9 +286,7 @@ describe('quiet hours', () => {
       expect(Date.parse(q.windowEnd ?? '') - Date.parse(q.windowStart ?? '')).toBe(30 * 60_000)
       expect(q.nextBoundary).toBe(q.windowEnd)
       await expect.poll(() => changes.some((c) => c.kind === 'manual')).toBe(true)
-      await expect(
-        d.client.request('task.add', { projectId: 'proj_01hzx3k9c2qf', brief: 'Add retries' })
-      ).rejects.toMatchObject(MANUAL_REFUSAL)
+      await expect(d.client.request('report.get')).rejects.toMatchObject(MANUAL_REFUSAL)
       await d.client.request('term.write', { id, data: 'QUE_MANUAL_7c2d\n' })
 
       const unlocked = await d.client.request('quiet.unlock', { why: 'read the build log' })
@@ -347,7 +315,7 @@ describe('quiet hours', () => {
       expect(q).toMatchObject({ inQuietHours: false, kind: null, locked: false })
       expect(q.nextBoundary).toBe(new Date(2026, 9, 14, 19, 0).toISOString())
       await expect.poll(() => changes.at(-1)?.kind).toBeNull()
-      expect((await d.client.request('report.get')).totals.tasks).toBe(0)
+      expect((await d.client.request('report.get')).totals.workspaces).toBe(0)
     })
 
     it('ends on its own when its minutes run out', async () => {

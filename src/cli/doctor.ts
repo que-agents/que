@@ -104,22 +104,12 @@ export async function runDoctor(): Promise<number> {
     ok: gh.ok,
     required: false,
     detail: gh.ok
-      ? 'authenticated (the finisher opens draft pull requests with it)'
-      : 'missing or not logged in (`gh auth login`); overnight tasks cannot open pull requests'
+      ? 'authenticated (Create draft PR opens pull requests with it)'
+      : 'missing or not logged in (`gh auth login`); Create draft PR cannot open pull requests'
   })
 
   const git = await run('git', ['--version'])
   checks.push({ name: 'git', ok: git.ok, required: true, detail: git.ok ? git.out : 'not found' })
-
-  const caffeinate = findOnPath('caffeinate', process.env.PATH)
-  checks.push({
-    name: 'caffeinate',
-    ok: caffeinate !== null,
-    required: false,
-    detail: caffeinate
-      ? `${caffeinate} (keeps the machine awake while tasks run)`
-      : 'not found; the machine may sleep during overnight tasks'
-  })
 
   checks.push({
     name: 'node',

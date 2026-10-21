@@ -4,7 +4,7 @@
 import { decodeHookEvent } from './hook.decode'
 import { isObj } from './json.decode'
 import type { MethodName, ParamsOf } from './protocol'
-import type { ConfigPatch, TaskSource, TaskState } from './types'
+import type { ConfigPatch } from './types'
 
 /** Thrown for params that are missing or have the wrong type; the daemon answers `bad_request`. */
 export class ParamsError extends Error {}
@@ -130,28 +130,10 @@ export const decoders: { [M in MethodName]: (p: Params) => ParamsOf<M> } = {
 
     return {
       workspaceId,
-      taskId: optString(p, 'taskId'),
       terminalId: optString(p, 'terminalId'),
       payload
     }
   },
-  'task.add': (p) => ({
-    projectId: optString(p, 'projectId'),
-    workspaceId: optString(p, 'workspaceId'),
-    title: optString(p, 'title'),
-    brief: str(p, 'brief'),
-    source: optString(p, 'source') as TaskSource | undefined,
-    resumeSessionId: optString(p, 'resumeSessionId'),
-    maxTurns: optNumber(p, 'maxTurns'),
-    maxBudgetUsd: optNumber(p, 'maxBudgetUsd')
-  }),
-  'task.list': (p) => ({ state: optString(p, 'state') as TaskState | undefined }),
-  'task.get': idOnly,
-  'task.stop': idOnly,
-  'task.remove': idOnly,
-  'queue.open': (p) => ({ concurrency: optNumber(p, 'concurrency') }),
-  'queue.close': none,
-  'queue.state': none,
   'report.get': (p) => ({ since: optString(p, 'since') }),
   'quiet.state': none,
   'quiet.unlock': (p) => ({ minutes: optNumber(p, 'minutes'), why: optString(p, 'why') }),

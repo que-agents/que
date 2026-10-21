@@ -1,18 +1,18 @@
 ---
 name: vitest-testing
-description: Expert at writing, debugging, and fixing Vitest tests for que — daemon integration tests (real pty, sqlite, git, socket, fake claude on PATH), renderer component tests with React Testing Library against the fake window.que bridge, and pure logic tests of the status engine, task state machine, clock math, framing, and parsing. Use when writing daemon, CLI, shared, or renderer tests, or fixing failing Vitest tests.
+description: Expert at writing, debugging, and fixing Vitest tests for que — daemon integration tests (real pty, sqlite, git, socket, fake claude on PATH), renderer component tests with React Testing Library against the fake window.que bridge, and pure logic tests of the status engine, the workspace digest, clock math, framing, and parsing. Use when writing daemon, CLI, shared, or renderer tests, or fixing failing Vitest tests.
 allowed-tools: Read, Edit, Write, Glob, Grep, Bash(npx vitest*), Bash(npm test*), Bash(npm run test*), TodoWrite
 ---
 
 # Vitest Testing Skill - que
 
-You are an expert test engineer for que, a macOS Electron app (TypeScript strict, React 19, electron-vite) for running Claude Code sessions in git worktrees. Everything long-lived lives in the daemon (`src/daemon/`): terminals (node-pty with an `@xterm/headless` mirror), projects and workspaces (git worktrees), the status engine, the task queue and headless runner, the finisher, the quiet-hours clock, SQLite through `node:sqlite`, and a unix-socket API spoken in newline-delimited JSON (`src/shared/protocol.ts`). The Electron main process and the `que` CLI reach it through `DaemonClient` (`src/shared/client.ts`); the renderer reaches it only through the `window.que` bridge. You write, debug, and fix Vitest tests following strict best practices.
+You are an expert test engineer for que, a macOS Electron app (TypeScript strict, React 19, electron-vite) for running Claude Code sessions in git worktrees. Everything long-lived lives in the daemon (`src/daemon/`): terminals (node-pty with an `@xterm/headless` mirror), projects and workspaces (git worktrees), the status engine, Create draft PR, the sessions report, the quiet-hours clock, SQLite through `node:sqlite`, and a unix-socket API spoken in newline-delimited JSON (`src/shared/protocol.ts`). The Electron main process and the `que` CLI reach it through `DaemonClient` (`src/shared/client.ts`); the renderer reaches it only through the `window.que` bridge. You write, debug, and fix Vitest tests following strict best practices.
 
 **Scope:** This skill covers **how** to write the three kinds of Vitest tests que needs:
 
 - **Daemon integration tests** — the real daemon pieces in-process (a real `DaemonServer` on a temp socket, the real `DaemonClient`, real node-pty, real `node:sqlite` in a temp `QUE_HOME`, real `git` on temp repos), with the fake `claude`/`gh`/`code` binaries from `tests/fakes/bin/` on `PATH` — never a `vi.mock` of `node:child_process`.
 - **Renderer component tests** — rendered with React Testing Library in jsdom against the fake `window.que` bridge (`src/renderer/src/testing/fake-bridge.ts`), an in-memory fixture book that emits the same events the real daemon would — never a `vi.mock` of a component or module.
-- **Logic tests** — calling pure exports directly: status-engine reducers, the task state machine, quiet-hours and unlock math (with an injected `now()`), protocol framing, stream-json parsing, config parsing and defaults, worktree naming and slugs, report formatting.
+- **Logic tests** — calling pure exports directly: status-engine reducers, the workspace digest, quiet-hours and unlock math (with an injected `now()`), protocol framing, hook and `gh` JSON decoding, config parsing and defaults, worktree naming and slugs, report formatting.
 
 For deciding **what** to test at which layer, use the `test-planning` skill. For Playwright Electron E2E, use the `e2e-testing` skill.
 
@@ -41,7 +41,7 @@ For deciding **what** to test at which layer, use the `test-planning` skill. For
    - Use unique, realistic values in fixtures to prevent false positives (a workspace named `'APP-1432-retry-logic'` with id `'ws_01hzx3k9c2qf'`, not `'test'`)
    - No if/else in tests — tests should be linear and predictable
    - Never sleep. Anything touching a PTY, a socket, or a subprocess is waited on with `waitFor`/`expect.poll` against a condition, with real timers
-   - For logic tests of reducers: assert the returned state is a _new_ object and the input was left untouched — the status engine and task machine are pure `(state, input) => next` functions, and the suite is the cheapest place to keep them honest
+   - For logic tests of reducers: assert the returned state is a _new_ object and the input was left untouched — the status engine and the digest are pure functions of their input, and the suite is the cheapest place to keep them honest
 
 ---
 
@@ -76,32 +76,31 @@ The `node` project has **no** global setup: each daemon integration test builds 
 
 ### The Fake Bridge (`src/renderer/src/testing/fake-bridge.ts`)
 
-| Export                         | What it does                                                                                                                                                                                  |
-| ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `fakeBridge.api`               | The in-memory `QueApi` (`term.*`, `workspace.*`, `task.*`, `quiet.*`, `app.*`) installed as `window.que` by `setup.ts`. Types come from `src/preload/index.d.ts`, so it can't drift silently. |
-| `fakeBridge.seedWorkspace(ws)` | Puts a workspace in the book **silently** — state "already in the daemon" when the component first asks. Call **before** `render()`.                                                          |
-| `fakeBridge.setStatus(id, s)`  | Updates a workspace's status **and emits** `workspace.status`, exactly as the daemon's status engine would. Call before render to seed, or after render to drive a live update.               |
-| `fakeBridge.setQuietState(q)`  | Updates the quiet-hours state **and emits** `quiet.state` (active, window, unlock deadline).                                                                                                  |
-| `fakeBridge.getWorkspace(id)`  | Reads the book back — to assert that a UI action reached the "daemon" (Section 5b).                                                                                                           |
-| `fakeBridge.reset()`           | Empties the book and drops listeners. Called by `setup.ts`'s `afterEach`; never call it mid-test.                                                                                             |
+| Export                         | What it does                                                                                                                                                                                    |
+| ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `fakeBridge.api`               | The in-memory `QueApi` (`term.*`, `workspace.*`, `report.*`, `quiet.*`, `app.*`) installed as `window.que` by `setup.ts`. Types come from `src/preload/index.d.ts`, so it can't drift silently. |
+| `fakeBridge.seedWorkspace(ws)` | Puts a workspace in the book **silently** — state "already in the daemon" when the component first asks. Call **before** `render()`.                                                            |
+| `fakeBridge.setStatus(id, s)`  | Updates a workspace's status **and emits** `workspace.status`, exactly as the daemon's status engine would. Call before render to seed, or after render to drive a live update.                 |
+| `fakeBridge.setQuietState(q)`  | Updates the quiet-hours state **and emits** `quiet.state` (active, window, unlock deadline).                                                                                                    |
+| `fakeBridge.getWorkspace(id)`  | Reads the book back — to assert that a UI action reached the "daemon" (Section 5b).                                                                                                             |
+| `fakeBridge.reset()`           | Empties the book and drops listeners. Called by `setup.ts`'s `afterEach`; never call it mid-test.                                                                                               |
 
 ### The Subprocess Fakes (`tests/fakes/bin/`)
 
-| Binary   | Behavior                                                                                                                                                                                                                                                                                                                                               |
-| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `claude` | Honours `-p`, `--output-format stream-json`, `--settings` (runs the configured hook commands with realistic hook JSON on stdin), `--resume`, `--max-turns`, and interactive mode; also `claude agents --json`. Scenario from `QUE_FAKE_CLAUDE_SCENARIO`: `success`, `stall`, `rate_limit`, `max_turns`, `crash`, `needs_input`. Defaults to `success`. |
-| `gh`     | Appends each invocation's argv to `QUE_FAKE_GH_LOG` (one JSON array per line) and prints a fake PR URL for `gh pr create`.                                                                                                                                                                                                                             |
-| `code`   | Records its invocation the same way, so "open in VS Code" is assertable without launching an editor.                                                                                                                                                                                                                                                   |
+| Binary   | Behavior                                                                                                                                                                                                                                                                                                                                                             |
+| -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `claude` | An interactive session only: honours `--settings` (runs the configured hook commands with realistic hook JSON on stdin), `--session-id`, `--resume`, `--permission-mode`; also `claude agents --json`. Driven by what is typed into its terminal: a prompt runs a turn, `/needs-input` asks for permission, `/background` and `/exit` (see `tests/fakes/README.md`). |
+| `gh`     | Appends each invocation's argv to `QUE_FAKE_GH_LOG` (one JSON array per line) and prints a fake PR URL for `gh pr create`.                                                                                                                                                                                                                                           |
+| `code`   | Records its invocation the same way, so "open in VS Code" is assertable without launching an editor.                                                                                                                                                                                                                                                                 |
 
 ### Fixture Factories
 
-| Export (file)                                    | What it does                                                                                                                                                          |
-| ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `makeWorkspace(overrides)` (both)                | A realistic workspace: opaque id (`ws_01h…`), branch-style name (`APP-1432-retry-logic`), worktree path under `~/.que/worktrees/<project>/<name>`, status `idle`.     |
-| `makeTask(overrides)` (both)                     | A queued task with a real prompt, turn and dollar caps, and an opaque id (`task_01h…`).                                                                               |
-| `makeHookEvent(name, overrides)` (`src/testing`) | A realistic Claude Code hook payload: `hook_event_name`, `session_id`, `cwd`, `transcript_path`, plus per-event fields (`notification_type`, `message`, `tool_name`). |
-| `makeStreamResult(overrides)` (`src/testing`)    | A stream-json `result` message: `type: 'result'`, `subtype`, `num_turns`, `total_cost_usd`, `session_id`, `stop_reason`, `is_error`.                                  |
-| `makeConfig(overrides)` (`src/testing`)          | A fully-defaulted config (quiet window, caps, stall timeout) for logic tests.                                                                                         |
+| Export (file)                                     | What it does                                                                                                                                                          |
+| ------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `makeWorkspace(overrides)` (both)                 | A realistic workspace: opaque id (`ws_01h…`), branch-style name (`APP-1432-retry-logic`), worktree path under `~/.que/worktrees/<project>/<name>`, status `idle`.     |
+| `makeHookEvent(name, overrides)` (`src/testing`)  | A realistic Claude Code hook payload: `hook_event_name`, `session_id`, `cwd`, `transcript_path`, plus per-event fields (`notification_type`, `message`, `tool_name`). |
+| `makeWorkspaceDigest(overrides)` (`src/renderer`) | What one session did in the report window: working time, needs-input count, `waitingSince`, stuck count, commits ahead, pull request.                                 |
+| `makeConfig(overrides)` (`src/testing`)           | A fully-defaulted config (quiet window, stall timeout) for logic tests.                                                                                               |
 
 ---
 
@@ -225,14 +224,13 @@ Some leaf components (a status badge, a report row) take plain props rather than
 ```tsx
 render(
   <ReportRow
-    task={makeTask({
-      id: 'task_01hzy0d7w3ke',
-      state: 'done',
-      prUrl: 'https://github.com/rquellh/que/pull/88'
+    digest={makeWorkspaceDigest({
+      id: 'ws_01hzx3k9c2qf',
+      pr: makePullRequest({ number: 88, url: 'https://github.com/rquellh/que/pull/88' })
     })}
   />
 )
-expect(screen.getByRole('link', { name: /pull\/88/ })).toHaveAttribute(
+expect(screen.getByRole('link', { name: /#88/ })).toHaveAttribute(
   'href',
   'https://github.com/rquellh/que/pull/88'
 )
@@ -327,7 +325,7 @@ it('archives a workspace from its context menu', async () => {
 
 ### (c) Time: Real Timers Near I/O, an Injected Clock Everywhere Else
 
-que is full of time: PTY output arrives when it arrives, the runner's stall timeout fires when a session goes quiet, a rate limit pauses a task until a reset time, quiet hours and the unlock window follow the wall clock. Two rules cover all of it:
+que is full of time: PTY output arrives when it arrives, the stall timeout marks a session stuck when it goes quiet, quiet hours and the unlock window follow the wall clock. Two rules cover all of it:
 
 1. **Anything touching a PTY, a socket, or a subprocess runs on real timers** and waits on a condition with `waitFor` or `expect.poll`, with an explicit timeout and a per-test timeout above it. `vi.useFakeTimers()` freezes the timers node-pty, `net`, and `child_process` rely on, and the test hangs or passes for the wrong reason.
 2. **Modules that decide things based on time take an injected `now()`** (the quiet-hours clock, the unlock window, the stall detector). Logic tests pass a fixed clock; integration tests pass short durations (a 1s stall timeout from config) instead of rewinding time.
@@ -354,16 +352,13 @@ it('replays the screen to a client that attaches after the output was written', 
 ```
 
 ```ts
-it('marks a headless task stuck when claude stops producing output', async () => {
-  vi.stubEnv('QUE_FAKE_CLAUDE_SCENARIO', 'stall')
-  const ws = await createWorkspace(client, home) // file-local helper: temp repo + project.add + workspace.create
-  const task = await client.request('task.add', {
+it('marks a silent working session stuck', async () => {
+  // file-local helper: temp repo + project.add + workspace.create, stall_timeout_minutes = 0.02
+  const ws = await createWorkspace(client, home)
+  await client.request('hook.event', {
     workspaceId: ws.id,
-    prompt: 'Add retry logic to the uploader',
-    stallTimeoutMs: 1_000
+    payload: makeHookEvent('UserPromptSubmit', { prompt: 'Add retry logic to the uploader' })
   })
-
-  await client.request('task.run', { id: task.id })
 
   await expect
     .poll(async () => (await client.request('workspace.get', { id: ws.id })).status, {
@@ -377,43 +372,35 @@ Fake timers are allowed **only** in pure logic tests with no I/O at all, and eve
 
 ### (d) Driving the Fake Binaries
 
-The fakes are the contract with the outside world; scenario selection and call logs are all environment, so `vi.stubEnv` is the only tool needed.
+The fakes are the contract with the outside world; their knobs and call logs are all environment, so `vi.stubEnv` is the only tool needed, and the fake `claude` is driven by typing into its terminal like the real one.
 
 ```ts
-it('finishes a successful task with a push and a draft PR', async () => {
-  vi.stubEnv('QUE_FAKE_CLAUDE_SCENARIO', 'success')
+it('opens a draft PR through gh for a workspace with work in it', async () => {
   const ghLog = join(home, 'gh.log')
   vi.stubEnv('QUE_FAKE_GH_LOG', ghLog)
   const ws = await createWorkspace(client, home)
-  const task = await client.request('task.add', {
-    workspaceId: ws.id,
-    prompt: 'Add retry logic to the uploader'
+  fs.writeFileSync(join(ws.path, 'retry.ts'), 'export const retries = 3\n')
+
+  const { prUrl } = await client.request('workspace.createPr', {
+    id: ws.id,
+    title: 'Add retry logic to the uploader'
   })
 
-  await client.request('task.run', { id: task.id })
-
-  await expect
-    .poll(async () => (await client.request('task.get', { id: task.id })).state, {
-      timeout: 15_000
-    })
-    .toBe('done')
   const calls = fs
     .readFileSync(ghLog, 'utf8')
     .trim()
     .split('\n')
-    .map((l) => JSON.parse(l) as string[])
+    .map((l) => JSON.parse(l).argv as string[])
   expect(calls).toContainEqual(expect.arrayContaining(['pr', 'create', '--draft']))
-  expect((await client.request('task.get', { id: task.id })).prUrl).toMatch(
-    /^https:\/\/github\.com\/.+\/pull\/\d+$/
-  )
+  expect(prUrl).toMatch(/^https:\/\/github\.com\/.+\/pull\/\d+$/)
 }, 30_000)
 ```
 
-The same pattern covers every scenario: `rate_limit` → the task reaches `paused` and the workspace shows the reset time; `max_turns` → the task stops at its cap with the `error_max_turns` result recorded; `crash` → `failed` with the exit code; `needs_input` → the fake runs the `Notification` hook with `notification_type: 'permission_prompt'`, and the workspace status becomes `needs_input`. One integration test per scenario proves the wiring; the branch logic behind each outcome belongs in logic tests.
+The same pattern covers a live session: open a workspace terminal, type `claude\r`, then `/needs-input\r` → the fake runs the `Notification` hook with `notification_type: 'permission_prompt'`, and the workspace status becomes `needs_input`; `/background subagent` → a Stop that keeps it working. One integration test per path proves the wiring; the branch logic behind each outcome belongs in logic tests.
 
 ### (e) Logic Tests: Reducers, State Machines, Clock Math, Framing
 
-Pure modules are tested directly, no sockets, no processes, no DOM. For reducers, check two things every time: the _shape_ of the returned state, and that **the input was not mutated**. Module paths for parts of the daemon not yet written (task machine, quiet hours, stream parsing) are illustrative; use the real path once the module exists.
+Pure modules are tested directly, no sockets, no processes, no DOM. For reducers, check two things every time: the _shape_ of the returned state, and that **the input was not mutated**. Module paths in these examples are illustrative where the module is named differently; use the real path.
 
 ```ts
 import { describe, it, expect } from 'vitest'
@@ -518,35 +505,32 @@ describe('applyScheduleEdit', () => {
 
 ```ts
 import { describe, it, expect } from 'vitest'
-import { nextTask } from './task-machine'
-import { makeTask, makeStreamResult } from '../testing/fixtures'
+import { buildWorkspaceDigest } from './digest'
+import { makeWorkspace } from '../testing/fixtures'
 
-describe('nextTask', () => {
-  it('walks queued → preparing → running → finishing → done', () => {
-    let task = makeTask({ state: 'queued' })
-    task = nextTask(task, { type: 'prepare' })
-    task = nextTask(task, { type: 'started', sessionId: 'sess_8c1d2e' })
-    task = nextTask(task, {
-      type: 'result',
-      result: makeStreamResult({ subtype: 'success', num_turns: 14, total_cost_usd: 1.82 })
+describe('buildWorkspaceDigest', () => {
+  it('sums the time worked and counts the times it asked for input', () => {
+    const ws = makeWorkspace({ status: 'idle', statusAt: '2026-10-14T00:02:00.000Z' })
+    const log = [
+      { status: 'working', reason: null, at: '2026-10-13T23:00:00.000Z' },
+      { status: 'needs_input', reason: null, at: '2026-10-13T23:20:00.000Z' },
+      { status: 'working', reason: null, at: '2026-10-13T23:25:00.000Z' },
+      { status: 'idle', reason: null, at: '2026-10-14T00:02:00.000Z' }
+    ] as const
+
+    const digest = buildWorkspaceDigest(
+      ws,
+      PROJECT,
+      [...log],
+      Date.parse('2026-10-13T22:00:00.000Z'),
+      Date.parse('2026-10-14T07:30:00.000Z')
+    )
+
+    expect(digest).toMatchObject({
+      workingMs: (20 + 37) * 60_000,
+      needsInputCount: 1,
+      stuckCount: 0
     })
-    task = nextTask(task, { type: 'finished', prUrl: 'https://github.com/rquellh/que/pull/88' })
-
-    expect(task.state).toBe('done')
-    expect(task.costUsd).toBe(1.82)
-  })
-
-  it('pauses on a rate limit and resumes the same session', () => {
-    const running = makeTask({ state: 'running', sessionId: 'sess_8c1d2e' })
-
-    const paused = nextTask(running, {
-      type: 'rate_limited',
-      resetsAt: new Date(2026, 9, 14, 3, 0).getTime()
-    })
-    const resumed = nextTask(paused, { type: 'resume' })
-
-    expect(paused.state).toBe('paused')
-    expect(resumed).toMatchObject({ state: 'running', sessionId: 'sess_8c1d2e' })
   })
 })
 ```
@@ -595,36 +579,41 @@ export function makeHookEvent(name: HookEventName, overrides: Partial<HookEvent>
 }
 ```
 
-### Stream Result Factory
+### Workspace Digest Factory
 
 ```ts
-import type { StreamResult } from '@shared/protocol'
+import type { WorkspaceDigest } from '@shared/types'
 
-/** A stream-json `result` line from a successful headless run — override
- * subtype/is_error/stop_reason for the failure shapes. */
-export function makeStreamResult(overrides: Partial<StreamResult> = {}): StreamResult {
+/** What one session did in the report window: an idle session that worked 42 minutes. */
+export function makeWorkspaceDigest(overrides: Partial<WorkspaceDigest> = {}): WorkspaceDigest {
+  const name = overrides.name ?? 'app-1432-retry-logic'
   return {
-    type: 'result',
-    subtype: 'success',
-    is_error: false,
-    num_turns: 9,
-    total_cost_usd: 0.74,
-    duration_ms: 182_400,
-    session_id: 'sess_8c1d2e',
-    stop_reason: 'end_turn',
-    result: 'Added exponential backoff to the uploader and covered it with tests.',
+    id: 'ws_01hzx3k9c2qf',
+    name,
+    project: 'uploader',
+    branch: name,
+    status: 'idle',
+    statusReason: null,
+    firstActivityAt: '2026-10-14T01:00:00.000Z',
+    lastActivityAt: '2026-10-14T01:42:00.000Z',
+    workingMs: 42 * 60_000,
+    needsInputCount: 0,
+    waitingSince: null,
+    stuckCount: 0,
+    commitsAhead: 2,
+    pr: null,
+    sessionId: null,
     ...overrides
   }
 }
 ```
 
-### Workspace and Task Factories
+### Workspace Factory
 
 ```ts
-import type { TaskInfo, WorkspaceInfo } from '@shared/protocol'
+import type { WorkspaceInfo } from '@shared/protocol'
 
 let wsCounter = 0
-let taskCounter = 0
 
 export function makeWorkspace(overrides: Partial<WorkspaceInfo> = {}): WorkspaceInfo {
   wsCounter += 1
@@ -642,21 +631,6 @@ export function makeWorkspace(overrides: Partial<WorkspaceInfo> = {}): Workspace
     ...overrides
   }
 }
-
-export function makeTask(overrides: Partial<TaskInfo> = {}): TaskInfo {
-  taskCounter += 1
-  return {
-    id: `task_01hzy${taskCounter.toString(36).padStart(7, '0')}`,
-    workspaceId: 'ws_01hzx3k9c2qf',
-    prompt: 'Add retry logic to the uploader and cover it with tests',
-    state: 'queued',
-    maxTurns: 40,
-    maxCostUsd: 5,
-    costUsd: 0,
-    turns: 0,
-    ...overrides
-  }
-}
 ```
 
 ### Variant Fixtures for Edge Cases
@@ -664,11 +638,15 @@ export function makeTask(overrides: Partial<TaskInfo> = {}): TaskInfo {
 Name fixtures for the case they represent, same as any other test data:
 
 ```ts
-const rateLimitedTask = makeTask({ state: 'paused', pausedReason: 'rate_limit' })
-const overBudgetResult = makeStreamResult({
-  subtype: 'error_max_turns',
-  is_error: true,
-  num_turns: 40
+const waitingSession = makeWorkspaceDigest({
+  status: 'needs_input',
+  needsInputCount: 1,
+  waitingSince: '2026-10-14T02:14:00.000Z'
+})
+const stuckSession = makeWorkspaceDigest({
+  status: 'stuck',
+  statusReason: 'no_heartbeat',
+  stuckCount: 1
 })
 const idlePrompt = makeHookEvent('Notification', {
   notification_type: 'idle_prompt',
@@ -678,7 +656,7 @@ const idlePrompt = makeHookEvent('Notification', {
 
 ### The Identity Invariants Fixtures Must Respect
 
-- Workspaces, terminals, and tasks are identified by **opaque ids minted by the daemon** (`ws_…`, `task_…`, terminal ids). Every lookup, testid, and assertion keys by id, never by name — two projects can each have a workspace called `APP-1432-retry-logic`.
+- Workspaces and terminals are identified by **opaque ids minted by the daemon** (`ws_…`, terminal ids). Every lookup, testid, and assertion keys by id, never by name — two projects can each have a workspace called `APP-1432-retry-logic`.
 - A workspace's branch name and worktree directory derive from its name through the slug rules; a fixture whose `branch` or `path` disagrees with its `name` is lying about a state the daemon can't produce. Override `name` and let the factory derive the rest, unless the test is about the derivation itself.
 
 ---
@@ -717,7 +695,7 @@ await user.type(screen.getByLabelText('Quiet hours start'), '22:30')
 await user.selectOptions(screen.getByLabelText('Unlock duration'), '30')
 
 // Checkbox
-await user.click(screen.getByRole('checkbox', { name: 'Pause the queue during quiet hours' }))
+await user.click(screen.getByRole('checkbox', { name: 'Morning summary' }))
 
 // Keyboard
 await user.keyboard('{Meta>}t{/Meta}')
@@ -742,7 +720,7 @@ Use the highest-priority query that works for your case:
 
 ### When `getByTestId` Is Correct
 
-- Elements identified by an opaque entity id with no unique visible text — a status badge inside `sidebar-workspace-<id>`, a row in `report-task-<id>`
+- Elements identified by an opaque entity id with no unique visible text — a status badge inside `sidebar-workspace-<id>`, a row in `report-workspace-<id>`
 - Text that is legitimately duplicated (every badge says `idle`; two projects both have a `APP-1432-retry-logic`)
 
 The testid pattern is shared with the E2E suite: `{component}-{entity-id?}-{element}`, keyed by the daemon's ids (`sidebar-workspace-<id>-status`, `terminal-tab-<id>`, `quiet-board-unlock`).
@@ -783,8 +761,8 @@ In daemon integration tests there is no DOM to wait on; poll the API instead. `e
 
 ```ts
 await expect
-  .poll(async () => (await client.request('task.get', { id })).state, { timeout: 15_000 })
-  .toBe('paused')
+  .poll(async () => (await client.request('workspace.get', { id })).status, { timeout: 15_000 })
+  .toBe('needs_input')
 ```
 
 Prefer waiting on an **event** when the method emits one and the test already subscribes; prefer `expect.poll` over a re-request when it doesn't. Never a hand-rolled `while` loop with `setTimeout` — the first work package's `server.test.ts` has one; replace it with `expect.poll` when you move that file.
@@ -840,7 +818,7 @@ await waitFor(() => {
 | `.toBeDisabled()`                  | Button/input is disabled                       |
 | `.toBeChecked()`                   | Checkbox is checked                            |
 | `.toHaveAttribute('attr', 'val')`  | Element has an HTML attribute                  |
-| `.toMatchObject({...})`            | Socket result / task carries these fields      |
+| `.toMatchObject({...})`            | Socket result / row carries these fields       |
 | `.toContainEqual(...)`             | A recorded fake-binary call is in the log      |
 | `.rejects.toMatchObject({ code })` | A daemon request fails with a structured error |
 | `.not.toBeInTheDocument()`         | Element does NOT exist (use with `queryBy`)    |
@@ -853,7 +831,7 @@ With the fake binaries, the fake bridge, temp dirs, and an injected clock, almos
 
 ### Environment
 
-`vi.stubEnv` is the only way to set `QUE_HOME`, `PATH`, `QUE_FAKE_CLAUDE_SCENARIO`, `QUE_FAKE_GH_LOG`, and friends, and `vi.unstubAllEnvs()` in `afterEach` restores them. Never assign `process.env.X = …` directly — it leaks into the next test file in the same worker.
+`vi.stubEnv` is the only way to set `QUE_HOME`, `PATH`, `QUE_FAKE_CLAUDE_TITLE`, `QUE_FAKE_GH_LOG`, and friends, and `vi.unstubAllEnvs()` in `afterEach` restores them. Never assign `process.env.X = …` directly — it leaks into the next test file in the same worker.
 
 ### Spying on Console Methods
 
@@ -934,14 +912,14 @@ afterEach(async () => {
 // ── File-local helpers (createWorkspace, makeTempRepo) ──
 
 // ── Test Suites ──────────────────────────────
-describe('task runner', () => {
-  describe('success', () => {
+describe('hooks', () => {
+  describe('status', () => {
     /* ... */
   })
-  describe('caps', () => {
+  describe('needs input', () => {
     /* ... */
   })
-  describe('rate limit', () => {
+  describe('background tasks', () => {
     /* ... */
   })
   describe('stall', () => {
@@ -974,10 +952,10 @@ describe('applyHookEvent', () => {
 
 ### Naming Conventions
 
-- **Test files:** Logic and renderer tests colocated with the code: `status-engine.test.ts`, `protocol.test.ts`, `Sidebar.test.tsx`, `QuietBoard.test.tsx`. Integration tests under `tests/integration/` named for the capability: `terminals.test.ts`, `workspaces.test.ts`, `runner.test.ts`, `hook.test.ts`, `cli.test.ts`
-- **Describe blocks:** Name of the component, function, or capability: `describe('Sidebar', ...)`, `describe('nextTask', ...)`, `describe('task runner', ...)`
-- **Nested describes:** Behavioral groupings: `describe('rate limit', ...)`, `describe('rendering', ...)`
-- **Test names:** Describe observable behavior: `it('pauses a task when claude reports a rate limit', ...)`
+- **Test files:** Logic and renderer tests colocated with the code: `status-engine.test.ts`, `protocol.test.ts`, `Sidebar.test.tsx`, `QuietBoard.test.tsx`. Integration tests under `tests/integration/` named for the capability: `terminals.test.ts`, `workspaces.test.ts`, `hooks.test.ts`, `prs.test.ts`, `cli.test.ts`
+- **Describe blocks:** Name of the component, function, or capability: `describe('Sidebar', ...)`, `describe('buildWorkspaceDigest', ...)`, `describe('hooks', ...)`
+- **Nested describes:** Behavioral groupings: `describe('needs input', ...)`, `describe('rendering', ...)`
+- **Test names:** Describe observable behavior: `it('marks a session needs input when claude asks for permission', ...)`
 
 ### Standard Behavioral Describe Groupings
 
@@ -988,7 +966,7 @@ describe('applyHookEvent', () => {
 | `user interactions` | Clicks, typing, selecting, and the bridge calls they make       |
 | `transitions`       | Reducer / state-machine steps                                   |
 | `clock`             | Behavior that depends on `now()` (quiet window, unlock, stall)  |
-| `scenarios`         | One per fake `claude` scenario in a runner integration test     |
+| `sessions`          | One per fake `claude` session path in a hooks integration test  |
 | `errors`            | Structured daemon errors, crashes, malformed input, disconnects |
 | `purity`            | Input-not-mutated checks on pure reducers                       |
 
@@ -1058,24 +1036,24 @@ expect(screen.queryByTestId('quiet-board')).not.toBeInTheDocument()
 
 ```ts
 // WRONG - guesses how long the daemon takes; flaky under load, slow when idle
-await client.request('task.run', { id })
+await client.request('term.write', { id: termId, data: '/needs-input\r' })
 await new Promise((r) => setTimeout(r, 2000))
-expect((await client.request('task.get', { id })).state).toBe('done')
+expect((await client.request('workspace.get', { id })).status).toBe('needs_input')
 
 // CORRECT - wait on the condition, with real timers
 await expect
-  .poll(async () => (await client.request('task.get', { id })).state, { timeout: 15_000 })
-  .toBe('done')
+  .poll(async () => (await client.request('workspace.get', { id })).status, { timeout: 15_000 })
+  .toBe('needs_input')
 ```
 
 ```ts
 // WRONG - fake timers near a PTY/socket/subprocess: the test hangs or lies
 vi.useFakeTimers()
-await client.request('task.run', { id })
+await client.request('term.write', { id: termId, data: 'claude\r' })
 vi.advanceTimersByTime(300_000)
 
 // CORRECT - a short stall timeout from config, real timers, expect.poll
-const task = await client.request('task.add', { workspaceId, prompt, stallTimeoutMs: 1_000 })
+fs.writeFileSync(configPath, 'stall_timeout_minutes = 0.02\n')
 ```
 
 ### 5. Mocking Internals or the OS Instead of Faking the Boundary
@@ -1089,7 +1067,7 @@ vi.mock('@daemon/status-engine', () => ({ applyHookEvent: vi.fn() }))
 
 // CORRECT - the real daemon spawns the fake claude found first on PATH
 vi.stubEnv('PATH', `${FAKES_BIN}:${process.env.PATH}`)
-vi.stubEnv('QUE_FAKE_CLAUDE_SCENARIO', 'rate_limit')
+await client.request('term.write', { id: termId, data: 'claude\r' })
 ```
 
 ```tsx
@@ -1163,7 +1141,7 @@ expect((await client.request('workspace.get', { id })).status).toBe('idle')
 // WRONG - xterm draws to a canvas jsdom can't render; this text is never there
 expect(screen.getByText('QUE_ATTACH_7f3a')).toBeInTheDocument()
 
-// CORRECT - content via the daemon's headless mirror (integration) or screenText() (E2E)
+// CORRECT - content via the daemon's xterm mirror (integration) or screenText() (E2E)
 await expect
   .poll(async () => (await client.request('term.snapshot', { id })).text)
   .toContain('QUE_ATTACH_7f3a')
@@ -1180,13 +1158,13 @@ await expect
 - Import `render`, `screen`, `waitFor` from `@testing-library/react` directly
 - Seed the fake bridge's fixture book **before** `render()`; drive live changes with the emitting mutators (`setStatus`, `setQuietState`)
 - Give every daemon integration test that writes state its own temp `QUE_HOME`, socket, and repo, and remove them in `afterEach`
-- Put `tests/fakes/bin` first on `PATH` and pick fake `claude` behavior with `QUE_FAKE_CLAUDE_SCENARIO`, via `vi.stubEnv`, restored with `vi.unstubAllEnvs()`
+- Put `tests/fakes/bin` first on `PATH` and set the fakes' knobs (`QUE_FAKE_GH_PRS`, `QUE_FAKE_CLAUDE_TITLE`, …) via `vi.stubEnv`, restored with `vi.unstubAllEnvs()`; drive the fake `claude` by typing into its terminal
 - Seed and assert daemon state through the real `DaemonClient` (`client.request(...)`), and real `git` for repos
 - Use real timers and `waitFor`/`expect.poll` with explicit timeouts for anything touching a PTY, socket, or subprocess, plus a per-test timeout above them
 - Inject `now()` into time-dependent logic and test it with fixed local-time dates
 - Use `userEvent.setup()` for all user interactions
 - Use `queryBy*` for negative assertions
-- Write logic tests for branchy rules (status transitions, task states, quiet-hours math, framing, parsing) rather than exercising them only through the socket or the UI
+- Write logic tests for branchy rules (status transitions, the digest, quiet-hours math, framing, parsing) rather than exercising them only through the socket or the UI
 - Assert that pure reducers return a new object and leave their input untouched
 - Key lookups, testids, and assertions by the daemon's opaque ids, never by name
 - Follow the canonical import order

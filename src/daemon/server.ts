@@ -45,8 +45,7 @@ import { EventBus } from './bus'
 import { RpcError } from './errors'
 import type { HostedTerminal, PtyHost, Term, TermExtra } from './pty-host'
 import { QuietService } from './quiet'
-import { TaskQueue } from './queue'
-import { SYSTEM_PROMPT } from './runner'
+import { gatherReport } from './gather-report'
 import { PrService } from './prs'
 import { LiveSessions, storedLiveSessions } from './live-sessions'
 import { StatusService } from './status'
@@ -86,8 +85,6 @@ export interface ServerOptions {
   cliScript?: string
   /** Status engine stall-check interval. Default 5 s. */
   statusTickMs?: number
-  /** Task queue stall / pause tick. Default 5 s. */
-  queueTickMs?: number
   /** Quiet-hours re-evaluation interval. Default 15 s. */
   quietTickMs?: number
   /** The clock quiet hours read. Default Date.now. */
@@ -165,7 +162,6 @@ export class DaemonServer {
   readonly prs: PrService
   readonly tickets: TicketService
   readonly workspaces: WorkspaceManager
-  readonly tasks: TaskQueue
   readonly quiet: QuietService
   /** Workspace terminals with a live Claude session, restored after a restart. */
   readonly liveSessions: LiveSessions
@@ -208,23 +204,9 @@ export class DaemonServer {
       randomName: opts.randomWorkspaceName,
       config: () => this.strictConfig()
     })
-    this.tasks = new TaskQueue({
-      store: this.store,
-      paths: this.paths,
-      workspaces: this.workspaces,
-      status: this.status,
-      emit,
-      config: () => this.configOrDefault(),
-      killTerminals: (id) => this.killWorkspaceTerminals(id),
-      socket: () => this.socketPath,
-      log: (m) => this.log(m),
-      tickMs: opts.queueTickMs
-    })
     this.prs = new PrService({
       store: this.store,
       workspaces: this.workspaces,
-      tasks: this.tasks,
-      paths: this.paths,
       bus: this.bus,
       config: () => this.configOrDefault(),
       log: (m) => this.log(m)
@@ -251,7 +233,7 @@ export class DaemonServer {
       detachAll: () => {
         for (const c of this.conns) c.subs.clear()
       },
-      report: (since) => this.tasks.report(since),
+      report: (since) => this.report(since),
       log: (m) => this.log(m),
       now: opts.now,
       tickMs: opts.quietTickMs
@@ -415,11 +397,15 @@ export class DaemonServer {
     this.readConfig(true)
     this.log(`config ${path} updated${applyTonight ? ' (apply tonight)' : ''}`)
     this.quiet.configChanged(applyTonight)
-    this.tasks.kick()
     const result = this.getConfig()
     this.bus.emit('config.changed', result)
 
     return result
+  }
+
+  /** The sessions report (report.get and the quiet summaries). */
+  private report(since?: string): ReturnType<typeof gatherReport> {
+    return gatherReport({ store: this.store, workspaces: this.workspaces }, since)
   }
 
   private createTerminal(params: TermCreateParams, extra?: TermExtra): HostedTerminal {
@@ -609,14 +595,7 @@ export class DaemonServer {
           this.log(`installing the hooks wrapper failed: ${errorMessage(err)}`)
         }
 
-        try {
-          fs.writeFileSync(this.paths.systemPrompt, SYSTEM_PROMPT, { mode: 0o644 })
-        } catch (err) {
-          this.log(`writing ${this.paths.systemPrompt} failed: ${errorMessage(err)}`)
-        }
-
         this.status.start()
-        this.tasks.start()
         this.quiet.start()
         this.prs.start()
         this.tickets.start()
@@ -637,8 +616,7 @@ export class DaemonServer {
   }
 
   /**
-   * Stops accepting connections and drops existing ones, and stops every task
-   * run (restart recovery resumes them). Does not kill PTYs.
+   * Stops accepting connections and drops existing ones. Does not kill PTYs.
    */
   async close(): Promise<void> {
     await this.stopServices()
@@ -680,7 +658,6 @@ export class DaemonServer {
       await this.prs.drain()
       this.tickets.stop()
       await this.tickets.drain()
-      await this.tasks.shutdown()
       this.status.stop()
       this.watcher.close()
       this.workspaces.close()
@@ -890,7 +867,6 @@ export class DaemonServer {
     'workspace.list': (p) => this.workspaces.list(p?.projectId),
     'workspace.get': (p) => this.workspaces.get(p.id),
     'workspace.remove': async (p) => {
-      this.tasks.stopWorkspace(p.id)
       await this.workspaces.remove({ id: p.id, deleteBranch: p.deleteBranch })
 
       return { ok: true }
@@ -932,26 +908,12 @@ export class DaemonServer {
     },
     'hook.event': (p) => {
       const ws = this.workspaces.get(p.workspaceId)
-      this.liveSessions.hook(ws.id, p.terminalId, p.taskId, p.payload)
+      this.liveSessions.hook(ws.id, p.terminalId, p.payload)
       this.status.hook(ws.id, p.payload)
 
-      if (p.taskId) this.tasks.hook(p.taskId, p.payload)
-
       return { ok: true }
     },
-    'task.add': (p) => this.tasks.add(p),
-    'task.list': (p) => this.tasks.list({ state: p?.state }),
-    'task.get': (p) => this.tasks.get(p.id),
-    'task.stop': (p) => this.tasks.stop(p.id),
-    'task.remove': (p) => {
-      this.tasks.remove(p.id)
-
-      return { ok: true }
-    },
-    'queue.open': (p) => this.tasks.open(p?.concurrency),
-    'queue.close': () => this.tasks.close(),
-    'queue.state': () => this.tasks.state(),
-    'report.get': (p) => this.tasks.report(p?.since),
+    'report.get': (p) => this.report(p?.since),
     'quiet.state': () => this.quiet.state(),
     'quiet.unlock': (p) => this.quiet.unlockFor(p?.minutes, p?.why),
     'quiet.lock': () => this.quiet.lock(),

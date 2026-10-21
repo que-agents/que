@@ -1,5 +1,5 @@
 // The quiet board window: the strip (header), the count line, the scrolling
-// list of rows keyed by task or workspace id, and its controls: Unlock, and End
+// list of rows keyed by workspace id, and its controls: Unlock, and End
 // quiet in a manual quiet.
 import type { Locator, Page } from '@playwright/test'
 

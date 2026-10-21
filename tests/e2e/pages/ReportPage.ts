@@ -1,4 +1,4 @@
-// The report view: tasks grouped by outcome, rows keyed by task id.
+// The report view: one count line, then a row per workspace keyed by workspace id.
 import type { Locator, Page } from '@playwright/test'
 
 export class ReportPage {
@@ -9,16 +9,10 @@ export class ReportPage {
   totals: Locator
   unlocks: Locator
   emptyState: Locator
-  group: (group: string) => Locator
-  groupTask: (group: string, id: string) => Locator
-  task: (id: string) => Locator
-  taskState: (id: string) => Locator
-  taskPrLink: (id: string) => Locator
   workspacesSection: Locator
   workspace: (id: string) => Locator
   workspaceState: (id: string) => Locator
   workspaceFacts: (id: string) => Locator
-  workspacePrLink: (id: string) => Locator
 
   constructor(page: Page) {
     this.page = page
@@ -28,17 +22,10 @@ export class ReportPage {
     this.totals = page.getByTestId('report-totals')
     this.unlocks = page.getByTestId('report-unlocks')
     this.emptyState = page.getByTestId('report-empty')
-    this.group = (group: string) => page.getByTestId(`report-group-${group}`)
-    this.groupTask = (group: string, id: string) =>
-      page.getByTestId(`report-group-${group}`).getByTestId(`report-task-${id}`)
-    this.task = (id: string) => page.getByTestId(`report-task-${id}`)
-    this.taskState = (id: string) => page.getByTestId(`report-task-${id}-state`)
-    this.taskPrLink = (id: string) => page.getByTestId(`report-task-${id}-pr`)
     this.workspacesSection = page.getByTestId('report-workspaces')
     this.workspace = (id: string) => page.getByTestId(`report-workspace-${id}`)
     this.workspaceState = (id: string) => page.getByTestId(`report-workspace-${id}-status`)
     this.workspaceFacts = (id: string) => page.getByTestId(`report-workspace-${id}-facts`)
-    this.workspacePrLink = (id: string) => page.getByTestId(`report-workspace-${id}-pr`)
   }
 
   async waitForLoad() {

@@ -627,7 +627,7 @@ function copyIncludes(from: string, to: string, entries: string[], log: (m: stri
 export type SessionEnv = {
   /** The configured instructions file, whether or not it exists yet. */
   QUE_INSTRUCTIONS?: string
-  /** que.toml's permission_mode, else default_permission_mode, gated like a task's. */
+  /** que.toml's permission_mode, else default_permission_mode, gated by allow_bypass_permissions. */
   QUE_PERMISSION_MODE?: string
 }
 

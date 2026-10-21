@@ -27,8 +27,6 @@ export type LiveInput =
       workspaceId: string
       /** The terminal the hook fired in (QUE_TERMINAL_ID), when it fired in one. */
       terminalId?: string
-      /** Set for a headless task run, whose recovery the queue owns. */
-      taskId?: string
       payload: HookEvent
     }
   | { kind: 'terminal_gone'; terminalId: string }
@@ -46,7 +44,7 @@ export function trackLive(live: readonly LiveSession[], input: LiveInput): reado
 
   const { payload, terminalId } = input
 
-  if (input.taskId || payload.agent_id || !terminalId) return live
+  if (payload.agent_id || !terminalId) return live
 
   switch (payload.hook_event_name) {
     case 'SessionStart': {
@@ -179,16 +177,11 @@ export class LiveSessions {
   }
 
   /** A hook from `que hook`; one naming a terminal this daemon does not own counts as from none. */
-  hook(
-    workspaceId: string,
-    terminalId: string | undefined,
-    taskId: string | undefined,
-    payload: HookEvent
-  ): void {
+  hook(workspaceId: string, terminalId: string | undefined, payload: HookEvent): void {
     const term =
       terminalId && this.o.isWorkspaceTerminal(terminalId, workspaceId) ? terminalId : undefined
 
-    this.apply({ kind: 'hook', workspaceId, terminalId: term, taskId, payload })
+    this.apply({ kind: 'hook', workspaceId, terminalId: term, payload })
   }
 
   /** A main Claude session is live in the terminal. */

@@ -1,31 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { makePullRequest, makeTask } from '@renderer/testing/fixtures'
-import { isLiveTask, newestFirst, prBadge, prNumberOf, statusBadge, taskBadge } from './format'
+import { makePullRequest } from '@renderer/testing/fixtures'
+import { prBadge, prNumberOf, statusBadge } from './format'
 
 describe('badges', () => {
   it('labels every workspace status with a tone', () => {
     expect(statusBadge('needs_input')).toEqual({ label: 'needs input', tone: 'attention' })
     expect(statusBadge('stuck')).toEqual({ label: 'stuck', tone: 'bad' })
     expect(statusBadge('working').tone).toBe('busy')
-  })
-
-  it('labels task states and knows which can still be stopped', () => {
-    expect(taskBadge('done')).toEqual({ label: 'done', tone: 'good' })
-    expect(isLiveTask('paused')).toBe(true)
-    expect(isLiveTask('finishing')).toBe(true)
-    expect(isLiveTask('done')).toBe(false)
-    expect(isLiveTask('stopped')).toBe(false)
-  })
-})
-
-describe('newestFirst', () => {
-  it('orders by creation time, newest first, without mutating its input', () => {
-    const older = makeTask({ createdAt: '2026-10-13T21:05:00.000Z' })
-    const newer = makeTask({ createdAt: '2026-10-13T22:40:00.000Z' })
-    const input = [older, newer]
-
-    expect(newestFirst(input).map((t) => t.id)).toEqual([newer.id, older.id])
-    expect(input.map((t) => t.id)).toEqual([older.id, newer.id])
   })
 })
 

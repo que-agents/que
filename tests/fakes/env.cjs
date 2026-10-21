@@ -1,5 +1,5 @@
 // The isolated environment every test process shares: the daemon harness,
-// the e2e app and CLI, and the soak and packaged-smoke scripts. A temp
+// the e2e app and CLI, and the packaged-smoke script. A temp
 // QUE_HOME and QUE_CONFIG, the fakes first on PATH with their logs in the
 // home, and a git identity from <home>/gitconfig, never the machine's.
 // Plain CommonJS so the .mjs scripts and the Playwright transform both load it
@@ -28,7 +28,6 @@ exports.fakeEnv = function fakeEnv(home, pathPrefix = []) {
     QUE_FAKE_ACLI_LOG: join(home, 'fake-acli.log'),
     QUE_FAKE_ACLI_TICKETS: join(home, 'fake-acli-tickets.json'),
     QUE_FAKE_CODE_LOG: join(home, 'fake-code.log'),
-    QUE_FAKE_CAFFEINATE_LOG: join(home, 'fake-caffeinate.log'),
     QUE_FAKE_WRAPPER_LOG: join(home, 'fake-wrapper.log'),
     GIT_CONFIG_GLOBAL: join(home, 'gitconfig'),
     GIT_CONFIG_NOSYSTEM: '1'

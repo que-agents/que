@@ -1,7 +1,7 @@
 // Work mode end to end: a project registered with the CLI, a workspace made
 // from the sidebar dialog, its terminal opened automatically, a claude session
 // in it finishing a turn with one chime (recorded, never played, under e2e) and
-// reaching needs input on the sidebar's dot (and in `que status`), a turn finishing
+// reaching needs input on the sidebar's dot (and in `que status` and the tray title), a turn finishing
 // while another row is selected reading as unseen until the workspace is selected, Open
 // in editor (in the review pane's Changes) launching the editor on the worktree, and the project removed from
 // its context menu with the workspace and its worktree.
@@ -137,6 +137,7 @@ test('a workspace made in the sidebar runs claude, shows needs input, opens in t
     await expect(sidebar.workspaceReveal(workspace.id)).toHaveCSS('opacity', '1')
     await expect(sidebar.workspaceWord(workspace.id)).toHaveText('needs input')
     expect(statusOf()?.status).toBe('needs_input')
+    await expect.poll(() => shell.trayTitle()).toBe('● 0 ▸ 1 ✕ 0')
     // The needs-input chime is off by default.
     expect(await shell.chimes()).toEqual(['complete'])
   })

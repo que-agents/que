@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { makeBackgroundTask, makeTask, makeWorkspace } from '@renderer/testing/fixtures'
+import { makeBackgroundTask, makePullRequest, makeWorkspace } from '@renderer/testing/fixtures'
 import { minutesAgo } from '@renderer/testing/helpers'
 import { hoverWord, rowTone, unseenDone } from './sidebar-row'
 
@@ -74,7 +74,7 @@ describe('rowTone', () => {
     })
 
     it('is looked at while selected: its own tone, at full strength', () => {
-      expect(rowTone(fresh, undefined, true)).toMatchObject({
+      expect(rowTone(fresh, true)).toMatchObject({
         tone: 'neutral',
         unseen: false,
         weight: 'fg'
@@ -88,54 +88,6 @@ describe('rowTone', () => {
         unseen: false
       })
       expect(rowTone({ ...fresh, status: 'stuck' })).toMatchObject({ tone: 'bad', unseen: false })
-    })
-  })
-
-  describe('a task in the workspace', () => {
-    it('speaks for the workspace while live: the mark while active, a dot while queued or paused', () => {
-      const ws = { ...idle, status: 'exited' as const }
-
-      expect(rowTone(ws, makeTask({ workspaceId: ws.id, state: 'running' }))).toEqual({
-        status: 'running',
-        tone: 'busy',
-        working: true,
-        unseen: false,
-        weight: 'secondary',
-        background: []
-      })
-      expect(rowTone(ws, makeTask({ workspaceId: ws.id, state: 'queued' }))).toMatchObject({
-        status: 'queued',
-        tone: 'neutral',
-        working: false
-      })
-      expect(rowTone(ws, makeTask({ workspaceId: ws.id, state: 'paused' }))).toMatchObject({
-        tone: 'attention',
-        working: false
-      })
-    })
-
-    it('reports done once finished, green until looked at, then the workspace tone', () => {
-      const done = makeTask({
-        workspaceId: idle.id,
-        state: 'done',
-        finishedAt: minutesAgo(NOW, 12)
-      })
-
-      const ws = { ...fresh, status: 'exited' as const }
-
-      expect(rowTone(ws, done)).toMatchObject({ status: 'done', tone: 'good', unseen: true })
-      expect(rowTone({ ...ws, seenAt: minutesAgo(NOW, 1) }, done)).toMatchObject({
-        status: 'done',
-        tone: 'muted',
-        unseen: false,
-        weight: 'faint'
-      })
-    })
-
-    it('gives way to an interactive session in the same workspace', () => {
-      const done = makeTask({ workspaceId: idle.id, state: 'done' })
-
-      expect(rowTone({ ...idle, status: 'needs_input' }, done).status).toBe('needs_input')
     })
   })
 
@@ -157,16 +109,13 @@ describe('rowTone', () => {
       })
     })
 
-    it('leaves the mark off while working, needing input, or running a live task', () => {
-      const running = makeTask({ workspaceId: idle.id, state: 'running' })
-
+    it('leaves the mark off while working or needing input', () => {
       expect(
         rowTone({ ...idle, status: 'working', backgroundTasks: [explorer, devServer] }).background
       ).toEqual([])
       expect(
         rowTone({ ...idle, status: 'needs_input', backgroundTasks: [devServer] }).background
       ).toEqual([])
-      expect(rowTone({ ...idle, backgroundTasks: [devServer] }, running).background).toEqual([])
     })
   })
 })
@@ -180,17 +129,17 @@ describe('hoverWord', () => {
       backgroundTasks: [devServer, logTail, makeBackgroundTask()]
     }
 
-    expect(hoverWord(shell, undefined, rowTone(shell), NOW)).toEqual({
+    expect(hoverWord(shell, rowTone(shell), NOW)).toEqual({
       word: 'idle · shell',
       tone: null
     })
-    expect(hoverWord(both, undefined, rowTone(both), NOW).word).toBe('idle · shell · monitor')
+    expect(hoverWord(both, rowTone(both), NOW).word).toBe('idle · shell · monitor')
   })
 
   it('keeps the unseen finish word over the background kinds', () => {
     const ws = { ...fresh, backgroundTasks: [devServer] }
 
-    expect(hoverWord(ws, undefined, rowTone(ws), NOW).word).toBe('done · 12m ago')
+    expect(hoverWord(ws, rowTone(ws), NOW).word).toBe('done · 12m ago')
   })
 
   it('says the status, toned only for needs input and stuck', () => {
@@ -198,62 +147,28 @@ describe('hoverWord', () => {
     const asking = { ...idle, status: 'needs_input' as const }
     const stuck = { ...idle, status: 'stuck' as const }
 
-    expect(hoverWord(working, undefined, rowTone(working), NOW)).toEqual({
+    expect(hoverWord(working, rowTone(working), NOW)).toEqual({
       word: 'working',
       tone: null
     })
-    expect(hoverWord(asking, undefined, rowTone(asking), NOW)).toEqual({
+    expect(hoverWord(asking, rowTone(asking), NOW)).toEqual({
       word: 'needs input',
       tone: 'attention'
     })
-    expect(hoverWord(stuck, undefined, rowTone(stuck), NOW)).toEqual({ word: 'stuck', tone: 'bad' })
+    expect(hoverWord(stuck, rowTone(stuck), NOW)).toEqual({ word: 'stuck', tone: 'bad' })
   })
 
   it('says how long ago an unseen finish was', () => {
-    expect(hoverWord(fresh, undefined, rowTone(fresh), NOW)).toEqual({
+    expect(hoverWord(fresh, rowTone(fresh), NOW)).toEqual({
       word: 'done · 12m ago',
       tone: null
     })
   })
 
-  it("names the finished task's ask: its draft pull request, or that it changed nothing", () => {
-    const ws = { ...fresh, status: 'exited' as const }
+  it('says the age of a fresh finish, never its pull request', () => {
+    const open = { ...fresh, pr: makePullRequest({ number: 12, state: 'open' }) }
 
-    const withPr = makeTask({
-      workspaceId: ws.id,
-      state: 'done',
-      finishedAt: fresh.finishedAt,
-      prUrl: 'https://github.com/rquellh/que/pull/12'
-    })
-
-    const nothing = makeTask({
-      workspaceId: ws.id,
-      state: 'done',
-      reason: 'no_changes',
-      finishedAt: fresh.finishedAt
-    })
-
-    expect(hoverWord(ws, withPr, rowTone(ws, withPr), NOW).word).toBe('done · draft PR #12')
-    expect(hoverWord(ws, nothing, rowTone(ws, nothing), NOW).word).toBe('done · no changes')
-  })
-
-  it('falls back to the age when a turn ended after the task did', () => {
-    const later = makeTask({
-      workspaceId: fresh.id,
-      state: 'done',
-      finishedAt: minutesAgo(NOW, 90),
-      prUrl: 'https://github.com/rquellh/que/pull/12'
-    })
-
-    expect(hoverWord(fresh, later, rowTone(fresh, later), NOW).word).toBe('done · 12m ago')
-  })
-
-  it("says a live task's state, and done for a finished one already looked at", () => {
-    const running = makeTask({ workspaceId: idle.id, state: 'finishing' })
-    const done = makeTask({ workspaceId: idle.id, state: 'done' })
-
-    expect(hoverWord(idle, running, rowTone(idle, running), NOW).word).toBe('finishing')
-    expect(hoverWord(idle, done, rowTone(idle, done), NOW).word).toBe('done')
+    expect(hoverWord(open, rowTone(open), NOW).word).toBe('done · 12m ago')
   })
 })
 

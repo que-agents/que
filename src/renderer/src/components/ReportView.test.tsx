@@ -5,7 +5,6 @@ import { fakeBridge } from '@renderer/testing/fake-bridge'
 import {
   makeProject,
   makePullRequest,
-  makeTask,
   makeWorkspace,
   makeWorkspaceDigest
 } from '@renderer/testing/fixtures'
@@ -13,26 +12,24 @@ import App from '../App'
 
 const retry = makeWorkspace({ id: 'ws_01hzx3k9c2qf', name: 'app-1432-retry-logic' })
 
-const done = makeTask({
-  id: 'tsk_01hzy0d7w3ke',
-  title: 'Add retry logic to the uploader',
-  workspaceId: retry.id,
-  state: 'done',
-  turns: 12,
-  costUsd: 0.42,
-  prUrl: 'https://github.com/rquellh/que/pull/88',
-  startedAt: '2026-10-14T01:00:00.000Z',
-  finishedAt: '2026-10-14T01:03:05.000Z'
+const waiting = makeWorkspaceDigest({
+  id: 'ws_01hzx5t6y2wa',
+  name: 'app-1451-token-refresh',
+  status: 'needs_input',
+  needsInputCount: 2,
+  waitingSince: new Date(2026, 9, 14, 2, 14).toISOString(),
+  pr: makePullRequest({ state: 'open' })
 })
 
-const stuck = makeTask({
-  id: 'tsk_01hzy1f2g5mn',
-  title: 'Document the upload limits',
-  workspaceId: null,
-  state: 'stuck',
-  reason: 'no_heartbeat',
-  turns: 3,
-  costUsd: 0.08
+const quietOne = makeWorkspaceDigest({ id: 'ws_01hzx3k9c2qf', status: 'idle' })
+
+const stuck = makeWorkspaceDigest({
+  id: 'ws_01hzx7c4v9nd',
+  name: 'app-1460-upload-limits',
+  status: 'stuck',
+  statusReason: 'no_heartbeat',
+  workingMs: 18 * 60_000,
+  commitsAhead: 0
 })
 
 async function openReport(user: ReturnType<typeof userEvent.setup>): Promise<void> {
@@ -42,73 +39,56 @@ async function openReport(user: ReturnType<typeof userEvent.setup>): Promise<voi
 
 describe('ReportView', () => {
   describe('rendering', () => {
-    it('groups tasks by outcome as dot rows under one count line', async () => {
+    it('counts what the sessions did in one line, under the since line', async () => {
       const user = userEvent.setup()
-      fakeBridge.seedProject(makeProject())
-      fakeBridge.seedWorkspace(retry)
-      fakeBridge.seedTask(done)
-      fakeBridge.seedTask(stuck)
+      fakeBridge.seedDigest(quietOne)
+      fakeBridge.seedDigest(waiting)
+      fakeBridge.seedDigest(stuck)
 
       await openReport(user)
 
-      const doneGroup = await screen.findByTestId('report-group-done')
-      expect(within(doneGroup).getByRole('heading', { name: 'Done 1' })).toBeInTheDocument()
-      const row = within(doneGroup).getByTestId(`report-task-${done.id}`)
-      expect(row).toHaveClass('dot-row', 'tone-good')
-      expect(within(row).getByText('app-1432-retry-logic')).toBeInTheDocument()
-      expect(within(row).getByTestId(`report-task-${done.id}-state`)).toHaveTextContent(/^done$/)
-      expect(within(row).getByText('3m · 12 turns · $0.42')).toBeInTheDocument()
-
-      const stuckRow = within(screen.getByTestId('report-group-stuck')).getByTestId(
-        `report-task-${stuck.id}`
+      const totals = await screen.findByTestId('report-totals')
+      expect(totals).toHaveTextContent(
+        /^3 sessions · 1 stuck · 1 needs input · 1 PR open · worked 1h 42m$/
       )
-
-      expect(stuckRow).toHaveClass('dot-row', 'tone-bad')
-      expect(within(stuckRow).getByTestId(`report-task-${stuck.id}-reason`)).toHaveTextContent(
-        'no_heartbeat'
-      )
-      expect(screen.queryByTestId('report-group-failed')).not.toBeInTheDocument()
-      expect(screen.getByTestId('report-totals')).toHaveTextContent(
-        /^1 done · 1 stuck · 1 PR · 3m · \$0\.50$/
-      )
+      expect(within(totals).getByText('1 stuck')).toHaveClass('tone-bad')
+      expect(within(totals).getByText('1 needs input')).toHaveClass('tone-attention')
       expect(screen.getByTestId('report-since')).toHaveTextContent(/^since \d\d:\d\d$/)
     })
 
-    it('links the pull request by number, never by its URL', async () => {
+    it('shows a stuck workspace with its reason in the bad tone', async () => {
       const user = userEvent.setup()
-      fakeBridge.seedProject(makeProject())
-      fakeBridge.seedWorkspace(retry)
-      fakeBridge.seedTask(done)
+      fakeBridge.seedDigest(stuck)
 
       await openReport(user)
 
-      const row = await screen.findByTestId(`report-task-${done.id}`)
-      const link = within(row).getByRole('link')
-      expect(link).toHaveAttribute('href', done.prUrl)
-      expect(link).toHaveTextContent(/^#88$/)
-      expect(row).not.toHaveTextContent('https://')
+      const row = await screen.findByTestId(`report-workspace-${stuck.id}`)
+      expect(row).toHaveClass('dot-row', 'tone-bad')
+      const state = within(row).getByTestId(`report-workspace-${stuck.id}-status`)
+      expect(state).toHaveTextContent(/^stuck · no_heartbeat$/)
+      expect(state).toHaveClass('tone-bad')
     })
 
-    it('names the live pull request state and failing checks on the link', async () => {
+    it('names the pull request state and failing checks on the link, never its URL', async () => {
       const user = userEvent.setup()
-      fakeBridge.seedProject(makeProject())
-      fakeBridge.seedWorkspace({
-        ...retry,
-        pr: makePullRequest({
-          url: 'https://github.com/rquellh/que/pull/88',
-          number: 88,
-          state: 'open',
-          checks: 'failing'
+      fakeBridge.seedDigest(
+        makeWorkspaceDigest({
+          pr: makePullRequest({
+            url: 'https://github.com/rquellh/que/pull/88',
+            number: 88,
+            state: 'open',
+            checks: 'failing'
+          })
         })
-      })
-      fakeBridge.seedTask(done)
+      )
 
       await openReport(user)
 
-      const row = await screen.findByTestId(`report-task-${done.id}`)
-      await waitFor(() => {
-        expect(within(row).getByRole('link')).toHaveTextContent(/^#88 open · checks failing$/)
-      })
+      const row = await screen.findByTestId('report-workspace-ws_01hzx3k9c2qf')
+      const link = within(row).getByRole('link')
+      expect(link).toHaveAttribute('href', 'https://github.com/rquellh/que/pull/88')
+      expect(link).toHaveTextContent(/^#88 open · checks failing$/)
+      expect(row).not.toHaveTextContent('https://')
     })
 
     it('says nothing ran, and nothing else, when nothing ran', async () => {
@@ -120,23 +100,11 @@ describe('ReportView', () => {
         /^nothing ran since \d\d:\d\d$/
       )
       expect(screen.getByTestId('report-totals')).toHaveTextContent(/^nothing ran since/)
-      expect(screen.queryByTestId(/^report-group-/)).not.toBeInTheDocument()
       expect(screen.queryByTestId('report-workspaces')).not.toBeInTheDocument()
     })
   })
 
   describe('workspaces', () => {
-    const waiting = makeWorkspaceDigest({
-      id: 'ws_01hzx5t6y2wa',
-      name: 'app-1451-token-refresh',
-      status: 'needs_input',
-      needsInputCount: 2,
-      waitingSince: new Date(2026, 9, 14, 2, 14).toISOString(),
-      pr: makePullRequest({ state: 'open' })
-    })
-
-    const quietOne = makeWorkspaceDigest({ id: 'ws_01hzx3k9c2qf', status: 'idle' })
-
     it('lists each workspace in daemon order as a dot row with its state, facts and pull request', async () => {
       const user = userEvent.setup()
       fakeBridge.seedDigest(quietOne)
@@ -198,7 +166,7 @@ describe('ReportView', () => {
       )
     })
 
-    it('shows the empty state only when there are no tasks and no workspaces', async () => {
+    it('shows the empty state only when there are no workspaces', async () => {
       const user = userEvent.setup()
       fakeBridge.seedDigest(quietOne)
 
@@ -206,32 +174,6 @@ describe('ReportView', () => {
 
       await screen.findByTestId('report-workspaces')
       expect(screen.queryByTestId('report-empty')).not.toBeInTheDocument()
-    })
-
-    it('counts the workspaces waiting for input, leaving the zeros out', async () => {
-      const user = userEvent.setup()
-      fakeBridge.seedDigest(quietOne)
-      fakeBridge.seedDigest(waiting)
-
-      await openReport(user)
-
-      const totals = await screen.findByTestId('report-totals')
-      expect(totals).toHaveTextContent(/^1 needs input$/)
-      expect(within(totals).getByText('1 needs input')).toHaveClass('tone-attention')
-    })
-
-    it('lists the workspaces after the task groups', async () => {
-      const user = userEvent.setup()
-      fakeBridge.seedProject(makeProject())
-      fakeBridge.seedTask(stuck)
-      fakeBridge.seedDigest(quietOne)
-
-      await openReport(user)
-
-      await screen.findByTestId('report-workspaces')
-      expect(
-        screen.getAllByTestId(/^report-(group-[a-z]+|workspaces)$/).map((g) => g.dataset.testid)
-      ).toEqual(['report-group-stuck', 'report-workspaces'])
     })
   })
 
@@ -272,71 +214,35 @@ describe('ReportView', () => {
   })
 
   describe('status updates', () => {
-    it('refreshes on its own when a task changes state, showing why it is stuck', async () => {
-      const user = userEvent.setup()
-
-      const running = makeTask({
-        id: 'tsk_01hzy2h8j4pq',
-        title: 'Fix the flaky upload test',
-        workspaceId: null,
-        state: 'running'
-      })
-
-      fakeBridge.seedProject(makeProject())
-      fakeBridge.seedTask(running)
-      await openReport(user)
-      await screen.findByTestId('report-group-running')
-
-      fakeBridge.setTaskState(running.id, 'stuck', 'max_turns')
-
-      expect(await screen.findByTestId(`report-task-${running.id}-reason`)).toHaveTextContent(
-        'max_turns'
-      )
-      expect(screen.queryByTestId('report-group-running')).not.toBeInTheDocument()
-    })
-
-    it('lists the groups done, stuck, failed, paused, running, queued, then stopped', async () => {
+    it('refreshes on its own when a workspace changes status', async () => {
       const user = userEvent.setup()
       fakeBridge.seedProject(makeProject())
-
-      for (const state of [
-        'stopped',
-        'queued',
-        'running',
-        'paused',
-        'failed',
-        'stuck',
-        'done'
-      ] as const) {
-        fakeBridge.seedTask(makeTask({ workspaceId: null, state }))
-      }
-
+      fakeBridge.seedWorkspace(retry)
+      fakeBridge.seedDigest(quietOne)
       await openReport(user)
+      await screen.findByTestId(`report-workspace-${quietOne.id}`)
 
-      await screen.findByTestId('report-group-stopped')
-      expect(
-        screen
-          .getAllByTestId(/^report-group-/)
-          .map((g) => g.dataset.testid?.replace('report-group-', ''))
-      ).toEqual(['done', 'stuck', 'failed', 'paused', 'running', 'queued', 'stopped'])
+      fakeBridge.seedDigest(waiting)
+      fakeBridge.setStatus(retry.id, 'working')
+
+      expect(await screen.findByTestId(`report-workspace-${waiting.id}`)).toBeInTheDocument()
     })
   })
 
   describe('user interactions', () => {
     it('picks up new results on Refresh', async () => {
       const user = userEvent.setup()
-      fakeBridge.seedProject(makeProject())
-      fakeBridge.seedTask(stuck)
+      fakeBridge.seedDigest(quietOne)
       await openReport(user)
-      await screen.findByTestId('report-group-stuck')
+      await screen.findByTestId(`report-workspace-${quietOne.id}`)
 
-      fakeBridge.setTaskState(stuck.id, 'failed', 'crashed')
+      fakeBridge.seedDigest(stuck)
       await user.click(screen.getByRole('button', { name: 'Refresh' }))
 
       await waitFor(() => {
-        expect(screen.queryByTestId('report-group-stuck')).not.toBeInTheDocument()
+        expect(screen.getByTestId('report-totals')).toHaveTextContent(/^2 sessions · 1 stuck · /)
       })
-      expect(screen.getByTestId(`report-task-${stuck.id}`)).toHaveTextContent('crashed')
+      expect(screen.getByTestId(`report-workspace-${stuck.id}`)).toBeInTheDocument()
     })
   })
 })

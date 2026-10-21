@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { fakeBridge } from '@renderer/testing/fake-bridge'
-import { makeProject, makeQuietState, makeTask, makeWorkspace } from '@renderer/testing/fixtures'
+import { makeProject, makeQuietState, makeWorkspace } from '@renderer/testing/fixtures'
 import App from './App'
 import { type ChimeKind, setChimePlayer } from './sound'
 
@@ -22,13 +22,6 @@ const unlockedFor = (ms: number) => ({
 })
 
 const retry = makeWorkspace({ id: 'ws_01hzx3k9c2qf', name: 'app-1432-retry-logic' })
-
-const task = makeTask({
-  id: 'tsk_01hzy0d7w3ke',
-  title: 'Add retry logic to the uploader',
-  workspaceId: retry.id,
-  state: 'running'
-})
 
 /** Records chimes instead of playing them. */
 function recordChimes(): ChimeKind[] {
@@ -115,39 +108,6 @@ describe('quiet mode in the main window', () => {
 })
 
 describe('completion chime', () => {
-  it('chimes when a task finishes in work hours', async () => {
-    const played = recordChimes()
-    fakeBridge.seedProject(makeProject())
-    fakeBridge.seedWorkspace(retry)
-    fakeBridge.seedTask(task)
-    render(<App now={clock} />)
-    await screen.findByTestId(`sidebar-workspace-${retry.id}-status`)
-
-    fakeBridge.setTaskState(task.id, 'done')
-
-    await waitFor(() => {
-      expect(played).toEqual(['complete'])
-    })
-  })
-
-  it('stays silent during quiet hours, even unlocked', async () => {
-    const played = recordChimes()
-    fakeBridge.seedProject(makeProject())
-    fakeBridge.seedWorkspace(retry)
-    fakeBridge.seedTask(task)
-    fakeBridge.setQuietState({ ...locked, ...unlockedFor(20 * 60_000) })
-    render(<App now={clock} />)
-    const badge = `sidebar-workspace-${retry.id}-status`
-    await screen.findByTestId(badge)
-
-    fakeBridge.setTaskState(task.id, 'done')
-
-    await waitFor(() => {
-      expect(screen.getByTestId(badge)).toHaveAttribute('data-status', 'done')
-    })
-    expect(played).toEqual([])
-  })
-
   it('chimes once when a session in a workspace finishes a turn', async () => {
     const played = recordChimes()
     fakeBridge.seedProject(makeProject())
@@ -160,25 +120,6 @@ describe('completion chime', () => {
 
     await waitFor(() => {
       expect(screen.getByTestId(badge)).toHaveAttribute('data-status', 'idle')
-    })
-    expect(played).toEqual(['complete'])
-  })
-
-  it('chimes once for a task run: not when its workspace ends the turn, only when the task is done', async () => {
-    const played = recordChimes()
-    fakeBridge.seedProject(makeProject())
-    fakeBridge.seedWorkspace({ ...retry, status: 'working' })
-    fakeBridge.seedTask(task)
-    render(<App now={clock} />)
-    const badge = `sidebar-workspace-${retry.id}-status`
-    await screen.findByTestId(badge)
-
-    fakeBridge.setStatus(retry.id, 'idle')
-    expect(played).toEqual([])
-    fakeBridge.setTaskState(task.id, 'done')
-
-    await waitFor(() => {
-      expect(screen.getByTestId(badge)).toHaveAttribute('data-status', 'done')
     })
     expect(played).toEqual(['complete'])
   })
@@ -200,11 +141,10 @@ describe('completion chime', () => {
     expect(played).toEqual([])
   })
 
-  it('chimes for a task needing input only when that is turned on', async () => {
+  it('chimes when a session needs input only when that is turned on', async () => {
     const played = recordChimes()
     fakeBridge.seedProject(makeProject())
-    fakeBridge.seedWorkspace(retry)
-    fakeBridge.seedTask(task)
+    fakeBridge.seedWorkspace({ ...retry, status: 'working' })
     fakeBridge.setConfig({
       notifications: {
         chimeOnComplete: true,
@@ -216,33 +156,7 @@ describe('completion chime', () => {
     render(<App now={clock} />)
     await screen.findByTestId(`sidebar-workspace-${retry.id}-status`)
 
-    fakeBridge.setTaskState(task.id, 'stuck', 'needs_input')
-
-    await waitFor(() => {
-      expect(played).toEqual(['needs_input'])
-    })
-  })
-
-  it('chimes once when a task needs input: for the task, not for its workspace too', async () => {
-    const played = recordChimes()
-    fakeBridge.seedProject(makeProject())
-    fakeBridge.seedWorkspace({ ...retry, status: 'working' })
-    fakeBridge.seedTask(task)
-    fakeBridge.setConfig({
-      notifications: {
-        chimeOnComplete: true,
-        chimeOnNeedsInput: true,
-        chimeInManualQuiet: false,
-        morningSummary: false
-      }
-    })
-    render(<App now={clock} />)
-    const badge = `sidebar-workspace-${retry.id}-status`
-    await screen.findByTestId(badge)
-
     fakeBridge.setStatus(retry.id, 'needs_input')
-    expect(played).toEqual([])
-    fakeBridge.setTaskState(task.id, 'stuck', 'needs_input')
 
     await waitFor(() => {
       expect(played).toEqual(['needs_input'])

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Project, Workspace } from '../../../preload/index.d'
 import { formatCountdown } from '../../../shared/format'
-import { latestTasks, tabLabel } from '../format'
+import { tabLabel } from '../format'
 import { SCRATCH, usePanes, useQueSelector, useStore } from '../store'
 import { countOpenTickets } from '../ticket-tree'
 import { filterSidebar, matches, sortProjects, sortWorkspaces } from '../sidebar-order'
@@ -133,7 +133,6 @@ export default function Sidebar(): React.JSX.Element {
   const view = useQueSelector((s) => s.view)
   const connected = useQueSelector((s) => s.connected)
   const loaded = useQueSelector((s) => s.loaded)
-  const tasks = useQueSelector((s) => s.tasks)
   const tickets = useQueSelector((s) => s.tickets)
   const ticketsSync = useQueSelector((s) => s.ticketsSync)
   const filter = useQueSelector((s) => s.filter)
@@ -157,7 +156,6 @@ export default function Sidebar(): React.JSX.Element {
   }, [searchOpen, searchFocusNonce])
   const filtering = filter.trim() !== ''
   const openTickets = countOpenTickets(tickets.filter((t) => matches(filter, t.key, t.summary)))
-  const owned = latestTasks(tasks)
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set())
   const [menu, setMenu] = useState<OpenMenu | null>(null)
   const closeMenu = useCallback(() => setMenu(null), [])
@@ -404,7 +402,7 @@ export default function Sidebar(): React.JSX.Element {
         {shownProjects.map((p) => {
           const open = filtering || !collapsed.has(p.id)
           const list = sortWorkspaces(narrowed.workspacesOf(p.id), sort)
-          const looks = list.map((w) => rowTone(w, owned.get(w.id), selected === w.id))
+          const looks = list.map((w) => rowTone(w, selected === w.id))
           const unseenCount = looks.filter((l) => l.unseen).length
           const projectMenu = menuFor('project', p.id)
 
@@ -474,9 +472,8 @@ export default function Sidebar(): React.JSX.Element {
                 <ul>
                   {list.map((w, i) => {
                     const workspaceMenu = menuFor('workspace', w.id)
-                    const task = owned.get(w.id)
                     const look = looks[i]
-                    const word = hoverWord(w, task, look, now)
+                    const word = hoverWord(w, look, now)
 
                     return (
                       <li

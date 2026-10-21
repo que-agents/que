@@ -2,10 +2,9 @@
 
 que is a macOS app for running Claude Code sessions in git worktrees: every task
 gets its own branch and folder, and its terminals live in a background daemon,
-so they keep running when you close the window. An overnight queue runs briefs
-headless while you sleep and leaves draft pull requests and a morning report. A
-quiet mode, during the hours you choose, only tells you that things are running
-and not stuck, and hides everything else.
+so they keep running when you close the window. A quiet mode, during the hours
+you choose, only tells you that things are running and not stuck, and hides
+everything else; in the morning a report says what your sessions did.
 
 ## Features
 
@@ -13,8 +12,8 @@ and not stuck, and hides everything else.
 - **Terminals that outlive the app**: quit and relaunch, and every screen comes back.
 - **Live status** for each session (working, idle, needs input, stuck), from Claude
   Code hooks that que passes per session; your own settings are never edited.
-- **The overnight queue**: `que add` a brief, `que run`, and in the morning find
-  pushed branches, draft pull requests, and a report of what happened.
+- **A morning report**: what each session did while you were away, its commits,
+  its pull request, and what is waiting for you.
 - **Quiet mode**: quiet hours enforced by the daemon, a board with counts only,
   and an unlock with a reason when you really need to look.
 - **A CLI** for everything the app does, and a menu-bar title (`● 3 ▸ 1 ✕ 0`).
@@ -37,7 +36,7 @@ Then choose **que → Install 'que' command in PATH** to get the CLI. It links i
 `/usr/local/bin` when that is writable and `~/.local/bin` otherwise.
 
 You also need Claude Code (`claude`) and git on your PATH; `gh`, logged in, lets
-overnight tasks open pull requests.
+que show each workspace's pull request and open draft ones.
 
 ## First run
 
@@ -49,24 +48,30 @@ que attach app-142-retry       # or click it in the app's sidebar
 claude                         # in the workspace terminal; its status shows in the sidebar
 ```
 
-## Overnight
+## Before bed
+
+A session you start in the evening keeps going after you close the window,
+since its terminal lives in the daemon:
 
 ```sh
-que add -r ~/code/uploader "Add retry with backoff to the uploader; keep the tests green"
-que add -r ~/code/uploader -f briefs/upload-limits.md --max-turns 30 --max-budget 3
-que run                        # open the queue; tasks run two at a time by default
-que report                     # in the morning: done, stuck, failed, PRs, cost
+que work "Add retry with backoff to the uploader" -r ~/code/uploader
+que attach <workspace>         # start claude on it, then close the window
+que report                     # in the morning: what the sessions did, what needs a look
 ```
 
-Each task runs `claude -p` in a fresh workspace with turn and dollar caps and a
-stall timeout, pauses through rate limits, keeps the Mac awake while it works,
-and finishes by committing, pushing its branch, and opening a draft pull request.
-Nothing is ever pushed to the default branch or a protected one.
+It works in its own worktree and branch. When it needs an answer it stops and
+waits in its tab, marked needs input, until you come back. In the morning
+`que report` (or the app's report view) lists each session: what it did, its
+commits ahead, its pull request, and whether it is waiting for you.
+`notifications.morning_summary` adds a notification when quiet hours end.
+**Create draft PR** in the app commits what is left, pushes the branch and
+opens a draft pull request; nothing is ever pushed to the default branch or a
+protected one.
 
 ## Quiet mode
 
 From 19:00 to 07:00 by default, the app swaps its terminals for a quiet board:
-a dim line of what is running, waiting, stuck and done, a row for each, and
+a dim line of what is running, waiting, stuck and idle, a row for each, and
 nothing to click but Unlock. The daemon refuses terminal contents, reports and new work to every
 client during those hours, so the CLI cannot peek either. `que unlock 15 --why
 "deploy check"` (or the board's button) shows everything for a while; `que lock`
@@ -93,9 +98,6 @@ worktree_root = "~/.que/worktrees"
 stall_timeout_minutes = 5
 status_poll_seconds = 10
 pr_poll_seconds = 60
-concurrency = 2
-max_turns = 50
-max_budget_usd = 5
 # default_permission_mode = "acceptEdits"   # unset: que.toml or Claude Code decides
 allow_bypass_permissions = false
 protected_branches = ["main", "master", "release"]
@@ -140,9 +142,6 @@ teardown = "./scripts/teardown.sh" # run inside a worktree before removal
 default_branch = "main" # base for new workspaces (else origin's HEAD)
 worktree_include = [".env.local"] # gitignored files copied into new worktrees
 permission_mode = "acceptEdits" # default | acceptEdits | plan | bypassPermissions | dontAsk | auto
-test = "npm test" # the command a task must make pass
-instructions = "Keep changes small." # appended to every task brief for this repo
-allowed_tools = ["Bash(npm test)"] # passed to claude as --allowedTools
 ```
 
 <!-- /generated -->
@@ -179,15 +178,6 @@ Generated from `que --help`; options and arguments are in [docs/cli.md](docs/cli
 | `que status [options]`                      | summary and per-workspace status                                                                                                                                                           |
 | `que attach [options] <workspace>`          | attach to the workspace's latest terminal, opening one if needed (Ctrl-] detaches)                                                                                                         |
 | `que open [options] <workspace>`            | open the workspace with `code -n`                                                                                                                                                          |
-| `que add [options] [brief]`                 | queue an overnight task (a brief run headless by claude in its own workspace)                                                                                                              |
-| `que task list [options]`                   | list tasks                                                                                                                                                                                 |
-| `que task show [options] <id>`              | show one task                                                                                                                                                                              |
-| `que task stop [options] <id>`              | stop a task (kills its claude run)                                                                                                                                                         |
-| `que task remove [options] <id>`            | forget a task that is no longer live                                                                                                                                                       |
-| `que run [options]`                         | open the queue: run queued tasks until it is closed                                                                                                                                        |
-| `que queue close [options]`                 | stop starting queued tasks (running ones finish)                                                                                                                                           |
-| `que queue status [options]`                | show the queue                                                                                                                                                                             |
-| `que report [options]`                      | the morning report: what the queue did                                                                                                                                                     |
 | `que tickets list [options]`                | list the cached tickets (the default)                                                                                                                                                      |
 | `que tickets sync [options]`                | fetch the queue from the tracker now                                                                                                                                                       |
 | `que tickets start [options] <key>`         | make a workspace for a ticket, write it as a brief, and start claude on it                                                                                                                 |
@@ -199,8 +189,9 @@ Generated from `que --help`; options and arguments are in [docs/cli.md](docs/cli
 | `que quiet end [options]`                   | end a manual quiet early                                                                                                                                                                   |
 | `que config get [options]`                  | print the config file path and the parsed config                                                                                                                                           |
 | `que config set [options] <assignments...>` | set keys (dotted, e.g. quiet_hours.default=19:00,07:00) and reload the daemon                                                                                                              |
+| `que report [options]`                      | the morning report: what the sessions did                                                                                                                                                  |
 | `que hook [options]`                        | report a Claude Code hook event (stdin JSON) to the daemon; used by hooks.json                                                                                                             |
-| `que doctor [options]`                      | check the daemon, claude, gh, git, caffeinate, node, config, and the hooks wrapper                                                                                                         |
+| `que doctor [options]`                      | check the daemon, claude, gh, git, node, config, and the hooks wrapper                                                                                                                     |
 
 <!-- /generated -->
 
@@ -229,14 +220,14 @@ installs somewhere else, `--no-link` and `--no-launch` skip those steps.
 A change to the background service itself reaches the running one only through an update in
 place: the Update control beside Settings, or `que daemon upgrade` (see below).
 
-| Path                                         | What lives there                                                                  |
-| -------------------------------------------- | --------------------------------------------------------------------------------- |
-| `src/daemon/`                                | the daemon: terminals, workspaces, status engine, task queue, quiet hours, SQLite |
-| `src/shared/`                                | the socket protocol, the client, paths, config                                    |
-| `src/cli/`                                   | the `que` CLI                                                                     |
-| `src/main/`, `src/preload/`, `src/renderer/` | the Electron app                                                                  |
-| `tests/`                                     | daemon integration tests, Playwright specs, subprocess fakes                      |
-| `scripts/`                                   | build, smoke, packaged smoke, soak, flake hunt, docs, release                     |
+| Path                                         | What lives there                                                      |
+| -------------------------------------------- | --------------------------------------------------------------------- |
+| `src/daemon/`                                | the daemon: terminals, workspaces, status engine, quiet hours, SQLite |
+| `src/shared/`                                | the socket protocol, the client, paths, config                        |
+| `src/cli/`                                   | the `que` CLI                                                         |
+| `src/main/`, `src/preload/`, `src/renderer/` | the Electron app                                                      |
+| `tests/`                                     | daemon integration tests, Playwright specs, subprocess fakes          |
+| `scripts/`                                   | build, smoke, packaged smoke, flake hunt, docs, release               |
 
 The terminals live in the background service (the daemon), which keeps running the build it
 started with. When a rebuild or an update changes it, an Update control appears beside Settings

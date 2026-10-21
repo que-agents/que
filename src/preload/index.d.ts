@@ -11,8 +11,6 @@ import type {
   InstructionsSetParams,
   ProjectAddParams,
   ProjectRemoveParams,
-  QueueOpenParams,
-  QueueState,
   QuietLogParams,
   QuietStartParams,
   QuietUnlockParams,
@@ -26,15 +24,11 @@ import type {
   TicketLevel,
   ReportParams,
   WorkspaceDigest,
-  TaskAddParams,
-  TaskListParams,
   TermAttachResult,
   TermCreateParams,
   TermInfo,
   TermListParams,
   TermSnapshotResult,
-  ReportEntry,
-  ReportGroup,
   WorkspaceCreateParams,
   WorkspaceCreatePrParams,
   WorkspaceDiff,
@@ -58,8 +52,6 @@ import type {
   QuietHoursConfig,
   QuietState,
   QuietUnlock,
-  Task,
-  TaskState,
   UpdateInfo,
   UserConfig,
   Weekday,
@@ -82,7 +74,6 @@ export type {
   QuietUnlock,
   UserConfig,
   Weekday,
-  QueueState,
   Report,
   TicketsListResult,
   TicketsStartResult,
@@ -92,11 +83,6 @@ export type {
   Ticket,
   TicketLevel,
   WorkspaceDigest,
-  ReportEntry,
-  ReportGroup,
-  Task,
-  TaskAddParams,
-  TaskState,
   TermAttachResult,
   TermCreateParams,
   TermInfo,
@@ -226,26 +212,6 @@ export interface WorkspaceApi {
   on<E extends WorkspaceEventName>(event: E, cb: (data: Events[E]) => void): () => void
 }
 
-export type TaskEventName = 'task.created' | 'task.updated' | 'task.removed'
-
-/** Mirrors the daemon's task.* methods and events. */
-export interface TaskApi {
-  add(params: TaskAddParams): Promise<Task>
-  list(params?: TaskListParams): Promise<Task[]>
-  get(params: { id: string }): Promise<Task>
-  stop(params: { id: string }): Promise<Task>
-  remove(params: { id: string }): Promise<{ ok: true }>
-  on<E extends TaskEventName>(event: E, cb: (data: Events[E]) => void): () => void
-}
-
-/** Mirrors the daemon's queue.* methods and the queue.state event. */
-export interface QueueApi {
-  open(params?: QueueOpenParams): Promise<QueueState>
-  close(): Promise<QueueState>
-  state(): Promise<QueueState>
-  on(event: 'queue.state', cb: (data: QueueState) => void): () => void
-}
-
 export interface ReportApi {
   get(params?: ReportParams): Promise<Report>
 }
@@ -295,15 +261,13 @@ export interface QueApi {
   term: TermApi
   project: ProjectApi
   workspace: WorkspaceApi
-  task: TaskApi
-  queue: QueueApi
   report: ReportApi
   tickets: TicketsApi
   app: AppApi
   daemon: DaemonApi
 }
 
-/** The two chimes: a session's turn or a task finished, or a session needs input. */
+/** The two chimes: a session finished a turn, or a session needs input. */
 export type ChimeKind = 'complete' | 'needs_input'
 
 export interface QueTestHook {

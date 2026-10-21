@@ -1,5 +1,5 @@
-// The renderer's single store: loads projects, workspaces, terminals, and
-// tasks at boot, applies every daemon event, and holds the UI's selection. Components read it with useQue() and call its actions; nothing
+// The renderer's single store: loads projects, workspaces, terminals, quiet
+// state, config and tickets at boot, applies every daemon event, and holds the UI's selection. Components read it with useQue() and call its actions; nothing
 // else talks to window.que except Terminal.tsx's attach/detach.
 import { createContext, useContext, useSyncExternalStore } from 'react'
 import type {
@@ -13,7 +13,6 @@ import type {
   QuietState,
   QuietUnlock,
   Report,
-  Task,
   TermInfo,
   Ticket,
   TicketsSyncState,
@@ -39,7 +38,6 @@ import {
   isViewId
 } from './layout'
 import { buildTree, newlyChanged } from './files'
-import { isLiveTask, latestTasks } from './format'
 import { chime, shouldChime } from './sound'
 import { errorCode, errorMessage } from '../../shared/errors.decode'
 import { decodeDiffBases, decodeReview, readStored, writeStored } from './persisted.decode'
@@ -211,7 +209,6 @@ export interface QueState extends ResourceTables {
   /** Unarchived workspaces by id. */
   workspaces: Record<string, Workspace>
   terminals: TermTab[]
-  tasks: Record<string, Task>
   /** The tickets assigned to the user, as last synced, in the daemon's order. */
   tickets: Ticket[]
   ticketsSync: TicketsSyncState
@@ -308,7 +305,6 @@ export class QueStore {
     projects: [],
     workspaces: {},
     terminals: [],
-    tasks: {},
     tickets: [],
     ticketsSync: { lastSyncAt: null, error: null, count: 0 },
     view: { kind: 'terminals', key: SCRATCH },
@@ -511,11 +507,10 @@ export class QueStore {
    */
   private async load(again = false): Promise<void> {
     try {
-      const [projects, workspaces, terms, tasks, quiet, config, tickets] = await Promise.all([
+      const [projects, workspaces, terms, quiet, config, tickets] = await Promise.all([
         this.api.project.list(),
         this.api.workspace.list(),
         this.api.term.list(),
-        this.api.task.list(),
         this.api.quiet.state(),
         this.api.config.get(),
         this.api.tickets.list()
@@ -534,7 +529,6 @@ export class QueStore {
           ticketsSync: tickets.sync,
           projects,
           workspaces: byId(workspaces),
-          tasks: byId(tasks),
           terminals: mergeById(
             liveTabs,
             s.terminals.map((t) => (alive.has(t.id) ? t : { ...t, alive: false }))
@@ -549,7 +543,6 @@ export class QueStore {
           ticketsSync: tickets.sync,
           projects: mergeById(projects, s.projects),
           workspaces: { ...byId(workspaces), ...s.workspaces },
-          tasks: { ...byId(tasks), ...s.tasks },
           terminals: mergeById(liveTabs, s.terminals)
         }))
         this.hydrateLayouts()
@@ -563,7 +556,7 @@ export class QueStore {
 
   private subscribeEvents(): void {
     if (this.offs.length > 0) return
-    const { term, workspace, task, project, quiet, config, tickets } = this.api
+    const { term, workspace, project, quiet, config, tickets } = this.api
     this.offs.push(
       quiet.on('quiet.changed', (q) => {
         const was = this.locked()
@@ -600,15 +593,8 @@ export class QueStore {
       workspace.on('workspace.updated', (ws) => {
         const prev = this.state.workspaces[ws.id]?.status
         this.upsertWorkspace(ws)
-        // A live task's workspace never chimes on its own: its session ends a turn before the
-        // task finishes, and asks for input as the task does; the task's own status chimes.
-        const owned = latestTasks(this.state.tasks).get(ws.id)
 
-        if (owned && isLiveTask(owned.state)) return
-
-        if (prev !== ws.status) {
-          this.maybeChime({ state: ws.status, reason: ws.statusReason, prev })
-        }
+        if (prev !== ws.status) this.maybeChime({ state: ws.status, prev })
       }),
       workspace.on('workspace.changed', ({ id }) => this.followChange(id)),
       workspace.on('workspace.removed', ({ id }) => {
@@ -618,30 +604,16 @@ export class QueStore {
           diffScopes: without(s.diffScopes, id),
           view: viewWithout(s.view, [id])
         }))
-      }),
-      task.on('task.created', (t) => this.upsertTask(t)),
-      task.on('task.updated', (t) => {
-        const prev = this.state.tasks[t.id]
-        this.upsertTask(t)
-
-        if (prev?.state !== t.state || prev?.reason !== t.reason) {
-          this.maybeChime({ state: t.state, reason: t.reason })
-        }
-      }),
-      task.on('task.removed', ({ id }) => this.setWith((s) => ({ tasks: without(s.tasks, id) })))
+      })
     )
   }
 
-  /** A short chime for a finished task or turn (or one needing input), in work hours only. */
-  private maybeChime(event: { state: string; reason?: string | null; prev?: string | null }): void {
+  /** A short chime for a finished turn (or one needing input), in work hours only. */
+  private maybeChime(event: { state: string; prev?: string | null }): void {
     if (this.options.board) return
     const kind = shouldChime(event, this.state.quiet, this.state.config?.config.notifications)
 
     if (kind) chime(kind)
-  }
-
-  private upsertTask(t: Task): void {
-    this.setWith((s) => ({ tasks: { ...s.tasks, [t.id]: t } }))
   }
 
   private upsertWorkspace(ws: Workspace): void {

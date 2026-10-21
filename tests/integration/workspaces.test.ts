@@ -67,11 +67,11 @@ describe('projects', () => {
   it('refuses to add a project while the config file is invalid, but keeps answering other requests', async () => {
     const repo = makeTempRepo(daemon.home)
     const before = await client.request('config.get')
-    fs.writeFileSync(daemon.configPath, 'concurrency = "many"\n')
+    fs.writeFileSync(daemon.configPath, 'stall_timeout_minutes = "many"\n')
 
     await expect(client.request('project.add', { path: repo })).rejects.toMatchObject({
       code: 'bad_request',
-      message: 'invalid que config: concurrency: must be a positive number'
+      message: 'invalid que config: stall_timeout_minutes: must be a positive number'
     })
     expect(await client.request('workspace.list')).toEqual([])
     expect((await client.request('config.get')).config).toEqual(before.config)

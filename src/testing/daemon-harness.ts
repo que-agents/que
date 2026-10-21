@@ -4,7 +4,7 @@
 // runs the leak check. The hooks wrapper's bin/que runs the CLI bundled from
 // source, and the user config lives at <home>/config.toml (QUE_CONFIG). Git
 // gets a fixed identity from <home>/gitconfig (GIT_CONFIG_GLOBAL), so commits
-// made by the finisher or the fake claude never depend on the machine's config.
+// made by workspace.createPr or the fake claude never depend on the machine's config.
 import fs from 'node:fs'
 import os from 'node:os'
 import { join } from 'node:path'
@@ -13,7 +13,7 @@ import { DaemonServer } from '@daemon/server'
 import { DaemonClient } from '@shared/client'
 import { ensureDirs, quePaths } from '@shared/paths'
 import type { Events } from '@shared/protocol'
-import type { Task, TaskState, WorkspaceStatus } from '@shared/types'
+import type { WorkspaceStatus } from '@shared/types'
 import { bundleEntry } from './bundle'
 import { fakeEnv, QUIET_OFF, writeGitconfig } from '../../tests/fakes/env.cjs'
 import { assertPidsGone, LeakCheckedPtyHost } from './leak-check'
@@ -35,12 +35,11 @@ export interface TestDaemon {
   acliLog: string
   acliTickets: string
   codeLog: string
-  caffeinateLog: string
   wrapperLog: string
   /** QUE_CONFIG for this daemon (always written; see withQuietOff). */
   configPath: string
   /**
-   * Tears down client, terminals, task runs, server, env, and home; fails on
+   * Tears down client, terminals, server, env, and home; fails on
    * leaked pids. `keepHome` leaves QUE_HOME for a second daemon (restart tests).
    */
   close(opts?: { keepHome?: boolean }): Promise<void>
@@ -89,7 +88,6 @@ export async function startTestDaemon(opts: TestDaemonOptions = {}): Promise<Tes
     onShutdown: opts.onShutdown,
     cliScript: bundleEntry('src/cli/index.ts'),
     statusTickMs: opts.statusTickMs ?? 200,
-    queueTickMs: 100,
     quietTickMs: opts.quietTickMs ?? 200,
     now: opts.now,
     randomWorkspaceName: opts.randomWorkspaceName
@@ -113,20 +111,18 @@ export async function startTestDaemon(opts: TestDaemonOptions = {}): Promise<Tes
     acliLog: env.QUE_FAKE_ACLI_LOG,
     acliTickets: env.QUE_FAKE_ACLI_TICKETS,
     codeLog: env.QUE_FAKE_CODE_LOG,
-    caffeinateLog: env.QUE_FAKE_CAFFEINATE_LOG,
     wrapperLog: env.QUE_FAKE_WRAPPER_LOG,
     configPath,
     async close(closeOpts = {}) {
       if (closed) return
       closed = true
-      const taskPids = server.tasks.pids()
       client.close()
       host.killAll()
       await server.close()
       vi.unstubAllEnvs()
 
       try {
-        await assertPidsGone([...host.pids, ...taskPids])
+        await assertPidsGone(host.pids)
       } finally {
         if (!closeOpts.keepHome) fs.rmSync(home, { recursive: true, force: true })
       }
@@ -180,20 +176,6 @@ export function recordStatuses(client: DaemonClient): StatusChange[] {
   )
 }
 
-export interface StateChange {
-  id: string
-  state: TaskState
-  reason: string | null
-}
-
-/** The state each task moves through, from its updates; one that changes neither state nor reason adds nothing. */
-export function recordTaskStates(client: DaemonClient): StateChange[] {
-  return recordChanges<Events['task.updated'], StateChange>(
-    [(cb) => client.on('task.updated', cb)],
-    (t) => ({ id: t.id, state: t.state, reason: t.reason })
-  )
-}
-
 /** Polls workspace.get until the workspace's status is `status`. */
 export async function waitForStatus(
   d: TestDaemon,
@@ -223,18 +205,4 @@ export async function runClaude(
   const { sessionId } = await d.client.request('workspace.get', { id: wsId })
 
   return { term: id, session: sessionId as string }
-}
-
-/** Polls task.get until the task is in `state`, then returns it. */
-export async function waitForTaskState(
-  d: TestDaemon,
-  id: string,
-  state: TaskState,
-  timeoutMs = 20_000
-): Promise<Task> {
-  await expect
-    .poll(async () => (await d.client.request('task.get', { id })).state, { timeout: timeoutMs })
-    .toBe(state)
-
-  return d.client.request('task.get', { id })
 }

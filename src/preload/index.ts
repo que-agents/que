@@ -102,20 +102,6 @@ const api: QueApi = {
     unwatch: (p) => call('workspace.unwatch', p),
     on: (event, cb) => subscribe(event, cb as (data: unknown) => void)
   },
-  task: {
-    add: (p) => call('task.add', p),
-    list: (p) => call('task.list', p),
-    get: (p) => call('task.get', p),
-    stop: (p) => call('task.stop', p),
-    remove: (p) => call('task.remove', p),
-    on: (event, cb) => subscribe(event, cb as (data: unknown) => void)
-  },
-  queue: {
-    open: (p) => call('queue.open', p),
-    close: () => call('queue.close'),
-    state: () => call('queue.state'),
-    on: (event, cb) => subscribe(event, cb as (data: unknown) => void)
-  },
   report: {
     get: (p) => call('report.get', p)
   },

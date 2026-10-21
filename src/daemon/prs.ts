@@ -1,24 +1,15 @@
 // Keeps each workspace's pull requests fresh: polls `gh pr list` for the
-// workspace's branch, looks up any pull request one of its tasks opened that is
-// not on the branch (`gh pr view <n>`), stores what changed, and emits
+// workspace's branch, looks up the pull request workspace.createPr opened when it
+// is not on the branch (`gh pr view <n>`), stores what changed, and emits
 // workspace.updated.
 // Also answers workspace.prThread: the conversation is fetched on demand and
 // cached until the tracker sees the pull request's updatedAt move.
-import fs from 'node:fs'
-import { join } from 'node:path'
 import type { UserConfig } from '../shared/config'
 import { firstLine, run } from '../shared/exec'
 import { ErrorCodes, type WorkspaceCreatePrResult } from '../shared/protocol'
-import type { QuePaths } from '../shared/paths'
-import {
-  ACTIVE_STATES,
-  type JsonValue,
-  type PrThread,
-  type PullRequest,
-  type Workspace
-} from '../shared/types'
+import type { JsonValue, PrThread, PullRequest, Workspace } from '../shared/types'
 import { conflict, ghFailed, notFound, RpcError } from './errors'
-import { finishTask, isProtectedBranch } from './finisher'
+import { isProtectedBranch, openDraftPr } from './draft-pr'
 import {
   currentPullRequest,
   isSettled,
@@ -39,7 +30,6 @@ import { jsonPages, parsePrThread } from './pr-thread'
 import { decodeLineComments, decodePrView } from './pr-thread.decode'
 import type { EventBus } from './bus'
 import type { Store } from './store'
-import type { TaskQueue } from './queue'
 import type { WorkspaceManager } from './workspaces'
 import { errorMessage } from '../shared/errors.decode'
 import { prUrlNumber } from '../shared/pr-url'
@@ -53,9 +43,7 @@ const SETTLED_EVERY = 5
 export interface PrServiceOptions {
   store: Store
   workspaces: Pick<WorkspaceManager, 'get' | 'project' | 'syncBranch'>
-  tasks: Pick<TaskQueue, 'list'>
-  paths: Pick<QuePaths, 'workspaceLogsDir'>
-  /** The daemon's bus: a finished task refreshes its workspace, a removed one is forgotten. */
+  /** The daemon's bus: a removed workspace is forgotten. */
   bus: EventBus
   config: () => UserConfig
   log?: (msg: string) => void
@@ -137,17 +125,7 @@ export class PrService {
     tick: () => this.tick()
   })
 
-  private refreshedDone = new Set<string>()
-
   constructor(private opts: PrServiceOptions) {
-    // Rows carry state as a level, so the set turns "done" into an edge: refresh once per task.
-    opts.bus.on('task.updated', ({ id, state, workspaceId }) => {
-      if (state !== 'done' || this.refreshedDone.has(id)) return
-      this.refreshedDone.add(id)
-
-      if (workspaceId) void this.refresh(workspaceId)
-    })
-    opts.bus.on('task.removed', ({ id }) => this.refreshedDone.delete(id))
     opts.bus.on('workspace.removed', ({ id }) => this.forget(id))
   }
 
@@ -360,8 +338,8 @@ export class PrService {
   }
 
   /**
-   * The pull requests this workspace's tasks (or workspace.createPr) recorded
-   * that are not among `onBranch`, each looked up by number. A settled one
+   * The pull request workspace.createPr recorded, when it is not among
+   * `onBranch`, each looked up by number. A settled one
    * already stored is reused until `due`; one that cannot be looked up keeps
    * its stored copy, and the first failure is reported in `error`.
    */
@@ -373,7 +351,7 @@ export class PrService {
   ): Promise<{ prs: PullRequest[]; error: string | null }> {
     const known = new Set(onBranch.map((pr) => pr.number))
     const numbers = new Set<number>()
-    const urls = [...(ws.prUrl ? [ws.prUrl] : []), ...this.opts.store.listTaskPrUrls(ws.id)]
+    const urls = ws.prUrl ? [ws.prUrl] : []
 
     for (const url of urls) {
       const n = prUrlNumber(url)
@@ -413,7 +391,7 @@ export class PrService {
 
   /**
    * Stores and announces the pull requests `gh` reported for a workspace's
-   * branch, joined with the ones its tasks opened elsewhere, and the current
+   * branch, joined with the one workspace.createPr opened elsewhere, and the current
    * one among them.
    */
   private async settle(ws: Workspace, raw: GhPullRequest[], due: boolean): Promise<void> {
@@ -439,27 +417,22 @@ export class PrService {
   }
 
   /**
-   * Opens a draft pull request from an interactive workspace with the
-   * finisher: commits what is uncommitted as `title`, pushes, and runs gh.
+   * Opens a draft pull request from a workspace: commits what is uncommitted
+   * as `title`, pushes, and runs gh.
    */
   async create(id: string, rawTitle: string): Promise<WorkspaceCreatePrResult> {
-    const { workspaces, tasks, store, paths } = this.opts
+    const { workspaces, store } = this.opts
     const ws = await workspaces.syncBranch(id)
     const title = rawTitle.trim()
 
     if (!title) throw new RpcError(ErrorCodes.BadRequest, 'title is required')
-    const busy = tasks.list().some((t) => t.workspaceId === id && ACTIVE_STATES.has(t.state))
-
-    if (busy) throw conflict(`a task is running in workspace ${ws.name}`)
     const lines: string[] = []
-    fs.mkdirSync(paths.workspaceLogsDir, { recursive: true, mode: 0o700 })
 
-    const result = await finishTask({
-      task: { title, resultText: null },
+    const result = await openDraftPr({
+      title,
       workspace: ws,
       project: workspaces.project(ws.projectId),
       protectedBranches: this.opts.config().protectedBranches,
-      bodyFile: join(paths.workspaceLogsDir, `${ws.id}.pr.md`),
       log: (line) => {
         lines.push(line)
         this.opts.log?.(`workspace ${ws.id} ${line}`)

@@ -6,7 +6,7 @@ binaries. `git` is never faked: tests use real repos in temp dirs. All of them a
 dependency-free Node scripts.
 
 `tests/fakes/env.cjs` builds that environment once for every caller (the Vitest
-daemon harness, the Playwright `testEnv()`, the soak and packaged-smoke scripts):
+daemon harness, the Playwright `testEnv()`, the packaged-smoke script):
 `fakeEnv(home)` gives `QUE_HOME`, `QUE_CONFIG`, the `PATH`, each fake's log and
 data file under the home, and `GIT_CONFIG_GLOBAL`; `writeGitconfig(home, name)`
 writes that fixed git identity; `QUIET_OFF` is the config table that turns quiet
@@ -14,43 +14,16 @@ hours off.
 
 ## `claude`
 
-Parses the flags que uses (`-p`, `--output-format text|json|stream-json`, `--verbose`,
-`--include-hook-events`, `--settings`, `--session-id`, `--resume`, `--max-turns`,
-`--max-budget-usd`, `--permission-mode`, `--permission-prompts`, `--allowedTools`,
-`--append-system-prompt-file`, `--model`, `--version`) and `agents --json`. Unknown
-flags are ignored. Like the real CLI, `-p` with `stream-json` requires `--verbose`.
+Parses the flags que uses (`--settings`, `--session-id`, `--resume`,
+`--permission-mode`, `--append-system-prompt-file`, `--model`, `--version`) and
+`agents --json`. Unknown flags are ignored. It runs only as an interactive session; there is no print mode.
 
 **Hooks.** Every `command` hook in the `--settings` `hooks` map (inline JSON or a
 file) runs through `/bin/sh -c` with the session cwd and the inherited env, with
 the hook JSON on stdin (`hook_event_name`, `session_id`, `cwd`, `transcript_path`,
-`permission_mode`, plus the per-event fields). Matchers are honoured. A
-`PreToolUse` hook exiting 2 blocks the tool.
+`permission_mode`, plus the per-event fields). Matchers are honoured.
 
-**Headless scenarios** (`QUE_FAKE_CLAUDE_SCENARIO`, default `success`), one
-message every `QUE_FAKE_CLAUDE_DELAY_MS` (default 30):
-
-| Scenario      | Stream / hooks                                                                                     | Exit           |
-| ------------- | -------------------------------------------------------------------------------------------------- | -------------- |
-| `success`     | init, SessionStart, UserPromptSubmit, assistant + `Write` of `que-fake-change.txt`, Stop, `result` | 0              |
-| `stall`       | init, SessionStart, UserPromptSubmit, one assistant, then hangs                                    | 143 on SIGTERM |
-| `rate_limit`  | init, hooks, `rate_limit_event`, `system/api_retry`, StopFailure (`rate_limit`), then hangs        | 143 on SIGTERM |
-| `max_turns`   | init, hooks, one assistant, `result` `error_max_turns`                                             | 1              |
-| `crash`       | init, SessionStart, `fake claude: simulated crash` on stderr                                       | 1              |
-| `needs_input` | init, hooks, Notification `permission_prompt`, then hangs                                          | 143 on SIGTERM |
-
-A `[que-fake-scenario:<name>]` marker anywhere in the prompt picks the scenario
-for that run instead of the env, so one daemon can run tasks with different
-scenarios.
-
-`rate_limit` behaves as `success` when `QUE_FAKE_CLAUDE_RESUME_OK=1` and
-`--resume` was passed. Its `rate_limit_event` reports `resetsAt` as now plus
-`QUE_FAKE_CLAUDE_RESET_SECONDS` (default 3600), in epoch seconds.
-
-With `QUE_FAKE_CLAUDE_COMMIT=1`, `success` also runs `git add` and `git commit`
-on the file it wrote (an agent that commits its work); without it the change is
-left uncommitted in the working tree.
-
-**Interactive mode** (no `-p`): prints a banner and `> `; each line fires
+**Interactive mode**: prints a banner and `> `; each line fires
 UserPromptSubmit, a fake `Read` (Pre/PostToolUse), a reply, and Stop.
 `/needs-input` fires UserPromptSubmit, then the permission Notification, and waits for `y`; `/exit` fires
 SessionEnd and exits 0.
@@ -127,12 +100,6 @@ requested `--fields` (plus `id`, `key`, `self`). Like the real CLI it refuses an
 `Not authenticated. Run acli jira auth login.`; `network` makes `search` and `view`
 exit 1 with `dial tcp: connection refused`. Tests write the file with
 `writeFakeTickets()` and build issues with `makeFakeIssue()` from `src/testing/fakes.ts`.
-
-## `caffeinate`
-
-Appends `{ "argv": [...], "cwd": "...", "pid": <n>, "ts": "..." }` to
-`$QUE_FAKE_CAFFEINATE_LOG` when set, then sleeps until it gets SIGTERM/SIGINT or
-the process named by `-w <pid>` exits, as the real one does.
 
 ## `wrappers/claude`
 

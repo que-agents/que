@@ -1,5 +1,5 @@
 // The environment que hands to the processes it starts: the daemon, every
-// terminal, and headless runs. Whatever started que (a shell inside another
+// terminal, and the tools it runs. Whatever started que (a shell inside another
 // terminal, an agent's tool, a dev server) leaves markers behind that would
 // make those processes behave as if they were still inside it. They are not.
 

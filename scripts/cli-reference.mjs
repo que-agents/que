@@ -8,6 +8,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import os from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { formatMarkdown } from './format-markdown.mjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const cli = join(root, 'out/cli/index.js')
@@ -116,19 +117,21 @@ const re = /(<!-- generated:cli-table -->\n)[\s\S]*?(<!-- \/generated -->)/
 
 if (!re.test(readme)) throw new Error('README.md has no generated:cli-table block')
 
-const nextReadme = readme.replace(re, `$1${table}$2`)
+// Written and checked through the same formatting, so a check never drifts from a write.
+const nextMd = formatMarkdown(root, md)
+const nextReadme = formatMarkdown(root, readme.replace(re, `$1${table}$2`))
 
 if (process.argv.includes('--check')) {
   const current = existsSync(target) ? readFileSync(target, 'utf8') : ''
 
-  if (current !== md || readme !== nextReadme) {
+  if (current !== nextMd || readme !== nextReadme) {
     console.error('docs/cli.md or the README CLI table is stale; run npm run docs')
     process.exit(1)
   }
 
   console.log('docs/cli.md and the README CLI table are up to date')
 } else {
-  writeFileSync(target, md)
+  writeFileSync(target, nextMd)
   writeFileSync(readmePath, nextReadme)
   console.log(`wrote ${target} (${all.filter((c) => !c.hasSubs).length} commands)`)
 }

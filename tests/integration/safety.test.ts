@@ -149,8 +149,7 @@ describe('safety', () => {
         join('shell', 'zsh', '.zlogin'),
         join('shell', 'zsh', '.zprofile'),
         join('shell', 'zsh', '.zshenv'),
-        join('shell', 'zsh', '.zshrc'),
-        'system.md'
+        join('shell', 'zsh', '.zshrc')
       ])
       expect(fs.statSync(join(queHome, 'bin', 'claude')).mode & 0o777).toBe(0o755)
       expect(fs.statSync(join(queHome, 'bin', 'que')).mode & 0o777).toBe(0o755)
@@ -197,8 +196,6 @@ const QUIET_POLICY: Record<MethodName, 'refused' | 'allowed'> = {
   'workspace.files': 'refused',
   'workspace.readFile': 'refused',
   'report.get': 'refused',
-  'task.add': 'refused',
-  'queue.open': 'refused',
   'daemon.ping': 'allowed',
   'daemon.shutdown': 'allowed',
   'daemon.handoff': 'allowed',
@@ -217,12 +214,6 @@ const QUIET_POLICY: Record<MethodName, 'refused' | 'allowed'> = {
   'workspace.watch': 'allowed',
   'workspace.unwatch': 'allowed',
   'hook.event': 'allowed',
-  'task.list': 'allowed',
-  'task.get': 'allowed',
-  'task.stop': 'allowed',
-  'task.remove': 'allowed',
-  'queue.close': 'allowed',
-  'queue.state': 'allowed',
   'quiet.state': 'allowed',
   'quiet.unlock': 'allowed',
   'quiet.lock': 'allowed',
