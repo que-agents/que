@@ -1473,7 +1473,7 @@ body.resizing {
   gap: 14px;
   padding: 22px 28px 20px;
   background: var(--bg-side);
-  /* Frameless: the board drags by its body. */
+  /* Frameless: the board drags by its strip, its count line and its margins. */
   -webkit-app-region: drag;
 }
 
@@ -1508,10 +1508,13 @@ body.resizing {
   border-top: 1px solid var(--border);
 }
 
+/* A draggable region swallows pointer events, the wheel included, so the list
+ * opts out: it scrolls, and the empty space under a short list still drags. */
 .quiet-board-rows ul {
   margin: 0;
   padding: 0;
   list-style: none;
+  -webkit-app-region: no-drag;
 }
 
 .quiet-board-empty {

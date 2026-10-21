@@ -137,7 +137,7 @@ export default function QuietBoard(): React.JSX.Element {
       <CountLine items={counts} testId="quiet-board-counts">
         {NOTHING_RUNNING}
       </CountLine>
-      <div className="quiet-board-rows">
+      <div className="quiet-board-rows" data-testid="quiet-board-rows">
         {rows.length === 0 ? (
           <p className="quiet-board-empty" data-testid="quiet-board-empty">
             {boardEmptyLine({ queued: tally.queued, summaryAt, kind: quiet?.kind })}
