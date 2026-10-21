@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { cleanSpawnEnv } from '../shared/env'
+import { loginShell } from '../shared/login-path'
 import os from 'node:os'
 import type tty from 'node:tty'
 import * as pty from 'node-pty'
@@ -57,7 +58,7 @@ export class HostedTerminal implements Term {
     this.cwd = opts.cwd || os.homedir()
     this.createdAt = new Date().toISOString()
 
-    const file = opts.file ?? (process.env.SHELL || '/bin/zsh')
+    const file = opts.file ?? loginShell()
     // A login shell picks up the user's profile, as a terminal app would.
     const args = opts.args ?? (opts.file ? [] : ['-l'])
     this.name = opts.name || file.split('/').pop() || 'shell'

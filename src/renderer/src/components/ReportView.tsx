@@ -177,6 +177,7 @@ export default function ReportView(): React.JSX.Element {
                       data-testid={`report-workspace-${d.id}`}
                       data-state={d.status}
                     >
+                      <span className="dot-row-dot" aria-hidden="true" />
                       <button
                         type="button"
                         className="dot-row-name report-name-link"
