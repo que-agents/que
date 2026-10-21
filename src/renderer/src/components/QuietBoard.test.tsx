@@ -228,6 +228,26 @@ describe('QuietBoard', () => {
       ).toHaveClass('tone-bad')
     })
 
+    it('draws the working mark on working rows, as the sidebar does, and a still dot elsewhere', async () => {
+      seed()
+
+      render(<App board now={clock} />)
+
+      const workspaceRow = await screen.findByTestId(`quiet-board-row-${retry.id}`)
+      expect(within(workspaceRow).getByTestId(`quiet-board-mark-${retry.id}`)).toHaveClass(
+        'working-mark'
+      )
+
+      const taskRow = screen.getByTestId(`quiet-board-row-${running.id}`)
+      expect(within(taskRow).getByTestId(`quiet-board-mark-${running.id}`)).toHaveClass(
+        'working-mark'
+      )
+
+      const idleRow = screen.getByTestId(`quiet-board-row-${dotfilesMain.id}`)
+      expect(idleRow).toHaveClass('tone-neutral')
+      expect(screen.queryByTestId(`quiet-board-mark-${dotfilesMain.id}`)).not.toBeInTheDocument()
+    })
+
     it('carries no PR, turns or cost, and nothing to act on but Unlock', async () => {
       seed()
       fakeBridge.setWorkspacePr(retry.id, makePullRequest({ state: 'open', checks: 'failing' }))
