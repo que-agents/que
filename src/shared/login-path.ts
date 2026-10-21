@@ -5,6 +5,11 @@
 import { execFile } from 'node:child_process'
 import { cleanSpawnEnv } from './env'
 
+/** The user's login shell, `$SHELL`, or zsh when it is unset: what every terminal starts. */
+export function loginShell(): string {
+  return process.env.SHELL || '/bin/zsh'
+}
+
 /** Login entries first (deduplicated, empties dropped), then the rest of `current`. */
 export function mergePath(current: string | undefined, login: string | null): string {
   if (!login) return current ?? ''
@@ -24,7 +29,7 @@ export function mergePath(current: string | undefined, login: string | null): st
 export function loginShellPath(
   opts: { shell?: string; env?: NodeJS.ProcessEnv; timeoutMs?: number } = {}
 ): Promise<string | null> {
-  const shell = opts.shell ?? process.env.SHELL ?? '/bin/zsh'
+  const shell = opts.shell ?? loginShell()
 
   return new Promise((resolve) => {
     try {

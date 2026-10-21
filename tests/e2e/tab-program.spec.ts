@@ -2,6 +2,7 @@
 // `cat` while cat holds the foreground, and the shell's name again after Ctrl+C.
 import { basename } from 'node:path'
 import { expect, test } from '@playwright/test'
+import { loginShell } from '../../src/shared/login-path'
 import { AppShellPage } from './pages/AppShellPage'
 import { TerminalPage } from './pages/TerminalPage'
 import { type LaunchedApp, launchApp } from './utils/app'
@@ -15,9 +16,8 @@ test.afterEach(async () => {
 test('a tab reads the program in its terminal, and the shell again once it ends', async () => {
   let terminal: TerminalPage
   let id = ''
-  // The daemon starts the login shell `$SHELL` names (zsh when unset); the tab
-  // reads its name, not the helper node-pty spawns it through.
-  const shell = basename(process.env.SHELL || '/bin/zsh')
+  // The tab reads the login shell's name, not the helper node-pty spawns it through.
+  const shell = basename(loginShell())
 
   await test.step('Launch on a fresh QUE_HOME; the tab reads the shell', async () => {
     launched = await launchApp()

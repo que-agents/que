@@ -555,9 +555,10 @@ h2 {
 }
 
 /* Status at rest: a 5px dot in its tone, centred in the icon column. A pull request
- * check's dot is the same, taking its tone from its row. */
+ * check's dot and a dim row's dot are the same, taking their tone from their row. */
 .status-dot,
-.pr-dot {
+.pr-dot,
+.dot-row-dot {
   flex: none;
   width: 5px;
   height: 5px;
@@ -1360,12 +1361,11 @@ body.resizing {
   color: var(--tone);
 }
 
-/* A dim row: a 5px dot in its tone (`.tone-*` on the row), centred in an 8px
- * column (a `.working` row draws the working mark there instead), the name with the
- * project right after it, the state word at the right and a fixed-width age
- * column, over a hairline. The name takes its own width up to just over half
- * the row, then ellipsises; the project column absorbs the slack. The state
- * word is faint; give it a `.tone-*` to colour it. */
+/* A dim row: its dot (`.dot-row-dot` in the row's `.tone-*`, or the working mark)
+ * centred in an 8px column, the name with the project right after it, the state
+ * word at the right and a fixed-width age column, over a hairline. The name takes
+ * its own width up to just over half the row, then ellipsises; the project column
+ * absorbs the slack. The state word is faint; give it a `.tone-*` to colour it. */
 .dot-row {
   display: grid;
   grid-template-columns: 8px fit-content(55%) minmax(0, 1fr) auto 8ch;
@@ -1379,19 +1379,7 @@ body.resizing {
   white-space: nowrap;
 }
 
-.dot-row::before {
-  content: '';
-  justify-self: center;
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--tone);
-}
-
-.dot-row.working::before {
-  content: none;
-}
-
+.dot-row > .dot-row-dot,
 .dot-row > .working-mark {
   justify-self: center;
 }
