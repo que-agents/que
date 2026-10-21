@@ -3,6 +3,7 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { fakeBridge } from '@renderer/testing/fake-bridge'
 import {
+  makeBackgroundTask,
   makeProject,
   makePullRequest,
   makeQuietState,
@@ -246,6 +247,24 @@ describe('QuietBoard', () => {
       const idleRow = screen.getByTestId(`quiet-board-row-${dotfilesMain.id}`)
       expect(idleRow).toHaveClass('tone-neutral')
       expect(screen.queryByTestId(`quiet-board-mark-${dotfilesMain.id}`)).not.toBeInTheDocument()
+    })
+
+    it("marks an idle row whose session still runs a shell with the sidebar's ›_, never a working one", async () => {
+      seed()
+      fakeBridge.setBackgroundTasks(dotfilesMain.id, [
+        makeBackgroundTask({ kind: 'shell', description: 'npm run dev' })
+      ])
+      fakeBridge.setBackgroundTasks(retry.id, [
+        makeBackgroundTask({ kind: 'subagent', description: 'Explore the uploader' })
+      ])
+
+      render(<App board now={clock} />)
+
+      const idleRow = await screen.findByTestId(`quiet-board-row-${dotfilesMain.id}`)
+      const mark = within(idleRow).getByTestId(`quiet-board-row-${dotfilesMain.id}-background`)
+      expect(mark).toHaveTextContent('›_')
+      expect(mark).toHaveAttribute('title', 'shell')
+      expect(screen.queryByTestId(`quiet-board-row-${retry.id}-background`)).not.toBeInTheDocument()
     })
 
     it('carries no PR, turns or cost, and nothing to act on but Unlock', async () => {

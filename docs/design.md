@@ -246,7 +246,9 @@ and everything else in mono `--fg-faint`; a working row (a workspace working,
 a task preparing, running or finishing) draws the working mark in place of its
 dot, the same four rippling accent dots as the sidebar, so "still happening"
 reads the same across the room as in the rail: it is the board's one moving
-thing, and stands still under `prefers-reduced-motion`; and a footer holding
+thing, and stands still under `prefers-reduced-motion`; an idle row whose
+session still has a shell or monitor running shows the sidebar's `›_` after
+its state word, the kinds in its tooltip; and a footer holding
 only the Unlock button, the one control, drawn not to tempt: a word and the
 open-lock icon in the same mono `--fg-faint`, no border and no fill, with a
 `--border` hairline and `--fg-muted` only under the pointer. The window end
