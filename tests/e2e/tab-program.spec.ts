@@ -1,6 +1,8 @@
-// A tab says what its terminal is running: it reads `cat` while cat holds the
-// foreground of the shell, and the shell's own name again after Ctrl+C.
+// A tab says what its terminal is running: the login shell's name at rest,
+// `cat` while cat holds the foreground, and the shell's name again after Ctrl+C.
+import { basename } from 'node:path'
 import { expect, test } from '@playwright/test'
+import { loginShell } from '../../src/shared/login-path'
 import { AppShellPage } from './pages/AppShellPage'
 import { TerminalPage } from './pages/TerminalPage'
 import { type LaunchedApp, launchApp } from './utils/app'
@@ -14,16 +16,15 @@ test.afterEach(async () => {
 test('a tab reads the program in its terminal, and the shell again once it ends', async () => {
   let terminal: TerminalPage
   let id = ''
-  let shell = ''
+  // The tab reads the login shell's name, not the helper node-pty spawns it through.
+  const shell = basename(loginShell())
 
   await test.step('Launch on a fresh QUE_HOME; the tab reads the shell', async () => {
     launched = await launchApp()
     await new AppShellPage(launched.window).waitForLoad()
     terminal = new TerminalPage(launched.window)
     id = await terminal.waitForActiveTerminal()
-    await expect(terminal.tabSelect(id)).not.toHaveText('')
-    shell = (await terminal.tabSelect(id).textContent()) ?? ''
-    expect(shell).not.toBe('cat')
+    await expect(terminal.tabSelect(id)).toHaveText(shell)
   })
 
   await test.step('cat in the foreground names the tab', async () => {
