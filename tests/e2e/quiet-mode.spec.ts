@@ -26,6 +26,26 @@ test.afterEach(async () => {
   await launched?.close() // quits the app AND stops the test daemon
 })
 
+/** A workspace on `repo` with one running terminal, made with the CLI. */
+function workspaceWithTerminal(queHome: string, repo: string, name: string): Workspace {
+  const workspace = queJson<Workspace>(queHome, 'work', '--name', name, '-r', repo, '--json')
+  expect(que(queHome, 'ws', 'terminal', workspace.id).trim()).toMatch(/^[0-9a-f-]{36}$/)
+
+  return workspace
+}
+
+/** Quiet hours on, an hour either side of `now`, with any other settings. */
+function quietHoursAroundNow(queHome: string, now: number, ...settings: string[]): void {
+  que(
+    queHome,
+    'config',
+    'set',
+    'quiet_hours.enabled=true',
+    `quiet_hours.default=${hhmm(now - 60 * 60_000)},${hhmm(now + 60 * 60_000)}`,
+    ...settings
+  )
+}
+
 test('quiet hours show only the board; an unlock brings detail back until it runs out', async () => {
   const repo = makeTempRepo(tempDir('que-e2e-repo-'))
   // A window an hour either side of now, and a 0.1-minute unlock.
@@ -36,27 +56,11 @@ test('quiet hours show only the board; an unlock brings detail back until it run
   let board: QuietBoardPage
 
   await test.step('Create a workspace with a running terminal with the CLI', async () => {
-    workspace = queJson<Workspace>(
-      queHome,
-      'work',
-      '--name',
-      'app-1500-quiet-board',
-      '-r',
-      repo,
-      '--json'
-    )
-    expect(que(queHome, 'ws', 'terminal', workspace.id).trim()).toMatch(/^[0-9a-f-]{36}$/)
+    workspace = workspaceWithTerminal(queHome, repo, 'app-1500-quiet-board')
   })
 
   await test.step('Turn quiet hours on around now, with a 0.1-minute unlock', async () => {
-    que(
-      queHome,
-      'config',
-      'set',
-      'quiet_hours.enabled=true',
-      `quiet_hours.default=${hhmm(now - 60 * 60_000)},${windowEnd}`,
-      'quiet_hours.unlock_minutes=0.1'
-    )
+    quietHoursAroundNow(queHome, now, 'quiet_hours.unlock_minutes=0.1')
     expect(que(queHome, 'quiet', 'status').trim()).toBe(`quiet hours until ${windowEnd}`)
   })
 
@@ -121,27 +125,8 @@ test('a board with more rows than fit scrolls them under the wheel', async () =>
   let board: QuietBoardPage
 
   await test.step('Ten workspaces with running terminals, made with the CLI', async () => {
-    for (let i = 0; i < 10; i++) {
-      const w = queJson<Workspace>(
-        queHome,
-        'work',
-        '--name',
-        `app-15${i}0-board-row`,
-        '-r',
-        repo,
-        '--json'
-      )
-
-      expect(que(queHome, 'ws', 'terminal', w.id).trim()).toMatch(/^[0-9a-f-]{36}$/)
-    }
-
-    que(
-      queHome,
-      'config',
-      'set',
-      'quiet_hours.enabled=true',
-      `quiet_hours.default=${hhmm(now - 60 * 60_000)},${hhmm(now + 60 * 60_000)}`
-    )
+    for (let i = 0; i < 10; i++) workspaceWithTerminal(queHome, repo, `app-15${i}0-board-row`)
+    quietHoursAroundNow(queHome, now)
   })
 
   await test.step("Launch at the board's own size: the last row is below the fold", async () => {
