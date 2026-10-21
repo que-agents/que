@@ -239,9 +239,8 @@ only uses of the accent), the `[ QUIET HOURS ]` label and the clock in mono
 (`.count-line`) that lists only the non-zero counts, where only `stuck` takes a
 tone (`--tone-bad`) and `running` reads `--fg-muted`; 30px dot rows
 (`.dot-row`) one notch dimmer than the sidebar, the name in `--fg-secondary`
-and everything else in mono `--fg-faint`; a working row (a workspace working,
-a task preparing, running or finishing) draws the working mark in place of its
-dot, the same four rippling accent dots as the sidebar, so "still happening"
+and everything else in mono `--fg-faint`; a working row draws the working mark in
+place of its dot, the same four rippling accent dots as the sidebar, so "still happening"
 reads the same across the room as in the rail: it is the board's one moving
 thing, and stands still under `prefers-reduced-motion`; an idle row whose
 session still has a shell or monitor running shows the sidebar's `›_` after
