@@ -7,21 +7,27 @@ import {
   NOTHING_RUNNING
 } from '../../../shared/quiet-board'
 import { statusBadge, type Tone } from '../format'
+import { backgroundKinds } from '../sidebar-row'
 import { useQue, useStore } from '../store'
 import { useNow } from '../useNow'
+import BackgroundMark from './BackgroundMark'
 import CountLine from './CountLine'
 import { QMarkIcon, UnlockIcon } from './icons'
+import WorkingMark from './WorkingMark'
 
 interface Row {
   id: string
   name: string
   project: string
-  /** The raw state (`needs_input`, `running`), for data-state. */
+  /** The raw status (`needs_input`, `working`), for data-state. */
   state: string
   stateText: string
+  /** The dot's tone; `busy` draws the working mark instead of a dot. */
   dot: Tone
   /** Only stuck takes a tone on its word. */
   stuck: boolean
+  /** The kinds still running in the background of an idle workspace (`›_` after its state word). */
+  background?: string[]
   lastActivity: string | null
 }
 
@@ -33,7 +39,9 @@ function minutes(m: number): string {
 /**
  * Quiet hours (or a manual quiet): the one question, "running and not stuck?", answered from
  * across the room without pulling anyone in. A dim strip, one faint count
- * line, a dim row per workspace that is busy or has a live terminal, and a ghost Unlock (and End quiet in a manual window): no sentences, no badges, no links. Needs input
+ * line, a dim row per workspace that is busy or has a live terminal, and a ghost Unlock (and End quiet in a manual window): no sentences, no badges, no links.
+ * A working row draws the sidebar's working mark, and an idle row whose session still runs a shell
+ * or monitor its `›_`, so "still happening" reads the same. Needs input
  * is not a night state here: it reads `waiting`, with no tone.
  */
 export default function QuietBoard(): React.JSX.Element {
@@ -55,12 +63,13 @@ export default function QuietBoard(): React.JSX.Element {
 
   const workspaceRow = (w: Workspace): Row => ({
     id: w.id,
-    name: w.name,
+    name: w.title ?? w.name,
     project: projectName(w.projectId),
     state: w.status,
     stateText: w.status === 'needs_input' ? 'waiting' : statusBadge(w.status).label,
     dot: w.status === 'needs_input' ? 'neutral' : statusBadge(w.status).tone,
     stuck: w.status === 'stuck',
+    background: backgroundKinds(w),
     lastActivity: w.lastActivityAt
   })
 
@@ -103,7 +112,7 @@ export default function QuietBoard(): React.JSX.Element {
       <CountLine items={counts} testId="quiet-board-counts">
         {NOTHING_RUNNING}
       </CountLine>
-      <div className="quiet-board-rows">
+      <div className="quiet-board-rows" data-testid="quiet-board-rows">
         {rows.length === 0 ? (
           <p className="quiet-board-empty" data-testid="quiet-board-empty">
             {boardEmptyLine({ summaryAt })}
@@ -117,10 +126,21 @@ export default function QuietBoard(): React.JSX.Element {
                 data-testid={`quiet-board-row-${r.id}`}
                 data-state={r.state}
               >
+                {r.dot === 'busy' ? (
+                  <WorkingMark data-testid={`quiet-board-mark-${r.id}`} />
+                ) : (
+                  <span className="dot-row-dot" aria-hidden="true" />
+                )}
                 <span className="dot-row-name">{r.name}</span>{' '}
                 <span className="dot-row-project">{r.project}</span>{' '}
                 <span className={r.stuck ? 'dot-row-state tone-bad' : 'dot-row-state'}>
                   {r.stateText}
+                  {r.background?.length ? (
+                    <BackgroundMark
+                      title={r.background.join(' · ')}
+                      data-testid={`quiet-board-row-${r.id}-background`}
+                    />
+                  ) : null}
                 </span>{' '}
                 <span className="dot-row-age">{formatAge(r.lastActivity, now, ' ago')}</span>
               </li>
