@@ -11,6 +11,7 @@ import { isLiveTask, newestFirst, statusBadge, type Tone, taskBadge } from '../f
 import { backgroundKinds } from '../sidebar-row'
 import { useQue, useStore } from '../store'
 import { useNow } from '../useNow'
+import BackgroundMark from './BackgroundMark'
 import CountLine from './CountLine'
 import { QMarkIcon, UnlockIcon } from './icons'
 import WorkingMark from './WorkingMark'
@@ -26,8 +27,8 @@ interface Row {
   dot: Tone
   /** Only stuck takes a tone on its word. */
   stuck: boolean
-  /** The kinds still running in the background of an idle workspace: `›_` after its state word. */
-  background: string[]
+  /** The kinds still running in the background of an idle workspace (`›_` after its state word); none on a task row. */
+  background?: string[]
   lastActivity: string | null
 }
 
@@ -81,7 +82,6 @@ export default function QuietBoard(): React.JSX.Element {
         : t.state,
     dot: taskBadge(t.state).tone,
     stuck: false,
-    background: [],
     lastActivity: t.lastActivityAt
   })
 
@@ -160,16 +160,12 @@ export default function QuietBoard(): React.JSX.Element {
                 <span className="dot-row-project">{r.project}</span>{' '}
                 <span className={r.stuck ? 'dot-row-state tone-bad' : 'dot-row-state'}>
                   {r.stateText}
-                  {r.background.length > 0 && (
-                    <span
-                      className="bg-mark"
-                      aria-hidden="true"
+                  {r.background?.length ? (
+                    <BackgroundMark
                       title={r.background.join(' · ')}
                       data-testid={`quiet-board-row-${r.id}-background`}
-                    >
-                      ›_
-                    </span>
-                  )}
+                    />
+                  ) : null}
                 </span>{' '}
                 <span className="dot-row-age">{formatAge(r.lastActivity, now, ' ago')}</span>
               </li>

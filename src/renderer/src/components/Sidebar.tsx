@@ -18,6 +18,7 @@ import {
   SortIcon,
   UnlockIcon
 } from './icons'
+import BackgroundMark from './BackgroundMark'
 import Menu, { type MenuItem, type Point } from './Menu'
 import WorkingMark from './WorkingMark'
 import WorkspacePopout, { usePopout } from './WorkspacePopout'
@@ -505,13 +506,7 @@ export default function Sidebar(): React.JSX.Element {
                             {w.title ?? w.name}
                           </span>
                           {look.background.length > 0 && (
-                            <span
-                              className="bg-mark"
-                              aria-hidden="true"
-                              data-testid={`sidebar-workspace-${w.id}-background`}
-                            >
-                              ›_
-                            </span>
+                            <BackgroundMark data-testid={`sidebar-workspace-${w.id}-background`} />
                           )}
                         </button>
                         <span className="reveal" data-testid={`sidebar-workspace-${w.id}-reveal`}>

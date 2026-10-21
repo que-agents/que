@@ -167,8 +167,7 @@ only under the pointer.
   board). An idle row with a shell or monitor still running in the background shows
   `›_` in mono 11px `--fg-faint` at its right end (the session glyph: something is
   still running there); the overlay under the pointer covers it, and a working row
-  never shows it, since the ripple already says so. The quiet board draws the same
-  glyph (see Quiet board).
+  never shows it, since the ripple already says so.
 - **The weight of a name.** `--fg` when the row needs you (finished since you last
   looked, needs input, or stuck); `--fg-secondary` while it works; `--fg-faint` once you have
   looked and nothing is new, and the same faint for an exited workspace, told apart by
@@ -249,8 +248,7 @@ dot, the same four rippling accent dots as the sidebar, so "still happening"
 reads the same across the room as in the rail: it is the board's one moving
 thing, and stands still under `prefers-reduced-motion`; an idle row whose
 session still has a shell or monitor running shows the sidebar's `›_` after
-its state word, the kinds in its tooltip, so a quiet row is not read as a
-finished one; and a footer holding
+its state word, the kinds in its tooltip; and a footer holding
 only the Unlock button, the one control, drawn not to tempt: a word and the
 open-lock icon in the same mono `--fg-faint`, no border and no fill, with a
 `--border` hairline and `--fg-muted` only under the pointer. The window end
