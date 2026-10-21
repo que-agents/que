@@ -26,6 +26,26 @@ test.afterEach(async () => {
   await launched?.close() // quits the app AND stops the test daemon
 })
 
+/** A workspace on `repo` with one running terminal, made with the CLI. */
+function workspaceWithTerminal(queHome: string, repo: string, name: string): Workspace {
+  const workspace = queJson<Workspace>(queHome, 'work', '--name', name, '-r', repo, '--json')
+  expect(que(queHome, 'ws', 'terminal', workspace.id).trim()).toMatch(/^[0-9a-f-]{36}$/)
+
+  return workspace
+}
+
+/** Quiet hours on, an hour either side of `now`, with any other settings. */
+function quietHoursAroundNow(queHome: string, now: number, ...settings: string[]): void {
+  que(
+    queHome,
+    'config',
+    'set',
+    'quiet_hours.enabled=true',
+    `quiet_hours.default=${hhmm(now - 60 * 60_000)},${hhmm(now + 60 * 60_000)}`,
+    ...settings
+  )
+}
+
 test('quiet hours show only the board; an unlock brings detail back until it runs out', async () => {
   const repo = makeTempRepo(tempDir('que-e2e-repo-'))
   // A window an hour either side of now, and a 0.1-minute unlock.
@@ -36,27 +56,11 @@ test('quiet hours show only the board; an unlock brings detail back until it run
   let board: QuietBoardPage
 
   await test.step('Create a workspace with a running terminal with the CLI', async () => {
-    workspace = queJson<Workspace>(
-      queHome,
-      'work',
-      '--name',
-      'app-1500-quiet-board',
-      '-r',
-      repo,
-      '--json'
-    )
-    expect(que(queHome, 'ws', 'terminal', workspace.id).trim()).toMatch(/^[0-9a-f-]{36}$/)
+    workspace = workspaceWithTerminal(queHome, repo, 'app-1500-quiet-board')
   })
 
   await test.step('Turn quiet hours on around now, with a 0.1-minute unlock', async () => {
-    que(
-      queHome,
-      'config',
-      'set',
-      'quiet_hours.enabled=true',
-      `quiet_hours.default=${hhmm(now - 60 * 60_000)},${windowEnd}`,
-      'quiet_hours.unlock_minutes=0.1'
-    )
+    quietHoursAroundNow(queHome, now, 'quiet_hours.unlock_minutes=0.1')
     expect(que(queHome, 'quiet', 'status').trim()).toBe(`quiet hours until ${windowEnd}`)
   })
 
@@ -111,6 +115,42 @@ test('quiet hours show only the board; an unlock brings detail back until it run
     board = new QuietBoardPage(await findWindow(launched.app, true))
     await board.waitForLoad()
     expect(queResult(queHome, 'attach', workspace.id).code).toBe(3)
+  })
+})
+
+test('a board with more rows than fit scrolls them under the wheel', async () => {
+  const repo = makeTempRepo(tempDir('que-e2e-repo-'))
+  const now = Date.now()
+  const queHome = newQueHome()
+  let board: QuietBoardPage
+
+  await test.step('Ten workspaces with running terminals, made with the CLI', async () => {
+    for (let i = 0; i < 10; i++) workspaceWithTerminal(queHome, repo, `app-15${i}0-board-row`)
+    quietHoursAroundNow(queHome, now)
+  })
+
+  await test.step("Launch at the board's own size: the last row is below the fold", async () => {
+    launched = await launchApp({ queHome })
+    const page = await findWindow(launched.app, true)
+    board = new QuietBoardPage(page)
+    await board.waitForLoad()
+    // launchApp sizes the first window for the specs; the board is 600×400 in the app.
+    const win = await launched.app.browserWindow(page)
+    await win.evaluate((w) => w.setSize(600, 400))
+    await expect(board.counts).toHaveText('10 idle')
+    await expect(board.rows.locator('li')).toHaveCount(10)
+    await expect(board.rows.locator('li').last()).not.toBeInViewport()
+  })
+
+  await test.step('A wheel over the rows scrolls the last row into view', async () => {
+    const box = await board.rows.boundingBox()
+
+    if (!box) throw new Error('the rows have no box')
+    await board.page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+    await board.page.mouse.wheel(0, 400)
+    await expect.poll(() => board.rows.evaluate((el) => el.scrollTop)).toBeGreaterThan(0)
+    await expect(board.rows.locator('li').last()).toBeInViewport()
+    await board.page.screenshot({ path: 'test-results/quiet-board-scrolled.png' })
   })
 })
 
