@@ -141,11 +141,15 @@ export default function QuietBoard(): React.JSX.Element {
             {rows.map((r) => (
               <li
                 key={r.id}
-                className={`dot-row tone-${r.dot}${r.dot === 'busy' ? ' working' : ''}`}
+                className={`dot-row tone-${r.dot}`}
                 data-testid={`quiet-board-row-${r.id}`}
                 data-state={r.state}
               >
-                {r.dot === 'busy' && <WorkingMark data-testid={`quiet-board-mark-${r.id}`} />}
+                {r.dot === 'busy' ? (
+                  <WorkingMark data-testid={`quiet-board-mark-${r.id}`} />
+                ) : (
+                  <span className="dot-row-dot" aria-hidden="true" />
+                )}
                 <span className="dot-row-name">{r.name}</span>{' '}
                 <span className="dot-row-project">{r.project}</span>{' '}
                 <span className={r.stuck ? 'dot-row-state tone-bad' : 'dot-row-state'}>

@@ -234,20 +234,17 @@ describe('QuietBoard', () => {
       render(<App board now={clock} />)
 
       const workspaceRow = await screen.findByTestId(`quiet-board-row-${retry.id}`)
-      expect(workspaceRow).toHaveClass('working')
       expect(within(workspaceRow).getByTestId(`quiet-board-mark-${retry.id}`)).toHaveClass(
         'working-mark'
       )
 
       const taskRow = screen.getByTestId(`quiet-board-row-${running.id}`)
-      expect(taskRow).toHaveClass('working')
       expect(within(taskRow).getByTestId(`quiet-board-mark-${running.id}`)).toHaveClass(
         'working-mark'
       )
 
       const idleRow = screen.getByTestId(`quiet-board-row-${dotfilesMain.id}`)
       expect(idleRow).toHaveClass('tone-neutral')
-      expect(idleRow).not.toHaveClass('working')
       expect(screen.queryByTestId(`quiet-board-mark-${dotfilesMain.id}`)).not.toBeInTheDocument()
     })
 
