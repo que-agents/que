@@ -43,6 +43,7 @@ All notable changes to que are recorded here. The format follows
 
 ### Changed
 
+- Removing a workspace no longer waits on its teardown: the dialog closes at once (deleting the branch is now the default), the view moves off it, and its row stays with a grey moving mark and the step it is on, `running teardown 12s`, until it is gone. A step that fails is named on the error line, `Removing breezy-trusty-mole: running teardown failed, timed out after 60s`.
 - Changes and Files follow the worktree without a click.
 - The top bar has one review pane toggle, an icon at its right end, in place of its `Changes`, `Pull request`, `Open in editor` and `Create draft PR` buttons; `⌘B` toggles the pane too.
 - The review pane's Changes header is a single line, `Commits n vs base`, with refresh and open-in-editor icons at its right end; the full counts are in its tooltip.

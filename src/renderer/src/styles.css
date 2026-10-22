@@ -469,6 +469,23 @@ h2 {
   margin-left: 6px;
 }
 
+/* A workspace being removed: its step and the clock since it started, always shown where
+ * `›_` sits; the name gives way (ellipsis) before the word does. The row's button is
+ * disabled but keeps its look (the neutral mark and the faint name say it), and lets the
+ * pointer through to the row, so the row still reads as hovered and its card opens. */
+.sidebar .step-word {
+  flex: none;
+  font: 11px var(--mono);
+  color: var(--fg-faint);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.sidebar .row-button:disabled {
+  opacity: 1;
+  pointer-events: none;
+}
+
 /* A row: the button, and over its right end the word and ⋯ that the pointer reveals.
  * The overlay is painted on the row's own background, so nothing under it reflows. */
 .sidebar .row {
@@ -510,6 +527,7 @@ h2 {
 .reveal .word {
   font: 11px var(--mono);
   color: var(--fg-faint);
+  font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 

@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { makeBackgroundTask, makePullRequest, makeWorkspace } from '@renderer/testing/fixtures'
 import { minutesAgo } from '@renderer/testing/helpers'
-import { hoverWord, rowTone, unseenDone } from './sidebar-row'
+import type { RemovalStep } from '@shared/types'
+import { hoverWord, removalWord, rowTone, unseenDone } from './sidebar-row'
 
 const NOW = new Date(2026, 9, 17, 21, 30).getTime()
 
@@ -31,6 +32,7 @@ describe('rowTone', () => {
         status: 'idle',
         tone: 'neutral',
         working: false,
+        removing: false,
         unseen: false,
         weight: 'faint',
         background: []
@@ -67,6 +69,7 @@ describe('rowTone', () => {
         status: 'idle',
         tone: 'good',
         working: false,
+        removing: false,
         unseen: true,
         weight: 'fg',
         background: []
@@ -88,6 +91,36 @@ describe('rowTone', () => {
         unseen: false
       })
       expect(rowTone({ ...fresh, status: 'stuck' })).toMatchObject({ tone: 'bad', unseen: false })
+    })
+  })
+
+  describe('removing', () => {
+    const removing = makeWorkspace({
+      ...fresh,
+      status: 'removing',
+      backgroundTasks: [devServer],
+      removal: {
+        plan: ['terminals', 'teardown', 'worktree'],
+        step: 'teardown',
+        since: new Date(NOW - 12_000).toISOString(),
+        done: [{ step: 'terminals', ms: 40 }]
+      }
+    })
+
+    it('reads faint with a muted mark, never unseen, with no background mark', () => {
+      expect(rowTone(removing)).toEqual({
+        status: 'removing',
+        tone: 'muted',
+        working: false,
+        removing: true,
+        unseen: false,
+        weight: 'faint',
+        background: []
+      })
+    })
+
+    it('stays faint while selected', () => {
+      expect(rowTone(removing, true).weight).toBe('faint')
     })
   })
 
@@ -169,6 +202,36 @@ describe('hoverWord', () => {
     const open = { ...fresh, pr: makePullRequest({ number: 12, state: 'open' }) }
 
     expect(hoverWord(open, rowTone(open), NOW).word).toBe('done · 12m ago')
+  })
+})
+
+describe('removalWord', () => {
+  const at = (step: RemovalStep | null, secondsAgo: number) =>
+    makeWorkspace({
+      status: 'removing',
+      removal: {
+        plan: ['terminals', 'teardown', 'worktree', 'branch'],
+        step,
+        since: new Date(NOW - secondsAgo * 1000).toISOString(),
+        done: []
+      }
+    })
+
+  it('names the step with its verb and the time since it started', () => {
+    expect(removalWord(at('teardown', 12), NOW)).toBe('running teardown 12s')
+    expect(removalWord(at('worktree', 0), NOW)).toBe('removing worktree 0s')
+    expect(removalWord(at('branch', 185), NOW)).toBe('deleting branch 3m')
+  })
+
+  it('says removing once every step has run, or before the daemon names one', () => {
+    expect(removalWord(at(null, 3), NOW)).toBe('removing')
+    expect(removalWord(makeWorkspace({ status: 'removing' }), NOW)).toBe('removing')
+  })
+
+  it('is the hover word too, untoned', () => {
+    const ws = at('terminals', 2)
+
+    expect(hoverWord(ws, rowTone(ws), NOW)).toEqual({ word: 'killing terminals 2s', tone: null })
   })
 })
 

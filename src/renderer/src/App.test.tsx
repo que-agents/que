@@ -182,6 +182,46 @@ describe('App', () => {
   })
 
   describe('errors', () => {
+    const board = makeWorkspace({ id: 'ws_01hzx4m1p8rt', name: 'app-1440-quiet-board' })
+
+    it('names the workspace and each removal step that failed, with its reason, until dismissed', async () => {
+      const user = userEvent.setup()
+      fakeBridge.seedProject(makeProject())
+      fakeBridge.seedWorkspace(board)
+      fakeBridge.holdRemovals()
+      render(<App />)
+      await screen.findByTestId(`sidebar-workspace-${board.id}`)
+      await window.que.workspace.remove({ id: board.id, deleteBranch: true })
+
+      fakeBridge.advanceRemoval(board.id)
+      fakeBridge.advanceRemoval(board.id, { error: 'timed out after 60s' })
+      fakeBridge.advanceRemoval(board.id)
+      fakeBridge.advanceRemoval(board.id, { error: 'not fully merged' })
+
+      expect(await screen.findByRole('alert')).toHaveTextContent(
+        /^Removing app-1440-quiet-board: running teardown failed, timed out after 60s; deleting branch failed, not fully merged×$/
+      )
+      expect(screen.queryByTestId(`sidebar-workspace-${board.id}`)).not.toBeInTheDocument()
+
+      await user.click(screen.getByRole('button', { name: 'Dismiss' }))
+
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    })
+
+    it('says nothing after a clean removal', async () => {
+      fakeBridge.seedProject(makeProject())
+      fakeBridge.seedWorkspace(board)
+      render(<App />)
+      await screen.findByTestId(`sidebar-workspace-${board.id}`)
+
+      await window.que.workspace.remove({ id: board.id, deleteBranch: true })
+
+      await waitFor(() => {
+        expect(screen.queryByTestId(`sidebar-workspace-${board.id}`)).not.toBeInTheDocument()
+      })
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    })
+
     it('says it is reconnecting when the daemon connection drops', async () => {
       fakeBridge.seedTerminal(uploader)
       render(<App />)

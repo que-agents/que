@@ -55,7 +55,7 @@ so the DOM keeps the plain word.
 | `--tone-attention` | `#f99c00` | needs input.                                                                                                                                       |
 | `--tone-bad`       | `#fb2c36` | stuck, exited badly; the danger button.                                                                                                            |
 | `--tone-good`      | `#34c26b` | idle after work: a sidebar row that finished since you last looked at it.                                                                          |
-| `--tone-neutral`   | `#7a7a7a` | idle.                                                                                                                                              |
+| `--tone-neutral`   | `#7a7a7a` | idle; the working mark while a workspace is being removed (sidebar and card).                                                                      |
 | `--tone-muted`     | `#5a5a5a` | exited.                                                                                                                                            |
 
 The accent is a teal, apart in hue from both the done green and the working
@@ -167,6 +167,16 @@ only under the pointer.
   `›_` in mono 11px `--fg-faint` at its right end (the session glyph: something is
   still running there); the overlay under the pointer covers it, and a working row
   never shows it, since the ripple already says so.
+- **Being removed.** A workspace keeps its row until the daemon has removed it. Its
+  mark is the working mark drawn in `--tone-neutral` (the one other place the mark
+  appears, and the one time it is not the accent: the ripple says something is moving,
+  the grey says it is not a session), its name reads `--fg-faint`, and it is never
+  painted as unseen. Where `›_` would sit, always shown, is the step it is on with its
+  verb and a clock since the step started: `killing terminals 1s`, `running teardown
+  12s`, `removing worktree 0s`, `deleting branch 0s`, mono 11px `--fg-faint` with
+  tabular numbers, ticking every second; the name gives way with its ellipsis before the
+  word does. Under the pointer the overlay shows the same word and no ⋯; the row cannot
+  be selected and has no menu, but its card still opens. The quiet board leaves it out.
 - **The weight of a name.** `--fg` when the row needs you (finished since you last
   looked, needs input, or stuck); `--fg-secondary` while it works; `--fg-faint` once you have
   looked and nothing is new, and the same faint for an exited workspace, told apart by
