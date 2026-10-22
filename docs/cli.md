@@ -21,7 +21,7 @@ hand; run `npm run docs` after changing a command.
 | `que project list [options]`                | list projects                                                                                                                                                                              |
 | `que work [options] [brief]`                | create a workspace (git worktree) from a brief and print its path; the first line of the brief is its title, and its branch and folder get a random three-word name unless --name is given |
 | `que ws list [options]`                     | list workspaces                                                                                                                                                                            |
-| `que ws remove [options] <workspace>`       | remove a workspace: kill its terminals, run teardown, remove the worktree                                                                                                                  |
+| `que ws remove [options] <workspace>`       | remove a workspace: kill its terminals, run teardown, remove the worktree and delete its branch                                                                                            |
 | `que ws diff [options] <workspace>`         | what a workspace changed against its base, committed and uncommitted, with its commits                                                                                                     |
 | `que ws files [options] <workspace>`        | every file of a workspace's worktree, tracked and untracked, never ignored                                                                                                                 |
 | `que ws pr [options] <workspace>`           | a workspace's pull request: its checks and its conversation                                                                                                                                |
@@ -249,11 +249,12 @@ Options:
 ```text
 Usage: que ws remove [options] <workspace>
 
-remove a workspace: kill its terminals, run teardown, remove the worktree
+remove a workspace: kill its terminals, run teardown, remove the worktree and
+delete its branch
 
 Options:
-  --delete-branch  also delete its branch
-  -h, --help       display help for command
+  --keep-branch  keep its branch
+  -h, --help     display help for command
 ```
 
 ### que ws diff
