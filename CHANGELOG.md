@@ -8,6 +8,7 @@ All notable changes to que are recorded here. The format follows
 
 ### Added
 
+- While a workspace is being removed, its card lists the removal's steps under `[ REMOVING ]`: each finished step with how long it took or why it failed, the one running now with a clock that ticks each second, and those still to come.
 - The daemon watches the worktree of every workspace a window shows (`workspace.watch`, `workspace.unwatch`) or has an attached terminal in, and sends `workspace.changed` when its files, index or commits change, at most once per 300 ms.
 - `workspace.files` lists a worktree's tracked and untracked files, `workspace.readFile` reads one of them (text capped, binary detected, never outside the worktree), and `que ws files <workspace>` prints the listing; `--json`.
 - A Files tab in the review pane: the workspace's files as a tree, changed files marked as in Changes and their directories open with a count; a changed file opens its diff, any other file opens read-only as a tab beside the terminals.

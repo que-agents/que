@@ -2604,6 +2604,78 @@ button.changes-pick {
   font-variant-numeric: tabular-nums;
 }
 
+/* A removal under way: one line per step, its dot (or the neutral working mark on the step
+ * running now) in an 8px column so the 5px dots and the 8px mark line up, the step's words,
+ * and at the right its duration, its failure, or the clock since it started. */
+.workspace-popout .popout-removal {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.workspace-popout .removal-step {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr) auto;
+  column-gap: 8px;
+  align-items: center;
+  font: 11px / 18px var(--mono);
+  color: var(--fg-faint);
+}
+
+.workspace-popout .removal-mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 8px;
+  height: 8px;
+}
+
+.workspace-popout .removal-dot {
+  box-sizing: border-box;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--tone-muted);
+}
+
+.workspace-popout .removal-step.pending .removal-dot {
+  border: 1px solid var(--tone-muted);
+  background: transparent;
+}
+
+.workspace-popout .removal-step.failed .removal-dot {
+  background: var(--tone-bad);
+}
+
+.workspace-popout .removal-step.current,
+.workspace-popout .removal-step.failed {
+  color: var(--fg-secondary);
+}
+
+.workspace-popout .removal-words {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspace-popout .removal-right {
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-faint);
+}
+
+.workspace-popout .removal-step.failed .removal-right {
+  color: var(--tone-bad);
+}
+
 .workspace-popout hr {
   margin: 0;
   border: 0;

@@ -202,7 +202,16 @@ only under the pointer.
   `--fg-faint` (the dot in its tone, the word, a reason, `since HH:MM`, the last
   activity); while anything runs in the background, `[ BACKGROUND ]` and a line per task:
   the kind in `--fg-faint`, the description in `--fg-secondary`, and its age at the right
-  (a working row lists its subagents here); a hairline; and `[ PULL REQUESTS ]`, newest
+  (a working row lists its subagents here); while the workspace is being removed (the
+  status line reads `removing`, and there is no background, since its terminals are gone),
+  `[ REMOVING ]` and a line per step it runs, mono 11px, the dot in an 8px column so the
+  dots and the mark line up: a done step's filled `--tone-muted` dot, its words in
+  `--fg-faint` and its time at the right (`0.1s`, `12s`); a failed step's `--tone-bad` dot,
+  its words in `--fg-secondary` and the reason at the right in `--tone-bad`; the step
+  running now with the working mark in `--tone-neutral`, its words in `--fg-secondary` and
+  its clock at the right, ticking each second; a step still to come with a hollow dot (a
+  1px `--tone-muted` ring), its words in `--fg-faint` and nothing at the right; a hairline;
+  and `[ PULL REQUESTS ]`, newest
   first: `#n` in `--fg-secondary`, the state in its tone, `+added −removed` in
   `--tone-good` and `--tone-bad` at the right, then the title in sans 12px
   `--fg-secondary` over at most two lines and a failing check's name in `--fg-faint`
