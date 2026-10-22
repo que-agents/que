@@ -45,6 +45,7 @@ export type StatusInput =
   | { kind: 'agents_json'; entry: AgentEntry }
   | { kind: 'setup_done' }
   | { kind: 'setup_failed' }
+  | { kind: 'remove' }
 
 export interface ReduceOptions {
   stallTimeoutMs: number
@@ -229,6 +230,9 @@ export function reduce(
   now: number,
   opts: ReduceOptions = { stallTimeoutMs: DEFAULT_STALL_TIMEOUT_MS }
 ): StatusState {
+  // A workspace being removed stays removing: its killed terminals and dying session report nothing.
+  if (state.status === 'removing') return { ...state }
+
   switch (input.kind) {
     case 'hook':
       return onHook(state, input.event, input.payload, now)
@@ -252,6 +256,9 @@ export function reduce(
       return transition(state, 'idle', null, now)
     case 'setup_failed':
       return transition(state, 'stuck', 'setup_failed', now)
+    case 'remove':
+      // Its terminals are killed first, so nothing runs in the background any more.
+      return transition(state, 'removing', null, now, { backgroundTasks: [] })
   }
 }
 

@@ -23,6 +23,7 @@ describe('parseConfig', () => {
       config: {
         worktreeRoot: '/Users/dev/.que/worktrees',
         stallTimeoutMinutes: 5,
+        teardownTimeoutSeconds: 60,
         statusPollSeconds: 10,
         prPollSeconds: 60,
         repos: {},
@@ -51,6 +52,7 @@ describe('parseConfig', () => {
     const r = parseConfig(
       `worktree_root = "/Volumes/work/trees"
 stall_timeout_minutes = 0.5
+teardown_timeout_seconds = 5
 status_poll_seconds = 30
 theme = "dark"
 default_permission_mode = "plan"
@@ -75,6 +77,7 @@ path = "/Users/dev/code/api"
       config: {
         worktreeRoot: '/Volumes/work/trees',
         stallTimeoutMinutes: 0.5,
+        teardownTimeoutSeconds: 5,
         statusPollSeconds: 30,
         prPollSeconds: 60,
         repos: {
@@ -175,6 +178,7 @@ chime_on_complete = "yes"
   it('reports each invalid value by key', () => {
     const r = parseConfig(
       `stall_timeout_minutes = -1
+teardown_timeout_seconds = 0.5
 status_poll_seconds = "often"
 [repos.uploader]
 default_branch = "main"
@@ -186,6 +190,7 @@ default_branch = "main"
       ok: false,
       errors: [
         { key: 'stall_timeout_minutes', message: 'must be a positive number' },
+        { key: 'teardown_timeout_seconds', message: 'must be a number of at least 1' },
         { key: 'status_poll_seconds', message: 'must be a positive number' },
         { key: 'repos.uploader.path', message: 'is required' }
       ]

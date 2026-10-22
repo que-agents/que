@@ -601,6 +601,8 @@ export class DaemonServer {
         this.tickets.start()
         // After quiet hours have read their state: a locked start keeps the sessions for the unlock.
         this.liveSessions.start()
+        // After the sessions: a workspace still being removed restores none, and its removal goes on.
+        this.workspaces.start()
         server.on('error', (err) => this.log(`server error: ${err.message}`))
 
         try {

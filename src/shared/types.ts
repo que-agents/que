@@ -287,6 +287,8 @@ export interface RepoEntry {
 export interface UserConfig {
   worktreeRoot: string
   stallTimeoutMinutes: number
+  /** How long a repo's teardown hook may run when a workspace is removed before it is killed. */
+  teardownTimeoutSeconds: number
   statusPollSeconds: number
   /** How often the daemon refreshes each workspace's pull request from GitHub. */
   prPollSeconds: number

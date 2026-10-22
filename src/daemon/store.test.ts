@@ -30,7 +30,9 @@ describe('migrations', () => {
     const previous = new DatabaseSync(path)
     previous.exec('CREATE TABLE migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)')
 
-    MIGRATIONS.slice(0, -1).forEach((sql, i) => {
+    const dropTasks = MIGRATIONS.findIndex((sql) => sql.includes('DROP TABLE IF EXISTS tasks'))
+
+    MIGRATIONS.slice(0, dropTasks).forEach((sql, i) => {
       previous.exec(sql)
       previous
         .prepare('INSERT INTO migrations (version, applied_at) VALUES (?, ?)')
