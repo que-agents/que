@@ -213,7 +213,8 @@ describe('que status', () => {
       needs_input: 1,
       stuck: 0,
       exited: 0,
-      preparing: 0
+      preparing: 0,
+      removing: 0
     })
     expect(status.tray).toBe('● 0 ▸ 1 ✕ 0')
     expect(status.workspaces).toEqual([

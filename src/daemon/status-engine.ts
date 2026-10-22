@@ -261,7 +261,8 @@ const STATUSES: WorkspaceStatus[] = [
   'needs_input',
   'stuck',
   'exited',
-  'preparing'
+  'preparing',
+  'removing'
 ]
 
 /** Workspace counts per status. */

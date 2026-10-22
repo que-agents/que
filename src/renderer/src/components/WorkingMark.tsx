@@ -1,15 +1,19 @@
 import type { ComponentPropsWithoutRef } from 'react'
 
+type Props = Omit<ComponentPropsWithoutRef<'span'>, 'className' | 'children'> & {
+  /** `accent` (the default) while a session works; `neutral` while a workspace is being removed. */
+  tone?: 'accent' | 'neutral'
+}
+
 /**
- * The working mark: four accent dots on a 2×2 grid with a diagonal ripple, CSS only
- * (`.working-mark` in styles.css). The sidebar and the quiet board draw it in place of a
- * status dot while something works. Any other props land on the span.
+ * The working mark: four dots on a 2×2 grid with a diagonal ripple, CSS only
+ * (`.working-mark` in styles.css). The sidebar and the quiet board draw it in the accent in
+ * place of a status dot while something works, and the sidebar and the workspace card draw it
+ * in the neutral tone while a workspace is being removed. Any other props land on the span.
  */
-export default function WorkingMark(
-  props: Omit<ComponentPropsWithoutRef<'span'>, 'className' | 'children'>
-): React.JSX.Element {
+export default function WorkingMark({ tone = 'accent', ...props }: Props): React.JSX.Element {
   return (
-    <span className="working-mark" {...props}>
+    <span className={tone === 'neutral' ? 'working-mark neutral' : 'working-mark'} {...props}>
       <i />
       <i />
       <i />

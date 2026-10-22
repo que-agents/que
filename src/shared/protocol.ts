@@ -14,7 +14,8 @@ import type {
   TicketsSyncState,
   UserConfig,
   Workspace,
-  WorkspaceStatus
+  WorkspaceStatus,
+  RemovalResult
 } from './types'
 
 // ---- method types ---------------------------------------------------------
@@ -582,7 +583,8 @@ export interface Events {
   'workspace.created': Workspace
   /** The row after any commit: status, reason, activity, session, title, branch, pull request. */
   'workspace.updated': Workspace
-  'workspace.removed': { id: string }
+  /** Gone from the list; `failed` lists the removal steps that went wrong, when any did. */
+  'workspace.removed': { id: string; failed?: RemovalResult[] }
   /** Its worktree changed on disk (a write, a commit): the daemon computes nothing until asked. */
   'workspace.changed': { id: string }
   'project.added': Project

@@ -1,6 +1,13 @@
 // Domain types shared by the daemon, CLI, and renderer.
 
-export type WorkspaceStatus = 'preparing' | 'idle' | 'working' | 'needs_input' | 'stuck' | 'exited'
+export type WorkspaceStatus =
+  | 'preparing'
+  | 'idle'
+  | 'working'
+  | 'needs_input'
+  | 'stuck'
+  | 'exited'
+  | 'removing'
 
 /** A git repository registered with que. */
 export interface Project {
@@ -21,6 +28,30 @@ export interface BackgroundTask {
   description: string
   /** When the daemon first saw it (ISO). */
   since: string
+}
+
+/** The steps a removal runs, in this order. */
+export const REMOVAL_STEPS = ['terminals', 'teardown', 'worktree', 'branch'] as const
+
+export type RemovalStep = (typeof REMOVAL_STEPS)[number]
+
+/** A finished removal step: how long it took, and why it failed when it did. */
+export interface RemovalResult {
+  step: RemovalStep
+  ms: number
+  error?: string
+}
+
+/** Where a removal stands: the steps it runs, the one running now, and those done. */
+export interface Removal {
+  /** The steps this removal runs, in order. */
+  plan: RemovalStep[]
+  /** The step running now; null once every step has run. */
+  step: RemovalStep | null
+  /** When the current step started (ISO). */
+  since: string
+  /** The steps finished so far, with their durations and failures. */
+  done: RemovalResult[]
 }
 
 /** A git worktree on its own branch, with its own terminals and status. */
@@ -58,6 +89,8 @@ export interface Workspace {
   seenAt: string | null
   /** Still running after the last turn ended; agent-like kinds keep the status working, shell and monitor do not. */
   backgroundTasks: BackgroundTask[]
+  /** Where its removal stands; present only while it is `removing`. */
+  removal?: Removal
   /** What the work is, in a line (shown instead of the name); absent for a workspace made from a name. */
   title?: string
   /** The description the workspace was made from (written to `.que/brief.md`). */

@@ -382,7 +382,8 @@ describe('summarize and trayTitle', () => {
       needs_input: 1,
       stuck: 0,
       exited: 0,
-      preparing: 1
+      preparing: 1,
+      removing: 0
     })
     expect(trayTitle(summary)).toBe('● 3 ▸ 1 ✕ 0')
   })

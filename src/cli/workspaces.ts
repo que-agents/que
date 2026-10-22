@@ -426,7 +426,7 @@ export function registerWorkspaceCommands(program: Command): void {
 
         if (quiet.inQuietHours) console.log(describeQuietState(quiet))
         console.log(
-          `${trayTitle(summary)}   working ${summary.working} · needs input ${summary.needs_input} · stuck ${summary.stuck} · idle ${summary.idle} · exited ${summary.exited} · preparing ${summary.preparing}`
+          `${trayTitle(summary)}   working ${summary.working} · needs input ${summary.needs_input} · stuck ${summary.stuck} · idle ${summary.idle} · exited ${summary.exited} · preparing ${summary.preparing} · removing ${summary.removing}`
         )
 
         if (list.length === 0) return console.log('no workspaces')
