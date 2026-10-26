@@ -295,7 +295,7 @@ describe('Sidebar', () => {
         name: 'APP-1460 upload resume'
       })
 
-      await window.que.workspace.remove({ id: board.id })
+      await window.que.workspace.remove({ id: board.id, deleteBranch: false })
 
       expect(await screen.findByTestId(`sidebar-workspace-${created.id}-status`)).toHaveAttribute(
         'data-status',

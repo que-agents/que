@@ -42,13 +42,14 @@ export interface RemovalResult {
   error?: string
 }
 
-/** Where a removal stands: the steps it runs, the one running now, and those done. */
+/** A removal step that failed: its result with the reason. */
+export type RemovalFailure = RemovalResult & { error: string }
+
+/** Where a removal stands: the steps it runs, since when the current one runs, and those done. */
 export interface Removal {
   /** The steps this removal runs, in order. */
   plan: RemovalStep[]
-  /** The step running now; null once every step has run. */
-  step: RemovalStep | null
-  /** When the current step started (ISO). */
+  /** When the step running now started (ISO): the removal was marked, or the previous step finished. */
   since: string
   /** The steps finished so far, with their durations and failures. */
   done: RemovalResult[]

@@ -170,10 +170,11 @@ fires arrives at the daemon as JSON on stdin, tagged with the workspace it ran i
 
 Removing a workspace (`workspace.remove`) marks it `removing` and answers at
 once; the removal runs in the background. `Workspace.removal` holds its plan,
-the step running now and since when, and the steps done with their durations
-and failures; it is stored with the row, so every `workspace.updated` carries
-it, and each step's start is announced. The steps, in order: `terminals` kills
-its terminals and a setup still running; `teardown` runs the repo's `teardown`
+the steps done with their durations and failures (the step running now is the
+first one not done), and since when it has run; it is stored with the row, so
+every `workspace.updated` carries it, and each step's result is announced. The
+steps, in order: `terminals` kills its terminals and a setup still running;
+`teardown` runs the repo's `teardown`
 hook when `que.toml` has one and the worktree exists, killed after
 `teardown_timeout_seconds`; `worktree` renames the worktree into
 `<worktree_root>/.trash/<workspace id>` (the same volume, so it is instant),

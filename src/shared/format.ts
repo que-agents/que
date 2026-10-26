@@ -162,3 +162,10 @@ const REMOVAL_STEP_LABELS: Record<RemovalStep, string> = {
 export function removalStepLabel(step: RemovalStep): string {
   return REMOVAL_STEP_LABELS[step]
 }
+
+/** How long a finished removal step took: tenths under ten seconds (`0.1s`, `2.4s`), else `12s`, `1m 05s`. */
+export function formatStepDuration(ms: number): string {
+  const tenths = Math.round(Math.max(0, ms) / 100)
+
+  return tenths < 100 ? `${(tenths / 10).toFixed(1)}s` : formatDuration(ms)
+}

@@ -42,8 +42,9 @@ const num = (p: Params, key: string): number => field(p, key, isPositive, 'a pos
 
 const optString = (p: Params, key: string): string | undefined => opt(p, key, str)
 
-const optBool = (p: Params, key: string): boolean | undefined =>
-  opt(p, key, (q, k) => field(q, k, isBool, 'a boolean'))
+const bool = (p: Params, key: string): boolean => field(p, key, isBool, 'a boolean')
+
+const optBool = (p: Params, key: string): boolean | undefined => opt(p, key, bool)
 
 const optNumber = (p: Params, key: string): number | undefined =>
   opt(p, key, (q, k) => field(q, k, isNumber, 'a number'))
@@ -93,7 +94,7 @@ export const decoders: { [M in MethodName]: (p: Params) => ParamsOf<M> } = {
   }),
   'workspace.list': (p) => ({ projectId: optString(p, 'projectId') }),
   'workspace.get': idOnly,
-  'workspace.remove': (p) => ({ id: str(p, 'id'), deleteBranch: optBool(p, 'deleteBranch') }),
+  'workspace.remove': (p) => ({ id: str(p, 'id'), deleteBranch: bool(p, 'deleteBranch') }),
   'workspace.openTerminal': (p) => ({
     id: str(p, 'id'),
     cols: num(p, 'cols'),
