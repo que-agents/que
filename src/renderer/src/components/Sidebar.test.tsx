@@ -388,7 +388,7 @@ describe('Sidebar', () => {
       fakeBridge.holdRemovals()
       render(<App />)
       await screen.findByTestId(`sidebar-workspace-${retry.id}`)
-      await window.que.workspace.remove({ id: retry.id })
+      await window.que.workspace.remove({ id: retry.id, deleteBranch: false })
 
       await waitFor(() => {
         expect(screen.getByTestId(`sidebar-workspace-${retry.id}-open`)).toBeDisabled()

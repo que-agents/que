@@ -41,7 +41,7 @@ import { buildTree, newlyChanged } from './files'
 import { chime, shouldChime } from './sound'
 import { errorCode, errorMessage } from '../../shared/errors.decode'
 import { removalStepLabel } from '../../shared/format'
-import type { RemovalResult } from '../../shared/types'
+import type { RemovalFailure } from '../../shared/types'
 import { decodeDiffBases, decodeReview, readStored, writeStored } from './persisted.decode'
 
 const DEFAULT_COLS = 80
@@ -1522,12 +1522,8 @@ function mergeById<T extends { id: string; createdAt: string }>(
 }
 
 /** The error line for a removal with failed steps: `Removing <name>: running teardown failed, timed out after 60s`. */
-function removalFailedMessage(name: string, failed: RemovalResult[]): string {
-  const steps = failed.map((f) =>
-    f.error
-      ? `${removalStepLabel(f.step)} failed, ${f.error}`
-      : `${removalStepLabel(f.step)} failed`
-  )
+function removalFailedMessage(name: string, failed: RemovalFailure[]): string {
+  const steps = failed.map((f) => `${removalStepLabel(f.step)} failed, ${f.error}`)
 
   return `Removing ${name}: ${steps.join('; ')}`
 }

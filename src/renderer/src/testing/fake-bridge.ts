@@ -40,8 +40,9 @@ import {
   type WorkspaceCreateParams,
   type WorkspaceRenameParams
 } from '../../../shared/protocol'
+import { removalStep } from '../../../shared/removal'
 import { workspaceSlug } from '../../../shared/slug'
-import type { RemovalResult, RemovalStep } from '../../../shared/types'
+import type { RemovalFailure, RemovalResult, RemovalStep } from '../../../shared/types'
 import { makeQuietState, makeUserConfig } from './fixtures'
 
 export type FakeQueApi = QueApi
@@ -533,7 +534,7 @@ class FakeBridge {
         get: async ({ id }) => ({ ...this.workspace(id) }),
         remove: async ({ id, deleteBranch }) => {
           this.workspace(id)
-          this.startRemoval(id, deleteBranch ?? false)
+          this.startRemoval(id, deleteBranch)
 
           return { ok: true }
         },
@@ -1226,7 +1227,7 @@ class FakeBridge {
       status: 'removing',
       statusReason: null,
       statusAt: at,
-      removal: { plan, step: 'terminals', since: at, done: [] }
+      removal: { plan, since: at, done: [] }
     })
 
     if (this.removalsHeld) return
@@ -1247,29 +1248,26 @@ class FakeBridge {
   advanceRemoval(id: string, opts: { error?: string } = {}): void {
     const ws = this.workspace(id)
     const removal = ws.removal
+    const step = removal ? removalStep(removal) : null
 
-    if (ws.status !== 'removing' || !removal?.step) {
+    if (ws.status !== 'removing' || !removal || !step) {
       throw new Error(`workspace ${id} is not being removed`)
     }
 
-    const finished: RemovalResult = { step: removal.step, ms: 4 }
+    const finished: RemovalResult = { step, ms: 4 }
 
     if (opts.error) finished.error = opts.error
     const done = [...removal.done, finished]
-    const next = removal.plan[removal.plan.indexOf(removal.step) + 1]
 
-    if (next === undefined) {
-      const failed = done.filter((d) => d.error !== undefined)
+    if (done.length === removal.plan.length) {
+      const failed = done.filter((d): d is RemovalFailure => d.error !== undefined)
       this.workspaces.delete(id)
       this.emit('workspace.removed', failed.length > 0 ? { id, failed } : { id })
 
       return
     }
 
-    this.putWorkspace({
-      ...ws,
-      removal: { ...removal, step: next, since: new Date().toISOString(), done }
-    })
+    this.putWorkspace({ ...ws, removal: { ...removal, since: new Date().toISOString(), done } })
   }
 
   private createTerminal(
