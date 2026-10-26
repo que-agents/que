@@ -15,6 +15,7 @@ import {
 } from '../../src/testing/daemon-harness'
 import { readFakeLog } from '../../src/testing/fakes'
 import { pidAlive } from '../../src/shared/process'
+import { removalStep } from '../../src/shared/removal'
 import { addBareOrigin, gitIn, makeTempRepo } from '../../src/testing/temp-repo'
 
 let daemon: TestDaemon
@@ -280,8 +281,10 @@ worktree_include = ["config/local", "missing.json"]
       return ws
     }
 
-    async function removalStep(id: string) {
-      return (await client.request('workspace.get', { id })).removal?.step
+    async function stepOf(id: string) {
+      const { removal } = await client.request('workspace.get', { id })
+
+      return removal && removalStep(removal)
     }
 
     it('returns while the removal runs, reporting each step, then removes the worktree and branch', async () => {
@@ -313,7 +316,7 @@ worktree_include = ["config/local", "missing.json"]
         status: 'removing',
         removal: { plan: ['terminals', 'teardown', 'worktree', 'branch'] }
       })
-      await expect.poll(() => removalStep(ws.id), { timeout: 5_000 }).toBe('teardown')
+      await expect.poll(() => stepOf(ws.id), { timeout: 5_000 }).toBe('teardown')
       expect(killed).toContainEqual({ id: termId })
       await expect.poll(() => pidAlive(term.pid), { timeout: 5_000 }).toBe(false)
 
@@ -322,7 +325,7 @@ worktree_include = ["config/local", "missing.json"]
       await expect.poll(() => removed, { timeout: 10_000 }).toEqual([{ id: ws.id }])
       const rows = updated.filter((u) => u.id === ws.id)
       expect(rows.every((u) => u.status === 'removing')).toBe(true)
-      expect(rows.map((u) => u.removal?.step)).toEqual([
+      expect(rows.map((u) => u.removal && removalStep(u.removal))).toEqual([
         'terminals',
         'teardown',
         'worktree',
@@ -352,13 +355,13 @@ worktree_include = ["config/local", "missing.json"]
       })
     }, 30_000)
 
-    it('keeps the branch without deleteBranch and empties the trash afterwards', async () => {
+    it('keeps the branch when deleteBranch is false and empties the trash afterwards', async () => {
       const repo = makeTempRepo(daemon.home)
       const ws = await createIn(repo, 'app-1472-keep-branch')
       fs.writeFileSync(join(ws.path, 'notes.txt'), 'kept out of git\n')
       const removed = recordEvents(client, 'workspace.removed')
 
-      await client.request('workspace.remove', { id: ws.id })
+      await client.request('workspace.remove', { id: ws.id, deleteBranch: false })
 
       expect((await client.request('workspace.get', { id: ws.id })).removal?.plan).toEqual([
         'terminals',
@@ -409,8 +412,8 @@ worktree_include = ["config/local", "missing.json"]
       const teardown = heldTeardown()
       const repo = makeTempRepo(daemon.home, { queToml: teardown.queToml })
       const ws = await createIn(repo, 'app-1474-late-exit')
-      await client.request('workspace.remove', { id: ws.id })
-      await expect.poll(() => removalStep(ws.id), { timeout: 5_000 }).toBe('teardown')
+      await client.request('workspace.remove', { id: ws.id, deleteBranch: false })
+      await expect.poll(() => stepOf(ws.id), { timeout: 5_000 }).toBe('teardown')
       const exited = recordEvents(client, 'term.exit')
 
       const { id: termId } = await client.request('workspace.openTerminal', {
@@ -422,10 +425,9 @@ worktree_include = ["config/local", "missing.json"]
       await client.request('term.write', { id: termId, data: 'exit\r' })
 
       await expect.poll(() => exited.map((e) => e.id), { timeout: 10_000 }).toContain(termId)
-      expect(await client.request('workspace.get', { id: ws.id })).toMatchObject({
-        status: 'removing',
-        removal: { step: 'teardown' }
-      })
+      const during = await client.request('workspace.get', { id: ws.id })
+      expect(during.status).toBe('removing')
+      expect(during.removal && removalStep(during.removal)).toBe('teardown')
 
       const removed = recordEvents(client, 'workspace.removed')
       fs.rmSync(teardown.hold)
@@ -437,7 +439,7 @@ worktree_include = ["config/local", "missing.json"]
       const repo = makeTempRepo(daemon.home, { queToml: teardown.queToml })
       const ws = await createIn(repo, 'app-1475-restart')
       await client.request('workspace.remove', { id: ws.id, deleteBranch: true })
-      await expect.poll(() => removalStep(ws.id), { timeout: 5_000 }).toBe('teardown')
+      await expect.poll(() => stepOf(ws.id), { timeout: 5_000 }).toBe('teardown')
 
       await daemon.close({ keepHome: true })
       fs.rmSync(teardown.hold)
