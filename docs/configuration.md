@@ -21,6 +21,7 @@ _Generated:_
 # these are the defaults.
 worktree_root = "~/.que/worktrees"
 stall_timeout_minutes = 5
+teardown_timeout_seconds = 60
 status_poll_seconds = 10
 pr_poll_seconds = 60
 # default_permission_mode = "acceptEdits"   # unset: que.toml or Claude Code decides
@@ -60,6 +61,7 @@ start_prompt = "Read .que/ticket.md, the ticket this workspace is for. Restate t
 | ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `worktree_root`                       | Where workspaces (git worktrees) are created: `<root>/<project>/<workspace>`.                                                                                                                                                                                                |
 | `stall_timeout_minutes`               | A working session with no sign of life for this long is marked stuck.                                                                                                                                                                                                        |
+| `teardown_timeout_seconds`            | How long a repo's `teardown` hook may run when a workspace is removed; it is killed after this, the removal records it as timed out and carries on. At least 1.                                                                                                              |
 | `status_poll_seconds`                 | How often the daemon cross-checks live sessions with `claude agents --json`.                                                                                                                                                                                                 |
 | `pr_poll_seconds`                     | How often the daemon refreshes each workspace's pull request from GitHub (merged and closed ones every fifth time).                                                                                                                                                          |
 | `default_permission_mode`             | Permission mode for workspace sessions when a repo's `que.toml` sets none.                                                                                                                                                                                                   |

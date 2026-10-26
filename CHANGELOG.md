@@ -8,6 +8,7 @@ All notable changes to que are recorded here. The format follows
 
 ### Added
 
+- `teardown_timeout_seconds` (default 60): how long a repo's teardown hook may run when a workspace is removed before it is killed and recorded as timed out.
 - While a workspace is being removed, its card lists the removal's steps under `[ REMOVING ]`: each finished step with how long it took or why it failed, the one running now with a clock that ticks each second, and those still to come.
 - The daemon watches the worktree of every workspace a window shows (`workspace.watch`, `workspace.unwatch`) or has an attached terminal in, and sends `workspace.changed` when its files, index or commits change, at most once per 300 ms.
 - `workspace.files` lists a worktree's tracked and untracked files, `workspace.readFile` reads one of them (text capped, binary detected, never outside the worktree), and `que ws files <workspace>` prints the listing; `--json`.
@@ -44,6 +45,9 @@ All notable changes to que are recorded here. The format follows
 
 ### Changed
 
+- Removing a workspace answers at once and runs in the background, step by step: killing terminals, running teardown, removing the worktree (moved to a trash folder and deleted afterwards, so a large worktree no longer holds it up), deleting the branch. The workspace shows `removing` with the step it is on, a failed step no longer stops the rest, `workspace.removed` lists the steps that failed, and a removal cut short by a restart finishes when the daemon starts again.
+- `que ws remove` deletes the branch by default (`--keep-branch` keeps it; `--delete-branch` is gone), prints each step as it finishes, and exits 1 when one failed.
+- Removing a workspace no longer waits on its teardown: the dialog closes at once (deleting the branch is now the default), the view moves off it, and its row stays with a grey moving mark and the step it is on, `running teardown 12s`, until it is gone. A step that fails is named on the error line, `Removing breezy-trusty-mole: running teardown failed, timed out after 60s`.
 - Changes and Files follow the worktree without a click.
 - The top bar has one review pane toggle, an icon at its right end, in place of its `Changes`, `Pull request`, `Open in editor` and `Create draft PR` buttons; `⌘B` toggles the pane too.
 - The review pane's Changes header is a single line, `Commits n vs base`, with refresh and open-in-editor icons at its right end; the full counts are in its tooltip.

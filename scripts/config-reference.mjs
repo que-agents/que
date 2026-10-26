@@ -41,6 +41,7 @@ const userDefaults = `# ~/.config/que/config.toml (or $QUE_CONFIG). Every key is
 # these are the defaults.
 worktree_root = ${toml(d.worktreeRoot.replace(HOME, '~/.que'))}
 stall_timeout_minutes = ${d.stallTimeoutMinutes}
+teardown_timeout_seconds = ${d.teardownTimeoutSeconds}
 status_poll_seconds = ${d.statusPollSeconds}
 pr_poll_seconds = ${d.prPollSeconds}
 # default_permission_mode = "acceptEdits"   # unset: que.toml or Claude Code decides

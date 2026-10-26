@@ -1,8 +1,8 @@
 // How a sidebar row reads at rest and under the pointer: the dot (or the working
-// mark), its tone, the weight of the name, the background mark, and the status word. Pure rules over the
+// mark), its tone, the weight of the name, the background mark or the removal step, and the status word. Pure rules over the
 // workspace; Sidebar.tsx draws them. docs/design.md "Sidebar".
 import type { Workspace } from '../../preload/index.d'
-import { formatAge } from '../../shared/format'
+import { formatAge, removalStepLabel } from '../../shared/format'
 import { statusBadge, type Tone } from './format'
 
 /** The name's text colour: `--fg` when it needs you, `--fg-secondary` while working, else `--fg-faint`. */
@@ -15,6 +15,11 @@ export interface RowTone {
   tone: Tone
   /** The working mark (four rippling accent dots) instead of the dot. */
   working: boolean
+  /**
+   * Being removed: the working mark in the neutral tone instead of the dot, the step word
+   * always shown at the row's right end, and nothing to open or act on.
+   */
+  removing: boolean
   /** Finished since the app last had it selected. */
   unseen: boolean
   weight: Weight
@@ -56,18 +61,22 @@ const URGENT: ReadonlySet<string> = new Set(['working', 'needs_input', 'stuck'])
  * finished unseen. The selected row is looked at, so never unseen, and always reads `--fg`.
  */
 export function rowTone(ws: Workspace, selected = false): RowTone {
-  const unseen = !selected && !URGENT.has(ws.status) && unseenDone(ws)
+  const removing = ws.status === 'removing'
+  const unseen = !selected && !removing && !URGENT.has(ws.status) && unseenDone(ws)
   const working = ws.status === 'working'
 
   return {
     status: ws.status,
     tone: unseen ? 'good' : statusBadge(ws.status).tone,
     working,
+    removing,
     unseen,
-    weight: nameWeight(
-      selected || unseen || ws.status === 'needs_input' || ws.status === 'stuck',
-      working
-    ),
+    weight: removing
+      ? 'faint'
+      : nameWeight(
+          selected || unseen || ws.status === 'needs_input' || ws.status === 'stuck',
+          working
+        ),
     background: backgroundKinds(ws)
   }
 }
@@ -84,7 +93,21 @@ export interface HoverWord {
   tone: Tone | null
 }
 
+/**
+ * A removing workspace's step and how long it has run: `running teardown 12s`; `removing` once
+ * every step has run (or before the daemon says which).
+ */
+export function removalWord(ws: Pick<Workspace, 'removal'>, now: number): string {
+  const step = ws.removal?.step
+
+  if (!step) return 'removing'
+
+  return `${removalStepLabel(step)} ${formatAge(ws.removal?.since ?? null, now)}`
+}
+
 export function hoverWord(ws: Workspace, look: RowTone, now: number): HoverWord {
+  if (look.removing) return { word: removalWord(ws, now), tone: null }
+
   const toned = look.tone === 'attention' || look.tone === 'bad' ? look.tone : null
 
   if (look.unseen) return { word: `done · ${formatAge(ws.finishedAt, now, ' ago')}`, tone: null }

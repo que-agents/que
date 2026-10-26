@@ -7,7 +7,8 @@ import {
   formatSince,
   formatSpan,
   hhmm,
-  plural
+  plural,
+  removalStepLabel
 } from './format'
 
 describe('formatCost', () => {
@@ -104,5 +105,16 @@ describe('plural', () => {
     [2, '2 terminals']
   ])('counts %i', (n, text) => {
     expect(plural(n, 'terminal')).toBe(text)
+  })
+})
+
+describe('removalStepLabel', () => {
+  it.each([
+    ['terminals', 'killing terminals'],
+    ['teardown', 'running teardown'],
+    ['worktree', 'removing worktree'],
+    ['branch', 'deleting branch']
+  ] as const)('says what the %s step is doing', (step, label) => {
+    expect(removalStepLabel(step)).toBe(label)
   })
 })

@@ -8,7 +8,7 @@ import {
   type StatementResultingChanges,
   type StatementSync
 } from 'node:sqlite'
-import { objects, str } from '../shared/json.decode'
+import { isObj, num, objects, str, strings } from '../shared/json.decode'
 import type {
   BackgroundTask,
   JsonValue,
@@ -16,12 +16,15 @@ import type {
   PullRequest,
   QuietKind,
   QuietUnlock,
+  Removal,
+  RemovalResult,
+  RemovalStep,
   Ticket,
   TitleSource,
   Workspace,
   WorkspaceStatus
 } from '../shared/types'
-import { TITLE_SOURCES } from '../shared/types'
+import { REMOVAL_STEPS, TITLE_SOURCES } from '../shared/types'
 import { currentPullRequest } from './pr-state'
 
 const HOOK_EVENTS_PER_WORKSPACE = 500
@@ -146,7 +149,8 @@ export const MIGRATIONS: readonly string[] = [
    );
    ALTER TABLE quiet_unlocks ADD COLUMN kind TEXT NOT NULL DEFAULT 'scheduled';`,
   `DROP TABLE IF EXISTS tasks;
-   DELETE FROM kv WHERE key IN ('queue.open', 'queue.opened_at', 'concurrency');`
+   DELETE FROM kv WHERE key IN ('queue.open', 'queue.opened_at', 'concurrency');`,
+  `ALTER TABLE workspaces ADD COLUMN removal_json TEXT;`
 ]
 
 const STATUS_LOG_RETENTION_MS = 30 * 24 * 3_600_000
@@ -258,6 +262,7 @@ interface WorkspaceRow {
   finished_at: string | null
   seen_at: string | null
   background_json: string | null
+  removal_json: string | null
 }
 
 export interface HookEventRow {
@@ -329,6 +334,31 @@ function readBackgroundTasks(json: string | null): BackgroundTask[] {
   })
 }
 
+const isRemovalStep = (v: unknown): v is RemovalStep =>
+  (REMOVAL_STEPS as readonly unknown[]).includes(v)
+
+/** The stored removal (removal_json); undefined when missing or not one. */
+function readRemoval(json: string | null): Removal | undefined {
+  const v = parseStored(json)
+
+  if (!isObj(v)) return undefined
+  const since = str(v.since)
+  const step = v.step === null ? null : isRemovalStep(v.step) ? v.step : undefined
+
+  if (!since || step === undefined) return undefined
+
+  const done = objects(v.done).flatMap((d): RemovalResult[] => {
+    const ms = num(d.ms)
+    const error = str(d.error)
+
+    if (!isRemovalStep(d.step) || ms === undefined) return []
+
+    return [error === undefined ? { step: d.step, ms } : { step: d.step, ms, error }]
+  })
+
+  return { plan: strings(v.plan).filter(isRemovalStep), step, since, done }
+}
+
 function toWorkspace(r: WorkspaceRow): Workspace {
   const prs = readPrList(r.prs_json ?? null) ?? readLegacyPrs(r.pr_json)
 
@@ -357,6 +387,10 @@ function toWorkspace(r: WorkspaceRow): Workspace {
   if (r.title) ws.title = r.title
 
   if (r.brief) ws.brief = r.brief
+
+  const removal = readRemoval(r.removal_json ?? null)
+
+  if (removal) ws.removal = removal
 
   const source = titleSourceOf(r.title_source)
 
@@ -503,8 +537,8 @@ export class Store {
     this.run(
       `INSERT INTO workspaces (id, project_id, name, branch, path, base_ref, status, status_reason,
            status_at, last_activity_at, session_id, created_at, archived_at, pr_url, pr_json,
-           prs_json, title, brief, title_source, finished_at, seen_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           prs_json, title, brief, title_source, finished_at, seen_at, removal_json)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       w.id,
       w.projectId,
       w.name,
@@ -526,7 +560,8 @@ export class Store {
       w.brief ?? null,
       w.titleSource ?? null,
       w.finishedAt,
-      w.seenAt
+      w.seenAt,
+      w.removal ? JSON.stringify(w.removal) : null
     )
   }
 
@@ -599,6 +634,15 @@ export class Store {
   /** Stores the workspace's pull requests; the current one (Workspace.pr) is derived from them. */
   setWorkspacePrs(id: string, prs: PullRequest[]): void {
     this.run('UPDATE workspaces SET prs_json = ? WHERE id = ?', JSON.stringify(prs), id)
+  }
+
+  /** Where the workspace's removal stands; null clears it. */
+  setWorkspaceRemoval(id: string, removal: Removal | null): void {
+    this.run(
+      'UPDATE workspaces SET removal_json = ? WHERE id = ?',
+      removal ? JSON.stringify(removal) : null,
+      id
+    )
   }
 
   archiveWorkspace(id: string, at: string): void {

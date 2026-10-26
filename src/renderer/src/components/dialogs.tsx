@@ -387,7 +387,8 @@ export function RemoveWorkspaceDialog({
 }): React.JSX.Element {
   const store = useStore()
   const { connected } = useQue()
-  const [deleteBranch, setDeleteBranch] = useState(false)
+  // A workspace's branch rarely outlives it: deleting it is the default.
+  const [deleteBranch, setDeleteBranch] = useState(true)
   const { busy, error, run } = useSubmit()
   const id = 'dialog-remove-workspace'
 

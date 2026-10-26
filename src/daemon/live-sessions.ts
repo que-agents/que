@@ -96,6 +96,7 @@ export function planRestore(
 
     if (!ws) why = 'the workspace is gone'
     else if (ws.archivedAt) why = 'the workspace is archived'
+    else if (ws.status === 'removing') why = 'the workspace is being removed'
     else if (taken.has(entry.sessionId)) why = 'the session is already live'
 
     if (why) {

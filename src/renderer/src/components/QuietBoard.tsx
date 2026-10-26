@@ -52,7 +52,8 @@ export default function QuietBoard(): React.JSX.Element {
   const windowEnd = quiet?.windowEnd ? Date.parse(quiet.windowEnd) : null
   const until = windowEnd === null ? '--:--' : hhmm(windowEnd)
   const projectName = (id: string): string => projects.find((p) => p.id === id)?.name ?? ''
-  const ws = Object.values(workspaces)
+  // A workspace being removed is on its way out: never on the board, nor in its counts.
+  const ws = Object.values(workspaces).filter((w) => w.status !== 'removing')
   const hasTerminal = (w: Workspace): boolean => terminals.some((t) => t.key === w.id && t.alive)
 
   const counts = boardCountItems(

@@ -281,7 +281,7 @@ describe('worktree watcher', () => {
 
       await daemon.client.request('workspace.remove', { id: ws.id })
 
-      expect(daemon.server.watcher.watching()).toEqual([])
+      await expect.poll(() => daemon.server.watcher.watching(), { timeout: 10_000 }).toEqual([])
     }, 30_000)
   })
 })
