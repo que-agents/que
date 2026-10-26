@@ -101,7 +101,6 @@ describe('rowTone', () => {
       backgroundTasks: [devServer],
       removal: {
         plan: ['terminals', 'teardown', 'worktree'],
-        step: 'teardown',
         since: new Date(NOW - 12_000).toISOString(),
         done: [{ step: 'terminals', ms: 40 }]
       }
@@ -206,14 +205,16 @@ describe('hoverWord', () => {
 })
 
 describe('removalWord', () => {
+  const plan: RemovalStep[] = ['terminals', 'teardown', 'worktree', 'branch']
+
+  // Running `step` (every step done when null): the steps before it are done.
   const at = (step: RemovalStep | null, secondsAgo: number) =>
     makeWorkspace({
       status: 'removing',
       removal: {
-        plan: ['terminals', 'teardown', 'worktree', 'branch'],
-        step,
+        plan,
         since: new Date(NOW - secondsAgo * 1000).toISOString(),
-        done: []
+        done: (step ? plan.slice(0, plan.indexOf(step)) : plan).map((s) => ({ step: s, ms: 40 }))
       }
     })
 

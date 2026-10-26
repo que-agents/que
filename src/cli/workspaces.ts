@@ -4,7 +4,13 @@ import { join, resolve } from 'node:path'
 import type { Command } from 'commander'
 import { summarize, trayTitle } from '../daemon/status-engine'
 import type { DaemonClient } from '../shared/client'
-import { formatAge, formatDuration, removalStepLabel, spanMs } from '../shared/format'
+import {
+  formatAge,
+  formatDuration,
+  formatStepDuration,
+  removalStepLabel,
+  spanMs
+} from '../shared/format'
 import { quePaths } from '../shared/paths'
 import type { DiffFile, WorkspaceDiff, WorkspaceFiles } from '../shared/protocol'
 import type {
@@ -174,8 +180,8 @@ async function waitForSetup(c: DaemonClient, ws: Workspace, seen: Workspace[]): 
 }
 
 /** A finished removal step as `que ws remove` prints it: `killing terminals 0.1s`. */
-export function formatRemovalStep(r: RemovalResult): string {
-  const line = `${removalStepLabel(r.step)} ${(r.ms / 1000).toFixed(1)}s`
+function formatRemovalStep(r: RemovalResult): string {
+  const line = `${removalStepLabel(r.step)} ${formatStepDuration(r.ms)}`
 
   return r.error ? `${line}: ${r.error}` : line
 }
@@ -195,7 +201,6 @@ async function removeWorkspace(
   const print = (done: RemovalResult[]): void => {
     for (const r of done.slice(printed)) {
       if (r.error) {
-        failed = true
         process.stderr.write(`que: ${formatRemovalStep(r)}\n`)
       } else {
         console.log(formatRemovalStep(r))

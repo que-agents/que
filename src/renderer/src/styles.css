@@ -475,10 +475,6 @@ h2 {
  * pointer through to the row, so the row still reads as hovered and its card opens. */
 .sidebar .step-word {
   flex: none;
-  font: 11px var(--mono);
-  color: var(--fg-faint);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
 }
 
 .sidebar .row-button:disabled {
@@ -524,7 +520,8 @@ h2 {
   opacity: 1;
 }
 
-.reveal .word {
+.reveal .word,
+.sidebar .step-word {
   font: 11px var(--mono);
   color: var(--fg-faint);
   font-variant-numeric: tabular-nums;

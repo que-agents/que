@@ -477,8 +477,8 @@ export default function Sidebar(): React.JSX.Element {
               {open && (
                 <ul>
                   {list.map((w, i) => {
-                    const workspaceMenu = menuFor('workspace', w.id)
                     const look = looks[i]
+                    const workspaceMenu = look.removing ? null : menuFor('workspace', w.id)
                     const word = hoverWord(w, look, now)
 
                     return (
@@ -549,7 +549,7 @@ export default function Sidebar(): React.JSX.Element {
                         {popout.open?.id === w.id && (
                           <WorkspacePopout ws={w} row={popout.open.row} onClose={popout.close} />
                         )}
-                        {workspaceMenu && !look.removing && (
+                        {workspaceMenu && (
                           <Menu
                             label={`Actions for ${w.title ?? w.name}`}
                             testId={`sidebar-workspace-${w.id}-menu`}

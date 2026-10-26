@@ -343,9 +343,8 @@ function readRemoval(json: string | null): Removal | undefined {
 
   if (!isObj(v)) return undefined
   const since = str(v.since)
-  const step = v.step === null ? null : isRemovalStep(v.step) ? v.step : undefined
 
-  if (!since || step === undefined) return undefined
+  if (!since) return undefined
 
   const done = objects(v.done).flatMap((d): RemovalResult[] => {
     const ms = num(d.ms)
@@ -356,7 +355,7 @@ function readRemoval(json: string | null): Removal | undefined {
     return [error === undefined ? { step: d.step, ms } : { step: d.step, ms, error }]
   })
 
-  return { plan: strings(v.plan).filter(isRemovalStep), step, since, done }
+  return { plan: strings(v.plan).filter(isRemovalStep), since, done }
 }
 
 function toWorkspace(r: WorkspaceRow): Workspace {

@@ -310,7 +310,6 @@ describe('QuietBoard', () => {
         status: 'removing',
         removal: {
           plan: ['terminals', 'teardown', 'worktree'],
-          step: 'terminals',
           since: minutesAgo(now, 0),
           done: []
         }

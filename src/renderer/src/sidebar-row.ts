@@ -3,6 +3,7 @@
 // workspace; Sidebar.tsx draws them. docs/design.md "Sidebar".
 import type { Workspace } from '../../preload/index.d'
 import { formatAge, removalStepLabel } from '../../shared/format'
+import { removalStep } from '../../shared/removal'
 import { statusBadge, type Tone } from './format'
 
 /** The name's text colour: `--fg` when it needs you, `--fg-secondary` while working, else `--fg-faint`. */
@@ -98,7 +99,7 @@ export interface HoverWord {
  * every step has run (or before the daemon says which).
  */
 export function removalWord(ws: Pick<Workspace, 'removal'>, now: number): string {
-  const step = ws.removal?.step
+  const step = ws.removal ? removalStep(ws.removal) : null
 
   if (!step) return 'removing'
 
