@@ -1,12 +1,17 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { PullRequest, Workspace } from '../../../preload/index.d'
-import { formatAge, formatSince, removalStepLabel } from '../../../shared/format'
+import {
+  formatAge,
+  formatSince,
+  formatStepDuration,
+  removalStepLabel
+} from '../../../shared/format'
 import type { Removal } from '../../../shared/types'
 import { prBadge, statusBadge } from '../format'
 import { useStore } from '../store'
 import { NOW_SECONDS_INTERVAL_MS, useNow } from '../useNow'
 import { useDismiss } from '../useDismiss'
-import { firstFailingCheck, formatStepDuration, removalLines, tildePath } from '../workspace-popout'
+import { firstFailingCheck, removalLines, tildePath } from '../workspace-popout'
 import { CopyIcon, EditorIcon, ExternalLinkIcon } from './icons'
 import WorkingMark from './WorkingMark'
 
@@ -340,7 +345,7 @@ export default function WorkspacePopout({
           </ul>
         </>
       )}
-      {ws.status === 'removing' && ws.removal && (
+      {ws.removal && (
         <>
           <span className="label">Removing</span>
           <RemovalSteps id={id} removal={ws.removal} now={now} />

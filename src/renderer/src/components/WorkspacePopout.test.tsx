@@ -87,7 +87,6 @@ const leaving = makeWorkspace({
   statusAt: new Date(2026, 9, 17, 16, 0).toISOString(),
   removal: {
     plan: ['terminals', 'teardown', 'worktree', 'branch'],
-    step: 'worktree',
     since: new Date(NOW - 12_000).toISOString(),
     done: [
       { step: 'terminals', ms: 100 },
