@@ -128,10 +128,12 @@ describe('planRestore', () => {
   it('resumes sessions of live workspaces, once each, and skips the rest with a reason', () => {
     const kept = makeWorkspace()
     const archived = makeWorkspace({ archivedAt: '2026-10-14T08:00:00.000Z' })
+    const removing = makeWorkspace({ status: 'removing' })
 
     const books = new Map<string, Workspace>([
       [kept.id, kept],
-      [archived.id, archived]
+      [archived.id, archived],
+      [removing.id, removing]
     ])
 
     const plan = planRestore(
@@ -139,6 +141,7 @@ describe('planRestore', () => {
         entry(kept.id, SESSION),
         entry(kept.id, SESSION),
         entry(archived.id, 'c4b8e1f7-2d6a-4c9e-a3b5-8e1f7d2c6a94'),
+        entry(removing.id, 'f1a6d3b9-5c2e-4f7a-8b1d-9e4c6a2f7d58'),
         entry('ws_01hzxgone0000', 'd9a2f6c3-7e1b-4d8a-b5c2-3f9e6a1d8b47'),
         entry(kept.id, 'e2c7a9f4-1b8d-4e6c-9a3f-5d2b8e7c1a69')
       ],
@@ -150,6 +153,7 @@ describe('planRestore', () => {
     expect(plan.skip.map((s) => s.why)).toEqual([
       'the session is already live',
       'the workspace is archived',
+      'the workspace is being removed',
       'the workspace is gone',
       'the session is already live'
     ])

@@ -7,6 +7,7 @@ export function configDefaults(worktreeRoot: string): UserConfig {
   return {
     worktreeRoot,
     stallTimeoutMinutes: 5,
+    teardownTimeoutSeconds: 60,
     statusPollSeconds: 10,
     prPollSeconds: 60,
     repos: {},

@@ -96,6 +96,7 @@ it and the daemon reloads at once. Every key, with its default
 # these are the defaults.
 worktree_root = "~/.que/worktrees"
 stall_timeout_minutes = 5
+teardown_timeout_seconds = 60
 status_poll_seconds = 10
 pr_poll_seconds = 60
 # default_permission_mode = "acceptEdits"   # unset: que.toml or Claude Code decides
@@ -170,7 +171,7 @@ Generated from `que --help`; options and arguments are in [docs/cli.md](docs/cli
 | `que project list [options]`                | list projects                                                                                                                                                                              |
 | `que work [options] [brief]`                | create a workspace (git worktree) from a brief and print its path; the first line of the brief is its title, and its branch and folder get a random three-word name unless --name is given |
 | `que ws list [options]`                     | list workspaces                                                                                                                                                                            |
-| `que ws remove [options] <workspace>`       | remove a workspace: kill its terminals, run teardown, remove the worktree                                                                                                                  |
+| `que ws remove [options] <workspace>`       | remove a workspace: kill its terminals, run teardown, remove the worktree and delete its branch                                                                                            |
 | `que ws diff [options] <workspace>`         | what a workspace changed against its base, committed and uncommitted, with its commits                                                                                                     |
 | `que ws files [options] <workspace>`        | every file of a workspace's worktree, tracked and untracked, never ignored                                                                                                                 |
 | `que ws pr [options] <workspace>`           | a workspace's pull request: its checks and its conversation                                                                                                                                |
