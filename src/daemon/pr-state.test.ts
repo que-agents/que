@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
+import type { PrThreadEntry } from '../shared/types'
 import {
   checkRunsOf,
+  commentCounts,
   currentPullRequest,
   parsePullRequest,
   pullRequestList,
@@ -34,7 +36,9 @@ describe('parsePullRequest', () => {
       deletions: null,
       base: '',
       head: '',
-      checkedAt: AT
+      checkedAt: AT,
+      comments: null,
+      commentedAt: null
     })
   })
 
@@ -252,6 +256,13 @@ describe('samePullRequest', () => {
     expect(samePullRequest(a, parse({ state: 'OPEN', additions: 3, deletions: 0 }))).toBe(false)
   })
 
+  it('tells pull requests apart by their comment counts', () => {
+    const counted = a && { ...a, comments: 3, commentedAt: '2026-10-14T03:20:00Z' }
+
+    expect(samePullRequest(a, counted)).toBe(false)
+    expect(samePullRequest(counted, counted && { ...counted, commentedAt: 'later' })).toBe(false)
+  })
+
   it('tells pull requests apart by their check runs', () => {
     const pending = parse({
       state: 'OPEN',
@@ -279,6 +290,44 @@ describe('samePullRequest', () => {
     expect(samePullRequest(null, null)).toBe(true)
     expect(samePullRequest(null, a)).toBe(false)
     expect(samePullRequest(a, null)).toBe(false)
+  })
+})
+
+describe('commentCounts', () => {
+  const entry = (id: string, at: string): PrThreadEntry => ({
+    id,
+    kind: 'comment',
+    author: 'mara',
+    body: 'Can we cap the retries?',
+    at,
+    url: null,
+    state: null,
+    path: null,
+    line: null,
+    hunk: null
+  })
+
+  const thread = (entries: PrThreadEntry[]) => ({
+    workspaceId: 'ws_01hzx3k9c2qf',
+    number: 7,
+    entries,
+    fetchedAt: AT
+  })
+
+  it('counts the entries and keeps the newest time, whatever their order', () => {
+    expect(
+      commentCounts(
+        thread([
+          entry('c1', '2026-10-14T03:00:00Z'),
+          entry('c3', '2026-10-14T03:20:00Z'),
+          entry('c2', '2026-10-14T03:10:00Z')
+        ])
+      )
+    ).toEqual({ comments: 3, commentedAt: '2026-10-14T03:20:00Z' })
+  })
+
+  it('is zero with no time for an empty conversation', () => {
+    expect(commentCounts(thread([]))).toEqual({ comments: 0, commentedAt: null })
   })
 })
 

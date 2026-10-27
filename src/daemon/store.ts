@@ -291,8 +291,8 @@ function toProject(r: ProjectRow): Project {
 }
 
 /**
- * A stored pull request; one stored before line counts were kept reads them as null, one
- * stored before its branches were kept reads them as empty.
+ * A stored pull request; one stored before line or comment counts were kept reads them as
+ * null, one stored before its branches were kept reads them as empty.
  */
 function storedPr(v: unknown): PullRequest | null {
   return v && typeof v === 'object' && !Array.isArray(v)
@@ -301,7 +301,9 @@ function storedPr(v: unknown): PullRequest | null {
         additions: (v as PullRequest).additions ?? null,
         deletions: (v as PullRequest).deletions ?? null,
         base: (v as PullRequest).base ?? '',
-        head: (v as PullRequest).head ?? ''
+        head: (v as PullRequest).head ?? '',
+        comments: (v as PullRequest).comments ?? null,
+        commentedAt: (v as PullRequest).commentedAt ?? null
       }
     : null
 }

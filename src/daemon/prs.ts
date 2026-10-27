@@ -5,7 +5,10 @@
 // on those branches. One already stored is kept when its branch moves on. Stores
 // what changed and emits workspace.updated.
 // Also answers workspace.prThread: each pull request's conversation is fetched
-// on demand and cached until the tracker sees its updatedAt move.
+// on demand and cached until the tracker sees its updatedAt move. After a check,
+// the open and draft pull requests whose conversation is not cached for their
+// updatedAt are fetched in the background (a few at a time), so each pull
+// request carries its comment count and newest comment time.
 import type { UserConfig } from '../shared/config'
 import { firstLine, run } from '../shared/exec'
 import { ErrorCodes, type HookEvent, type WorkspaceCreatePrResult } from '../shared/protocol'
@@ -14,6 +17,7 @@ import { conflict, ghFailed, notFound, RpcError } from './errors'
 import { withBranch } from './branch-history'
 import { isProtectedBranch, openDraftPr } from './draft-pr'
 import {
+  commentCounts,
   currentPullRequest,
   isSettled,
   parsePullRequest,
@@ -48,6 +52,9 @@ const LIST_LIMIT = 100
 
 /** A merged or closed pull request is only re-checked on every Nth tick. */
 const SETTLED_EVERY = 5
+
+/** At most this many conversations are fetched in the background at once. */
+const PREFETCH_LIMIT = 3
 
 export interface PrServiceOptions {
   store: Store
@@ -150,6 +157,10 @@ export class PrService {
   private threadFetches: ByWorkspace<Promise<PrThread>> = new Map()
   /** Each project's origin repository by project path, looked up once (until a lookup fails). */
   private origins = new Map<string, Promise<Repo | null>>()
+  /** Conversations waiting to be fetched in the background, and the same as `<workspace id>:<number>`. */
+  private prefetchQueue: Array<{ id: string; number: number }> = []
+  private prefetchQueued = new Set<string>()
+  private prefetching = 0
 
   private readonly poller = new Poller({
     intervalMs: () => Math.max(100, this.opts.config().prPollSeconds * 1000),
@@ -240,6 +251,68 @@ export class PrService {
     this.threadFetches.delete(id)
   }
 
+  /**
+   * Queues the conversations of a workspace's open and draft pull requests that are not cached
+   * for their updatedAt, and starts fetching them a few at a time. A failure is left for the
+   * next check.
+   */
+  private prefetch(id: string, prs: PullRequest[]): void {
+    const cached = this.threads.get(id)
+
+    for (const pr of prs) {
+      const key = `${id}:${pr.number}`
+
+      if (isSettled(pr) || this.prefetchQueued.has(key)) continue
+
+      if (cached?.get(pr.number)?.forUpdatedAt === (pr.updatedAt ?? null)) continue
+      this.prefetchQueued.add(key)
+      this.prefetchQueue.push({ id, number: pr.number })
+    }
+
+    this.drainPrefetch()
+  }
+
+  private drainPrefetch(): void {
+    while (this.prefetching < PREFETCH_LIMIT && !this.stopped) {
+      const next = this.prefetchQueue.shift()
+
+      if (!next) return
+      this.prefetching++
+      void this.poller.track(
+        this.thread(next.id, next.number)
+          .catch(() => null)
+          .finally(() => {
+            this.prefetching--
+            this.prefetchQueued.delete(`${next.id}:${next.number}`)
+            this.drainPrefetch()
+          })
+      )
+    }
+  }
+
+  /** The pull request with the comment counts of its cached conversation, else as `stored` had them. */
+  private withCounts(id: string, pr: PullRequest, stored: PullRequest[]): PullRequest {
+    const cached = this.threads.get(id)?.get(pr.number)
+
+    if (cached) return { ...pr, ...commentCounts(cached.thread) }
+    const old = stored.find((p) => p.number === pr.number)
+
+    return old ? { ...pr, comments: old.comments, commentedAt: old.commentedAt } : pr
+  }
+
+  /** Stores and announces a freshly fetched conversation's counts on its pull request. */
+  private storeCounts(id: string, thread: PrThread): void {
+    const ws = this.opts.store.getWorkspace(id)
+
+    if (!ws || ws.archivedAt) return
+    const counts = commentCounts(thread)
+    const prs = ws.prs.map((p) => (p.number === thread.number ? { ...p, ...counts } : p))
+
+    if (samePullRequests(ws.prs, prs)) return
+    this.opts.store.setWorkspacePrs(id, prs)
+    this.opts.bus.emit('workspace.updated', { ...ws, pr: currentPullRequest(prs), prs })
+  }
+
   /** Drops the cached conversations of a workspace's pull requests not in `keep`. */
   private prune(id: string, keep: PullRequest[]): void {
     const cached = this.threads.get(id)
@@ -276,6 +349,7 @@ export class PrService {
     )
 
     inner(this.threads, ws.id).set(pr.number, { thread, forUpdatedAt: pr.updatedAt ?? null })
+    this.storeCounts(ws.id, thread)
 
     return thread
   }
@@ -458,13 +532,20 @@ export class PrService {
     const current = this.opts.store.getWorkspace(ws.id)
 
     if (!current || current.archivedAt) return
-    const prs = pullRequestList([...onBranch, ...extra.prs], current.prs)
-    const next = currentPullRequest(prs)
+
+    const prs = pullRequestList([...onBranch, ...extra.prs], current.prs).map((pr) =>
+      this.withCounts(ws.id, pr, current.prs)
+    )
+
     this.prune(ws.id, prs)
 
-    if (samePullRequests(current.prs, prs)) return
-    this.opts.store.setWorkspacePrs(ws.id, prs)
-    this.opts.bus.emit('workspace.updated', { ...current, pr: next, prs })
+    if (!samePullRequests(current.prs, prs)) {
+      this.opts.store.setWorkspacePrs(ws.id, prs)
+      this.opts.bus.emit('workspace.updated', { ...current, pr: currentPullRequest(prs), prs })
+    }
+
+    // After storing, so each fetch sees the updatedAt it caches the conversation for.
+    this.prefetch(ws.id, prs)
   }
 
   /**

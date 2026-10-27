@@ -50,7 +50,12 @@ const prOf = async (id: string) => (await client.request('workspace.get', { id }
 const prNumbersOf = async (id: string) =>
   (await client.request('workspace.get', { id })).prs.map((p) => p.number)
 
-const prViews = () => readFakeLog(daemon.ghLog).filter((c) => c.argv[1] === 'view')
+// Lookups by number, not the background fetches of a conversation (`--json comments,reviews`).
+const prViews = () =>
+  readFakeLog(daemon.ghLog).filter(
+    (c) => c.argv[1] === 'view' && !c.argv.includes('comments,reviews')
+  )
+
 const opts = { timeout: 10_000 }
 
 describe('pull request tracking', () => {

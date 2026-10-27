@@ -1,6 +1,6 @@
 // Maps one decoded item of `gh pr list --json ...` (pr-state.decode.ts) onto
 // the PullRequest que keeps.
-import type { CheckState, PrCheck, PullRequest } from '../shared/types'
+import type { CheckState, PrCheck, PrThread, PullRequest } from '../shared/types'
 import type { GhCheck, GhPullRequest } from './pr-state.decode'
 
 const FAILED = new Set([
@@ -111,8 +111,23 @@ export function parsePullRequest(r: GhPullRequest, checkedAt: string): PullReque
     deletions: r.deletions,
     base: r.baseRefName,
     head: r.headRefName,
-    checkedAt
+    checkedAt,
+    comments: null,
+    commentedAt: null
   }
+}
+
+/** A pull request's comment count and newest comment time, as its conversation gives them. */
+export type CommentCounts = Pick<PullRequest, 'comments' | 'commentedAt'>
+
+/** How many entries a conversation holds and when the newest was posted. */
+export function commentCounts(thread: PrThread): CommentCounts {
+  const commentedAt = thread.entries.reduce<string | null>(
+    (max, e) => (max === null || e.at > max ? e.at : max),
+    null
+  )
+
+  return { comments: thread.entries.length, commentedAt }
 }
 
 /** At most this many pull requests are kept per workspace. */
@@ -184,6 +199,9 @@ export function samePullRequest(a: PullRequest | null, b: PullRequest | null): b
     a.updatedAt === b.updatedAt &&
     a.base === b.base &&
     a.head === b.head &&
+    // A pull request stored before comment counts were kept has none.
+    (a.comments ?? null) === (b.comments ?? null) &&
+    (a.commentedAt ?? null) === (b.commentedAt ?? null) &&
     // A pull request stored before line counts were kept has none.
     (a.additions ?? null) === (b.additions ?? null) &&
     (a.deletions ?? null) === (b.deletions ?? null) &&

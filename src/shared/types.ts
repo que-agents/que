@@ -180,6 +180,10 @@ export interface PullRequest {
   head: string
   /** When que last refreshed this from GitHub. */
   checkedAt: string
+  /** How many entries its conversation holds, or null before the daemon has fetched it. */
+  comments: number | null
+  /** When the newest entry of its conversation was posted (ISO); null without one or before it was fetched. */
+  commentedAt: string | null
 }
 
 /** Workspace counts per status, for the tray and `que status`. */
