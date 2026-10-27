@@ -591,7 +591,7 @@ export default function Sidebar(): React.JSX.Element {
             <button
               key={kind}
               type="button"
-              className="ghost icon foot-view"
+              className="ghost icon strip-view foot-view"
               data-testid={`sidebar-${kind}`}
               aria-label={name}
               title={name}

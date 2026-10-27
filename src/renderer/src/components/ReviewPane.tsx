@@ -98,7 +98,7 @@ export default function ReviewPane({ termKey }: { termKey: string }): React.JSX.
                   key={view}
                   type="button"
                   role="tab"
-                  className={`ghost icon review-view${current ? ' active' : ''}`}
+                  className="ghost icon strip-view review-view"
                   aria-label={name}
                   title={name}
                   aria-selected={current}
