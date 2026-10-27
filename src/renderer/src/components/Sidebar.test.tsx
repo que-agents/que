@@ -513,7 +513,7 @@ describe('Sidebar', () => {
   })
 
   describe('unlock', () => {
-    it('counts the unlock down above Report, and locks again from lock now', async () => {
+    it("counts the unlock down in the Quiet row's place, and locks again from lock now", async () => {
       const user = userEvent.setup()
       fakeBridge.setQuietState(makeQuietState({ inQuietHours: true }))
       await window.que.quiet.unlock({ minutes: 5, why: 'check the deploy' })
@@ -523,10 +523,8 @@ describe('Sidebar', () => {
       expect(countdown).toHaveTextContent(/^[45]:\d\d left$/)
       const unlock = screen.getByTestId('sidebar-unlock')
       expect(unlock).toHaveAttribute('role', 'status')
-      expect(
-        unlock.compareDocumentPosition(screen.getByTestId('sidebar-report')) &
-          Node.DOCUMENT_POSITION_FOLLOWING
-      ).toBeTruthy()
+      expect(unlock.parentElement).toBe(screen.getByTestId('sidebar-foot-row'))
+      expect(screen.queryByRole('group', { name: 'Quiet' })).not.toBeInTheDocument()
 
       await user.click(screen.getByTestId('sidebar-lock'))
 
@@ -548,16 +546,19 @@ describe('Sidebar', () => {
     const minutes = (q: { windowStart: string | null; windowEnd: string | null }): number =>
       (Date.parse(q.windowEnd ?? '') - Date.parse(q.windowStart ?? '')) / 60_000
 
-    it('sits above Report as a group of four buttons', async () => {
+    it('sits above the icon strip as a group of four buttons, the word first and the lengths after it', async () => {
       render(<App />)
 
       const group = await screen.findByRole('group', { name: 'Quiet' })
       expect(
-        group.compareDocumentPosition(screen.getByTestId('sidebar-report')) &
+        group.compareDocumentPosition(screen.getByTestId('sidebar-strip')) &
           Node.DOCUMENT_POSITION_FOLLOWING
       ).toBeTruthy()
-      expect(within(group).getAllByRole('button')).toHaveLength(4)
-      expect(within(group).getByTestId('sidebar-quiet')).toHaveTextContent('Quiet')
+      expect(
+        within(group)
+          .getAllByRole('button')
+          .map((b) => b.textContent)
+      ).toEqual(['Quiet', '30m', '1h', '2h'])
     })
 
     it('offers 30m, 1h and 2h as buttons with their labels', async () => {
@@ -618,6 +619,65 @@ describe('Sidebar', () => {
       await waitFor(() => {
         for (const b of within(group).getAllByRole('button')) expect(b).toBeDisabled()
       })
+    })
+  })
+
+  describe('icon strip', () => {
+    const views = [
+      { name: 'Report', view: 'report-view' },
+      { name: 'Tickets', view: 'tickets-view' },
+      { name: 'Settings', view: 'settings-view' }
+    ]
+
+    it('names Report, Tickets and Settings by their tooltips, in that order', async () => {
+      render(<App />)
+
+      const strip = await screen.findByTestId('sidebar-strip')
+      const buttons = within(strip).getAllByRole('button')
+      expect(buttons.map((b) => b.getAttribute('aria-label'))).toEqual([
+        'Report',
+        'Tickets',
+        'Settings'
+      ])
+      expect(buttons.map((b) => b.getAttribute('title'))).toEqual(['Report', 'Tickets', 'Settings'])
+    })
+
+    it.each(views)('opens $name and reads it as the open view', async ({ name, view }) => {
+      const user = userEvent.setup()
+      render(<App />)
+      const strip = await screen.findByTestId('sidebar-strip')
+      const button = within(strip).getByRole('button', { name })
+      expect(button).not.toHaveAttribute('aria-current')
+
+      await user.click(button)
+
+      expect(await screen.findByTestId(view)).toBeInTheDocument()
+      // Only the open view's icon is current.
+      expect(
+        within(strip)
+          .getAllByRole('button')
+          .map((b) => b.getAttribute('aria-current'))
+      ).toEqual(views.map((v) => (v.name === name ? 'page' : null)))
+    })
+
+    it('carries the open ticket count beside the Tickets icon', async () => {
+      fakeBridge.seedTicket(makeTicket({ key: 'APP-1' }))
+      fakeBridge.seedTicket(makeTicket({ key: 'APP-2' }))
+      fakeBridge.seedTicket(makeTicket({ key: 'APP-3' }))
+      render(<App />)
+
+      const tickets = await screen.findByRole('button', { name: 'Tickets' })
+      await waitFor(() => {
+        expect(within(tickets).getByTestId('sidebar-tickets-count')).toHaveTextContent('3')
+      })
+    })
+
+    it('keeps its right end for usage, empty for now', async () => {
+      render(<App />)
+
+      const end = await screen.findByTestId('sidebar-foot-end')
+      expect(end.parentElement).toBe(screen.getByTestId('sidebar-strip'))
+      expect(end).toBeEmptyDOMElement()
     })
   })
 

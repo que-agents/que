@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Project, Workspace } from '../../../preload/index.d'
 import { formatCountdown } from '../../../shared/format'
 import { tabLabel } from '../format'
-import { SCRATCH, usePanes, useQueSelector, useStore } from '../store'
+import { type QueStore, SCRATCH, usePanes, useQueSelector, useStore } from '../store'
 import { countOpenTickets } from '../ticket-tree'
 import { filterSidebar, matches, sortProjects, sortWorkspaces } from '../sidebar-order'
 import { hoverWord, type RowTone, rowTone } from '../sidebar-row'
@@ -13,9 +13,12 @@ import {
   ChevronIcon,
   FolderIcon,
   FolderPlusIcon,
+  GearIcon,
   PlusIcon,
+  ReportIcon,
   SearchIcon,
   SortIcon,
+  TicketIcon,
   UnlockIcon
 } from './icons'
 import BackgroundMark from './BackgroundMark'
@@ -85,14 +88,14 @@ function UnlockRow(): React.JSX.Element | null {
   )
 }
 
-/** The manual quiet's lengths at the row's right; the word itself starts the hour. */
+/** The manual quiet's lengths, right after the word; the word itself starts the hour. */
 const QUIET_CHIPS = [
   { minutes: 30, text: '30m', label: 'Quiet for 30 minutes' },
   { minutes: 60, text: '1h', label: 'Quiet for 1 hour' },
   { minutes: 120, text: '2h', label: 'Quiet for 2 hours' }
 ] as const
 
-/** Outside a quiet window: the word, filling the row, starts an hour of quiet; the lengths at its right pick one. */
+/** Outside a quiet window: the word starts an hour of quiet; the lengths after it pick one. */
 function QuietRow(): React.JSX.Element | null {
   const store = useStore()
   const connected = useQueSelector((s) => s.connected)
@@ -129,6 +132,13 @@ function QuietRow(): React.JSX.Element | null {
     </div>
   )
 }
+
+/** The foot's icon strip: the views the main area shows besides terminals. */
+const FOOT_VIEWS = [
+  { kind: 'report', name: 'Report', Icon: ReportIcon, show: (s: QueStore) => s.showReport() },
+  { kind: 'tickets', name: 'Tickets', Icon: TicketIcon, show: (s: QueStore) => s.showTickets() },
+  { kind: 'settings', name: 'Settings', Icon: GearIcon, show: (s: QueStore) => s.showSettings() }
+] as const
 
 export default function Sidebar(): React.JSX.Element {
   const store = usePanes(SCRATCH)
@@ -568,49 +578,44 @@ export default function Sidebar(): React.JSX.Element {
         })}
       </nav>
       <div className="sidebar-bottom" data-testid="sidebar-bottom">
-        <UnlockRow />
-        <QuietRow />
-        <button
-          type="button"
-          className="row-button report-entry"
-          data-testid="sidebar-report"
-          aria-current={view.kind === 'report' ? 'page' : undefined}
-          onClick={() => store.showReport()}
-        >
-          <span className="name">Report</span>
-        </button>
-        <button
-          type="button"
-          className="row-button report-entry tickets-entry"
-          data-testid="sidebar-tickets"
-          aria-current={view.kind === 'tickets' ? 'page' : undefined}
-          onClick={() => store.showTickets()}
-        >
-          <span className="name">Tickets</span>
-          {ticketsSync.error && (
-            <span
-              className="tickets-mark"
-              data-testid="sidebar-tickets-error"
-              title={ticketsSync.error}
-            >
-              ✕
-            </span>
-          )}
-          <span className="count" data-testid="sidebar-tickets-count">
-            {openTickets}
-          </span>
-        </button>
-        <div className="settings-row">
-          <button
-            type="button"
-            className="row-button report-entry"
-            data-testid="sidebar-settings"
-            aria-current={view.kind === 'settings' ? 'page' : undefined}
-            onClick={() => store.showSettings()}
-          >
-            <span className="name">Settings</span>
-          </button>
+        {/* The Quiet row (or, while one runs, the unlock row), with Update at its right end.
+            Empty during a quiet window with nothing to update, and then not drawn. */}
+        <div className="foot-row" data-testid="sidebar-foot-row">
+          <UnlockRow />
+          <QuietRow />
           <DaemonUpdate />
+        </div>
+        <div className="foot-strip" data-testid="sidebar-strip">
+          {FOOT_VIEWS.map(({ kind, name, Icon, show }) => (
+            <button
+              key={kind}
+              type="button"
+              className="ghost icon foot-view"
+              data-testid={`sidebar-${kind}`}
+              aria-label={name}
+              title={name}
+              aria-current={view.kind === kind ? 'page' : undefined}
+              onClick={() => show(store)}
+            >
+              <Icon />
+              {kind === 'tickets' && ticketsSync.error && (
+                <span
+                  className="foot-view-mark"
+                  data-testid="sidebar-tickets-error"
+                  title={ticketsSync.error}
+                >
+                  ✕
+                </span>
+              )}
+              {kind === 'tickets' && (
+                <span className="foot-view-count" data-testid="sidebar-tickets-count">
+                  {openTickets}
+                </span>
+              )}
+            </button>
+          ))}
+          {/* The right end is kept for usage. */}
+          <div className="foot-end" data-testid="sidebar-foot-end" />
         </div>
       </div>
     </aside>

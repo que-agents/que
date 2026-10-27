@@ -44,7 +44,7 @@ test('a ticket assigned to me becomes a workspace with claude started on its bri
     project = queJson<Project>(queHome, 'project', 'add', repo, '--json')
   })
 
-  await test.step('Launch the app; the ticket is listed', async () => {
+  await test.step('Launch the app; the Tickets icon opens the list and reads as the open view', async () => {
     launched = await launchApp({ queHome })
     sidebar = new SidebarPage(launched.window)
     tickets = new TicketsPage(launched.window)
@@ -52,6 +52,9 @@ test('a ticket assigned to me becomes a workspace with claude started on its bri
     await expect(tickets.sidebarCount).toHaveText('1')
     await tickets.sidebarEntry.click()
     await expect(tickets.ticket('APP-1432')).toContainText('Add retry logic to the uploader')
+    await expect(tickets.sidebarEntry).toHaveAttribute('aria-current', 'page')
+    await expect(sidebar.reportButton).not.toHaveAttribute('aria-current', 'page')
+    await sidebar.foot.screenshot({ path: 'test-results/sidebar-foot.png' })
   })
 
   await test.step('The ticket sits under its epic, which has no Start; the link points at the site', async () => {

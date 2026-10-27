@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useQueSelector, useStore } from '../store'
 
 /**
- * A small control beside Settings while the background service runs an older
+ * A small control at the Quiet row's right end (after `lock now` during an unlock) while the background service runs an older
  * build than this app; absent otherwise. Its click updates the service in place
  * (see QueStore.upgradeDaemon), and on success it goes away with the stale state.
  */

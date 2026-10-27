@@ -301,13 +301,13 @@ h2 {
   overflow-y: auto;
 }
 
-/* Quiet, Report, Tickets and Settings stay at the window's bottom edge, above a solid hairline. */
+/* The Quiet row and the icon strip stay at the window's bottom edge, above a solid hairline. */
 .sidebar-bottom {
   position: sticky;
   bottom: 0;
   flex: none;
   margin-top: auto;
-  padding: 6px 0 10px;
+  padding: 6px 0 0;
   border-top: 1px solid var(--border);
   background: var(--bg-side);
 }
@@ -708,20 +708,17 @@ h2 {
   visibility: hidden;
 }
 
-/* The foot: Quiet, Report, Tickets, Settings; above them, during an unlock, its countdown. */
-.sidebar-bottom .row-button {
-  color: var(--fg-muted);
-}
-
-.sidebar-bottom .row-button:hover:not(:disabled) {
-  color: var(--fg);
-}
-
-/* Settings and, while the background service runs an older build, Update at its right. */
-.settings-row {
+/* The foot's first row: Quiet (or, during an unlock, its countdown), and Update at the right
+ * end. With nothing in it (a quiet window, no update waiting) it is not drawn. */
+.foot-row {
   display: flex;
   align-items: center;
   gap: 4px;
+  height: 26px;
+}
+
+.foot-row:empty {
+  display: none;
 }
 
 /* A dot and a word in the foot's muted voice; the dot is the only colour on the row. The
@@ -732,6 +729,7 @@ h2 {
   align-items: center;
   gap: 6px;
   height: 20px;
+  margin-left: auto;
   margin-right: 2px;
   padding: 0 8px;
   background: none;
@@ -745,6 +743,8 @@ h2 {
 }
 
 .unlock-row {
+  flex: 1;
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -775,15 +775,15 @@ h2 {
   color: var(--fg-muted);
 }
 
-/* Outside a quiet window: a foot row whose word starts an hour, and three lengths at its
- * right in the unlock row's voice. The word is a button filling the row up to the lengths,
- * so the row reads and behaves like Report: the whole row takes the hover surface and
- * the word brightens with it. */
+/* Outside a quiet window: the word starts an hour, and the three lengths right after it in
+ * the unlock row's voice. The group is as wide as its four buttons and takes the hover
+ * surface as a whole; the word brightens with it. */
 .quiet-row {
   box-sizing: border-box;
   display: flex;
   align-items: stretch;
   height: 26px;
+  padding-right: 8px;
   border-radius: var(--radius);
 }
 
@@ -799,9 +799,7 @@ h2 {
 }
 
 .quiet-row .quiet-word {
-  flex: 1;
-  min-width: 0;
-  padding: 0 8px;
+  padding: 0 6px 0 8px;
   text-align: left;
   font-weight: 400;
 }
@@ -814,7 +812,6 @@ h2 {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding-right: 8px;
   font: 11px var(--mono);
   font-variant-numeric: tabular-nums;
 }
@@ -831,6 +828,51 @@ h2 {
 
 .quiet-row .quiet-chip:hover:not(:disabled) {
   color: var(--fg);
+}
+
+/* The foot's icon strip: Report, Tickets (its count beside it) and Settings, faint, the open
+ * view at full strength with a 1px line under it, like the review pane's strip. Its right end
+ * is kept for usage. */
+.foot-strip {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 36px;
+  padding: 0 5px;
+}
+
+button.ghost.icon.foot-view {
+  width: auto;
+  min-width: 22px;
+  gap: 4px;
+  padding: 0 3px;
+  border-radius: 0;
+}
+
+button.ghost.icon.foot-view:hover:not(:disabled) {
+  background: none;
+}
+
+button.ghost.icon.foot-view[aria-current='page'] {
+  color: var(--fg);
+  box-shadow: inset 0 -1px 0 var(--fg);
+}
+
+.foot-view-count,
+.foot-view-mark {
+  font: 11px var(--mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-faint);
+}
+
+.foot-view-mark {
+  color: var(--tone-attention);
+}
+
+.foot-end {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
 }
 
 .menu {
@@ -941,10 +983,6 @@ h2 {
 
 .dot.on {
   background: var(--tone-good);
-}
-
-.report-entry {
-  border-radius: var(--radius);
 }
 
 /* ---- the divider ------------------------------------------------------- */
@@ -1697,26 +1735,6 @@ body.resizing {
 }
 
 /* ---- tickets ------------------------------------------------------------ */
-
-.tickets-entry {
-  gap: 6px;
-}
-
-.tickets-entry .count {
-  margin-left: auto;
-  font: 10px var(--mono);
-  color: var(--fg-faint);
-}
-
-.tickets-entry .tickets-mark {
-  margin-left: auto;
-  font: 10px var(--mono);
-  color: var(--tone-attention);
-}
-
-.tickets-entry .tickets-mark + .count {
-  margin-left: 0;
-}
 
 .key {
   font: 11px var(--mono);
