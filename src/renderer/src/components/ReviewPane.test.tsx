@@ -61,7 +61,7 @@ describe('ReviewPane', () => {
       const pane = screen.getByTestId('review-pane')
       expect(pane).toHaveAttribute('data-tab', 'pr')
       expect(await within(pane).findByTestId('pr-header-link')).toBeInTheDocument()
-      expect(fakeBridge.prThreadCalls()).toEqual([{ id: retry.id, refresh: false }])
+      expect(fakeBridge.prThreadCalls()).toEqual([{ id: retry.id, number: 41, refresh: false }])
     })
 
     it('holds Changes, Files and Pull request in that order; Files lists the worktree', async () => {

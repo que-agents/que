@@ -422,10 +422,10 @@ export interface Methods {
   }
   /**
    * A pull request's conversation (comments, reviews, line comments): the workspace's pull
-   * request `number`, else its current one; null when it has no such pull request.
+   * request `number`; null when it has no such pull request.
    */
   'workspace.prThread': {
-    params: { id: string; number?: number; refresh?: boolean }
+    params: { id: string; number: number; refresh?: boolean }
     result: PrThread | null
   }
   'workspace.files': { params: { id: string }; result: WorkspaceFiles }

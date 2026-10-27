@@ -602,10 +602,10 @@ class FakeBridge {
 
           return { ok: true }
         },
-        prThread: async ({ id, refresh }) => {
+        prThread: async ({ id, number, refresh }) => {
           this.refuseIfQuiet('workspace.prThread')
           this.workspace(id)
-          this.prThreadCallLog.push({ id, refresh: refresh === true })
+          this.prThreadCallLog.push({ id, number, refresh: refresh === true })
           const seeded = this.prThreads.get(id)
 
           return seeded ? structuredClone(seeded) : null
@@ -1104,7 +1104,7 @@ class FakeBridge {
   }
 
   private prThreads = new Map<string, PrThread>()
-  private prThreadCallLog: Array<{ id: string; refresh: boolean }> = []
+  private prThreadCallLog: Array<{ id: string; number: number; refresh: boolean }> = []
 
   /** What workspace.prThread answers for a workspace; an entries array means number 1, fetched now. */
   seedPrThread(workspaceId: string, thread: Omit<PrThread, 'workspaceId'> | PrThreadEntry[]): void {
@@ -1116,7 +1116,7 @@ class FakeBridge {
   }
 
   /** Every workspace.prThread call, in order. */
-  prThreadCalls(): Array<{ id: string; refresh: boolean }> {
+  prThreadCalls(): Array<{ id: string; number: number; refresh: boolean }> {
     return this.prThreadCallLog.map((c) => ({ ...c }))
   }
 

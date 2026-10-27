@@ -121,7 +121,7 @@ export const decoders: { [M in MethodName]: (p: Params) => ParamsOf<M> } = {
   }),
   'workspace.prThread': (p) => ({
     id: str(p, 'id'),
-    number: optNumber(p, 'number'),
+    number: num(p, 'number'),
     refresh: optBool(p, 'refresh')
   }),
   'workspace.files': idOnly,

@@ -930,12 +930,25 @@ export class QueStore {
     return this.loads.get(`${name}\0${key}`) ?? fetch()
   }
 
-  /** Fetches a workspace's pull request conversation; a failure (quiet hours too) is kept for the view. */
+  /**
+   * Fetches the conversation of the pull request a workspace shows (none without one, nothing
+   * before the workspace is loaded); a failure (quiet hours too) is kept for the view.
+   */
   fetchPrThread(key: string, refresh = false): Promise<void> {
+    const ws = this.state.workspaces[key]
+
+    if (!ws) return Promise.resolve()
+    const number = ws.pr?.number
+
     return this.fetchInto(
       'prThreads',
       key,
-      () => this.api.workspace.prThread(refresh ? { id: key, refresh: true } : { id: key }),
+      async () =>
+        number === undefined
+          ? null
+          : this.api.workspace.prThread(
+              refresh ? { id: key, number, refresh: true } : { id: key, number }
+            ),
       { latestOnly: false, keepOnError: true }
     )
   }
@@ -1458,14 +1471,8 @@ export class QueStore {
   }
 
   async createPr(id: string, title: string): Promise<string> {
+    // The daemon records it and announces the workspace with workspace.updated.
     const { prUrl } = await this.api.workspace.createPr({ id, title })
-    this.setWith((s) => {
-      const ws = s.workspaces[id]
-
-      if (!ws || ws.prUrls.includes(prUrl)) return {}
-
-      return { workspaces: { ...s.workspaces, [id]: { ...ws, prUrls: [...ws.prUrls, prUrl] } } }
-    })
 
     return prUrl
   }

@@ -267,7 +267,8 @@ the session created, on any branch:
   request it opened, and `hook.event` appends any a Bash `PostToolUse` shows
   `gh pr create` printing (stdout, stderr or a plain string), main session and
   subagents alike, when its owner and name match the project's `origin` remote
-  (`pr-created.ts`). A URL for another repository is ignored.
+  (`pr-created.ts`; the origin is read once per project). A URL for another
+  repository is ignored.
 
 Every `pr_poll_seconds` (default 60) it lists each project's newest pull
 requests once (`gh pr list --state all --limit 100`), grouped by head branch; a
@@ -299,7 +300,7 @@ when a check finishes even though `updatedAt` stays put.
 reviews from `gh pr view <n> --json comments,reviews`, line comments from
 `gh api repos/{owner}/{repo}/pulls/<n>/comments --paginate`, parsed by
 `pr-thread.ts` and sorted oldest first. It answers for the pull request
-`number` among the workspace's, or without one for the current pull request.
+`number` among the workspace's (the app passes the one it shows).
 Threads are fetched on demand, never polled: each is cached per workspace and
 pull request number with the `updatedAt` it was fetched for, and reused until
 the tracker stores a different one (or the caller passes `refresh`). Concurrent

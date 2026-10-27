@@ -7,7 +7,7 @@ import { type BashCall, decodeBashCall } from './pr-created.decode'
 /** `gh pr create` as a command of its own: at the start, after a separator, or by path. */
 const PR_CREATE = /(?:^|[\s;&|(/])gh\s+pr\s+create\b/
 
-const PR_URL = /https:\/\/github\.com\/([\w.-]+)\/([\w.-]+)\/pull\/(\d+)\b/g
+const PR_URL = /https:\/\/github\.com\/([\w.-]+)\/([\w.-]+)\/pull\/(\d+)\b/
 
 export interface Repo {
   owner: string
@@ -39,20 +39,21 @@ export function githubRepo(remote: string): Repo | null {
 const sameRepo = (a: Repo, b: Repo): boolean =>
   a.owner.toLowerCase() === b.owner.toLowerCase() && a.name.toLowerCase() === b.name.toLowerCase()
 
-/**
- * The pull requests a hook event shows the session creating on `origin`'s repository, in the
- * order they appear, each once: a Bash PostToolUse that ran `gh pr create`, with the URL found
- * anywhere in its response (stdout, stderr, or a plain string). None for any other event.
- */
-export function createdPullRequests(event: HookEvent, origin: string): string[] {
-  const call = prCreateCall(event)
-  const repo = githubRepo(origin)
+/** True when the call printed a pull request URL on any repository. */
+export function printsPullRequest(call: BashCall): boolean {
+  return call.output.some((text) => PR_URL.test(text))
+}
 
-  if (!call || !repo) return []
+/**
+ * The pull requests a `gh pr create` call shows the session creating on `repo` (its origin), in
+ * the order they appear, each once, with the URL found anywhere in its response (stdout, stderr,
+ * or a plain string).
+ */
+export function createdPullRequests(call: BashCall, repo: Repo): string[] {
   const urls: string[] = []
 
   for (const text of call.output) {
-    for (const m of text.matchAll(PR_URL)) {
+    for (const m of text.matchAll(new RegExp(PR_URL, 'g'))) {
       const [, owner = '', name = '', number = ''] = m
       const url = `https://github.com/${owner}/${name}/pull/${number}`
 

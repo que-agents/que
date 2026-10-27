@@ -178,14 +178,14 @@ describe('PullRequestView', () => {
       seed()
       await openPr(user)
       await waitFor(() => {
-        expect(fakeBridge.prThreadCalls()).toEqual([{ id: ID, refresh: false }])
+        expect(fakeBridge.prThreadCalls()).toEqual([{ id: ID, number: 41, refresh: false }])
       })
       fakeBridge.seedPrThread(ID, [makePrThreadEntry({ body: 'New comment' })])
 
       await user.click(screen.getByTestId('pr-refresh'))
 
       expect(await screen.findByTestId('pr-comment-0')).toHaveTextContent('New comment')
-      expect(fakeBridge.prThreadCalls().at(-1)).toEqual({ id: ID, refresh: true })
+      expect(fakeBridge.prThreadCalls().at(-1)).toEqual({ id: ID, number: 41, refresh: true })
     })
   })
 
@@ -203,8 +203,8 @@ describe('PullRequestView', () => {
 
       expect(await screen.findByTestId('pr-comment-0')).toHaveTextContent('Pushed a fix?')
       expect(fakeBridge.prThreadCalls()).toEqual([
-        { id: ID, refresh: false },
-        { id: ID, refresh: false }
+        { id: ID, number: 41, refresh: false },
+        { id: ID, number: 41, refresh: false }
       ])
     })
 
@@ -218,9 +218,9 @@ describe('PullRequestView', () => {
       fakeBridge.setWorkspacePr(ID, { ...pr, checkedAt: '2026-10-14T03:00:00.000Z' })
       expect(fakeBridge.prThreadCalls()).toHaveLength(1)
 
-      // The pull request disappearing is a change that fetches again.
+      // The pull request disappearing leaves nothing to fetch.
       fakeBridge.setWorkspacePr(ID, null)
-      expect(fakeBridge.prThreadCalls()).toHaveLength(2)
+      expect(fakeBridge.prThreadCalls()).toHaveLength(1)
       expect(await screen.findByTestId('pr-empty')).toBeInTheDocument()
     })
   })
@@ -229,9 +229,11 @@ describe('PullRequestView', () => {
     it('shows the refusal in one line', async () => {
       seed()
       fakeBridge.setQuietState({ inQuietHours: true, unlockedUntil: null })
+      const store = new QueStore(window.que)
+      store.start()
 
       render(
-        <StoreContext.Provider value={new QueStore(window.que)}>
+        <StoreContext.Provider value={store}>
           <PullRequestView termKey={ID} />
         </StoreContext.Provider>
       )

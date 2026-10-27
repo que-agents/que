@@ -96,7 +96,7 @@ describe('workspace.prThread', () => {
   it('returns the conversation oldest first and caches it while the pull request holds still', async () => {
     const ws = await workspaceWithThread()
 
-    const thread = await client.request('workspace.prThread', { id: ws.id })
+    const thread = await client.request('workspace.prThread', { id: ws.id, number: 42 })
 
     expect(thread).toMatchObject({ workspaceId: ws.id, number: 42 })
     expect(thread?.entries.map((e) => [e.kind, e.author, e.state, e.path, e.line])).toEqual([
@@ -110,7 +110,7 @@ describe('workspace.prThread', () => {
       ['repos/{owner}/{repo}/pulls/42/comments', ws.path]
     ])
 
-    const again = await client.request('workspace.prThread', { id: ws.id })
+    const again = await client.request('workspace.prThread', { id: ws.id, number: 42 })
 
     expect(again).toEqual(thread)
     expect(views()).toHaveLength(1)
@@ -118,7 +118,7 @@ describe('workspace.prThread', () => {
 
   it('fetches again once the tracker sees updatedAt move, and on refresh', async () => {
     const ws = await workspaceWithThread()
-    await client.request('workspace.prThread', { id: ws.id })
+    await client.request('workspace.prThread', { id: ws.id, number: 42 })
 
     setFakePullRequest(daemon.ghPrs, ws.branch, {
       updatedAt: '2026-10-14T04:00:00Z',
@@ -129,12 +129,12 @@ describe('workspace.prThread', () => {
       lineComments: []
     })
     await expect.poll(async () => (await prOf(ws.id))?.updatedAt, opts).toBe('2026-10-14T04:00:00Z')
-    const changed = await client.request('workspace.prThread', { id: ws.id })
+    const changed = await client.request('workspace.prThread', { id: ws.id, number: 42 })
 
     expect(changed?.entries.map((e) => e.body)).toEqual(['Thanks!'])
     expect(views()).toHaveLength(2)
 
-    await client.request('workspace.prThread', { id: ws.id, refresh: true })
+    await client.request('workspace.prThread', { id: ws.id, number: 42, refresh: true })
 
     expect(views()).toHaveLength(3)
   }, 30_000)
@@ -144,7 +144,9 @@ describe('workspace.prThread', () => {
     const before = await prOf(ws.id)
     vi.stubEnv('QUE_FAKE_GH_FAIL', '1')
 
-    await expect(client.request('workspace.prThread', { id: ws.id })).rejects.toMatchObject({
+    await expect(
+      client.request('workspace.prThread', { id: ws.id, number: 42 })
+    ).rejects.toMatchObject({
       code: 'gh_failed',
       message: 'gh: failed (fake)'
     })
@@ -152,7 +154,7 @@ describe('workspace.prThread', () => {
     expect((await prOf(ws.id))?.number).toBe(before?.number)
     expect((await prOf(ws.id))?.updatedAt).toBe(before?.updatedAt)
     vi.stubEnv('QUE_FAKE_GH_FAIL', '')
-    const thread = await client.request('workspace.prThread', { id: ws.id })
+    const thread = await client.request('workspace.prThread', { id: ws.id, number: 42 })
     expect(thread?.entries).toHaveLength(4)
   }, 30_000)
 
@@ -182,17 +184,16 @@ describe('workspace.prThread', () => {
     expect(current?.entries).toHaveLength(4)
 
     expect(await client.request('workspace.prThread', { id: ws.id, number: 43 })).toEqual(older)
-    expect(await client.request('workspace.prThread', { id: ws.id })).toEqual(current)
     expect(views().map((c) => c.argv[2])).toEqual(['43', '42'])
     expect(await client.request('workspace.prThread', { id: ws.id, number: 99 })).toBeNull()
   }, 30_000)
 
-  it('is null for a workspace without a pull request, not_found for an unknown one', async () => {
+  it('is null for a pull request the workspace does not have, not_found for an unknown one', async () => {
     const ws = await workspace()
 
-    expect(await client.request('workspace.prThread', { id: ws.id })).toBeNull()
+    expect(await client.request('workspace.prThread', { id: ws.id, number: 42 })).toBeNull()
     await expect(
-      client.request('workspace.prThread', { id: 'ws_missing00000' })
+      client.request('workspace.prThread', { id: 'ws_missing00000', number: 42 })
     ).rejects.toMatchObject({ code: 'not_found' })
     expect(views()).toEqual([])
   }, 30_000)

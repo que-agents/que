@@ -1,9 +1,16 @@
 import { describe, expect, it } from 'vitest'
 import type { HookEvent } from '@shared/protocol'
 import { makeHookEvent } from '../testing/fixtures'
-import { createdPullRequests, githubRepo, runsPrCreate } from './pr-created'
+import {
+  createdPullRequests,
+  githubRepo,
+  prCreateCall,
+  printsPullRequest,
+  type Repo,
+  runsPrCreate
+} from './pr-created'
 
-const ORIGIN = 'git@github.com:rquellh/que.git'
+const QUE: Repo = { owner: 'rquellh', name: 'que' }
 const URL_88 = 'https://github.com/rquellh/que/pull/88'
 
 /** A Bash PostToolUse as Claude Code reports it: the command, and what it printed. */
@@ -14,6 +21,13 @@ const bash = (command: string, response: unknown, extra: Partial<HookEvent> = {}
     tool_response: response,
     ...extra
   })
+
+/** What a hook event shows created on `repo`; none when it is not a `gh pr create` call. */
+const created = (event: HookEvent, repo: Repo = QUE): string[] => {
+  const call = prCreateCall(event)
+
+  return call ? createdPullRequests(call, repo) : []
+}
 
 describe('runsPrCreate', () => {
   it.each([
@@ -68,7 +82,7 @@ describe('createdPullRequests', () => {
       interrupted: false
     })
 
-    expect(createdPullRequests(event, ORIGIN)).toEqual([URL_88])
+    expect(created(event)).toEqual([URL_88])
   })
 
   it('finds it on stderr, or in a response that is a plain string', () => {
@@ -77,10 +91,8 @@ describe('createdPullRequests', () => {
       stderr: `\nCreating draft pull request for APP-1433-backoff into main in rquellh/que\n\n${URL_88}\n`
     })
 
-    expect(createdPullRequests(onStderr, ORIGIN)).toEqual([URL_88])
-    expect(createdPullRequests(bash('gh pr create --fill', `${URL_88}\n`), ORIGIN)).toEqual([
-      URL_88
-    ])
+    expect(created(onStderr)).toEqual([URL_88])
+    expect(created(bash('gh pr create --fill', `${URL_88}\n`))).toEqual([URL_88])
   })
 
   it('finds it after a chain, with --repo, and from a subagent', () => {
@@ -90,14 +102,14 @@ describe('createdPullRequests', () => {
       { agent_id: 'a3f9c2e1', agent_type: 'general-purpose' }
     )
 
-    expect(createdPullRequests(event, 'https://github.com/rquellh/que.git')).toEqual([URL_88])
+    expect(created(event)).toEqual([URL_88])
   })
 
   it("matches the origin's owner and name in any case, and lists each URL once", () => {
     const upper = 'https://github.com/RQuellh/Que/pull/88'
     const event = bash('gh pr create --fill', { stdout: `${upper}\n${upper}\n` })
 
-    expect(createdPullRequests(event, ORIGIN)).toEqual([upper])
+    expect(created(event)).toEqual([upper])
   })
 
   it("ignores another repository's pull request", () => {
@@ -105,37 +117,44 @@ describe('createdPullRequests', () => {
       stdout: 'https://github.com/rquellh/uploader/pull/12\n'
     })
 
-    expect(createdPullRequests(event, ORIGIN)).toEqual([])
+    expect(created(event)).toEqual([])
   })
 
-  it('ignores a command that did not create one, another tool, another event, and a non-GitHub origin', () => {
+  it('ignores a command that did not create one, another tool, and another event', () => {
+    expect(created(bash('gh pr view 88 --json url', { stdout: URL_88 }))).toEqual([])
     expect(
-      createdPullRequests(bash('gh pr view 88 --json url', { stdout: URL_88 }), ORIGIN)
-    ).toEqual([])
-    expect(
-      createdPullRequests(
+      created(
         makeHookEvent('PostToolUse', {
           tool_name: 'Read',
           tool_input: { file_path: '/Users/dev/notes.md' },
           tool_response: URL_88
-        }),
-        ORIGIN
+        })
       )
     ).toEqual([])
     expect(
-      createdPullRequests(
+      created(
         makeHookEvent('PreToolUse', {
           tool_name: 'Bash',
           tool_input: { command: 'gh pr create --fill' }
-        }),
-        ORIGIN
+        })
       )
     ).toEqual([])
+  })
+})
+
+describe('printsPullRequest', () => {
+  it('is true for a pull request URL on any repository, false for output without one', () => {
     expect(
-      createdPullRequests(
-        bash('gh pr create --fill', { stdout: URL_88 }),
-        '/Users/dev/src/uploader.git'
-      )
-    ).toEqual([])
+      printsPullRequest({
+        command: 'gh pr create --repo rquellh/uploader --fill',
+        output: ['', 'https://github.com/rquellh/uploader/pull/12\n']
+      })
+    ).toBe(true)
+    expect(
+      printsPullRequest({
+        command: 'gh pr create --fill',
+        output: ['pull request create failed: no commits between main and APP-1433-backoff']
+      })
+    ).toBe(false)
   })
 })
