@@ -20,7 +20,7 @@ their own; they are clients of the daemon's unix socket and can come and go.
   │  DaemonServer ─ quiet gate ─┬─ PtyHost: node-pty + @xterm/headless mirrors    │
   │                             ├─ Workspaces: projects, git worktrees, setup     │
   │                             ├─ Status engine: hooks + ticks → workspace status│
-  │                             ├─ Draft PRs and pull request tracking (gh)       │
+  │                             ├─ Pull request tracking (gh)                     │
   │                             └─ Store: SQLite (node:sqlite) in QUE_HOME        │
   └──────────────────────────────────────────────────────────────────────────────┘
           │ spawns                         │ spawns                    │ spawns

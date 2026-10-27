@@ -14,7 +14,7 @@ import { firstLine, run } from '../shared/exec'
 import type { HookEvent } from '../shared/protocol'
 import type { JsonValue, PrThread, PullRequest, Workspace } from '../shared/types'
 import { ghFailed, notFound } from './errors'
-import { isProtectedBranch, withBranch } from './branch-history'
+import { withBranch } from './branch-history'
 import {
   commentCounts,
   currentPullRequest,
@@ -211,7 +211,7 @@ export class PrService {
   }
 
   /** Checks one workspace now. */
-  async refresh(id: string): Promise<void> {
+  private async refresh(id: string): Promise<void> {
     if (this.stopped) return
     const ws = this.opts.store.getWorkspace(id)
 
@@ -367,13 +367,16 @@ export class PrService {
     return this.poller.track(this.checkHeads(ws, true, (head) => this.list(ws, head)))
   }
 
-  /** The branches que may ask about for a workspace: each it has had checked out, never a protected one. */
+  /**
+   * The branches que may ask about for a workspace: each it has had checked out, never the
+   * project's default branch or a configured `protected_branches` entry.
+   */
   private heads(ws: Workspace): string[] {
     const project = this.opts.workspaces.project(ws.projectId)
     const { protectedBranches } = this.opts.config()
 
     return withBranch(ws.branches, ws.branch).filter(
-      (b) => !isProtectedBranch(b, project.defaultBranch, protectedBranches)
+      (b) => b !== project.defaultBranch && !protectedBranches.includes(b)
     )
   }
 

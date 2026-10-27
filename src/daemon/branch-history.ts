@@ -16,18 +16,6 @@ export function withBranch(list: readonly string[], branch: string): string[] {
   return appendNew(list, [branch])
 }
 
-/**
- * True for the default branch and every configured `protected_branches` entry: que never
- * looks up the pull requests whose head is one of them.
- */
-export function isProtectedBranch(
-  branch: string,
-  defaultBranch: string,
-  protectedBranches: readonly string[]
-): boolean {
-  return branch === defaultBranch || protectedBranches.includes(branch)
-}
-
 /** `list` with `from` renamed `to`: in its place, or dropped when `to` is already there. */
 export function renameBranch(list: readonly string[], from: string, to: string): string[] {
   return list.includes(to) ? list.filter((b) => b !== from) : list.map((b) => (b === from ? to : b))
