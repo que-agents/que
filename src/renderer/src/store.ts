@@ -18,6 +18,7 @@ import type {
   Ticket,
   TicketsSyncState,
   UpdateInfo,
+  Usage,
   Workspace,
   WorkspaceDiff,
   WorkspaceFile,
@@ -284,6 +285,8 @@ export interface QueState extends ResourceTables {
   dialog: DialogState | null
   /** The daemon's quiet-hours state; null until loaded. */
   quiet: QuietState | null
+  /** The newest Claude plan usage reading (usage.get, usage.changed); null before one or once its windows reset. */
+  usage: Usage | null
   /** The user config (config.get); null until loaded. */
   config: ConfigGetResult | null
   /** The sidebar filter text; empty shows everything. Not remembered. */
@@ -380,6 +383,7 @@ export class QueStore {
     diffTargets: {},
     dialog: null,
     quiet: null,
+    usage: null,
     config: null,
     filter: '',
     searchOpen: false,
@@ -571,11 +575,12 @@ export class QueStore {
    */
   private async load(again = false): Promise<void> {
     try {
-      const [projects, workspaces, terms, quiet, config, tickets] = await Promise.all([
+      const [projects, workspaces, terms, quiet, usage, config, tickets] = await Promise.all([
         this.api.project.list(),
         this.api.workspace.list(),
         this.api.term.list(),
         this.api.quiet.state(),
+        this.api.usage.get(),
         this.api.config.get(),
         this.api.tickets.list()
       ])
@@ -588,6 +593,7 @@ export class QueStore {
         this.setWith((s) => ({
           loaded: true,
           quiet,
+          usage,
           config,
           tickets: tickets.tickets,
           ticketsSync: tickets.sync,
@@ -602,6 +608,7 @@ export class QueStore {
         this.setWith((s) => ({
           loaded: true,
           quiet: s.quiet ?? quiet,
+          usage: s.usage ?? usage,
           config: s.config ?? config,
           tickets: tickets.tickets,
           ticketsSync: tickets.sync,
@@ -620,7 +627,7 @@ export class QueStore {
 
   private subscribeEvents(): void {
     if (this.offs.length > 0) return
-    const { term, workspace, project, quiet, config, tickets } = this.api
+    const { term, workspace, project, quiet, usage, config, tickets } = this.api
     this.offs.push(
       quiet.on('quiet.changed', (q) => {
         const was = this.locked()
@@ -629,6 +636,7 @@ export class QueStore {
         // Unlocked (or morning): open the current view's first terminal if it has none.
         if (was && !q.locked) void this.visit(this.currentKey())
       }),
+      usage.on('usage.changed', (u) => this.set({ usage: u })),
       config.on('config.changed', (c) => this.set({ config: c })),
       tickets.on('tickets.synced', (r) => this.set({ tickets: r.tickets, ticketsSync: r.sync })),
       project.on('project.added', (p) =>

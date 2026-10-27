@@ -17,6 +17,7 @@ import { registerReportCommand } from './report'
 import { runStatusLine } from './statusline'
 import { registerTicketCommands } from './tickets'
 import { registerUpgradeCommand } from './upgrade'
+import { registerUsageCommand } from './usage'
 import { registerWorkspaceCommands } from './workspaces'
 import { errorMessage } from '../shared/errors.decode'
 
@@ -256,6 +257,7 @@ async function main(): Promise<void> {
   registerTicketCommands(program)
   registerQuietCommands(program)
   registerReportCommand(program)
+  registerUsageCommand(program)
 
   program
     .command('hook')

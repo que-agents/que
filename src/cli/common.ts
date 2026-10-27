@@ -92,3 +92,17 @@ export async function assertNotQuiet(c: DaemonClient): Promise<void> {
     )
   }
 }
+
+/** A workspace's name by id, or undefined when there is no id or it is gone. */
+export async function workspaceNameOf(
+  c: DaemonClient,
+  id: string | undefined
+): Promise<string | undefined> {
+  if (!id) return undefined
+
+  try {
+    return (await c.request('workspace.get', { id })).name
+  } catch {
+    return undefined
+  }
+}

@@ -61,3 +61,44 @@ describe('QueStore terminals', () => {
     })
   })
 })
+
+describe('QueStore usage', () => {
+  const at = new Date(2026, 9, 27, 14, 8).getTime()
+
+  const reading = {
+    fiveHour: { pct: 42, resetsAt: new Date(2026, 9, 27, 16, 20).getTime() },
+    sevenDay: { pct: 18, resetsAt: new Date(2026, 10, 2, 9, 0).getTime() },
+    at,
+    workspaceId: 'ws_01hzx3k9c2qf'
+  }
+
+  it('loads the reading at start, then follows usage.changed', async () => {
+    fakeBridge.setUsage(reading)
+    const s = await started()
+    await waitFor(() => {
+      expect(s.getState().usage).toEqual(reading)
+    })
+
+    const newer = { ...reading, fiveHour: { ...reading.fiveHour, pct: 57 }, at: at + 60_000 }
+    fakeBridge.setUsage(newer)
+
+    await waitFor(() => {
+      expect(s.getState().usage).toEqual(newer)
+    })
+  })
+
+  it('is null before the first reading and after every window resets', async () => {
+    const s = await started()
+    expect(s.getState().usage).toBeNull()
+
+    fakeBridge.setUsage(reading)
+    await waitFor(() => {
+      expect(s.getState().usage).toEqual(reading)
+    })
+    fakeBridge.setUsage(null)
+
+    await waitFor(() => {
+      expect(s.getState().usage).toBeNull()
+    })
+  })
+})

@@ -40,6 +40,7 @@
     "src/shared/brief.ts",
     "src/shared/names.ts",
     "src/shared/types.ts",
+    "src/shared/usage.ts",
     "src/testing/entities.ts"
   ]
 }
