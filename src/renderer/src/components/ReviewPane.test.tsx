@@ -133,7 +133,8 @@ describe('ReviewPane', () => {
 
       expect(pane).toHaveAttribute('data-view', 'prs')
       expect(await screen.findByTestId('pr-list')).toBeInTheDocument()
-      expect(screen.getByTestId('pr-refresh')).toBeVisible()
+      expect(screen.queryByTestId('pr-refresh')).toBeNull()
+      expect(screen.getByTestId('pr-open-editor')).toBeVisible()
     })
 
     it('⌘F in the pane goes to Files and focuses its filter', async () => {

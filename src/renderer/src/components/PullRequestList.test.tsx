@@ -269,12 +269,12 @@ describe('PullRequestList', () => {
       })
     })
 
-    it('has no Refresh of its own: the daemon keeps the list fresh', async () => {
+    it('shows no Refresh on the list: the daemon keeps it fresh', async () => {
       const user = userEvent.setup()
       seed(stack.slice(1, 3))
       await openList(user)
 
-      expect(screen.getByTestId('pr-refresh')).toBeDisabled()
+      expect(screen.queryByTestId('pr-refresh')).toBeNull()
     })
   })
 

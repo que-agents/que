@@ -118,18 +118,20 @@ export default function ReviewPane({ termKey }: { termKey: string }): React.JSX.
         )}
         {workspace && (
           <div className="review-actions">
-            <button
-              type="button"
-              className="ghost icon"
-              aria-label="Refresh"
-              title="Refresh"
-              data-testid={`${testId}-refresh`}
-              // The list has nothing of its own to fetch: the daemon keeps it fresh.
-              disabled={!connected || (place.view === 'prs' && !pr)}
-              onClick={refresh}
-            >
-              <RefreshIcon />
-            </button>
+            {/* The list has nothing of its own to fetch: the daemon keeps it fresh. */}
+            {!(place.view === 'prs' && !pr) && (
+              <button
+                type="button"
+                className="ghost icon"
+                aria-label="Refresh"
+                title="Refresh"
+                data-testid={`${testId}-refresh`}
+                disabled={!connected}
+                onClick={refresh}
+              >
+                <RefreshIcon />
+              </button>
+            )}
             {ws && (
               <button
                 type="button"
