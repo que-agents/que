@@ -118,7 +118,11 @@ export const decoders: { [M in MethodName]: (p: Params) => ParamsOf<M> } = {
     base: optString(p, 'base'),
     commit: optString(p, 'commit')
   }),
-  'workspace.prThread': (p) => ({ id: str(p, 'id'), refresh: optBool(p, 'refresh') }),
+  'workspace.prThread': (p) => ({
+    id: str(p, 'id'),
+    number: optNumber(p, 'number'),
+    refresh: optBool(p, 'refresh')
+  }),
   'workspace.files': idOnly,
   'workspace.readFile': (p) => ({ id: str(p, 'id'), path: str(p, 'path') }),
   'workspace.watch': idOnly,

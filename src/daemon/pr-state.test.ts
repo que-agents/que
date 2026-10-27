@@ -340,21 +340,37 @@ describe('pullRequestList', () => {
     ])
   })
 
-  it('keeps the newest ten', () => {
-    const fifteen = Array.from({ length: 15 }, (_, i) => pr(i + 1, { state: 'CLOSED' }))
+  it('keeps the newest twenty, stored ones counted', () => {
+    const fresh = Array.from({ length: 15 }, (_, i) => pr(i + 11, { state: 'CLOSED' }))
+    const stored = Array.from({ length: 10 }, (_, i) => pr(i + 1, { state: 'MERGED' }))
 
-    expect(pullRequestList(fifteen).map((p) => p.number)).toEqual([
-      15, 14, 13, 12, 11, 10, 9, 8, 7, 6
+    expect(pullRequestList(fresh, stored).map((p) => p.number)).toEqual(
+      Array.from({ length: 20 }, (_, i) => 25 - i)
+    )
+  })
+
+  it('keeps a stored pull request missing from the fresh ones, and takes the fresh copy of the rest', () => {
+    const stored = [
+      pr(41, { state: 'OPEN', title: 'On the branch it left' }),
+      pr(44, { state: 'OPEN', title: 'Before review' })
+    ]
+
+    const list = pullRequestList([pr(44, { state: 'MERGED', title: 'After review' })], stored)
+
+    expect(list.map((p) => [p.number, p.state, p.title])).toEqual([
+      [44, 'merged', 'After review'],
+      [41, 'open', 'On the branch it left']
     ])
   })
 
   it('leaves its input untouched', () => {
     const input = [pr(3, { state: 'OPEN' }), pr(9, { state: 'MERGED' })]
-    const before = structuredClone(input)
+    const stored = [pr(2, { state: 'CLOSED' })]
+    const before = structuredClone([input, stored])
 
-    const list = pullRequestList(input)
+    const list = pullRequestList(input, stored)
 
-    expect(input).toEqual(before)
+    expect([input, stored]).toEqual(before)
     expect(list).not.toBe(input)
   })
 })

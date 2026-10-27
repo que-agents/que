@@ -9,6 +9,7 @@ import type { PrThread, PullRequest, Workspace } from '@shared/types'
 import { runCli, runCliJson } from '../../src/testing/cli'
 import { recordEvents, startTestDaemon, type TestDaemon } from '../../src/testing/daemon-harness'
 import {
+  addFakePullRequest,
   fakeCheckRun,
   fakeComment,
   fakeLineComment,
@@ -153,6 +154,37 @@ describe('workspace.prThread', () => {
     vi.stubEnv('QUE_FAKE_GH_FAIL', '')
     const thread = await client.request('workspace.prThread', { id: ws.id })
     expect(thread?.entries).toHaveLength(4)
+  }, 30_000)
+
+  it("fetches and caches each of the workspace's pull requests by number", async () => {
+    const ws = await workspaceWithThread()
+    addFakePullRequest(daemon.ghPrs, ws.branch, {
+      number: 43,
+      title: 'Back off between retries',
+      state: 'MERGED',
+      isDraft: false,
+      mergedAt: '2026-10-14T02:00:00Z',
+      updatedAt: '2026-10-14T02:00:00Z',
+      comments: [
+        fakeComment({ author: 'mara', body: 'Merging the backoff first.', createdAt: UPDATED })
+      ]
+    })
+    await expect
+      .poll(async () => (await client.request('workspace.get', { id: ws.id })).prs.length, opts)
+      .toBe(2)
+
+    const older = await client.request('workspace.prThread', { id: ws.id, number: 43 })
+    const current = await client.request('workspace.prThread', { id: ws.id, number: 42 })
+
+    expect(older).toMatchObject({ number: 43 })
+    expect(older?.entries.map((e) => e.body)).toEqual(['Merging the backoff first.'])
+    expect(current).toMatchObject({ number: 42 })
+    expect(current?.entries).toHaveLength(4)
+
+    expect(await client.request('workspace.prThread', { id: ws.id, number: 43 })).toEqual(older)
+    expect(await client.request('workspace.prThread', { id: ws.id })).toEqual(current)
+    expect(views().map((c) => c.argv[2])).toEqual(['43', '42'])
+    expect(await client.request('workspace.prThread', { id: ws.id, number: 99 })).toBeNull()
   }, 30_000)
 
   it('is null for a workspace without a pull request, not_found for an unknown one', async () => {

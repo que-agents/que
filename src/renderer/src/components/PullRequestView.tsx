@@ -119,8 +119,9 @@ export default function PullRequestView({ termKey }: { termKey: string }): React
   const pr = ws?.pr ?? null
   const thread = prThreads[termKey]?.data ?? null
   const error = prThreads[termKey]?.error ?? null
-  const url = pr?.url ?? ws?.prUrl ?? null
-  const number = pr?.number ?? prNumberOf(ws?.prUrl) ?? null
+  const created = ws?.prUrls.at(-1)
+  const url = pr?.url ?? created ?? null
+  const number = pr?.number ?? prNumberOf(created) ?? null
   const now = useNow()
 
   // On mount, unless opening the pane already fetched it; the store fetches again when

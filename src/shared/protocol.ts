@@ -416,8 +416,14 @@ export interface Methods {
     params: { id: string; base?: string; commit?: string }
     result: WorkspaceDiff
   }
-  /** The pull request's conversation (comments, reviews, line comments); null without a pull request. */
-  'workspace.prThread': { params: { id: string; refresh?: boolean }; result: PrThread | null }
+  /**
+   * A pull request's conversation (comments, reviews, line comments): the workspace's pull
+   * request `number`, else its current one; null when it has no such pull request.
+   */
+  'workspace.prThread': {
+    params: { id: string; number?: number; refresh?: boolean }
+    result: PrThread | null
+  }
   'workspace.files': { params: { id: string }; result: WorkspaceFiles }
   'workspace.readFile': { params: { id: string; path: string }; result: WorkspaceFile }
   /**

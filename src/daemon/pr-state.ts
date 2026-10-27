@@ -116,14 +116,18 @@ export function parsePullRequest(r: GhPullRequest, checkedAt: string): PullReque
 }
 
 /** At most this many pull requests are kept per workspace. */
-export const PR_LIST_CAP = 10
+export const PR_LIST_CAP = 20
 
-/** One entry per number (the first seen wins), newest first by number, at most PR_LIST_CAP. */
-export function pullRequestList(prs: PullRequest[]): PullRequest[] {
+/**
+ * One entry per number (the first seen wins), newest first by number, at most PR_LIST_CAP.
+ * `stored` is what the workspace held before: an entry missing from `prs` is kept (its branch
+ * moved on), one in `prs` gives way to the fresh copy.
+ */
+export function pullRequestList(prs: PullRequest[], stored: PullRequest[] = []): PullRequest[] {
   const seen = new Set<number>()
   const out: PullRequest[] = []
 
-  for (const pr of prs) {
+  for (const pr of [...prs, ...stored]) {
     if (seen.has(pr.number)) continue
     seen.add(pr.number)
     out.push(pr)

@@ -1,7 +1,8 @@
 // Pull request tracking over the real socket: the daemon polls the fake gh
-// (PR state file, QUE_FAKE_GH_FAIL) for each workspace's branch, and looks up
-// the pull request workspace.createPr opened by number. Which one is current, the
-// order and the cap are pr-state.test.ts's.
+// (PR state file, QUE_FAKE_GH_FAIL) for every branch each workspace has had,
+// and looks up by number the pull requests the session created (workspace.createPr,
+// or `gh pr create` seen in a hook). Which one is current, the order and the cap
+// are pr-state.test.ts's; what a hook counts as a creation is pr-created.test.ts's.
 import fs from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -224,6 +225,37 @@ describe('pull request tracking', () => {
         .poll(async () => await prOf(ws.id), opts)
         .toMatchObject({ number: 57, state: 'open' })
       expect(updates.some((w) => w.id === ws.id && w.branch === 'fix/upload-timeout')).toBe(true)
+    }, 30_000)
+
+    it('keeps the pull requests of every branch the worktree has had checked out', async () => {
+      const ws = await workspace()
+      const branchesOf = async () => (await client.request('workspace.get', { id: ws.id })).branches
+      gitIn(ws.path, 'checkout', '--quiet', '-b', 'APP-1433-backoff')
+      await expect.poll(branchesOf, opts).toEqual([ws.branch, 'APP-1433-backoff'])
+      gitIn(ws.path, 'checkout', '--quiet', '-b', 'APP-1434-jitter')
+      await expect
+        .poll(branchesOf, opts)
+        .toEqual([ws.branch, 'APP-1433-backoff', 'APP-1434-jitter'])
+
+      // Both pull requests are opened after the worktree has moved on from their branches.
+      setFakePullRequest(daemon.ghPrs, ws.branch, {
+        number: 61,
+        url: 'https://github.com/rquellh/que/pull/61',
+        state: 'MERGED',
+        mergedAt: '2026-10-14T01:00:00Z'
+      })
+      addFakePullRequest(daemon.ghPrs, 'APP-1433-backoff', {
+        number: 62,
+        baseRefName: ws.branch,
+        isDraft: false
+      })
+
+      await expect.poll(() => prNumbersOf(ws.id), opts).toEqual([62, 61])
+      expect((await client.request('workspace.get', { id: ws.id })).prs[0]).toMatchObject({
+        number: 62,
+        base: ws.branch,
+        head: 'APP-1433-backoff'
+      })
     }, 30_000)
 
     it('keeps the recorded branch while the worktree is on a detached HEAD', async () => {

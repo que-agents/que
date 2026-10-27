@@ -150,7 +150,10 @@ export const MIGRATIONS: readonly string[] = [
    ALTER TABLE quiet_unlocks ADD COLUMN kind TEXT NOT NULL DEFAULT 'scheduled';`,
   `DROP TABLE IF EXISTS tasks;
    DELETE FROM kv WHERE key IN ('queue.open', 'queue.opened_at', 'concurrency');`,
-  `ALTER TABLE workspaces ADD COLUMN removal_json TEXT;`
+  `ALTER TABLE workspaces ADD COLUMN removal_json TEXT;`,
+  `ALTER TABLE workspaces ADD COLUMN pr_urls_json TEXT;
+   UPDATE workspaces SET pr_urls_json = json_array(pr_url) WHERE pr_url IS NOT NULL;
+   ALTER TABLE workspaces ADD COLUMN branches_json TEXT;`
 ]
 
 const STATUS_LOG_RETENTION_MS = 30 * 24 * 3_600_000
@@ -263,6 +266,8 @@ interface WorkspaceRow {
   seen_at: string | null
   background_json: string | null
   removal_json: string | null
+  pr_urls_json: string | null
+  branches_json: string | null
 }
 
 export interface HookEventRow {
@@ -380,7 +385,8 @@ function toWorkspace(r: WorkspaceRow): Workspace {
     sessionId: r.session_id,
     createdAt: r.created_at,
     archivedAt: r.archived_at,
-    prUrl: r.pr_url ?? null,
+    prUrls: strings(parseStored(r.pr_urls_json ?? null)),
+    branches: strings(parseStored(r.branches_json ?? null)),
     pr: currentPullRequest(prs),
     prs,
     finishedAt: r.finished_at ?? null,
@@ -540,9 +546,9 @@ export class Store {
   insertWorkspace(w: Workspace): void {
     this.run(
       `INSERT INTO workspaces (id, project_id, name, branch, path, base_ref, status, status_reason,
-           status_at, last_activity_at, session_id, created_at, archived_at, pr_url, pr_json,
-           prs_json, title, brief, title_source, finished_at, seen_at, removal_json)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           status_at, last_activity_at, session_id, created_at, archived_at, pr_urls_json, pr_json,
+           prs_json, title, brief, title_source, finished_at, seen_at, removal_json, branches_json)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       w.id,
       w.projectId,
       w.name,
@@ -556,7 +562,7 @@ export class Store {
       w.sessionId,
       w.createdAt,
       w.archivedAt,
-      w.prUrl,
+      JSON.stringify(w.prUrls),
       // pr_json is only read for a row stored before prs_json; the current one derives from prs.
       null,
       JSON.stringify(w.prs),
@@ -565,7 +571,8 @@ export class Store {
       w.titleSource ?? null,
       w.finishedAt,
       w.seenAt,
-      w.removal ? JSON.stringify(w.removal) : null
+      w.removal ? JSON.stringify(w.removal) : null,
+      JSON.stringify(w.branches)
     )
   }
 
@@ -573,8 +580,14 @@ export class Store {
     this.run('UPDATE workspaces SET title = ?, title_source = ? WHERE id = ?', title, source, id)
   }
 
-  setWorkspaceBranch(id: string, branch: string): void {
-    this.run('UPDATE workspaces SET branch = ? WHERE id = ?', branch, id)
+  /** The branch the worktree has checked out, and every branch it has had (oldest first). */
+  setWorkspaceBranch(id: string, branch: string, branches: string[]): void {
+    this.run(
+      'UPDATE workspaces SET branch = ?, branches_json = ? WHERE id = ?',
+      branch,
+      JSON.stringify(branches),
+      id
+    )
   }
 
   getWorkspace(id: string): Workspace | undefined {
@@ -631,8 +644,27 @@ export class Store {
     this.run('UPDATE workspaces SET seen_at = ? WHERE id = ?', at, id)
   }
 
-  setWorkspacePrUrl(id: string, prUrl: string): void {
-    this.run('UPDATE workspaces SET pr_url = ? WHERE id = ?', prUrl, id)
+  /** Records pull requests the workspace's session created; true when one was new. */
+  addWorkspacePrUrls(id: string, urls: string[]): boolean {
+    return this.tx(() => {
+      const r = this.row<{ pr_urls_json: string | null }>(
+        'SELECT pr_urls_json FROM workspaces WHERE id = ?',
+        id
+      )
+
+      if (!r) return false
+      const known = strings(parseStored(r.pr_urls_json))
+      const added = urls.filter((url, i) => !known.includes(url) && urls.indexOf(url) === i)
+
+      if (added.length === 0) return false
+      this.run(
+        'UPDATE workspaces SET pr_urls_json = ? WHERE id = ?',
+        JSON.stringify([...known, ...added]),
+        id
+      )
+
+      return true
+    })
   }
 
   /** Stores the workspace's pull requests; the current one (Workspace.pr) is derived from them. */

@@ -892,7 +892,7 @@ export class DaemonServer {
     'workspace.prThread': (p) => {
       const ws = this.workspaces.get(p.id)
 
-      return this.prs.thread(ws.id, p.refresh === true)
+      return this.prs.thread(ws.id, p.refresh === true, p.number)
     },
     'workspace.files': (p) => workspaceFiles(this.workspaces.get(p.id), Date.now),
     'workspace.readFile': (p) => readWorkspaceFile(this.workspaces.get(p.id), p.path),

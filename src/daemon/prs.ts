@@ -1,14 +1,17 @@
-// Keeps each workspace's pull requests fresh: polls `gh pr list` for the
-// workspace's branch, looks up the pull request workspace.createPr opened when it
-// is not on the branch (`gh pr view <n>`), stores what changed, and emits
-// workspace.updated.
-// Also answers workspace.prThread: the conversation is fetched on demand and
-// cached until the tracker sees the pull request's updatedAt move.
+// Keeps each workspace's pull requests fresh: the session's pull requests are
+// those whose head is any branch the worktree has had checked out (`gh pr list`),
+// plus each one the session created (workspace.createPr, or its own `gh pr
+// create` seen in a hook), looked up by number (`gh pr view <n>`) when it is not
+// on those branches. One already stored is kept when its branch moves on. Stores
+// what changed and emits workspace.updated.
+// Also answers workspace.prThread: each pull request's conversation is fetched
+// on demand and cached until the tracker sees its updatedAt move.
 import type { UserConfig } from '../shared/config'
 import { firstLine, run } from '../shared/exec'
 import { ErrorCodes, type WorkspaceCreatePrResult } from '../shared/protocol'
 import type { JsonValue, PrThread, PullRequest, Workspace } from '../shared/types'
 import { conflict, ghFailed, notFound, RpcError } from './errors'
+import { withBranch } from './branch-history'
 import { isProtectedBranch, openDraftPr } from './draft-pr'
 import {
   currentPullRequest,
@@ -106,16 +109,18 @@ function ghLineComments(number: number, cwd: string, signal: AbortSignal): Promi
 
 interface CachedThread {
   thread: PrThread
-  number: number
   forUpdatedAt: string | null
 }
+
+/** The thread cache's key: one entry per workspace and pull request. */
+const threadKey = (id: string, number: number): string => `${id}:${number}`
 
 export class PrService {
   private polling = false
   private tickCount = 0
   /** Workspaces whose last check failed (and were logged), until one succeeds. */
   private failing = new Set<string>()
-  /** Each workspace's last fetched conversation, valid while its pull request's updatedAt holds. */
+  /** Each pull request's last fetched conversation (by threadKey), valid while its updatedAt holds. */
   private threads = new Map<string, CachedThread>()
   private threadFetches = new Map<string, Promise<PrThread>>()
 
@@ -177,44 +182,38 @@ export class PrService {
   }
 
   /**
-   * The workspace's pull request conversation: cached until the tracker sees
-   * the pull request change, or fetched now with `refresh`. Null without a pull request.
+   * A pull request's conversation: the workspace's pull request `number`, or without one its
+   * current pull request. Cached until the tracker sees that pull request change, or fetched
+   * now with `refresh`. Null when the workspace has no such pull request.
    */
-  async thread(id: string, refresh = false): Promise<PrThread | null> {
+  async thread(id: string, refresh = false, number?: number): Promise<PrThread | null> {
     const ws = this.opts.store.getWorkspace(id)
 
     if (!ws || ws.archivedAt) throw notFound(`no workspace ${id}`)
-    const pr = ws.pr
+    const pr = number === undefined ? ws.pr : (ws.prs.find((p) => p.number === number) ?? null)
 
-    if (!pr) {
-      this.threads.delete(id)
+    if (!pr) return null
+    const key = threadKey(id, pr.number)
+    const cached = this.threads.get(key)
 
-      return null
-    }
+    if (!refresh && cached && cached.forUpdatedAt === (pr.updatedAt ?? null)) return cached.thread
 
-    const cached = this.threads.get(id)
-
-    if (
-      !refresh &&
-      cached &&
-      cached.number === pr.number &&
-      cached.forUpdatedAt === (pr.updatedAt ?? null)
-    ) {
-      return cached.thread
-    }
-
-    const running = this.threadFetches.get(id)
+    const running = this.threadFetches.get(key)
 
     if (running) return running
-    const fetch = this.fetchThread(ws, pr).finally(() => this.threadFetches.delete(id))
-    this.threadFetches.set(id, fetch)
+    const fetch = this.fetchThread(ws, pr).finally(() => this.threadFetches.delete(key))
+    this.threadFetches.set(key, fetch)
 
     return fetch
   }
 
-  /** Drops what is cached for a workspace (it was removed). */
-  forget(id: string): void {
-    this.threads.delete(id)
+  /** Drops what is cached for a workspace (it was removed), or for its pull requests not in `keep`. */
+  forget(id: string, keep: PullRequest[] = []): void {
+    const kept = new Set(keep.map((pr) => threadKey(id, pr.number)))
+
+    for (const key of this.threads.keys()) {
+      if (key.startsWith(`${id}:`) && !kept.has(key)) this.threads.delete(key)
+    }
   }
 
   private async fetchThread(ws: Workspace, pr: PullRequest): Promise<PrThread> {
@@ -242,7 +241,10 @@ export class PrService {
       new Date().toISOString()
     )
 
-    this.threads.set(ws.id, { thread, number: pr.number, forUpdatedAt: pr.updatedAt ?? null })
+    this.threads.set(threadKey(ws.id, pr.number), {
+      thread,
+      forUpdatedAt: pr.updatedAt ?? null
+    })
 
     return thread
   }
@@ -261,71 +263,93 @@ export class PrService {
     return this.poller.track(this.checkOne(ws, true))
   }
 
-  /** The workspaces whose branch que may ask about (never a protected one). */
-  private checkable(list: Workspace[]): Workspace[] {
-    const project = this.opts.workspaces.project(list[0].projectId)
+  /** The branches que may ask about for a workspace: each it has had checked out, never a protected one. */
+  private heads(ws: Workspace): string[] {
+    const project = this.opts.workspaces.project(ws.projectId)
     const { protectedBranches } = this.opts.config()
 
-    return list.filter(
-      (ws) => !isProtectedBranch(ws.branch, project.defaultBranch, protectedBranches)
+    return withBranch(ws.branches, ws.branch).filter(
+      (b) => !isProtectedBranch(b, project.defaultBranch, protectedBranches)
     )
   }
 
   /**
-   * Checks one project's workspaces with one listing, grouped by branch. A
+   * Checks one project's workspaces with one listing, grouped by head branch. A
    * branch missing from a full page (LIST_LIMIT) may hold an older pull
-   * request, so it is asked about on its own. `due`: a settled pull request
-   * is re-checked on this tick.
+   * request, so it is asked about on its own. A workspace with no branch to ask
+   * about still has the pull requests it created looked up. `due`: a settled
+   * pull request is re-checked on this tick.
    */
   private async checkProject(list: Workspace[], due: boolean): Promise<void> {
-    const open = this.checkable(list)
-
-    if (open.length === 0) return
-    let items: unknown[]
-
-    try {
-      items = await ghPrList(null, open[0].path, this.poller.signal)
-    } catch (err) {
-      for (const ws of open) this.failed(ws, errorMessage(err))
-
-      return
-    }
-
-    if (this.stopped) return
+    const asking = list.find((ws) => this.heads(ws).length > 0)
     const byBranch = new Map<string, GhPullRequest[]>()
+    let full = false
 
-    for (const item of items) {
-      const pr = decodePullRequest(item)
+    if (asking) {
+      let items: unknown[]
 
-      if (!pr?.headRefName) continue
-      const prs = byBranch.get(pr.headRefName)
+      try {
+        items = await ghPrList(null, asking.path, this.poller.signal)
+      } catch (err) {
+        for (const ws of list) this.failed(ws, errorMessage(err))
 
-      if (prs) prs.push(pr)
-      else byBranch.set(pr.headRefName, [pr])
+        return
+      }
+
+      full = items.length >= LIST_LIMIT
+
+      for (const item of items) {
+        const pr = decodePullRequest(item)
+
+        if (!pr?.headRefName) continue
+        const prs = byBranch.get(pr.headRefName)
+
+        if (prs) prs.push(pr)
+        else byBranch.set(pr.headRefName, [pr])
+      }
     }
 
-    for (const ws of open) {
+    for (const ws of list) {
       if (this.stopped) return
-
-      if (byBranch.has(ws.branch) || items.length < LIST_LIMIT)
-        await this.settle(ws, byBranch.get(ws.branch) ?? [], due)
-      else await this.checkOne(ws, due)
+      await this.checkHeads(ws, due, (head) =>
+        byBranch.has(head) || !full ? (byBranch.get(head) ?? []) : this.list(ws, head)
+      )
     }
   }
 
-  private async checkOne(ws: Workspace, due: boolean): Promise<void> {
-    if (this.checkable([ws]).length === 0) return
-    let items: unknown[]
+  private checkOne(ws: Workspace, due: boolean): Promise<void> {
+    return this.checkHeads(ws, due, (head) => this.list(ws, head))
+  }
 
+  /** Settles a workspace with the pull requests `listed` finds on each of its heads; none when one listing failed. */
+  private async checkHeads(
+    ws: Workspace,
+    due: boolean,
+    listed: (head: string) => GhPullRequest[] | Promise<GhPullRequest[] | null>
+  ): Promise<void> {
+    const raw: GhPullRequest[] = []
+
+    for (const head of this.heads(ws)) {
+      const prs = await listed(head)
+
+      if (prs === null) return
+      raw.push(...prs)
+    }
+
+    if (!this.stopped) await this.settle(ws, raw, due)
+  }
+
+  /** The pull requests whose head is `branch`; null when gh failed (logged) or the service stopped. */
+  private async list(ws: Workspace, branch: string): Promise<GhPullRequest[] | null> {
     try {
-      items = await ghPrList(ws.branch, ws.path, this.poller.signal)
+      const items = await ghPrList(branch, ws.path, this.poller.signal)
+
+      return this.stopped ? null : decodePullRequests(items)
     } catch (err) {
       this.failed(ws, errorMessage(err))
 
-      return
+      return null
     }
-
-    if (!this.stopped) await this.settle(ws, decodePullRequests(items), due)
   }
 
   /** Logs a workspace's first failed check (until one succeeds). */
@@ -336,7 +360,7 @@ export class PrService {
   }
 
   /**
-   * The pull request workspace.createPr recorded, when it is not among
+   * The pull requests the session created (prUrls) that are not among
    * `onBranch`, each looked up by number. A settled one
    * already stored is reused until `due`; one that cannot be looked up keeps
    * its stored copy, and the first failure is reported in `error`.
@@ -349,9 +373,8 @@ export class PrService {
   ): Promise<{ prs: PullRequest[]; error: string | null }> {
     const known = new Set(onBranch.map((pr) => pr.number))
     const numbers = new Set<number>()
-    const urls = ws.prUrl ? [ws.prUrl] : []
 
-    for (const url of urls) {
+    for (const url of ws.prUrls) {
       const n = prUrlNumber(url)
 
       if (n !== null && !known.has(n)) numbers.add(n)
@@ -389,8 +412,8 @@ export class PrService {
 
   /**
    * Stores and announces the pull requests `gh` reported for a workspace's
-   * branch, joined with the one workspace.createPr opened elsewhere, and the current
-   * one among them.
+   * branches, joined with those the session created elsewhere and those stored
+   * before, and the current one among them.
    */
   private async settle(ws: Workspace, raw: GhPullRequest[], due: boolean): Promise<void> {
     const checkedAt = new Date().toISOString()
@@ -401,13 +424,12 @@ export class PrService {
 
     if (extra.error !== null) this.failed(ws, extra.error)
     else if (this.failing.delete(ws.id)) this.opts.log?.(`pr check recovered for ${ws.id}`)
-    const prs = pullRequestList([...onBranch, ...extra.prs])
-    const next = currentPullRequest(prs)
     const current = this.opts.store.getWorkspace(ws.id)
 
     if (!current || current.archivedAt) return
-
-    if (!next) this.threads.delete(ws.id)
+    const prs = pullRequestList([...onBranch, ...extra.prs], current.prs)
+    const next = currentPullRequest(prs)
+    this.forget(ws.id, prs)
 
     if (samePullRequests(current.prs, prs)) return
     this.opts.store.setWorkspacePrs(ws.id, prs)
@@ -448,7 +470,7 @@ export class PrService {
       throw conflict(`${ws.branch} has no commits ahead of its base; nothing to open a PR for`)
     }
 
-    store.setWorkspacePrUrl(ws.id, result.prUrl)
+    store.addWorkspacePrUrls(ws.id, [result.prUrl])
     this.opts.bus.emit('workspace.updated', workspaces.get(ws.id))
     void this.refresh(ws.id)
 

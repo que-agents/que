@@ -774,8 +774,8 @@ describe('workspace.createPr', () => {
       expect.arrayContaining(['create', '--draft', '--title', 'Add retry logic to the uploader'])
     )
     expect(pr?.cwd).toBe(ws.path)
-    expect((await client.request('workspace.get', { id: ws.id })).prUrl).toBe(result.prUrl)
-    await expect.poll(() => updates.map((w) => w.prUrl)).toContain(result.prUrl)
+    expect((await client.request('workspace.get', { id: ws.id })).prUrls).toEqual([result.prUrl])
+    await expect.poll(() => updates.flatMap((w) => w.prUrls)).toContain(result.prUrl)
   }, 30_000)
 
   it('pushes the branch checked out in the worktree after it was created', async () => {
@@ -816,7 +816,7 @@ describe('workspace.createPr', () => {
     await expect(
       client.request('workspace.createPr', { id: 'ws_01hzx9nope00', title: 'Anything' })
     ).rejects.toMatchObject({ code: 'not_found' })
-    expect((await client.request('workspace.get', { id: ws.id })).prUrl).toBeNull()
+    expect((await client.request('workspace.get', { id: ws.id })).prUrls).toEqual([])
     expect(readFakeLog(daemon.ghLog)).toEqual([])
   }, 30_000)
 })

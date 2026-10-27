@@ -34,6 +34,7 @@ import type {
   RemovalStep,
   Workspace
 } from '../shared/types'
+import { reflogBranches, withBranch } from './branch-history'
 import { badRequest, conflict, notFound } from './errors'
 import type { Emit } from './bus'
 import type { StatusService } from './status'
@@ -384,6 +385,7 @@ export class WorkspaceManager {
       projectId: project.id,
       name: slug,
       branch,
+      branches: [branch],
       path,
       baseRef: base,
       status: 'preparing',
@@ -393,7 +395,7 @@ export class WorkspaceManager {
       sessionId: null,
       createdAt: now,
       archivedAt: null,
-      prUrl: null,
+      prUrls: [],
       pr: null,
       prs: [],
       finishedAt: null,
@@ -433,20 +435,33 @@ export class WorkspaceManager {
   }
 
   /**
-   * Records the branch the worktree has checked out when it is not the stored one, and
-   * announces it with workspace.updated. A detached HEAD or a missing worktree keeps it.
+   * Records the branch the worktree has checked out when it is not the stored one, adds it to
+   * the branches it has had, and announces it with workspace.updated. A detached HEAD or a
+   * missing worktree keeps it. A workspace stored before branches were kept has them seeded
+   * from the worktree's HEAD reflog first.
    */
   async syncBranch(id: string): Promise<Workspace> {
     const ws = this.get(id)
     const head = await currentBranch(ws.path)
+    const branch = head || ws.branch
+    const known = ws.branches.length > 0 ? ws.branches : await this.branchHistory(ws)
+    const branches = withBranch(known, branch)
 
-    if (!head || head === ws.branch) return ws
-    this.opts.store.setWorkspaceBranch(ws.id, head)
+    if (branch === ws.branch && branches.length === ws.branches.length) return ws
+    this.opts.store.setWorkspaceBranch(ws.id, branch, branches)
     const next = this.get(ws.id)
-    this.log(`workspace ${ws.id} is on ${head} (was ${ws.branch})`)
+
+    if (branch !== ws.branch) this.log(`workspace ${ws.id} is on ${branch} (was ${ws.branch})`)
     this.opts.emit('workspace.updated', next)
 
     return next
+  }
+
+  /** The branches the worktree's HEAD reflog has checked out, then the stored one. */
+  private async branchHistory(ws: Workspace): Promise<string[]> {
+    const r = await git(ws.path, ['reflog', 'show', '--format=%gs', 'HEAD'], 10_000)
+
+    return withBranch(r.ok ? reflogBranches(r.stdout) : [], ws.branch)
   }
 
   /** True when the branch was never pushed: no `origin/<branch>` in the worktree. */
@@ -492,7 +507,9 @@ export class WorkspaceManager {
       const moved = await git(ws.path, ['branch', '-m', ws.branch, branch])
 
       if (!moved.ok) throw badRequest(`git branch -m failed: ${moved.stderr}`)
-      this.opts.store.setWorkspaceBranch(ws.id, branch)
+      // The old name never reached origin, so no pull request can name it.
+      const branches = ws.branches.map((b) => (b === ws.branch ? branch : b))
+      this.opts.store.setWorkspaceBranch(ws.id, branch, withBranch(branches, branch))
     }
 
     this.opts.store.setWorkspaceTitle(ws.id, title, 'user')

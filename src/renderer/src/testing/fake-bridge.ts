@@ -499,6 +499,7 @@ class FakeBridge {
             projectId,
             name: s,
             branch: branch ?? s,
+            branches: [branch ?? s],
             path: `${this.home}/.que/worktrees/${project.name}/${s}`,
             baseRef: baseRef ?? `origin/${project.defaultBranch}`,
             status: 'preparing',
@@ -508,7 +509,7 @@ class FakeBridge {
             sessionId: null,
             createdAt: now,
             archivedAt: null,
-            prUrl: null,
+            prUrls: [],
             pr: null,
             prs: [],
             finishedAt: null,
@@ -616,8 +617,9 @@ class FakeBridge {
           if (!title.trim()) throw rpcError('bad_request', 'title is required')
           this.prCalls.push({ id, title })
           const prUrl = `https://github.com/rquellh/que/pull/${40 + this.prCalls.length}`
-          this.workspaces.set(id, { ...ws, prUrl })
-          this.emit('workspace.updated', { ...ws, prUrl })
+          const next = { ...ws, prUrls: [...ws.prUrls, prUrl] }
+          this.workspaces.set(id, next)
+          this.emit('workspace.updated', next)
 
           return { prUrl }
         },

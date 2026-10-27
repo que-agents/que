@@ -60,7 +60,13 @@ export interface Workspace {
   id: string
   projectId: string
   name: string
+  /** The branch the worktree has checked out. */
   branch: string
+  /**
+   * Every branch the worktree has had checked out, oldest first (`branch` among them). Empty for
+   * a workspace stored before branches were kept, until the daemon next reads its branch.
+   */
+  branches: string[]
   path: string
   baseRef: string
   status: WorkspaceStatus
@@ -72,16 +78,19 @@ export interface Workspace {
   sessionId: string | null
   createdAt: string
   archivedAt: string | null
-  /** The draft pull request opened from this workspace (workspace.createPr). */
-  prUrl: string | null
+  /**
+   * The pull requests the session created, oldest first: by workspace.createPr, or by its own
+   * `gh pr create` (its subagents' included) on the project's origin, on any branch.
+   */
+  prUrls: string[]
   /**
    * The current pull request, as last seen on GitHub: the open or draft one among `prs`, else
    * the most recently updated; null when there is none.
    */
   pr: PullRequest | null
   /**
-   * Every pull request opened from this workspace: those whose head is its branch, plus the one
-   * workspace.createPr recorded as its `prUrl`. Newest first by number, at most 10.
+   * The session's pull requests: those whose head is any of its `branches`, plus each of its
+   * `prUrls`. One seen stays when the branch moves on. Newest first by number, at most 20.
    */
   prs: PullRequest[]
   /** When its last turn ended (working to idle); null before one has. */

@@ -1462,7 +1462,9 @@ export class QueStore {
     this.setWith((s) => {
       const ws = s.workspaces[id]
 
-      return ws ? { workspaces: { ...s.workspaces, [id]: { ...ws, prUrl } } } : {}
+      if (!ws || ws.prUrls.includes(prUrl)) return {}
+
+      return { workspaces: { ...s.workspaces, [id]: { ...ws, prUrls: [...ws.prUrls, prUrl] } } }
     })
 
     return prUrl
