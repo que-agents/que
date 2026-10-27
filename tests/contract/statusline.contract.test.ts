@@ -67,13 +67,31 @@ describe.skipIf(!CONTRACT)('claude status line contract', () => {
       { cwd: dir, cols: 120, rows: 40, env: process.env as Record<string, string> }
     )
 
-    let trusted = false
+    // A fresh directory asks whether to trust it, with "No, exit" highlighted.
+    // Each key waits for the screen to settle: a key sent while the prompt is
+    // still drawing is lost when it redraws. Down to "Yes", then Enter.
+    let trust: 'waiting' | 'asked' | 'moved' | 'answered' = 'waiting'
+    let screen = ''
+    let settle: NodeJS.Timeout | undefined
     term.onData((data) => {
-      // A fresh directory asks whether to trust it; the default answer is yes.
-      if (!trusted && /trust/i.test(data)) {
-        trusted = true
-        term.write('\r')
-      }
+      if (trust === 'answered') return
+      // Cursor moves sit between the words of a redraw.
+      screen += data.replace(/\x1b\[[0-9;?<>]*[ -/]*[@-~]/g, '') // oxlint-disable-line no-control-regex
+
+      if (trust === 'waiting' && /trust/i.test(screen)) trust = 'asked'
+
+      if (trust === 'waiting') return
+      clearTimeout(settle)
+      settle = setTimeout(() => {
+        if (trust === 'asked') {
+          trust = 'moved'
+          screen = ''
+          term.write('\x1b[B')
+        } else if (trust === 'moved' && /❯\s*Yes/.test(screen)) {
+          trust = 'answered'
+          term.write('\r')
+        }
+      }, 300)
     })
 
     try {
