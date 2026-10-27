@@ -1,7 +1,8 @@
 // Sessions (loose terminals) above projects → workspaces with their status dots
 // (`data-status`, `data-unseen`) and the word under the pointer, the foot (the Quiet row,
 // or the unlock row in its place, with Update at its right end, over the icon strip of
-// Report, Tickets and Settings), the project context menu, and the new-workspace and
+// Report, Tickets and Settings, and Claude usage at its right end with the card it opens),
+// the project context menu, and the new-workspace and
 // remove-project and remove-workspace dialogs, a removing row's step word, and the card a workspace row opens under a resting pointer.
 import { expect, type Locator, type Page } from '@playwright/test'
 
@@ -33,6 +34,13 @@ export class SidebarPage {
   ticketsButton: Locator
   settingsButton: Locator
   footEnd: Locator
+  usageButton: Locator
+  usageFiveHour: Locator
+  usageWeekly: Locator
+  usageCard: Locator
+  usageCardFiveHour: Locator
+  usageCardWeekly: Locator
+  usageCardAsOf: Locator
   newWorkspaceDialog: Locator
   newWorkspaceBrief: Locator
   newWorkspaceStart: Locator
@@ -97,8 +105,15 @@ export class SidebarPage {
     this.reportButton = page.getByTestId('sidebar-report')
     this.ticketsButton = page.getByTestId('sidebar-tickets')
     this.settingsButton = page.getByTestId('sidebar-settings')
-    // The strip's right end, kept for usage.
+    // The strip's right end: Claude usage (`5h 42%  wk 18%`) and the card a click opens.
     this.footEnd = page.getByTestId('sidebar-foot-end')
+    this.usageButton = page.getByTestId('sidebar-usage')
+    this.usageFiveHour = page.getByTestId('sidebar-usage-five-hour')
+    this.usageWeekly = page.getByTestId('sidebar-usage-weekly')
+    this.usageCard = page.getByTestId('sidebar-usage-card')
+    this.usageCardFiveHour = page.getByTestId('sidebar-usage-card-five-hour')
+    this.usageCardWeekly = page.getByTestId('sidebar-usage-card-weekly')
+    this.usageCardAsOf = page.getByTestId('sidebar-usage-card-as-of')
     this.newWorkspaceDialog = page.getByTestId('dialog-new-workspace')
     this.newWorkspaceBrief = page.getByTestId('dialog-new-workspace-brief')
     this.newWorkspaceStart = page.getByTestId('dialog-new-workspace-start')

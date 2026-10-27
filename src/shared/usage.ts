@@ -23,6 +23,11 @@ export function formatUntil(t: number, now: number): string {
   return `in ${Math.floor(hours / 24)}d ${hours % 24}h`
 }
 
+/** `38m`, `2h 10m`: the time until `t` without its `in` (`now` once it has passed). */
+export function formatUntilShort(t: number, now: number): string {
+  return formatUntil(t, now).replace(/^in /, '')
+}
+
 /** `Mon 09:00`: the weekday and clock, local time. */
 export function formatWeekdayClock(t: number): string {
   return `${WEEKDAYS[new Date(t).getDay()]} ${hhmm(t)}`
@@ -31,6 +36,20 @@ export function formatWeekdayClock(t: number): string {
 /** A percentage used, as a whole number. */
 export function usagePercent(w: UsageWindow): number {
   return Math.round(w.pct)
+}
+
+/** How full a window reads: `attention` from 80%, `bad` from 100%, none below. */
+export type UsageTone = 'attention' | 'bad'
+
+/** A window's tone, read off the whole percentage the app shows, so `80%` is never untoned. */
+export function usageTone(w: UsageWindow): UsageTone | null {
+  const pct = usagePercent(w)
+
+  if (pct >= 100) return 'bad'
+
+  if (pct >= 80) return 'attention'
+
+  return null
 }
 
 /** `5h  42%`: a window's label and its percentage, right-aligned to `100%`. */

@@ -253,7 +253,8 @@ h2 {
 .report-body h2::before,
 .settings legend::before,
 .quiet-board-label::before,
-.workspace-popout .label::before {
+.workspace-popout .label::before,
+.usage-card .label::before {
   content: '[ ';
 }
 
@@ -261,7 +262,8 @@ h2 {
 .report-body h2::after,
 .settings legend::after,
 .quiet-board-label::after,
-.workspace-popout .label::after {
+.workspace-popout .label::after,
+.usage-card .label::after {
   content: ' ]';
 }
 
@@ -875,6 +877,113 @@ button.ghost.icon.foot-view[aria-current='page'] {
   align-items: center;
 }
 
+/* Claude plan usage at the strip's right end: `5h 42%  wk 18%`, the labels faint and the
+ * numbers muted, both a step brighter under the pointer and while the card is open. A number
+ * takes its tone at 80% and 100%. docs/design.md "Sidebar". */
+button.usage-button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 22px;
+  padding: 0 4px;
+  background: none;
+  border: none;
+  border-radius: 2px;
+  font: 400 11px var(--mono);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.usage-button .usage-label,
+.usage-button .usage-until,
+.usage-button.empty .usage-num {
+  color: var(--fg-faint);
+}
+
+.usage-button .usage-num {
+  color: var(--fg-muted);
+}
+
+button.usage-button:hover,
+button.usage-button[aria-expanded='true'] {
+  background: var(--bg-hover);
+}
+
+.usage-button:hover .usage-label,
+.usage-button[aria-expanded='true'] .usage-label {
+  color: var(--fg-muted);
+}
+
+.usage-button:hover .usage-num,
+.usage-button[aria-expanded='true'] .usage-num {
+  color: var(--fg);
+}
+
+.usage-button .usage-num.toned,
+.usage-card .usage-window-pct.toned {
+  color: var(--tone);
+}
+
+/* The card the usage button opens beside the sidebar, its bottom level with the strip: a line
+ * and a 2px meter per window, a hairline, and when and where the reading was taken. */
+.usage-card {
+  position: fixed;
+  z-index: 20;
+  box-sizing: border-box;
+  width: 340px;
+  padding: 12px 14px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font: 11px / 16px var(--mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-faint);
+  cursor: default;
+}
+
+.usage-card .usage-window {
+  display: grid;
+  grid-template-columns: 64px auto 1fr;
+  row-gap: 4px;
+  align-items: baseline;
+}
+
+.usage-card .usage-window-pct {
+  color: var(--fg);
+}
+
+.usage-card .usage-window-resets {
+  justify-self: end;
+  white-space: nowrap;
+}
+
+/* The meter lines up with the percent: the track the rest of the line's width. */
+.usage-card .usage-meter {
+  grid-column: 2 / -1;
+  height: 2px;
+  background: var(--border);
+}
+
+.usage-card .usage-meter-fill {
+  display: block;
+  height: 100%;
+  background: var(--fg-muted);
+}
+
+.usage-card .usage-meter-fill.toned {
+  background: var(--tone);
+}
+
+.usage-card hr {
+  margin: 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+}
+
+.usage-card .usage-workspace {
+  color: var(--fg-muted);
+}
+
 .menu {
   position: absolute;
   right: 0;
@@ -886,9 +995,10 @@ button.ghost.icon.foot-view[aria-current='page'] {
   padding: 4px;
 }
 
-/* The raised surface a menu and the workspace card share. */
+/* The raised surface a menu, the workspace card and the usage card share. */
 .menu,
-.workspace-popout {
+.workspace-popout,
+.usage-card {
   background: var(--bg-raised);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius);

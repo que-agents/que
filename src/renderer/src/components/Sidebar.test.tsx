@@ -629,7 +629,7 @@ describe('Sidebar', () => {
       { name: 'Settings', view: 'settings-view' }
     ]
 
-    it('names Report, Tickets and Settings by their tooltips, in that order', async () => {
+    it('names Report, Tickets and Settings by their tooltips, in that order, then usage', async () => {
       render(<App />)
 
       const strip = await screen.findByTestId('sidebar-strip')
@@ -637,9 +637,14 @@ describe('Sidebar', () => {
       expect(buttons.map((b) => b.getAttribute('aria-label'))).toEqual([
         'Report',
         'Tickets',
+        'Settings',
+        'Claude usage: no reading yet'
+      ])
+      expect(buttons.slice(0, 3).map((b) => b.getAttribute('title'))).toEqual([
+        'Report',
+        'Tickets',
         'Settings'
       ])
-      expect(buttons.map((b) => b.getAttribute('title'))).toEqual(['Report', 'Tickets', 'Settings'])
     })
 
     it.each(views)('opens $name and reads it as the open view', async ({ name, view }) => {
@@ -657,7 +662,7 @@ describe('Sidebar', () => {
         within(strip)
           .getAllByRole('button')
           .map((b) => b.getAttribute('aria-current'))
-      ).toEqual(views.map((v) => (v.name === name ? 'page' : null)))
+      ).toEqual([...views.map((v) => (v.name === name ? 'page' : null)), null])
     })
 
     it('carries the open ticket count beside the Tickets icon', async () => {
@@ -672,12 +677,12 @@ describe('Sidebar', () => {
       })
     })
 
-    it('keeps its right end for usage, empty for now', async () => {
+    it('holds Claude usage at its right end', async () => {
       render(<App />)
 
       const end = await screen.findByTestId('sidebar-foot-end')
       expect(end.parentElement).toBe(screen.getByTestId('sidebar-strip'))
-      expect(end).toBeEmptyDOMElement()
+      expect(within(end).getByTestId('sidebar-usage')).toBeInTheDocument()
     })
   })
 

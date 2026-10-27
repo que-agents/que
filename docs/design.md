@@ -52,8 +52,8 @@ so the DOM keeps the plain word.
 | `--accent-hover`   | `#6adcc7` | The accent under the pointer.                                                                                                                      |
 | `--inverse`        | `#e6e6e6` | The one primary button on a screen, light on dark.                                                                                                 |
 | `--tone-busy`      | `#4f8cf5` | working, preparing, as a still dot or badge: status badges, the popout, the report. The sidebar and the quiet board draw the working mark instead. |
-| `--tone-attention` | `#f99c00` | needs input.                                                                                                                                       |
-| `--tone-bad`       | `#fb2c36` | stuck, exited badly; the danger button.                                                                                                            |
+| `--tone-attention` | `#f99c00` | needs input; a Claude usage window at 80% and over.                                                                                                |
+| `--tone-bad`       | `#fb2c36` | stuck, exited badly; the danger button; a Claude usage window at 100%.                                                                             |
 | `--tone-good`      | `#34c26b` | idle after work: a sidebar row that finished since you last looked at it.                                                                          |
 | `--tone-neutral`   | `#7a7a7a` | idle; the working mark while a workspace is being removed (sidebar and card).                                                                      |
 | `--tone-muted`     | `#5a5a5a` | exited.                                                                                                                                            |
@@ -292,7 +292,24 @@ only under the pointer.
   11px `--fg-faint`) and Settings (a gear), in `--fg-faint`, `--fg` under the pointer. Each
   icon's name is its tooltip and accessible name. The view open in the main area reads
   `--fg` with a 1px `--fg` line under it, like the review pane's strip. The strip's right
-  end is kept for usage.
+  end shows the Claude plan's usage, one button reading `5h 42%  wk 18%` in mono 11px
+  tabular, the labels `--fg-faint` and the numbers `--fg-muted`, 10px between the pairs;
+  under the pointer and while its card is open the numbers read `--fg` and the labels
+  `--fg-muted` on `--bg-hover` (2px radius). A number takes `--tone-attention` at 80% and
+  `--tone-bad` at 100%, where it is followed by the time until that window resets in
+  `--fg-faint` (`5h 100% · 38m`). A window without a reading shows `—`; before any reading
+  it reads `5h —  wk —` in `--fg-faint`, its tooltip saying it fills in after a session's
+  first reply, on plans with usage limits. Its accessible name reads the numbers out
+  (`Claude usage: 5-hour 42%, weekly 18%`). A click opens the usage card just right of the
+  sidebar, its bottom edge level with the strip's, drawn like the workspace card (340px,
+  `--bg-raised`, 1px `--border-strong`, `--radius`, the menu's shadow), in mono 11px:
+  `[ CLAUDE USAGE ]`; a line per window, `5-hour` and `weekly` in a 64px `--fg-faint`
+  column, the percent in `--fg` (or its tone), and at the right in `--fg-faint`
+  `resets 16:20 · in 2h 10m` (ticking each minute) or `resets Mon 09:00`, with a 2px meter
+  under it lined up with the percent (track `--border`, fill `--fg-muted` or the tone, as
+  wide as the percent, up to full); a hairline; and `as of 14:08 · <workspace>`, the name in
+  `--fg-muted` when it is known. It closes on Escape, a press elsewhere, or a second click.
+  Usage is not in the tray and not on the quiet board.
 
 ## Quiet board
 

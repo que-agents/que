@@ -23,6 +23,7 @@ import {
 } from './icons'
 import BackgroundMark from './BackgroundMark'
 import Menu, { type MenuItem, type Point } from './Menu'
+import UsageFoot from './UsageFoot'
 import WorkingMark from './WorkingMark'
 import WorkspacePopout, { usePopout } from './WorkspacePopout'
 
@@ -614,8 +615,10 @@ export default function Sidebar(): React.JSX.Element {
               )}
             </button>
           ))}
-          {/* The right end is kept for usage. */}
-          <div className="foot-end" data-testid="sidebar-foot-end" />
+          {/* The right end: Claude plan usage. */}
+          <div className="foot-end" data-testid="sidebar-foot-end">
+            <UsageFoot />
+          </div>
         </div>
       </div>
     </aside>
