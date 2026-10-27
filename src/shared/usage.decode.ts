@@ -12,26 +12,27 @@ function percent(v: unknown): number | undefined {
   return isFiniteNumber(v) ? Math.min(100, Math.max(0, v)) : undefined
 }
 
-/** A window as que keeps it (`pct`, `resetsAt` in epoch ms); undefined when malformed. */
-export function decodeUsageWindow(v: unknown): UsageWindow | undefined {
-  if (!isObj(v)) return undefined
-  const pct = percent(v.pct)
+/** A window from its percent used and its reset in epoch ms; undefined when either is malformed. */
+function usageWindow(pct: unknown, resetsAt: unknown): UsageWindow | undefined {
+  const used = percent(pct)
 
-  if (pct === undefined || !isFiniteNumber(v.resetsAt) || v.resetsAt <= 0) return undefined
+  if (used === undefined || !isFiniteNumber(resetsAt) || resetsAt <= 0) return undefined
 
-  return { pct, resetsAt: v.resetsAt }
+  return { pct: used, resetsAt }
 }
+
+/** A window as que keeps it (`pct`, `resetsAt` in epoch ms). */
+const storedWindow = (v: unknown): UsageWindow | undefined =>
+  isObj(v) ? usageWindow(v.pct, v.resetsAt) : undefined
 
 /** A window as Claude Code sends it (`used_percentage`, `resets_at` in Unix seconds). */
-function statusLineWindow(v: unknown): UsageWindow | undefined {
-  if (!isObj(v)) return undefined
-  const pct = percent(v.used_percentage)
-  const resetsAt = v.resets_at
-
-  if (pct === undefined || !isFiniteNumber(resetsAt) || resetsAt <= 0) return undefined
-
-  return { pct, resetsAt: Math.round(resetsAt * 1000) }
-}
+const statusLineWindow = (v: unknown): UsageWindow | undefined =>
+  isObj(v)
+    ? usageWindow(
+        v.used_percentage,
+        isFiniteNumber(v.resets_at) ? Math.round(v.resets_at * 1000) : undefined
+      )
+    : undefined
 
 /**
  * The plan usage windows in a status line payload. Each is absent when Claude
@@ -48,18 +49,11 @@ export function decodeStatusLineUsage(input: unknown): {
   return { ...(fiveHour && { fiveHour }), ...(sevenDay && { sevenDay }) }
 }
 
-/** The directory a status line payload names for its project: `workspace.project_dir`, else `cwd`. */
-export function statusLineProjectDir(input: unknown): string | undefined {
-  const fields = fieldsOf(input)
-
-  return str(fieldsOf(fields.workspace).project_dir) || str(fields.cwd) || undefined
-}
-
 /** A whole reading (usage.json, the usage.report params); null unless `at` is a time. */
 export function decodeUsage(v: unknown): Usage | null {
   if (!isObj(v) || !isFiniteNumber(v.at)) return null
-  const fiveHour = decodeUsageWindow(v.fiveHour)
-  const sevenDay = decodeUsageWindow(v.sevenDay)
+  const fiveHour = storedWindow(v.fiveHour)
+  const sevenDay = storedWindow(v.sevenDay)
   const workspaceId = str(v.workspaceId)
 
   return {
@@ -86,5 +80,9 @@ export function parseStatusLine(text: string): StatusLineInput {
     // Claude Code sent something else: nothing to report, nowhere in particular.
   }
 
-  return { windows: decodeStatusLineUsage(json), projectDir: statusLineProjectDir(json) }
+  const fields = fieldsOf(json)
+  // The project's directory: `workspace.project_dir`, else `cwd`.
+  const projectDir = str(fieldsOf(fields.workspace).project_dir) || str(fields.cwd) || undefined
+
+  return { windows: decodeStatusLineUsage(json), projectDir }
 }

@@ -1,8 +1,15 @@
 import { describe, expect, it } from 'vitest'
-import { chooseUserStatusLine, isQueStatusLine, statusLineSettingsFiles } from './statusline'
+import { findUserStatusLine, isQueStatusLine, statusLineSettingsFiles } from './statusline'
 
 const line = (command: string, type = 'command'): string =>
   JSON.stringify({ model: 'opus', statusLine: { type, command, padding: 0 } })
+
+/** The settings files' texts, most specific first (null for a missing file), through findUserStatusLine. */
+function chooseUserStatusLine(texts: ReadonlyArray<string | null>): string | null {
+  const files = texts.map((_, i) => `/settings-${i}.json`)
+
+  return findUserStatusLine(files, (path) => texts[files.indexOf(path)] ?? null)
+}
 
 describe('statusLineSettingsFiles', () => {
   it('lists the project local, project, then user settings', () => {
@@ -14,7 +21,7 @@ describe('statusLineSettingsFiles', () => {
   })
 })
 
-describe('chooseUserStatusLine', () => {
+describe('findUserStatusLine', () => {
   describe('precedence', () => {
     it('takes the project local settings over the project and user ones', () => {
       expect(
@@ -24,6 +31,19 @@ describe('chooseUserStatusLine', () => {
           line('~/.claude/statusline.sh')
         ])
       ).toBe('~/bin/branch-line.sh')
+    })
+
+    it('stops reading at the first file that names a usable status line', () => {
+      const read: string[] = []
+
+      const command = findUserStatusLine(['local', 'project', 'user'], (path) => {
+        read.push(path)
+
+        return path === 'project' ? line('~/bin/branch-line.sh') : null
+      })
+
+      expect(command).toBe('~/bin/branch-line.sh')
+      expect(read).toEqual(['local', 'project'])
     })
 
     it('falls through files that are missing or name no status line', () => {
