@@ -19,7 +19,6 @@ import {
   samePullRequests
 } from './pr-state'
 import {
-  decodeHeadRef,
   decodePullRequest,
   decodePullRequests,
   FIELDS,
@@ -82,7 +81,7 @@ async function ghPrList(
     '--limit',
     String(branch ? PR_LIST_CAP : LIST_LIMIT),
     '--json',
-    branch ? FIELDS : `${FIELDS},headRefName`
+    FIELDS
   ]
 
   const parsed = await ghJson(args, cwd, signal)
@@ -296,14 +295,13 @@ export class PrService {
     const byBranch = new Map<string, GhPullRequest[]>()
 
     for (const item of items) {
-      const head = decodeHeadRef(item)
       const pr = decodePullRequest(item)
 
-      if (head === null || !pr) continue
-      const prs = byBranch.get(head)
+      if (!pr?.headRefName) continue
+      const prs = byBranch.get(pr.headRefName)
 
       if (prs) prs.push(pr)
-      else byBranch.set(head, [pr])
+      else byBranch.set(pr.headRefName, [pr])
     }
 
     for (const ws of open) {

@@ -165,6 +165,10 @@ export interface PullRequest {
   /** Lines added and removed across the pull request, or null when unknown. */
   additions: number | null
   deletions: number | null
+  /** The branch it merges into (`baseRefName`); empty when unknown. */
+  base: string
+  /** The branch it merges from (`headRefName`); empty when unknown. */
+  head: string
   /** When que last refreshed this from GitHub. */
   checkedAt: string
 }

@@ -149,6 +149,8 @@ export function makePullRequest(overrides: Partial<PullRequest> = {}): PullReque
     updatedAt: null,
     additions: null,
     deletions: null,
+    base: 'main',
+    head: 'ha-1431-retry-logic',
     checkedAt: '2026-10-14T01:00:00.000Z',
     ...overrides
   }

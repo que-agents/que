@@ -66,6 +66,8 @@ describe('decodePullRequest', () => {
       updatedAt: '2026-10-14T03:30:00Z',
       additions: 128,
       deletions: 17,
+      baseRefName: 'main',
+      headRefName: 'APP-1432-retry-logic',
       checks: [
         {
           kind: 'run',
@@ -100,6 +102,8 @@ describe('decodePullRequest', () => {
       updatedAt: null,
       additions: null,
       deletions: null,
+      baseRefName: '',
+      headRefName: '',
       checks: []
     })
   })

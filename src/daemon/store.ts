@@ -284,13 +284,18 @@ function toProject(r: ProjectRow): Project {
   }
 }
 
-/** A stored pull request; one stored before line counts were kept reads them as null. */
+/**
+ * A stored pull request; one stored before line counts were kept reads them as null, one
+ * stored before its branches were kept reads them as empty.
+ */
 function storedPr(v: unknown): PullRequest | null {
   return v && typeof v === 'object' && !Array.isArray(v)
     ? {
         ...(v as PullRequest),
         additions: (v as PullRequest).additions ?? null,
-        deletions: (v as PullRequest).deletions ?? null
+        deletions: (v as PullRequest).deletions ?? null,
+        base: (v as PullRequest).base ?? '',
+        head: (v as PullRequest).head ?? ''
       }
     : null
 }

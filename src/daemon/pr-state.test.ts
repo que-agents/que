@@ -32,8 +32,16 @@ describe('parsePullRequest', () => {
       updatedAt: null,
       additions: null,
       deletions: null,
+      base: '',
+      head: '',
       checkedAt: AT
     })
+  })
+
+  it('keeps the branches it merges into and from', () => {
+    expect(
+      parse({ state: 'OPEN', baseRefName: 'APP-1432-retry-logic', headRefName: 'APP-1433-backoff' })
+    ).toMatchObject({ base: 'APP-1432-retry-logic', head: 'APP-1433-backoff' })
   })
 
   it('keeps the line counts gh printed', () => {

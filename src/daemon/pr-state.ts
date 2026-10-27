@@ -109,6 +109,8 @@ export function parsePullRequest(r: GhPullRequest, checkedAt: string): PullReque
     updatedAt: r.updatedAt,
     additions: r.additions,
     deletions: r.deletions,
+    base: r.baseRefName,
+    head: r.headRefName,
     checkedAt
   }
 }
@@ -176,6 +178,9 @@ export function samePullRequest(a: PullRequest | null, b: PullRequest | null): b
     a.checks === b.checks &&
     a.review === b.review &&
     a.updatedAt === b.updatedAt &&
+    // A pull request stored before branches were kept has none.
+    (a.base ?? '') === (b.base ?? '') &&
+    (a.head ?? '') === (b.head ?? '') &&
     // A pull request stored before line counts were kept has none.
     (a.additions ?? null) === (b.additions ?? null) &&
     (a.deletions ?? null) === (b.deletions ?? null) &&
