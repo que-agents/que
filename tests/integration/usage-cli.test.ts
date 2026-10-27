@@ -4,7 +4,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { hhmm } from '@shared/format'
 import type { Usage } from '@shared/types'
-import { formatWeekdayClock } from '@shared/usage'
+import { formatWeekdayClock } from '@shared/format'
 import { runCli, runCliJson } from '../../src/testing/cli'
 import { startTestDaemon, type TestDaemon } from '../../src/testing/daemon-harness'
 import { makeTempRepo } from '../../src/testing/temp-repo'
