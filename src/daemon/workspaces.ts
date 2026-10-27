@@ -34,7 +34,7 @@ import type {
   RemovalStep,
   Workspace
 } from '../shared/types'
-import { reflogBranches, withBranch } from './branch-history'
+import { reflogBranches, renameBranch, withBranch } from './branch-history'
 import { badRequest, conflict, notFound } from './errors'
 import type { Emit } from './bus'
 import type { StatusService } from './status'
@@ -446,12 +446,14 @@ export class WorkspaceManager {
     const branch = head || ws.branch
     const known = ws.branches.length > 0 ? ws.branches : await this.branchHistory(ws)
     const branches = withBranch(known, branch)
+    const moved = branch !== ws.branch
 
-    if (branch === ws.branch && branches.length === ws.branches.length) return ws
+    // A list seeded from the reflog is never empty, so it is stored even on the same branch.
+    if (!moved && branches.length === ws.branches.length) return ws
     this.opts.store.setWorkspaceBranch(ws.id, branch, branches)
     const next = this.get(ws.id)
 
-    if (branch !== ws.branch) this.log(`workspace ${ws.id} is on ${branch} (was ${ws.branch})`)
+    if (moved) this.log(`workspace ${ws.id} is on ${branch} (was ${ws.branch})`)
     this.opts.emit('workspace.updated', next)
 
     return next
@@ -508,7 +510,7 @@ export class WorkspaceManager {
 
       if (!moved.ok) throw badRequest(`git branch -m failed: ${moved.stderr}`)
       // The old name never reached origin, so no pull request can name it.
-      const branches = ws.branches.map((b) => (b === ws.branch ? branch : b))
+      const branches = renameBranch(ws.branches, ws.branch, branch)
       this.opts.store.setWorkspaceBranch(ws.id, branch, withBranch(branches, branch))
     }
 

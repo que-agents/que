@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { reflogBranches, withBranch } from './branch-history'
+import { appendNew, reflogBranches, renameBranch, withBranch } from './branch-history'
 
 // As `git reflog show --format=%gs HEAD` prints it: newest first.
 const reflog = (...newestFirst: string[]): string => newestFirst.join('\n')
@@ -49,5 +49,36 @@ describe('withBranch', () => {
     expect(withBranch(list, 'APP-1434-jitter')).toEqual([...list, 'APP-1434-jitter'])
     expect(withBranch(list, 'APP-1432-retry-logic')).toEqual(list)
     expect(list).toEqual(before)
+  })
+})
+
+describe('appendNew', () => {
+  it('appends the items not already present, in order and once each', () => {
+    const urls = ['https://github.com/rquellh/que/pull/88']
+
+    expect(
+      appendNew(urls, [
+        'https://github.com/rquellh/que/pull/91',
+        'https://github.com/rquellh/que/pull/88',
+        'https://github.com/rquellh/que/pull/91'
+      ])
+    ).toEqual(['https://github.com/rquellh/que/pull/88', 'https://github.com/rquellh/que/pull/91'])
+    expect(urls).toEqual(['https://github.com/rquellh/que/pull/88'])
+  })
+})
+
+describe('renameBranch', () => {
+  it('renames in place, or drops the old name when the new one is already listed', () => {
+    const list = ['APP-1432-retry-logic', 'wip-backoff', 'APP-1434-jitter']
+
+    expect(renameBranch(list, 'wip-backoff', 'APP-1433-backoff')).toEqual([
+      'APP-1432-retry-logic',
+      'APP-1433-backoff',
+      'APP-1434-jitter'
+    ])
+    expect(renameBranch(list, 'wip-backoff', 'APP-1434-jitter')).toEqual([
+      'APP-1432-retry-logic',
+      'APP-1434-jitter'
+    ])
   })
 })

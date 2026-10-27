@@ -25,6 +25,7 @@ import type {
   WorkspaceStatus
 } from '../shared/types'
 import { REMOVAL_STEPS, TITLE_SOURCES } from '../shared/types'
+import { appendNew } from './branch-history'
 import { currentPullRequest } from './pr-state'
 
 const HOOK_EVENTS_PER_WORKSPACE = 500
@@ -654,14 +655,10 @@ export class Store {
 
       if (!r) return false
       const known = strings(parseStored(r.pr_urls_json))
-      const added = urls.filter((url, i) => !known.includes(url) && urls.indexOf(url) === i)
+      const next = appendNew(known, urls)
 
-      if (added.length === 0) return false
-      this.run(
-        'UPDATE workspaces SET pr_urls_json = ? WHERE id = ?',
-        JSON.stringify([...known, ...added]),
-        id
-      )
+      if (next.length === known.length) return false
+      this.run('UPDATE workspaces SET pr_urls_json = ? WHERE id = ?', JSON.stringify(next), id)
 
       return true
     })
