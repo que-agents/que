@@ -6,9 +6,9 @@
 import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
-import { chooseUserStatusLine, statusLineSettingsFiles } from '../shared/statusline'
+import { findUserStatusLine, statusLineSettingsFiles } from '../shared/statusline'
 import { parseStatusLine, type StatusLineInput } from '../shared/usage.decode'
-import { readStdin, requestOnce, sessionSocket } from './hook'
+import { readStdin, requestOnce, sessionSocket, withBudget } from './hook'
 
 /** How long the usage report may take. */
 const REPORT_BUDGET_MS = 1000
@@ -34,13 +34,12 @@ async function report(windows: StatusLineInput['windows']): Promise<void> {
     workspaceId: process.env.QUE_WORKSPACE_ID || undefined
   })
 
-  await Promise.race([sent, new Promise((r) => setTimeout(r, REPORT_BUDGET_MS).unref())])
+  await withBudget(sent, REPORT_BUDGET_MS)
 }
 
 /** Runs the user's own status line with the same stdin; resolves with its exit code (0 with none). */
 function runUserLine(text: string, projectDir: string): Promise<number> {
-  const texts = statusLineSettingsFiles(projectDir, os.homedir()).map(readOrNull)
-  const command = chooseUserStatusLine(texts)
+  const command = findUserStatusLine(statusLineSettingsFiles(projectDir, os.homedir()), readOrNull)
 
   if (!command) return Promise.resolve(0)
 

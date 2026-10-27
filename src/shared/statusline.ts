@@ -1,6 +1,6 @@
 // The status line que passes each session with --settings, and how
 // `que statusline` finds the user's own one to run after it. No Node imports:
-// the files are read by the caller.
+// the caller passes the file reader.
 import { fieldsOf, str } from './json.decode'
 
 /** The status line command in que's --settings. */
@@ -22,13 +22,19 @@ export function statusLineSettingsFiles(projectDir: string, homeDir: string): st
 }
 
 /**
- * The user's own status line command from the settings files' texts, most
- * specific first (null for a file that is missing): the first `statusLine`
- * of type `command` that is not que's own. A file that does not parse, or
- * names no usable status line, is passed over. Null when none does.
+ * The user's own status line command: the first `statusLine` of type
+ * `command` that is not que's own, reading the settings files most specific
+ * first and stopping at the first that names one. `read` gives a file's text,
+ * null when it is missing. A file that does not parse, or names no usable
+ * status line, is passed over. Null when none does.
  */
-export function chooseUserStatusLine(texts: ReadonlyArray<string | null>): string | null {
-  for (const text of texts) {
+export function findUserStatusLine(
+  files: readonly string[],
+  read: (path: string) => string | null
+): string | null {
+  for (const file of files) {
+    const text = read(file)
+
     if (text === null) continue
     let settings: unknown
 

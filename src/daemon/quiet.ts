@@ -30,7 +30,7 @@ import type { Store } from './store'
 import { errorMessage } from '../shared/errors.decode'
 
 /** setTimeout's ceiling; later boundaries are reached by the tick. */
-const MAX_TIMER_MS = 2 ** 31 - 1
+export const MAX_TIMER_MS = 2 ** 31 - 1
 
 /** A manual quiet's default and longest length, in minutes. */
 const MANUAL_DEFAULT_MINUTES = 60

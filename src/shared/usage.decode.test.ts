@@ -1,10 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import {
-  decodeStatusLineUsage,
-  decodeUsage,
-  decodeUsageWindow,
-  statusLineProjectDir
-} from './usage.decode'
+import { decodeStatusLineUsage, decodeUsage, parseStatusLine } from './usage.decode'
 
 // A status line payload as Claude Code sends it on a plan account.
 const payload = {
@@ -76,13 +71,21 @@ describe('decodeStatusLineUsage', () => {
   })
 })
 
-describe('statusLineProjectDir', () => {
-  it('prefers workspace.project_dir, then cwd', () => {
-    expect(statusLineProjectDir(payload)).toBe(
-      '/Users/dev/.que/worktrees/uploader/app-1432-retry-logic'
-    )
-    expect(statusLineProjectDir({ cwd: payload.cwd })).toBe(payload.cwd)
-    expect(statusLineProjectDir({})).toBeUndefined()
+describe('parseStatusLine', () => {
+  it('reads the windows and the project directory', () => {
+    expect(parseStatusLine(JSON.stringify(payload))).toEqual({
+      windows: decodeStatusLineUsage(payload),
+      projectDir: '/Users/dev/.que/worktrees/uploader/app-1432-retry-logic'
+    })
+  })
+
+  it('takes cwd when the payload names no project directory', () => {
+    expect(parseStatusLine(JSON.stringify({ cwd: payload.cwd })).projectDir).toBe(payload.cwd)
+    expect(parseStatusLine('{}').projectDir).toBeUndefined()
+  })
+
+  it('reads nothing from text that is not JSON', () => {
+    expect(parseStatusLine('not json')).toEqual({ windows: {}, projectDir: undefined })
   })
 })
 
@@ -103,6 +106,8 @@ describe('decodeUsage', () => {
       at: 1791990000000
     })
     expect(decodeUsage({ fiveHour: { pct: 42, resetsAt: 1792000000000 } })).toBeNull()
-    expect(decodeUsageWindow({ pct: 42, resetsAt: -1 })).toBeUndefined()
+    expect(decodeUsage({ sevenDay: { pct: 42, resetsAt: -1 }, at: 1791990000000 })).toEqual({
+      at: 1791990000000
+    })
   })
 })
