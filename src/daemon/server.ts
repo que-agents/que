@@ -45,6 +45,7 @@ import { EventBus } from './bus'
 import { RpcError } from './errors'
 import type { HostedTerminal, PtyHost, Term, TermExtra } from './pty-host'
 import { QuietService } from './quiet'
+import { UsageService } from './usage'
 import { gatherReport } from './gather-report'
 import { PrService } from './prs'
 import { LiveSessions, storedLiveSessions } from './live-sessions'
@@ -163,6 +164,7 @@ export class DaemonServer {
   readonly tickets: TicketService
   readonly workspaces: WorkspaceManager
   readonly quiet: QuietService
+  readonly usage: UsageService
   /** Workspace terminals with a live Claude session, restored after a restart. */
   readonly liveSessions: LiveSessions
   /** The last good user config, the file stamp it was read at, and when the file was last statted. */
@@ -237,6 +239,11 @@ export class DaemonServer {
       log: (m) => this.log(m),
       now: opts.now,
       tickMs: opts.quietTickMs
+    })
+    this.usage = new UsageService({
+      file: this.paths.usageJson,
+      emit,
+      log: (m) => this.log(m)
     })
 
     // Terminals taken over from a predecessor daemon keep their workspace.
@@ -597,6 +604,7 @@ export class DaemonServer {
 
         this.status.start()
         this.quiet.start()
+        this.usage.start()
         this.prs.start()
         this.tickets.start()
         // After quiet hours have read their state: a locked start keeps the sessions for the unlock.
@@ -656,6 +664,7 @@ export class DaemonServer {
     if (!this.closed) {
       this.closed = true
       this.quiet.stop()
+      this.usage.stop()
       this.prs.stop()
       await this.prs.drain()
       this.tickets.stop()
@@ -925,6 +934,12 @@ export class DaemonServer {
     'quiet.start': (p) => this.quiet.startManual(p?.minutes),
     'quiet.end': () => this.quiet.endManual(),
     'quiet.log': (p) => this.quiet.log(p?.since),
+    'usage.report': (p) => {
+      this.usage.report(p)
+
+      return { ok: true }
+    },
+    'usage.get': () => this.usage.get(),
     'tickets.list': () => this.tickets.list(),
     'tickets.sync': () => this.tickets.sync(),
     'tickets.start': (p) => this.tickets.startTicket(p),

@@ -187,6 +187,45 @@ function runHooks(event, extra = {}) {
   }
 }
 
+/**
+ * Runs the `statusLine` command from --settings with the status line JSON on
+ * stdin, as Claude Code does after a reply; returns its stdout. `rateLimits`
+ * is the `rate_limits` object (left out when null).
+ */
+function runStatusLine(rateLimits) {
+  const line = settings && typeof settings.statusLine === 'object' && settings.statusLine
+  if (!line || line.type !== 'command' || typeof line.command !== 'string') return ''
+  const payload = {
+    hook_event_name: 'Status',
+    session_id: sessionId,
+    transcript_path: transcriptPath,
+    cwd,
+    model: { id: model, display_name: 'Sonnet' },
+    workspace: { current_dir: cwd, project_dir: cwd },
+    version: VERSION,
+    output_style: { name: 'default' },
+    cost: { total_cost_usd: 0.01, total_duration_ms: 1000 },
+    ...(rateLimits && { rate_limits: rateLimits })
+  }
+  const r = spawnSync('/bin/sh', ['-c', line.command], {
+    cwd,
+    env: process.env,
+    input: JSON.stringify(payload),
+    encoding: 'utf8',
+    timeout: 10_000
+  })
+  return r.stdout || ''
+}
+
+/** `/statusline` with no argument: both windows, partly used, resetting in 2 h and 5 days. */
+function defaultRateLimits() {
+  const now = Math.floor(Date.now() / 1000)
+  return {
+    five_hour: { used_percentage: 42.5, resets_at: now + 2 * 3600 },
+    seven_day: { used_percentage: 18, resets_at: now + 5 * 86400 }
+  }
+}
+
 process.on('SIGTERM', () => process.exit(143))
 process.on('SIGINT', () => process.exit(130))
 
@@ -303,6 +342,25 @@ function interactive() {
       titleText = line.slice('/rename '.length).trim()
       setTitle()
       out(`Session renamed to: ${titleText}\r\n> `)
+      return
+    }
+    if (line === '/statusline' || line.startsWith('/statusline ')) {
+      // The status line runs; its output is printed as `status line: <text>` lines.
+      const arg = line.slice('/statusline'.length).trim()
+      let limits = defaultRateLimits()
+      if (arg === 'none') limits = null
+      else if (arg) {
+        try {
+          limits = JSON.parse(arg)
+        } catch {
+          out('fake claude: /statusline takes rate_limits JSON or none\r\n> ')
+          return
+        }
+      }
+      for (const text of runStatusLine(limits).split('\n').filter(Boolean)) {
+        out(`status line: ${text}\r\n`)
+      }
+      out('> ')
       return
     }
     if (line.startsWith('/background')) {

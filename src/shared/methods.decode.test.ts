@@ -64,6 +64,12 @@ describe('method table', () => {
   it('keeps the daemon-only calls away from the window', () => {
     const hidden = Object.keys(METHODS).filter((m) => !RENDERER_METHODS.has(m as never))
 
-    expect(hidden).toEqual(['daemon.ping', 'daemon.shutdown', 'daemon.handoff', 'hook.event'])
+    expect(hidden).toEqual([
+      'daemon.ping',
+      'daemon.shutdown',
+      'daemon.handoff',
+      'hook.event',
+      'usage.report'
+    ])
   })
 })

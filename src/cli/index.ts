@@ -14,6 +14,7 @@ import { runHook } from './hook'
 import { registerLaunchdCommands } from './launchd'
 import { registerQuietCommands } from './quiet'
 import { registerReportCommand } from './report'
+import { runStatusLine } from './statusline'
 import { registerTicketCommands } from './tickets'
 import { registerUpgradeCommand } from './upgrade'
 import { registerWorkspaceCommands } from './workspaces'
@@ -68,6 +69,15 @@ async function main(): Promise<void> {
   if (process.argv[2] === 'hook') {
     await runHook().catch(() => {})
     process.exit(0)
+  }
+
+  // `que statusline` runs inside Claude Code after each reply: the same fast
+  // path. Exit once the user's own status line's output has been written out.
+  if (process.argv[2] === 'statusline') {
+    const code = await runStatusLine().catch(() => 0)
+    process.stdout.write('', () => process.exit(code))
+
+    return
   }
 
   const program = new Command()
@@ -250,6 +260,15 @@ async function main(): Promise<void> {
   program
     .command('hook')
     .description('report a Claude Code hook event (stdin JSON) to the daemon; used by hooks.json')
+    .action(() => {
+      // Handled before parsing; listed here for --help.
+    })
+
+  program
+    .command('statusline')
+    .description(
+      'report Claude plan usage (status line JSON on stdin) to the daemon, then run your own status line; used by hooks.json'
+    )
     .action(() => {
       // Handled before parsing; listed here for --help.
     })

@@ -219,6 +219,8 @@ const QUIET_POLICY: Record<MethodName, 'refused' | 'allowed'> = {
   'quiet.start': 'allowed',
   'quiet.end': 'allowed',
   'quiet.log': 'allowed',
+  'usage.report': 'allowed',
+  'usage.get': 'allowed',
   'config.get': 'allowed',
   'config.set': 'allowed',
   'instructions.get': 'allowed',
@@ -322,6 +324,50 @@ describe('safety: hooks wrapper', () => {
     await new Promise<void>((r) => mute.close(() => r()))
     expect(r).toEqual({ code: 0, stdout: '', stderr: '' })
     expect(elapsed).toBeLessThan(5_000)
+  }, 20_000)
+
+  const statusLineJson = JSON.stringify({
+    session_id: '7d0c5b2a-0000-4000-8000-3e4f5a6b7c8d',
+    cwd: '/Users/dev/.que/worktrees/uploader/app-1432-retry-logic',
+    rate_limits: { five_hour: { used_percentage: 42, resets_at: 1792000000 } }
+  })
+
+  it('`que statusline` prints nothing and exits 0 when no daemon is listening', async () => {
+    const r = await runCliWith(
+      {
+        input: statusLineJson,
+        env: {
+          HOME: dir,
+          QUE_HOME: dir,
+          QUE_WORKSPACE_ID: 'ws_a2b3c4d5e6f7',
+          QUE_SOCKET: join(dir, 'none.sock')
+        }
+      },
+      'statusline'
+    )
+
+    expect(r).toEqual({ code: 0, stdout: '', stderr: '' })
+    expect(fs.readdirSync(dir)).toEqual([])
+  }, 20_000)
+
+  it('`que statusline` gives up on a daemon that never answers within its budget', async () => {
+    const socket = join(dir, 'mute.sock')
+    const mute = net.createServer((conn) => conn.resume())
+    await new Promise<void>((r) => mute.listen(socket, r))
+    const started = Date.now()
+
+    const r = await runCliWith(
+      {
+        input: statusLineJson,
+        env: { HOME: dir, QUE_HOME: dir, QUE_WORKSPACE_ID: 'ws_a2b3c4d5e6f7', QUE_SOCKET: socket }
+      },
+      'statusline'
+    )
+
+    const elapsed = Date.now() - started
+    await new Promise<void>((r) => mute.close(() => r()))
+    expect(r).toEqual({ code: 0, stdout: '', stderr: '' })
+    expect(elapsed).toBeLessThan(3_000)
   }, 20_000)
 
   it('the claude wrapper refuses (127) rather than run itself when no real claude is on PATH', async () => {

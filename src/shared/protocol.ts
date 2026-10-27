@@ -12,6 +12,7 @@ import type {
   PrThread,
   Ticket,
   TicketsSyncState,
+  Usage,
   UserConfig,
   Workspace,
   WorkspaceStatus,
@@ -435,6 +436,10 @@ export interface Methods {
   'quiet.start': { params: QuietStartParams | undefined; result: QuietState }
   'quiet.end': { params: Record<string, never> | undefined; result: QuietState }
   'quiet.log': { params: QuietLogParams | undefined; result: QuietUnlock[] }
+  /** From `que statusline`: a Claude plan usage reading; one older than the newest is ignored. */
+  'usage.report': { params: Usage; result: Ok }
+  /** The newest reading, without windows that have reset; null when none is left. */
+  'usage.get': { params: Record<string, never> | undefined; result: Usage | null }
   'config.get': { params: Record<string, never> | undefined; result: ConfigGetResult }
   'config.set': { params: ConfigSetParams; result: ConfigGetResult }
   'instructions.get': { params: Record<string, never> | undefined; result: InstructionsGetResult }
@@ -536,6 +541,8 @@ export const METHODS: {
   'quiet.start': { renderer: true, quiet: false },
   'quiet.end': { renderer: true, quiet: false },
   'quiet.log': { renderer: true, quiet: false },
+  'usage.report': { renderer: false, quiet: false },
+  'usage.get': { renderer: true, quiet: false },
   'config.get': { renderer: true, quiet: false },
   'config.set': { renderer: true, quiet: false },
   'instructions.get': {
@@ -592,6 +599,8 @@ export interface Events {
    */
   'quiet.morningSummary': { kind: QuietKind; report: Report }
   'config.changed': ConfigGetResult
+  /** The newest plan usage reading changed: a new one, or a window reset; null when none is left. */
+  'usage.changed': Usage | null
   /** After every ticket sync, and when a ticket's workspace changes. */
   'tickets.synced': TicketsListResult
 }
@@ -619,6 +628,7 @@ export const EVENTS: { [E in EventName]: { renderer: boolean } } = {
   'quiet.changed': { renderer: true },
   'quiet.morningSummary': { renderer: false },
   'config.changed': { renderer: true },
+  'usage.changed': { renderer: true },
   'tickets.synced': { renderer: true }
 }
 

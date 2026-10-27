@@ -9,6 +9,7 @@ import { delimiter, join } from 'node:path'
 import { appExecutable, cliScriptFrom, packagedResourcesDir } from '../shared/packaged'
 import { HOOK_EVENT_NAMES } from '../shared/protocol'
 import type { QuePaths } from '../shared/paths'
+import { QUE_STATUSLINE_COMMAND } from '../shared/statusline'
 
 export interface WrapperOptions {
   paths: QuePaths
@@ -124,11 +125,16 @@ export function resolveCliRunner(): CliRunner {
   return cliRunnerFrom(__dirname)
 }
 
+/**
+ * The settings passed to Claude Code with --settings: a `que hook` command for
+ * every hook event, and `que statusline` as the status line, which reports the
+ * plan usage and then runs the user's own status line.
+ */
 export function hooksSettings() {
   const command = { type: 'command', command: 'que hook', timeout: 5 }
   const hooks = Object.fromEntries(HOOK_EVENT_NAMES.map((event) => [event, [{ hooks: [command] }]]))
 
-  return { hooks }
+  return { hooks, statusLine: { type: 'command', command: QUE_STATUSLINE_COMMAND } }
 }
 
 /**

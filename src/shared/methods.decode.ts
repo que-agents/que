@@ -3,6 +3,7 @@
 // Free of node modules so the renderer can import it too.
 import { decodeHookEvent } from './hook.decode'
 import { isObj } from './json.decode'
+import { decodeUsage } from './usage.decode'
 import type { MethodName, ParamsOf } from './protocol'
 import type { ConfigPatch } from './types'
 
@@ -146,6 +147,14 @@ export const decoders: { [M in MethodName]: (p: Params) => ParamsOf<M> } = {
   'quiet.start': (p) => ({ minutes: optNumber(p, 'minutes') }),
   'quiet.end': none,
   'quiet.log': (p) => ({ since: optString(p, 'since') }),
+  'usage.report': (p) => {
+    const usage = decodeUsage(p)
+
+    if (!usage) throw new ParamsError('at must be a number')
+
+    return usage
+  },
+  'usage.get': none,
   'config.get': none,
   'config.set': (p) => {
     // The shape of the patch is checked where it is merged into the file.

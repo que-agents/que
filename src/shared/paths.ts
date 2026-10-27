@@ -19,6 +19,8 @@ export interface QuePaths {
   binDir: string
   /** Hook settings passed to Claude Code with --settings. */
   hooksJson: string
+  /** The newest Claude plan usage reading, kept across restarts. */
+  usageJson: string
   /** Shell startup files for workspace terminals (zsh ZDOTDIR). */
   shellDir: string
   /** Set when the socket had to move to /tmp because the home path is too long. */
@@ -53,6 +55,7 @@ export function quePaths(): QuePaths {
     db: join(home, 'que.db'),
     binDir: join(home, 'bin'),
     hooksJson: join(home, 'hooks.json'),
+    usageJson: join(home, 'usage.json'),
     shellDir: join(home, 'shell'),
     socketFallback
   }

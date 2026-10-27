@@ -5,11 +5,37 @@
 import net from 'node:net'
 import { decodeHookEvent } from '../shared/hook.decode'
 import { quePaths } from '../shared/paths'
-import { encode, type HookEvent } from '../shared/protocol'
+import { encode, type HookEvent, type MethodName, type ParamsOf } from '../shared/protocol'
 
 const BUDGET_MS = 1500
 
-function readStdin(): Promise<string> {
+/**
+ * Connects, sends one request, and waits for its reply (result or error).
+ * Never rejects: a missing daemon ends it too. Shared with `que statusline`.
+ */
+export function requestOnce<M extends MethodName>(
+  socketPath: string,
+  method: M,
+  params: ParamsOf<M>
+): Promise<void> {
+  return new Promise((resolve) => {
+    const socket = net.connect(socketPath)
+    socket.setEncoding('utf8')
+    socket.once('connect', () => {
+      socket.write(encode({ id: 1, method, params }))
+    })
+    // Any reply (result or error) ends the exchange.
+    socket.once('data', () => {
+      socket.destroy()
+      resolve()
+    })
+    socket.once('error', () => resolve())
+    socket.once('close', () => resolve())
+  })
+}
+
+/** Reads all of stdin as text; empty for a terminal. */
+export function readStdin(): Promise<string> {
   return new Promise((resolve) => {
     if (process.stdin.isTTY) return resolve('')
     let data = ''
@@ -20,30 +46,9 @@ function readStdin(): Promise<string> {
   })
 }
 
-/** Connects, sends one hook.event request, and waits for its reply. */
-function deliver(
-  socketPath: string,
-  workspaceId: string,
-  terminalId: string | undefined,
-  payload: HookEvent
-): Promise<void> {
-  return new Promise((resolve) => {
-    const socket = net.connect(socketPath)
-    socket.setEncoding('utf8')
-    socket.once('connect', () => {
-      // Hooks only see the environment: a daemon terminal sets QUE_TERMINAL_ID.
-      // When it is unset it is left out of the frame.
-      const params = { workspaceId, terminalId, payload }
-      socket.write(encode({ id: 1, method: 'hook.event', params }))
-    })
-    // Any reply (result or error) ends the exchange.
-    socket.once('data', () => {
-      socket.destroy()
-      resolve()
-    })
-    socket.once('error', () => resolve())
-    socket.once('close', () => resolve())
-  })
+/** The daemon's socket as a session sees it: QUE_SOCKET when the terminal set it. */
+export function sessionSocket(): string {
+  return process.env.QUE_SOCKET || quePaths().socket
 }
 
 export async function runHook(): Promise<void> {
@@ -62,12 +67,13 @@ export async function runHook(): Promise<void> {
     }
 
     if (!payload) return
-    await deliver(
-      process.env.QUE_SOCKET || quePaths().socket,
+    // Hooks only see the environment: a daemon terminal sets QUE_TERMINAL_ID.
+    // When it is unset it is left out of the frame.
+    await requestOnce(sessionSocket(), 'hook.event', {
       workspaceId,
-      process.env.QUE_TERMINAL_ID || undefined,
+      terminalId: process.env.QUE_TERMINAL_ID || undefined,
       payload
-    )
+    })
   })()
 
   await Promise.race([work.catch(() => {}), new Promise((r) => setTimeout(r, BUDGET_MS).unref())])

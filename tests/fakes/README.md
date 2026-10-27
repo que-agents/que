@@ -32,6 +32,16 @@ does: `✳ <text>` at startup and after each Stop, `◐ <text>` when a prompt ar
 empty title on `/exit` and at the end of its input. `/rename <name>` replaces the text (set or
 not) and writes `✳ <name>` at once, printing `Session renamed to: <name>`, with no hooks.
 
+**Status line.** `/statusline` runs the `--settings` `statusLine` command (type
+`command`) through `/bin/sh -c` in the session cwd, with the status line JSON on stdin
+(`hook_event_name: 'Status'`, `session_id`, `transcript_path`, `cwd`, `model`,
+`workspace.current_dir` and `workspace.project_dir` both the cwd, `version`, `cost`) plus
+`rate_limits`: by default `five_hour` at `used_percentage: 42.5` resetting in 2 hours and
+`seven_day` at `18` resetting in 5 days (`resets_at` in Unix seconds, as the real CLI
+sends). `/statusline <json>` sends that JSON as `rate_limits` instead; `/statusline none`
+leaves the field out. Each line the command prints appears in the terminal as
+`status line: <text>`. No hooks fire.
+
 | Command                  | Hooks                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `/background <kinds...>` | UserPromptSubmit; a SubagentStart (`agent_id` a fresh hex id, `agent_type: 'Explore'`, the parent `session_id`) per `subagent`; a reply; Stop whose `background_tasks` lists each kind as `running` with an `id` and a `description` (`Explore the repo` for a subagent, `npm run dev` for a shell, `checks on #141` for a monitor), plus `command` (shell) and `agent_type` (subagent). The session remembers the list. |

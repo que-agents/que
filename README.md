@@ -191,6 +191,7 @@ Generated from `que --help`; options and arguments are in [docs/cli.md](docs/cli
 | `que config set [options] <assignments...>` | set keys (dotted, e.g. quiet_hours.default=19:00,07:00) and reload the daemon                                                                                                              |
 | `que report [options]`                      | the morning report: what the sessions did                                                                                                                                                  |
 | `que hook [options]`                        | report a Claude Code hook event (stdin JSON) to the daemon; used by hooks.json                                                                                                             |
+| `que statusline [options]`                  | report Claude plan usage (status line JSON on stdin) to the daemon, then run your own status line; used by hooks.json                                                                      |
 | `que doctor [options]`                      | check the daemon, claude, gh, git, node, config, and the hooks wrapper                                                                                                                     |
 
 <!-- /generated -->

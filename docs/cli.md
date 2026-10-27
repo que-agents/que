@@ -42,6 +42,7 @@ hand; run `npm run docs` after changing a command.
 | `que config set [options] <assignments...>` | set keys (dotted, e.g. quiet_hours.default=19:00,07:00) and reload the daemon                                                                                                              |
 | `que report [options]`                      | the morning report: what the sessions did                                                                                                                                                  |
 | `que hook [options]`                        | report a Claude Code hook event (stdin JSON) to the daemon; used by hooks.json                                                                                                             |
+| `que statusline [options]`                  | report Claude plan usage (status line JSON on stdin) to the daemon, then run your own status line; used by hooks.json                                                                      |
 | `que doctor [options]`                      | check the daemon, claude, gh, git, node, config, and the hooks wrapper                                                                                                                     |
 
 ## Details
@@ -499,6 +500,18 @@ Options:
 Usage: que hook [options]
 
 report a Claude Code hook event (stdin JSON) to the daemon; used by hooks.json
+
+Options:
+  -h, --help  display help for command
+```
+
+### que statusline
+
+```text
+Usage: que statusline [options]
+
+report Claude plan usage (status line JSON on stdin) to the daemon, then run
+your own status line; used by hooks.json
 
 Options:
   -h, --help  display help for command
