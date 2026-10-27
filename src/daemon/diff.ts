@@ -213,7 +213,8 @@ export interface DiffOptions {
   base?: string
   /**
    * Compare this branch instead of the worktree: `merge-base(base, head)..head`, with no working
-   * tree and no untracked files. It and `base` resolve here first, then as `origin/<ref>`.
+   * tree and no untracked files. `head` resolves here first, then as `origin/<ref>`; `base` the
+   * other way round.
    */
   head?: string
   /** Narrow the files to this commit's own changes. */
@@ -253,9 +254,13 @@ export async function workspaceDiff(
     return r.ok && r.stdout ? r.stdout : null
   }
 
-  // A branch's pull request may be on a branch only origin has: the ref here, else origin's.
-  const resolveRef = async (ref: string): Promise<string | null> => {
-    for (const name of [ref, `origin/${ref}`]) if ((await resolveCommit(name)) !== null) return name
+  // A pull request's head may be a branch only origin has: the ref here first (it holds the
+  // session's unpushed work), else origin's. Its base is origin's first, since a local default
+  // branch is often behind.
+  const resolveRef = async (ref: string, originFirst = false): Promise<string | null> => {
+    const names = originFirst ? [`origin/${ref}`, ref] : [ref, `origin/${ref}`]
+
+    for (const name of names) if ((await resolveCommit(name)) !== null) return name
 
     return null
   }
@@ -272,7 +277,8 @@ export async function workspaceDiff(
   // Against another branch, the base is a branch name too (that pull request's base).
   let requested: string | null = null
 
-  if (opts.base !== undefined && opts.head !== undefined) requested = await resolveRef(opts.base)
+  if (opts.base !== undefined && opts.head !== undefined)
+    requested = await resolveRef(opts.base, true)
   else if (opts.base !== undefined && (await resolveCommit(opts.base)) !== null)
     requested = opts.base
 
