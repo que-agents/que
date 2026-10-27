@@ -218,9 +218,10 @@ export interface WorkspaceDiff {
   workspaceId: string
   /** The ref the branch is compared against: the caller's `base`, else origin/<default> when it exists. */
   base: string
+  /** The branch compared: the caller's `head`, else the workspace's branch (with its working tree). */
   head: string
   commitsAhead: number
-  /** The commits in `base..HEAD`, newest first, at most 200. */
+  /** The commits in `base..head`, newest first, at most 200. */
   commits: DiffCommit[]
   /** Refs worth comparing against: `base` first, then the default branch here and on origin, then the other branches, at most 50. */
   bases: string[]
@@ -411,9 +412,12 @@ export interface Methods {
   'workspace.canRenameBranch': { params: { id: string }; result: { allowed: boolean } }
   /** The app had it selected in a focused window: sets seenAt; emits workspace.updated. */
   'workspace.seen': { params: { id: string }; result: Workspace }
-  /** What the workspace changed against its base: committed and uncommitted, file by file. */
+  /**
+   * What the workspace changed against its base: committed and uncommitted, file by file. With
+   * `head`, what that branch changed against its base instead (committed only).
+   */
   'workspace.diff': {
-    params: { id: string; base?: string; commit?: string }
+    params: { id: string; base?: string; head?: string; commit?: string }
     result: WorkspaceDiff
   }
   /**

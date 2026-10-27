@@ -116,6 +116,7 @@ export const decoders: { [M in MethodName]: (p: Params) => ParamsOf<M> } = {
   'workspace.diff': (p) => ({
     id: str(p, 'id'),
     base: optString(p, 'base'),
+    head: optString(p, 'head'),
     commit: optString(p, 'commit')
   }),
   'workspace.prThread': (p) => ({

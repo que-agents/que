@@ -886,6 +886,7 @@ export class DaemonServer {
 
       return workspaceDiff(ws, this.workspaces.project(ws.projectId), Date.now, {
         base: p.base,
+        head: p.head,
         commit: p.commit
       })
     },
