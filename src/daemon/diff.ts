@@ -259,28 +259,28 @@ export async function workspaceDiff(
   // branch is often behind.
   const resolveRef = async (ref: string, originFirst = false): Promise<string | null> => {
     const names = originFirst ? [`origin/${ref}`, ref] : [ref, `origin/${ref}`]
+    const found = await Promise.all(names.map((name) => resolveCommit(name)))
 
-    for (const name of names) if ((await resolveCommit(name)) !== null) return name
-
-    return null
+    return names.find((_, i) => found[i] !== null) ?? null
   }
-
-  const tip = opts.head === undefined ? 'HEAD' : await resolveRef(opts.head)
-
-  if (tip === null) throw badRequest(`head ${opts.head} is not a branch here or on origin`)
-
-  const refs = await run('for-each-ref', '--format=%(refname)', 'refs/heads', 'refs/remotes/origin')
-  const allRefs = parseRefs(refs.stdout)
 
   // A remembered base can outlive its branch, so one that is not a commit falls back to the
   // default comparison and is reported, letting the caller forget it.
   // Against another branch, the base is a branch name too (that pull request's base).
-  let requested: string | null = null
+  const resolveBase = async (base: string): Promise<string | null> => {
+    if (opts.head !== undefined) return resolveRef(base, true)
 
-  if (opts.base !== undefined && opts.head !== undefined)
-    requested = await resolveRef(opts.base, true)
-  else if (opts.base !== undefined && (await resolveCommit(opts.base)) !== null)
-    requested = opts.base
+    return (await resolveCommit(base)) === null ? null : base
+  }
+
+  const [tip, requested, refs] = await Promise.all([
+    opts.head === undefined ? 'HEAD' : resolveRef(opts.head),
+    opts.base === undefined ? null : resolveBase(opts.base),
+    run('for-each-ref', '--format=%(refname)', 'refs/heads', 'refs/remotes/origin')
+  ])
+
+  if (tip === null) throw badRequest(`head ${opts.head} is not a branch here or on origin`)
+  const allRefs = parseRefs(refs.stdout)
 
   const base = requested ?? chooseBase(ws, project, allRefs)
   const rejectedBase = requested === null && opts.base !== undefined ? opts.base : null
