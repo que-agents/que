@@ -7,6 +7,7 @@ import fs from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { DaemonClient } from '@shared/client'
+import type { HookEvent } from '@shared/protocol'
 import { recordEvents, startTestDaemon, type TestDaemon } from '../../src/testing/daemon-harness'
 import {
   addFakePullRequest,
@@ -14,6 +15,7 @@ import {
   readFakePullRequests,
   setFakePullRequest
 } from '../../src/testing/fakes'
+import { makeHookEvent } from '../../src/testing/fixtures'
 import { addBareOrigin, gitIn, makeTempRepo } from '../../src/testing/temp-repo'
 
 let daemon: TestDaemon
@@ -209,6 +211,90 @@ describe('pull request tracking', () => {
     expect(prViews().some((c) => c.argv[2] === '1')).toBe(true)
     expect(prViews().some((c) => c.argv[2] === '2')).toBe(false)
   }, 60_000)
+
+  describe('pull requests the session creates itself', () => {
+    /** A Bash PostToolUse for `command`, as Claude Code reports it to `que hook`. */
+    const ranBash = (command: string, response: unknown, extra: Partial<HookEvent> = {}) =>
+      makeHookEvent('PostToolUse', {
+        tool_name: 'Bash',
+        tool_input: { command },
+        tool_response: response,
+        ...extra
+      })
+
+    /** A workspace whose project's origin is the repository the fake gh's URLs name. */
+    async function githubWorkspace() {
+      const ws = await workspace()
+      const [project] = await client.request('project.list')
+      // Only the hook reads the URL: nothing in these tests fetches or pushes.
+      gitIn(project.path, 'remote', 'set-url', 'origin', 'https://github.com/rquellh/que.git')
+
+      return ws
+    }
+
+    it('adds the ones a hook shows the session and a subagent creating on other branches', async () => {
+      const ws = await githubWorkspace()
+      addFakePullRequest(daemon.ghPrs, 'APP-1433-backoff', {
+        number: 71,
+        url: 'https://github.com/rquellh/que/pull/71',
+        baseRefName: ws.branch
+      })
+      addFakePullRequest(daemon.ghPrs, 'APP-1434-jitter', {
+        number: 72,
+        url: 'https://github.com/rquellh/que/pull/72'
+      })
+      const updates = recordEvents(client, 'workspace.updated')
+
+      await client.request('hook.event', {
+        workspaceId: ws.id,
+        payload: ranBash(
+          'git push -u origin APP-1433-backoff && gh pr create --base APP-1432 --head APP-1433-backoff --fill',
+          { stdout: 'https://github.com/rquellh/que/pull/71\n', stderr: '' }
+        )
+      })
+      await client.request('hook.event', {
+        workspaceId: ws.id,
+        payload: ranBash(
+          'gh pr create --draft --head APP-1434-jitter --fill',
+          'https://github.com/rquellh/que/pull/72\nhttps://github.com/rquellh/uploader/pull/5\n',
+          { agent_id: 'a3f9c2e1', agent_type: 'general-purpose' }
+        )
+      })
+
+      await expect.poll(() => prNumbersOf(ws.id), opts).toEqual([72, 71])
+      expect((await client.request('workspace.get', { id: ws.id })).prUrls).toEqual([
+        'https://github.com/rquellh/que/pull/71',
+        'https://github.com/rquellh/que/pull/72'
+      ])
+      expect(updates.some((w) => w.id === ws.id && w.prUrls.length === 2)).toBe(true)
+      expect(prViews().map((c) => c.argv[2])).not.toContain('5')
+    }, 30_000)
+
+    it('ignores a pull request on another repository and a command that created none', async () => {
+      const ws = await githubWorkspace()
+      setFakePullRequest(daemon.ghPrs, ws.branch, { number: 3, isDraft: true })
+      await expect.poll(async () => (await prOf(ws.id))?.state, opts).toBe('draft')
+
+      await client.request('hook.event', {
+        workspaceId: ws.id,
+        payload: ranBash('gh pr create --repo rquellh/uploader --fill', {
+          stdout: 'https://github.com/rquellh/uploader/pull/5\n'
+        })
+      })
+      await client.request('hook.event', {
+        workspaceId: ws.id,
+        payload: ranBash('gh pr view 9 --json url', {
+          stdout: 'https://github.com/rquellh/que/pull/9'
+        })
+      })
+      const listed = readFakeLog(daemon.ghLog).length
+      // Another tick, so a recorded URL would have been looked up by now.
+      await expect.poll(() => readFakeLog(daemon.ghLog).length, opts).toBeGreaterThan(listed + 1)
+
+      expect((await client.request('workspace.get', { id: ws.id })).prUrls).toEqual([])
+      expect(prViews()).toEqual([])
+    }, 30_000)
+  })
 
   describe('a branch checked out in the worktree', () => {
     it('becomes the workspace branch and finds the pull request opened from it', async () => {

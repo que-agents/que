@@ -912,6 +912,9 @@ export class DaemonServer {
       const ws = this.workspaces.get(p.workspaceId)
       this.liveSessions.hook(ws.id, p.terminalId, p.payload)
       this.status.hook(ws.id, p.payload)
+      this.prs.hook(ws.id, p.payload).catch((e: unknown) => {
+        this.log(`pull request capture failed for ${ws.id}: ${errorMessage(e)}`)
+      })
 
       return { ok: true }
     },

@@ -8,7 +8,7 @@
 // on demand and cached until the tracker sees its updatedAt move.
 import type { UserConfig } from '../shared/config'
 import { firstLine, run } from '../shared/exec'
-import { ErrorCodes, type WorkspaceCreatePrResult } from '../shared/protocol'
+import { ErrorCodes, type HookEvent, type WorkspaceCreatePrResult } from '../shared/protocol'
 import type { JsonValue, PrThread, PullRequest, Workspace } from '../shared/types'
 import { conflict, ghFailed, notFound, RpcError } from './errors'
 import { withBranch } from './branch-history'
@@ -28,11 +28,12 @@ import {
   type GhPullRequest
 } from './pr-state.decode'
 import { Poller } from './poller'
+import { createdPullRequests, prCreateCall } from './pr-created'
 import { jsonPages, parsePrThread } from './pr-thread'
 import { decodeLineComments, decodePrView } from './pr-thread.decode'
 import type { EventBus } from './bus'
 import type { Store } from './store'
-import type { WorkspaceManager } from './workspaces'
+import { git, type WorkspaceManager } from './workspaces'
 import { errorMessage } from '../shared/errors.decode'
 import { prUrlNumber } from '../shared/pr-url'
 
@@ -434,6 +435,25 @@ export class PrService {
     if (samePullRequests(current.prs, prs)) return
     this.opts.store.setWorkspacePrs(ws.id, prs)
     this.opts.bus.emit('workspace.updated', { ...current, pr: next, prs })
+  }
+
+  /**
+   * Records the pull requests a hook event shows the workspace's session (or one of its
+   * subagents) creating with `gh pr create` on the project's origin, and checks them now.
+   */
+  async hook(id: string, event: HookEvent): Promise<void> {
+    if (this.stopped || !prCreateCall(event)) return
+    const ws = this.opts.store.getWorkspace(id)
+
+    if (!ws || ws.archivedAt) return
+    const project = this.opts.workspaces.project(ws.projectId)
+    const origin = await git(project.path, ['remote', 'get-url', 'origin'], 10_000)
+    const urls = origin.ok ? createdPullRequests(event, origin.stdout) : []
+
+    if (urls.length === 0 || !this.opts.store.addWorkspacePrUrls(id, urls)) return
+    this.opts.log?.(`workspace ${id} created ${urls.join(', ')}`)
+    this.opts.bus.emit('workspace.updated', this.opts.workspaces.get(id))
+    await this.refresh(id)
   }
 
   /**
