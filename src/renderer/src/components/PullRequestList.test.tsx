@@ -216,7 +216,6 @@ describe('PullRequestList', () => {
       expect(screen.getByTestId('pr-empty')).toHaveTextContent(
         'No pull requests from this session yet.'
       )
-      expect(screen.queryByRole('button', { name: 'Create draft PR' })).not.toBeInTheDocument()
       expect(screen.getByTestId('review-view-prs-count')).toHaveTextContent('0')
     })
   })

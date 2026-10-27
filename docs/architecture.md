@@ -263,12 +263,11 @@ the session created, on any branch:
   it seeded once from the worktree's own `git reflog show HEAD` (the
   `checkout: moving from <a> to <b>` entries; `branch-history.ts`).
 - **Created pull requests.** `Workspace.prUrls` (`pr_urls_json`, the old
-  `pr_url` migrated in) has two writers: `workspace.createPr` appends the pull
-  request it opened, and `hook.event` appends any a Bash `PostToolUse` shows
-  `gh pr create` printing (stdout, stderr or a plain string), main session and
-  subagents alike, when its owner and name match the project's `origin` remote
-  (`pr-created.ts`; the origin is read once per project). A URL for another
-  repository is ignored.
+  `pr_url` migrated in) has one writer: `hook.event` appends any pull request a
+  Bash `PostToolUse` shows `gh pr create` printing (stdout, stderr or a plain
+  string), main session and subagents alike, when its owner and name match the
+  project's `origin` remote (`pr-created.ts`; the origin is read once per
+  project). A URL for another repository is ignored.
 
 Every `pr_poll_seconds` (default 60) it lists each project's newest pull
 requests once (`gh pr list --state all --limit 100`), grouped by head branch; a
@@ -283,12 +282,8 @@ them). One already stored stays when its branch moves on, so nothing drops out;
 the list is newest first by number, at most 20. When it differs from the stored
 one (ignoring `checkedAt`) it is saved in `prs_json` and `workspace.updated` is
 emitted. A failed `gh` keeps the stored value and logs one line until a call
-succeeds again. A successful `workspace.createPr`, or a created pull request seen
-in a hook, triggers an immediate check of that workspace.
-
-`workspace.createPr` (Create draft PR) runs `openDraftPr` in `draft-pr.ts`:
-it commits what is left uncommitted, pushes the workspace branch (never the
-default or a protected branch), and opens a draft pull request with `gh`.
+succeeds again. A created pull request seen in a hook triggers an immediate
+check of that workspace.
 
 Each check run and commit status from the rollup is kept too, as
 `PullRequest.checkRuns`: name, workflow, state (failing, pending, passing,

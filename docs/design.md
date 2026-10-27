@@ -113,8 +113,8 @@ remove. The quiet board uses the same tones on a dot or a word, never a badge.
   `--tone-muted`. Open and draft come first, newest first, every row aligned (no indent
   for a stack; `into #n` is its only sign); then a dashed rule, `[ MERGED · CLOSED ]`,
   and those rows with their number and title in `--fg-faint`. With none: `No pull
-  requests from this session yet.`, centred. There is no Create draft PR and no
-  "checked … ago" in the pane: sessions open their own pull requests.
+  requests from this session yet.`, centred. There is no button to open a pull
+  request and no "checked … ago" in the pane: sessions open their own pull requests.
 - A row opens its pull request in place; the strip's left end becomes `‹ #188`, the
   back link. The title at 14px 600, then in mono `● open · #188 ↗ · into <base>` (the
   number is the link, in `--accent`). Three sections follow in this order, each folding at

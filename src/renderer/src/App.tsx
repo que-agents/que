@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
 import {
-  CreatePrDialog,
   NewWorkspaceDialog,
   RemoveProjectDialog,
   RemoveWorkspaceDialog,
@@ -47,8 +46,6 @@ function Dialogs(): React.JSX.Element | null {
       const ws = workspaces[dialog.workspaceId]
 
       if (!ws) return null
-
-      if (dialog.kind === 'create-pr') return <CreatePrDialog workspace={ws} onClose={close} />
 
       if (dialog.kind === 'rename-workspace') {
         return <RenameWorkspaceDialog workspace={ws} onClose={close} />

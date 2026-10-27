@@ -216,7 +216,6 @@ export type View =
 export type DialogState =
   | { kind: 'new-workspace'; projectId: string }
   | { kind: 'remove-project'; projectId: string }
-  | { kind: 'create-pr'; workspaceId: string }
   | { kind: 'remove-workspace'; workspaceId: string }
   | { kind: 'rename-workspace'; workspaceId: string }
   | { kind: 'start-ticket'; key: string; projects: Project[] }
@@ -1670,13 +1669,6 @@ export class QueStore {
     return this.guard(async () => {
       await this.api.app.openInEditor({ path })
     })
-  }
-
-  async createPr(id: string, title: string): Promise<string> {
-    // The daemon records it and announces the workspace with workspace.updated.
-    const { prUrl } = await this.api.workspace.createPr({ id, title })
-
-    return prUrl
   }
 
   fetchReport(): Promise<Report> {

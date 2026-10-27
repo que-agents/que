@@ -1,7 +1,7 @@
 // Keeps each workspace's pull requests fresh: the session's pull requests are
 // those whose head is any branch the worktree has had checked out (`gh pr list`),
-// plus each one the session created (workspace.createPr, or its own `gh pr
-// create` seen in a hook), looked up by number (`gh pr view <n>`) when it is not
+// plus each one the session created with its own `gh pr create` (seen in a
+// hook), looked up by number (`gh pr view <n>`) when it is not
 // on those branches. One already stored is kept when its branch moves on. Stores
 // what changed and emits workspace.updated.
 // Also answers workspace.prThread: each pull request's conversation is fetched
@@ -11,11 +11,10 @@
 // request carries its comment count and newest comment time.
 import type { UserConfig } from '../shared/config'
 import { firstLine, run } from '../shared/exec'
-import { ErrorCodes, type HookEvent, type WorkspaceCreatePrResult } from '../shared/protocol'
+import type { HookEvent } from '../shared/protocol'
 import type { JsonValue, PrThread, PullRequest, Workspace } from '../shared/types'
-import { conflict, ghFailed, notFound, RpcError } from './errors'
-import { withBranch } from './branch-history'
-import { isProtectedBranch, openDraftPr } from './draft-pr'
+import { ghFailed, notFound } from './errors'
+import { isProtectedBranch, withBranch } from './branch-history'
 import {
   commentCounts,
   currentPullRequest,
@@ -589,46 +588,5 @@ export class PrService {
     this.origins.set(path, found)
 
     return found
-  }
-
-  /**
-   * Opens a draft pull request from a workspace: commits what is uncommitted
-   * as `title`, pushes, and runs gh.
-   */
-  async create(id: string, rawTitle: string): Promise<WorkspaceCreatePrResult> {
-    const { workspaces, store } = this.opts
-    const ws = await workspaces.syncBranch(id)
-    const title = rawTitle.trim()
-
-    if (!title) throw new RpcError(ErrorCodes.BadRequest, 'title is required')
-    const lines: string[] = []
-
-    const result = await openDraftPr({
-      title,
-      workspace: ws,
-      project: workspaces.project(ws.projectId),
-      protectedBranches: this.opts.config().protectedBranches,
-      log: (line) => {
-        lines.push(line)
-        this.opts.log?.(`workspace ${ws.id} ${line}`)
-      }
-    })
-
-    if (!result.ok) {
-      const detail = lines.at(-1) ?? `${result.step} failed`
-
-      if (result.step === 'protected_branch') throw conflict(detail)
-      throw new RpcError(ErrorCodes.Internal, detail)
-    }
-
-    if (!result.prUrl) {
-      throw conflict(`${ws.branch} has no commits ahead of its base; nothing to open a PR for`)
-    }
-
-    store.addWorkspacePrUrls(ws.id, [result.prUrl])
-    this.opts.bus.emit('workspace.updated', workspaces.get(ws.id))
-    void this.refresh(ws.id)
-
-    return { prUrl: result.prUrl }
   }
 }

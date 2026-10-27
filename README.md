@@ -64,9 +64,8 @@ waits in its tab, marked needs input, until you come back. In the morning
 `que report` (or the app's report view) lists each session: what it did, its
 commits ahead, its pull request, and whether it is waiting for you.
 `notifications.morning_summary` adds a notification when quiet hours end.
-**Create draft PR** in the app commits what is left, pushes the branch and
-opens a draft pull request; nothing is ever pushed to the default branch or a
-protected one.
+Sessions open their own pull requests with `gh pr create`; the app's review
+pane picks them up, with their checks and comments.
 
 ## Quiet mode
 

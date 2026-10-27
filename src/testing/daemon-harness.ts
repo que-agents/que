@@ -4,7 +4,7 @@
 // runs the leak check. The hooks wrapper's bin/que runs the CLI bundled from
 // source, and the user config lives at <home>/config.toml (QUE_CONFIG). Git
 // gets a fixed identity from <home>/gitconfig (GIT_CONFIG_GLOBAL), so commits
-// made by workspace.createPr or the fake claude never depend on the machine's config.
+// made by a test or the fake claude never depend on the machine's config.
 import fs from 'node:fs'
 import os from 'node:os'
 import { join } from 'node:path'

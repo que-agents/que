@@ -100,7 +100,6 @@ export const decoders: { [M in MethodName]: (p: Params) => ParamsOf<M> } = {
     cols: num(p, 'cols'),
     rows: num(p, 'rows')
   }),
-  'workspace.createPr': (p) => ({ id: str(p, 'id'), title: str(p, 'title') }),
   'workspace.start': (p) => ({
     id: str(p, 'id'),
     cols: optNumber(p, 'cols'),

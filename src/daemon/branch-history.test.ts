@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { appendNew, reflogBranches, renameBranch, withBranch } from './branch-history'
+import {
+  appendNew,
+  isProtectedBranch,
+  reflogBranches,
+  renameBranch,
+  withBranch
+} from './branch-history'
 
 // As `git reflog show --format=%gs HEAD` prints it: newest first.
 const reflog = (...newestFirst: string[]): string => newestFirst.join('\n')
@@ -80,5 +86,24 @@ describe('renameBranch', () => {
       'APP-1432-retry-logic',
       'APP-1434-jitter'
     ])
+  })
+})
+
+describe('isProtectedBranch', () => {
+  const protectedBranches = ['main', 'master', 'release']
+
+  it('protects the default branch even when it is not in the list', () => {
+    expect(isProtectedBranch('trunk', 'trunk', protectedBranches)).toBe(true)
+  })
+
+  it('protects every configured branch', () => {
+    expect(isProtectedBranch('release', 'main', protectedBranches)).toBe(true)
+    expect(isProtectedBranch('master', 'main', protectedBranches)).toBe(true)
+  })
+
+  it('lets a workspace branch through', () => {
+    expect(isProtectedBranch('add-retry-logic-to-the-uploader', 'main', protectedBranches)).toBe(
+      false
+    )
   })
 })

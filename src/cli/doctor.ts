@@ -104,8 +104,8 @@ export async function runDoctor(): Promise<number> {
     ok: gh.ok,
     required: false,
     detail: gh.ok
-      ? 'authenticated (Create draft PR opens pull requests with it)'
-      : 'missing or not logged in (`gh auth login`); Create draft PR cannot open pull requests'
+      ? 'authenticated (reads pull requests, checks and comments)'
+      : 'missing or not logged in (`gh auth login`); que cannot read pull requests, checks and comments'
   })
 
   const git = await run('git', ['--version'])

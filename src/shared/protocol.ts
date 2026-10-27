@@ -261,16 +261,6 @@ export interface WorkspaceFile {
   truncated: boolean
 }
 
-export interface WorkspaceCreatePrParams {
-  id: string
-  /** The commit message for uncommitted changes, and the pull request title. */
-  title: string
-}
-
-export interface WorkspaceCreatePrResult {
-  prUrl: string
-}
-
 export interface HookEventParams {
   workspaceId: string
   /** The daemon terminal the hook fired in (QUE_TERMINAL_ID), when it fired in one. */
@@ -403,7 +393,6 @@ export interface Methods {
   'workspace.get': { params: { id: string }; result: Workspace }
   'workspace.remove': { params: WorkspaceRemoveParams; result: Ok }
   'workspace.openTerminal': { params: WorkspaceOpenTerminalParams; result: TermInfo }
-  'workspace.createPr': { params: WorkspaceCreatePrParams; result: WorkspaceCreatePrResult }
   /** Types `claude '<start_prompt>'` into the workspace's first terminal once setup is done. */
   'workspace.start': { params: WorkspaceStartParams; result: WorkspaceStartResult }
   /** Sets the title (and, when allowed and asked, renames the branch); emits workspace.updated. */
@@ -508,10 +497,6 @@ export const METHODS: {
     quiet: false
   },
   'workspace.openTerminal': {
-    renderer: true,
-    quiet: true
-  },
-  'workspace.createPr': {
     renderer: true,
     quiet: true
   },

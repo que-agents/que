@@ -30,13 +30,11 @@ import type {
   TermListParams,
   TermSnapshotResult,
   WorkspaceCreateParams,
-  WorkspaceCreatePrParams,
   WorkspaceDiff,
   DiffFile,
   DiffCommit,
   WorkspaceFiles,
   WorkspaceFile,
-  WorkspaceCreatePrResult,
   WorkspaceListParams,
   WorkspaceOpenTerminalParams,
   WorkspaceRemoveParams,
@@ -187,8 +185,6 @@ export interface WorkspaceApi {
   remove(params: WorkspaceRemoveParams): Promise<{ ok: true }>
   /** Opens a terminal in the worktree with the hooks wrapper on PATH. */
   openTerminal(params: WorkspaceOpenTerminalParams): Promise<TermInfo>
-  /** Commits what is uncommitted as `title`, pushes, and opens a draft PR. */
-  createPr(params: WorkspaceCreatePrParams): Promise<WorkspaceCreatePrResult>
   /** Types claude with the start prompt into the workspace's first terminal (opened when none) once setup is done. */
   start(params: WorkspaceStartParams): Promise<WorkspaceStartResult>
   /** Sets the title, and renames the branch when asked and allowed. */

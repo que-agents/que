@@ -186,7 +186,6 @@ const QUIET_POLICY: Record<MethodName, 'refused' | 'allowed'> = {
   'term.snapshot': 'refused',
   'term.create': 'refused',
   'workspace.openTerminal': 'refused',
-  'workspace.createPr': 'refused',
   'workspace.start': 'refused',
   'workspace.rename': 'allowed',
   'workspace.canRenameBranch': 'allowed',

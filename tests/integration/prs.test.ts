@@ -1,10 +1,9 @@
 // Pull request tracking over the real socket: the daemon polls the fake gh
 // (PR state file, QUE_FAKE_GH_FAIL) for every branch each workspace has had,
-// and looks up by number the pull requests the session created (workspace.createPr,
-// or `gh pr create` seen in a hook). Which one is current, the order and the cap
+// and looks up by number the pull requests the session created (`gh pr create`
+// seen in a hook). Which one is current, the order and the cap
 // are pr-state.test.ts's; what a hook counts as a creation is pr-created.test.ts's.
 import fs from 'node:fs'
-import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { DaemonClient } from '@shared/client'
 import type { HookEvent } from '@shared/protocol'
@@ -86,25 +85,6 @@ describe('pull request tracking', () => {
     await expect.poll(async () => (await prOf(ws.id))?.state, opts).toBe('merged')
   }, 30_000)
 
-  it('picks up the pull request that workspace.createPr opens', async () => {
-    const ws = await workspace()
-    fs.writeFileSync(join(ws.path, 'retry.ts'), 'export const retries = 3\n')
-
-    const { prUrl } = await client.request('workspace.createPr', {
-      id: ws.id,
-      title: 'Add retry logic to the uploader'
-    })
-
-    await expect
-      .poll(async () => await prOf(ws.id), opts)
-      .toMatchObject({
-        state: 'draft',
-        number: 1,
-        url: prUrl,
-        title: 'Add retry logic to the uploader'
-      })
-  }, 30_000)
-
   it('never asks about a protected branch', async () => {
     const projectId = await project()
     const ws = await workspace('release', projectId)
@@ -181,41 +161,6 @@ describe('pull request tracking', () => {
       updates.some((w) => w.id === ws.id && w.pr?.number === 41 && w.prs[0]?.state === 'closed')
     ).toBe(true)
   }, 30_000)
-
-  it('adds the pull request workspace.createPr opened once it leaves the branch, never twice', async () => {
-    const ws = await workspace()
-    const wsId = ws.id
-    const branch = ws.branch
-    fs.writeFileSync(join(ws.path, 'retry.ts'), 'export const retries = 3\n')
-
-    const { prUrl } = await client.request('workspace.createPr', {
-      id: wsId,
-      title: 'Add retry logic to the uploader'
-    })
-
-    expect(prUrl).toBe('https://github.com/rquellh/que/pull/1')
-
-    // On the branch, the recorded pull request is listed once and never looked up on its own.
-    await expect.poll(() => prNumbersOf(wsId), opts).toEqual([1])
-    expect(prViews()).toEqual([])
-
-    // It is merged from another head, and a new one is opened from the branch.
-    const all = readFakePullRequests(daemon.ghPrs)
-    all['APP-1432-old-head'] = all[branch].map((pr) => ({
-      ...pr,
-      headRefName: 'APP-1432-old-head',
-      state: 'MERGED' as const,
-      mergedAt: '2026-10-14T03:00:00Z'
-    }))
-    delete all[branch]
-    fs.writeFileSync(daemon.ghPrs, JSON.stringify(all))
-    addFakePullRequest(daemon.ghPrs, branch, { number: 2, isDraft: false })
-
-    await expect.poll(() => prNumbersOf(wsId), opts).toEqual([2, 1])
-    expect(await prOf(wsId)).toMatchObject({ number: 2, state: 'open' })
-    expect(prViews().some((c) => c.argv[2] === '1')).toBe(true)
-    expect(prViews().some((c) => c.argv[2] === '2')).toBe(false)
-  }, 60_000)
 
   describe('pull requests the session creates itself', () => {
     /** A Bash PostToolUse for `command`, as Claude Code reports it to `que hook`. */
@@ -299,6 +244,41 @@ describe('pull request tracking', () => {
       expect((await client.request('workspace.get', { id: ws.id })).prUrls).toEqual([])
       expect(prViews()).toEqual([])
     }, 30_000)
+
+    it('adds the one it created on its branch once it leaves the branch, never twice', async () => {
+      const ws = await githubWorkspace()
+      const wsId = ws.id
+      const branch = ws.branch
+      const url = 'https://github.com/rquellh/que/pull/1'
+      setFakePullRequest(daemon.ghPrs, branch, { number: 1, url })
+
+      await client.request('hook.event', {
+        workspaceId: wsId,
+        payload: ranBash('gh pr create --draft --fill', { stdout: `${url}\n`, stderr: '' })
+      })
+
+      // On the branch, the recorded pull request is listed once and never looked up on its own.
+      await expect.poll(() => prNumbersOf(wsId), opts).toEqual([1])
+      expect((await client.request('workspace.get', { id: wsId })).prUrls).toEqual([url])
+      expect(prViews()).toEqual([])
+
+      // It is merged from another head, and a new one is opened from the branch.
+      const all = readFakePullRequests(daemon.ghPrs)
+      all['APP-1432-old-head'] = all[branch].map((pr) => ({
+        ...pr,
+        headRefName: 'APP-1432-old-head',
+        state: 'MERGED' as const,
+        mergedAt: '2026-10-14T03:00:00Z'
+      }))
+      delete all[branch]
+      fs.writeFileSync(daemon.ghPrs, JSON.stringify(all))
+      addFakePullRequest(daemon.ghPrs, branch, { number: 2, isDraft: false })
+
+      await expect.poll(() => prNumbersOf(wsId), opts).toEqual([2, 1])
+      expect(await prOf(wsId)).toMatchObject({ number: 2, state: 'open' })
+      expect(prViews().some((c) => c.argv[2] === '1')).toBe(true)
+      expect(prViews().some((c) => c.argv[2] === '2')).toBe(false)
+    }, 60_000)
   })
 
   describe('a branch checked out in the worktree', () => {

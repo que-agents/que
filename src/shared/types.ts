@@ -79,8 +79,8 @@ export interface Workspace {
   createdAt: string
   archivedAt: string | null
   /**
-   * The pull requests the session created, oldest first: by workspace.createPr, or by its own
-   * `gh pr create` (its subagents' included) on the project's origin, on any branch.
+   * The pull requests the session created, oldest first: by its own `gh pr create` (its
+   * subagents' included) on the project's origin, on any branch.
    */
   prUrls: string[]
   /**
@@ -316,7 +316,7 @@ export interface UserConfig {
   defaultPermissionMode?: PermissionMode
   /** Required (with the repo opting in) before a workspace session may run with bypassPermissions. */
   allowBypassPermissions: boolean
-  /** Branches Create draft PR never pushes, besides each project's default branch. */
+  /** Branches whose pull requests que does not look up, besides each project's default branch. */
   protectedBranches: string[]
   /**
    * A file appended to every interactive session's system prompt inside a

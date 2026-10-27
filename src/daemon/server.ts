@@ -874,7 +874,6 @@ export class DaemonServer {
       return { ok: true }
     },
     'workspace.openTerminal': (p) => this.openWorkspaceTerminal(p.id, p.cols, p.rows),
-    'workspace.createPr': (p) => this.prs.create(p.id, p.title),
     'workspace.start': (p) => this.startWorkspace(p.id, p.cols, p.rows),
     'workspace.rename': (p) => this.workspaces.rename(p),
     'workspace.canRenameBranch': async (p) => ({

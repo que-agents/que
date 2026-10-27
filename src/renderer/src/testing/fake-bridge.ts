@@ -155,7 +155,6 @@ class FakeBridge {
   private updateInfo: UpdateInfo | null = null
   private updateListeners = new Set<(info: UpdateInfo) => void>()
   private updateOpens = 0
-  private prCalls: Array<{ id: string; title: string }> = []
   private createCallLog: WorkspaceCreateParams[] = []
   private startCallLog: string[] = []
   private termListCalls = 0
@@ -625,19 +624,6 @@ class FakeBridge {
 
           return seeded ? structuredClone(seeded) : null
         },
-        createPr: async ({ id, title }) => {
-          this.refuseIfQuiet('workspace.createPr')
-          const ws = this.workspace(id)
-
-          if (!title.trim()) throw rpcError('bad_request', 'title is required')
-          this.prCalls.push({ id, title })
-          const prUrl = `https://github.com/rquellh/que/pull/${40 + this.prCalls.length}`
-          const next = { ...ws, prUrls: [...ws.prUrls, prUrl] }
-          this.workspaces.set(id, next)
-          this.emit('workspace.updated', next)
-
-          return { prUrl }
-        },
         start: async ({ id, cols, rows }) => {
           this.refuseIfQuiet('workspace.start')
           const ws = this.workspace(id)
@@ -906,11 +892,6 @@ class FakeBridge {
   /** Every path app.openInEditor was asked to open, in order. */
   openInEditorCalls(): string[] {
     return [...this.editorCalls]
-  }
-
-  /** Every workspace.createPr call, in order. */
-  createPrCalls(): Array<{ id: string; title: string }> {
-    return this.prCalls.map((c) => ({ ...c }))
   }
 
   /** Every workspace.create call's params, in order. */
@@ -1185,7 +1166,6 @@ class FakeBridge {
     this.updateInfo = null
     this.updateListeners.clear()
     this.updateOpens = 0
-    this.prCalls = []
     this.createCallLog = []
     this.startCallLog = []
     this.termListCalls = 0
