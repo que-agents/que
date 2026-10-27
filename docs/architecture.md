@@ -252,16 +252,38 @@ rest are sorted with those needing input first, then stuck, then working.
 
 ## Pull request tracking
 
-`prs.ts` keeps `Workspace.pr` fresh. Every `pr_poll_seconds` (default 60) it
-asks `gh pr list --head <branch> --state all --limit 1` in each unarchived,
-unprotected workspace, one call at a time; a merged or closed pull request is
-re-checked only every fifth time. `pr-state.ts` maps the answer to state
-(draft, open, merged, closed), checks (none, pending, passing, failing) and
-review decision. When the result differs from the stored one (ignoring
-`checkedAt`) it is saved in `pr_json` and `workspace.updated` is emitted. A
-failed `gh` keeps the stored value and logs one line until a call succeeds
-again. A successful `workspace.createPr` triggers an immediate check of that
-workspace.
+`prs.ts` keeps `Workspace.prs`, the session's pull requests, fresh, and
+`Workspace.pr`, the current one among them. The session's pull requests are
+those whose head is any branch the worktree has had checked out, plus every one
+the session created, on any branch:
+
+- **Branch history.** `Workspace.branches` lists every branch the worktree has
+  had checked out, oldest first (`branches_json`). `syncBranch` appends the
+  branch it finds checked out; a workspace stored before the list was kept has
+  it seeded once from the worktree's own `git reflog show HEAD` (the
+  `checkout: moving from <a> to <b>` entries; `branch-history.ts`).
+- **Created pull requests.** `Workspace.prUrls` (`pr_urls_json`, the old
+  `pr_url` migrated in) has two writers: `workspace.createPr` appends the pull
+  request it opened, and `hook.event` appends any a Bash `PostToolUse` shows
+  `gh pr create` printing (stdout, stderr or a plain string), main session and
+  subagents alike, when its owner and name match the project's `origin` remote
+  (`pr-created.ts`). A URL for another repository is ignored.
+
+Every `pr_poll_seconds` (default 60) it lists each project's newest pull
+requests once (`gh pr list --state all --limit 100`), grouped by head branch; a
+branch missing from a full page is asked about on its own (`--head <branch>`).
+Protected branches are never asked about, but a created pull request is always
+looked up (`gh pr view <n>`) when no listed branch holds it. A merged or closed
+pull request is re-checked only every fifth time. `pr-state.ts` maps each answer
+to state (draft, open, merged, closed), checks (none, pending, passing,
+failing), review decision, and the branches it merges into and from
+(`base`/`head`, from `baseRefName`/`headRefName`; the app derives a stack from
+them). One already stored stays when its branch moves on, so nothing drops out;
+the list is newest first by number, at most 20. When it differs from the stored
+one (ignoring `checkedAt`) it is saved in `prs_json` and `workspace.updated` is
+emitted. A failed `gh` keeps the stored value and logs one line until a call
+succeeds again. A successful `workspace.createPr`, or a created pull request seen
+in a hook, triggers an immediate check of that workspace.
 
 `workspace.createPr` (Create draft PR) runs `openDraftPr` in `draft-pr.ts`:
 it commits what is left uncommitted, pushes the workspace branch (never the
@@ -276,16 +298,18 @@ when a check finishes even though `updatedAt` stays put.
 `workspace.prThread` (`que ws pr`) answers the conversation: issue comments and
 reviews from `gh pr view <n> --json comments,reviews`, line comments from
 `gh api repos/{owner}/{repo}/pulls/<n>/comments --paginate`, parsed by
-`pr-thread.ts` and sorted oldest first. Threads are fetched on demand, never
-polled: each workspace's thread is cached with the pull request number and
-`updatedAt` it was fetched for, and reused until the tracker stores a different
-one (or the caller passes `refresh`). Concurrent calls share one fetch. A failed
-`gh` raises `gh_failed` and caches nothing; the cache entry goes when the
-workspace is removed or its pull request disappears.
+`pr-thread.ts` and sorted oldest first. It answers for the pull request
+`number` among the workspace's, or without one for the current pull request.
+Threads are fetched on demand, never polled: each is cached per workspace and
+pull request number with the `updatedAt` it was fetched for, and reused until
+the tracker stores a different one (or the caller passes `refresh`). Concurrent
+calls share one fetch. A failed `gh` raises `gh_failed` and caches nothing; the
+cache entries go when the workspace is removed or its pull request leaves the
+list.
 
 ## The diff view
 
-`workspace.diff` (`que ws diff`) compares a workspace against its base: `origin/<default>` when that remote ref exists, else the default branch, unless the caller names another ref as `base` (`--base`), which must resolve to a commit. Everything is measured from the merge base of the base and `HEAD`, so committed and uncommitted changes appear together, and untracked files are listed too. Each file carries its status, line counts, whether it is still uncommitted, and a unified patch (null for binary files and patches over 200,000 characters). The result also lists the branch's commits past the base, newest first (at most 200), and the refs worth comparing against: the base, the default branch here and on origin, then the other local and origin branches, never the workspace's own (at most 50). Given a `commit` (`--commit`) that is on the branch and not on the base, the files narrow to that commit's own changes, against its parent (or the empty tree for a root commit), with nothing from the working tree; the commit count and list still describe the whole branch. A base or commit that does not qualify is a `bad_request`. It only reads: `git diff`, `git status`, `git log`, `git ls-files`, and `git for-each-ref`. Quiet hours refuse it like any other workspace read.
+`workspace.diff` (`que ws diff`) compares a workspace against its base: `origin/<default>` when that remote ref exists, else the default branch, unless the caller names another ref as `base` (`--base`), which must resolve to a commit. Everything is measured from the merge base of the base and `HEAD`, so committed and uncommitted changes appear together, and untracked files are listed too. Each file carries its status, line counts, whether it is still uncommitted, and a unified patch (null for binary files and patches over 200,000 characters). The result also lists the branch's commits past the base, newest first (at most 200), and the refs worth comparing against: the base, the default branch here and on origin, then the other local and origin branches, never the workspace's own (at most 50). Given a `commit` (`--commit`) that is on the branch and not on the base, the files narrow to that commit's own changes, against its parent (or the empty tree for a root commit), with nothing from the working tree; the commit count and list still describe the whole branch. A base or commit that does not qualify is a `bad_request`. Given a `head`, it compares that branch instead of the worktree, for one pull request's own files: `merge-base(base, head)..head`, committed changes only, with no working tree and no untracked files. The head and the base each resolve as a branch here first (refs are shared between worktrees, so a subagent's branch usually is one), then as `origin/<ref>`; a head that resolves to neither is a `bad_request`. A pull request into another pull request's branch passes that branch as `base`, so it diffs against it, not the default. It only reads: `git diff`, `git status`, `git log`, `git ls-files`, and `git for-each-ref`. Quiet hours refuse it like any other workspace read.
 
 `workspace.files` (`que ws files`) lists every file of a workspace's worktree that git would show: tracked and untracked, never ignored (`git ls-files --cached --others --exclude-standard`), deduplicated and sorted, cut at 20,000 paths with `truncated` set; a missing worktree lists nothing. `workspace.readFile` reads one of them for the file view. The path must be relative and strictly inside the worktree: an absolute path, the root itself, or any empty, `.` or `..` segment is a `bad_request`, and so is a path whose real location, symlinks followed, falls outside the worktree's real root, or a directory. A missing path is `not_found`. A NUL byte in the first 8 KB marks the file binary and its content null; text is decoded as UTF-8 and cut at 500,000 characters with `truncated` set; `size` is always the byte size on disk. Both only read, and quiet hours refuse them like any other workspace read.
 
