@@ -7,8 +7,11 @@ import { isObj, strings } from '../../shared/json.decode'
 /** A remembered review pane, as stored. Fields that are missing or of the wrong type are null. */
 export interface PersistedReview {
   open: boolean
-  tab: string | null
+  /** The view last picked; an older memory's `tab` (`pr` read as `prs`). */
+  view: string | null
   width: number | null
+  /** Per workspace id: its view and the pull request open in it. */
+  places: Record<string, { view: string | null; pr: number | null }>
 }
 
 /** A remembered pane layout, as stored: only the string and number fields survive. */
@@ -28,15 +31,45 @@ function stringOrNull(v: unknown): string | null {
 export function decodeReview(v: unknown): PersistedReview | null {
   if (!isObj(v)) return null
 
+  const tab = stringOrNull(v.tab)
+  const places = isObj(v.places) ? v.places : {}
+
   return {
     open: v.open === true,
-    tab: stringOrNull(v.tab),
-    width: typeof v.width === 'number' ? v.width : null
+    view: stringOrNull(v.view) ?? (tab === 'pr' ? 'prs' : tab),
+    width: typeof v.width === 'number' ? v.width : null,
+    places: Object.fromEntries(
+      Object.entries(places).flatMap(([id, place]) =>
+        isObj(place)
+          ? [
+              [
+                id,
+                {
+                  view: stringOrNull(place.view),
+                  pr: Number.isInteger(place.pr) && Number(place.pr) > 0 ? Number(place.pr) : null
+                }
+              ]
+            ]
+          : []
+      )
+    )
   }
 }
 
 /** The per-workspace diff bases `que.diffBases` holds; entries that are not non-empty strings are dropped. */
 export function decodeDiffBases(v: unknown): Record<string, string> {
+  return stringMap(v)
+}
+
+/**
+ * When each pull request's conversation was last opened (`que.prSeen`, the newest entry's time
+ * then, keyed `<workspace id>:<number>`); entries that are not non-empty strings are dropped.
+ */
+export function decodePrSeen(v: unknown): Record<string, string> {
+  return stringMap(v)
+}
+
+function stringMap(v: unknown): Record<string, string> {
   if (!isObj(v)) return {}
 
   return Object.fromEntries(

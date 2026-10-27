@@ -18,7 +18,7 @@ import Panes from './components/Panes'
 import ReviewPane from './components/ReviewPane'
 import ReviewResizer from './components/ReviewResizer'
 import UpdateBanner from './components/UpdateBanner'
-import { QueStore, StoreContext, useQue, useQueSelector, useStore } from './store'
+import { QueStore, SCRATCH, StoreContext, useQue, useQueSelector, useStore } from './store'
 import { setReviewSource } from './testHook'
 
 function Dialogs(): React.JSX.Element | null {
@@ -126,7 +126,13 @@ function Shell(): React.JSX.Element {
 
   // Tell the e2e test hook about the review pane.
   useEffect(() => {
-    setReviewSource(() => store.getState().review)
+    setReviewSource(() => {
+      const { review, view } = store.getState()
+      const key = view.kind === 'terminals' ? view.key : SCRATCH
+      const place = store.reviewPlace(key)
+
+      return { open: review.open, view: place.view, pr: place.pr, width: review.width }
+    })
 
     return () => setReviewSource(null)
   }, [store])

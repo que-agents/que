@@ -95,7 +95,7 @@ describe('App', () => {
   })
 
   describe('review shortcut', () => {
-    it('toggles the review pane with Cmd+B, on the tab it was left on', async () => {
+    it('toggles the review pane with Cmd+B, on the view it was left on', async () => {
       const user = userEvent.setup()
       const retry = makeWorkspace({ id: 'ws_01hzx3k9c2qf', name: 'app-1432-retry-logic' })
       fakeBridge.seedProject(makeProject())
@@ -106,9 +106,9 @@ describe('App', () => {
 
       await user.keyboard('{Meta>}b{/Meta}')
 
-      expect(screen.getByTestId('review-pane')).toHaveAttribute('data-tab', 'changes')
+      expect(screen.getByTestId('review-pane')).toHaveAttribute('data-view', 'changes')
       expect(toggle).toHaveAttribute('aria-pressed', 'true')
-      await user.click(screen.getByRole('tab', { name: 'Pull request' }))
+      await user.click(screen.getByRole('tab', { name: 'Pull requests' }))
 
       await user.keyboard('{Meta>}b{/Meta}')
 
@@ -117,7 +117,7 @@ describe('App', () => {
 
       await user.keyboard('{Meta>}b{/Meta}')
 
-      expect(screen.getByTestId('review-pane')).toHaveAttribute('data-tab', 'pr')
+      expect(screen.getByTestId('review-pane')).toHaveAttribute('data-view', 'prs')
     })
 
     it('leaves Cmd+B alone while a dialog is open', async () => {
@@ -128,8 +128,7 @@ describe('App', () => {
       render(<App />)
       await user.click(await screen.findByTestId(`sidebar-workspace-${retry.id}-open`))
       await user.click(await screen.findByRole('button', { name: 'Review pane' }))
-      await user.click(screen.getByRole('tab', { name: 'Pull request' }))
-      await user.click(await screen.findByRole('button', { name: 'Create draft PR' }))
+      await user.click(screen.getByRole('button', { name: 'New workspace in uploader' }))
       expect(screen.getByRole('dialog')).toBeInTheDocument()
 
       await user.keyboard('{Meta>}b{/Meta}')
@@ -326,9 +325,7 @@ describe('App', () => {
 
       expect(screen.getByRole('button', { name: 'New workspace in uploader' })).toBeDisabled()
 
-      await user.click(screen.getByRole('tab', { name: 'Pull request' }))
-
-      expect(await screen.findByRole('button', { name: 'Create draft PR' })).toBeDisabled()
+      expect(screen.getByRole('button', { name: 'Open in editor' })).toBeDisabled()
     })
   })
 })

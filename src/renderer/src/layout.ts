@@ -5,6 +5,7 @@ import { decodeLayout } from './persisted.decode'
 
 const DIFF_PREFIX = 'view:diff:'
 const FILE_PREFIX = 'view:file:'
+const PR_DIFF_PREFIX = 'view:prdiff:'
 
 /** The tab id of a file's diff: `view:diff:<path>`, the path verbatim. */
 export function diffId(path: string): string {
@@ -32,9 +33,25 @@ export function filePathOf(id: string | null): string | null {
   return path === '' ? null : path
 }
 
-/** Whether a tab id is a view tab (a diff or a file) rather than a terminal. */
+/**
+ * The tab id of a file's diff inside one pull request: `view:prdiff:<number>:<path>`. The number
+ * keeps it apart from the Changes diff of the same path.
+ */
+export function prDiffId(number: number, path: string): string {
+  return `${PR_DIFF_PREFIX}${number}:${path}`
+}
+
+/** The pull request and file a pull request's diff tab id shows, or null for any other id. */
+export function prDiffOf(id: string | null): { number: number; path: string } | null {
+  if (!id?.startsWith(PR_DIFF_PREFIX)) return null
+  const m = /^(\d+):(.+)$/s.exec(id.slice(PR_DIFF_PREFIX.length))
+
+  return m ? { number: Number(m[1]), path: m[2] } : null
+}
+
+/** Whether a tab id is a view tab (a diff, a pull request's diff, or a file) rather than a terminal. */
 export function isViewId(id: string | null): boolean {
-  return diffPathOf(id) !== null || filePathOf(id) !== null
+  return diffPathOf(id) !== null || filePathOf(id) !== null || prDiffOf(id) !== null
 }
 
 /** One workspace's tabs in one or two panes (a tree of depth one). */

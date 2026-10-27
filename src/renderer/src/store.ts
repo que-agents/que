@@ -35,14 +35,23 @@ import {
   diffId,
   fileId,
   filePathOf,
-  isViewId
+  isViewId,
+  prDiffId,
+  prDiffOf
 } from './layout'
 import { buildTree, newlyChanged } from './files'
 import { chime, shouldChime } from './sound'
 import { errorCode, errorMessage } from '../../shared/errors.decode'
 import { removalStepLabel } from '../../shared/format'
 import type { RemovalFailure } from '../../shared/types'
-import { decodeDiffBases, decodeReview, readStored, writeStored } from './persisted.decode'
+import {
+  decodeDiffBases,
+  decodePrSeen,
+  decodeReview,
+  readStored,
+  writeStored
+} from './persisted.decode'
+import { newestAt } from './pr-list'
 
 const DEFAULT_COLS = 80
 const DEFAULT_ROWS = 24
@@ -72,6 +81,8 @@ export {
   fileId,
   filePathOf,
   isViewId,
+  prDiffId,
+  prDiffOf,
   RATIO_DEFAULT,
   RATIO_MAX,
   RATIO_MIN
@@ -81,17 +92,29 @@ export type { PaneLayout } from './layout'
 
 const LAYOUT_PREFIX = 'que.layout.'
 
-/** The review pane's tabs. */
-export type ReviewTab = 'changes' | 'files' | 'pr'
+/** The review pane's views, picked by the icons in its strip. */
+export type ReviewView = 'prs' | 'changes' | 'files'
 
-const REVIEW_TABS: readonly ReviewTab[] = ['changes', 'files', 'pr']
+const REVIEW_VIEWS: readonly ReviewView[] = ['prs', 'changes', 'files']
 
-/** The review pane at the right of the main area; one for the app, remembered. */
+/** Where the review pane stands for one workspace: its view, and the pull request open in it (null: the list). */
+export interface ReviewPlace {
+  view: ReviewView
+  pr: number | null
+}
+
+/** The review pane at the right of the main area: one for the app, its view per workspace. Remembered. */
 export interface ReviewState {
   open: boolean
-  tab: ReviewTab
+  /** The view last picked: where a workspace without a place of its own opens. */
+  view: ReviewView
   width: number
+  /** Per workspace id. */
+  places: Record<string, ReviewPlace>
 }
+
+/** The folding sections inside a pull request. */
+export type PrSection = 'files' | 'checks' | 'comments'
 
 export const REVIEW_MIN = 240
 export const REVIEW_MAX = 520
@@ -104,9 +127,11 @@ export function clampReviewWidth(w: number): number {
   return Math.min(REVIEW_MAX, Math.max(REVIEW_MIN, Math.round(n)))
 }
 
+const asView = (v: string | null): ReviewView | undefined => REVIEW_VIEWS.find((t) => t === v)
+
 /** The remembered review pane, or the defaults (closed, on Changes, 320px) for anything unreadable. */
 function loadReview(): ReviewState {
-  const fallback: ReviewState = { open: false, tab: 'changes', width: REVIEW_DEFAULT }
+  const fallback: ReviewState = { open: false, view: 'changes', width: REVIEW_DEFAULT, places: {} }
 
   return readStored(
     REVIEW_KEY,
@@ -115,14 +140,33 @@ function loadReview(): ReviewState {
 
       if (!v) return fallback
 
+      const places = Object.entries(v.places).flatMap(([id, p]): Array<[string, ReviewPlace]> => {
+        const view = asView(p.view)
+
+        return view ? [[id, { view, pr: view === 'prs' ? p.pr : null }]] : []
+      })
+
       return {
         open: v.open,
-        tab: REVIEW_TABS.find((t) => t === v.tab) ?? 'changes',
-        width: v.width === null ? REVIEW_DEFAULT : clampReviewWidth(v.width)
+        view: asView(v.view) ?? 'changes',
+        width: v.width === null ? REVIEW_DEFAULT : clampReviewWidth(v.width),
+        places: Object.fromEntries(places)
       }
     },
     fallback
   )
+}
+
+const PR_SEEN_KEY = 'que.prSeen'
+
+/** The prSeen key of one pull request of a workspace. */
+function seenKey(key: string, number: number): string {
+  return `${key}:${number}`
+}
+
+/** The prThreads and prDiffs key of one pull request of a workspace. */
+export function prKey(key: string, number: number): string {
+  return `${key}\0${number}`
 }
 
 /** What a workspace's diff is narrowed to: the ref it compares against, and one commit. Null: the daemon's choice, every commit. */
@@ -178,8 +222,10 @@ export interface Resource<T> {
 
 /** What the store fetches per key and keeps as a Resource. */
 interface Resources {
-  /** Per workspace: its pull request's conversation (null: no pull request). A failure keeps the last one. */
+  /** Per prKey(workspace, number): a pull request's conversation (null: no such pull request). A failure keeps the last one. */
   prThreads: PrThread | null
+  /** Per prKey(workspace, number): a pull request's own files against its base. */
+  prDiffs: WorkspaceDiff
   /** Per workspace: its diff against its base, in its scope. */
   diffs: WorkspaceDiff
   /** Per workspace: its worktree's files as listed. */
@@ -221,8 +267,17 @@ export interface QueState extends ResourceTables {
   diffScopes: Record<string, DiffScope>
   /** Per workspace: the Files tree's open directories, for the session; none until its files first load. */
   filesExpanded: Record<string, ReadonlySet<string>>
-  /** The review pane: open or not, on which tab, how wide. Remembered. */
+  /** The review pane: open or not, how wide, and its view per workspace. Remembered. */
   review: ReviewState
+  /**
+   * Per seenKey(workspace, number): the newest entry of a pull request's conversation when it was
+   * last opened, so the list can tell new comments. Remembered.
+   */
+  prSeen: Record<string, string>
+  /** Which sections inside a pull request are open, for the session. */
+  prFolds: Record<PrSection, boolean>
+  /** Per workspace and diff tab id (`<key>\0<id>`): the line a line comment asked to show. */
+  diffTargets: Record<string, { line: number; nonce: number }>
   dialog: DialogState | null
   /** The daemon's quiet-hours state; null until loaded. */
   quiet: QuietState | null
@@ -312,12 +367,16 @@ export class QueStore {
     view: { kind: 'terminals', key: SCRATCH },
     layouts: {},
     prThreads: {},
+    prDiffs: {},
     diffs: {},
     diffScopes: initialDiffScopes(),
     fileLists: {},
     fileContents: {},
     filesExpanded: {},
     review: loadReview(),
+    prSeen: readStored(PR_SEEN_KEY, (raw) => decodePrSeen(JSON.parse(raw)), {}),
+    prFolds: { files: true, checks: true, comments: true },
+    diffTargets: {},
     dialog: null,
     quiet: null,
     config: null,
@@ -601,6 +660,11 @@ export class QueStore {
       workspace.on('workspace.changed', ({ id }) => this.followChange(id)),
       workspace.on('workspace.removed', ({ id, failed }) => {
         if (id in this.state.diffScopes) rememberDiffBase(id, null)
+
+        if (id in this.state.review.places) {
+          this.setReview({ places: without(this.state.review.places, id) })
+        }
+
         // The name is read before the row goes.
         const gone = this.state.workspaces[id]
 
@@ -626,25 +690,35 @@ export class QueStore {
   }
 
   private upsertWorkspace(ws: Workspace): void {
-    const prev = this.state.workspaces[ws.id]?.pr ?? null
+    const prev = new Map((this.state.workspaces[ws.id]?.prs ?? []).map((p) => [p.number, p]))
     this.setWith((s) => ({ workspaces: { ...s.workspaces, [ws.id]: ws } }))
-    // The review pane open on Pull request follows the shown workspace's pull request:
-    // fetch again when it appears, disappears, or changes upstream.
-    const next = ws.pr ?? null
+    // The review pane follows the shown workspace's pull requests: the conversation (and the
+    // files) of one that changed upstream is fetched again while it is on screen, else forgotten
+    // so the next look fetches it.
+    const next = new Map(ws.prs.map((p) => [p.number, p]))
 
-    const changed =
-      (prev === null) !== (next === null) ||
-      (prev !== null && next !== null && prev.updatedAt !== next.updatedAt)
+    const changed = [...new Set([...prev.keys(), ...next.keys()])].filter(
+      (n) => prev.has(n) !== next.has(n) || prev.get(n)?.updatedAt !== next.get(n)?.updatedAt
+    )
 
-    const { review } = this.state
+    const place = this.reviewPlace(ws.id)
+    const listed = this.state.review.open && this.currentKey() === ws.id && place.view === 'prs'
 
-    if (changed && review.open && review.tab === 'pr' && this.currentKey() === ws.id) {
-      void this.fetchPrThread(ws.id)
-    } else if (changed && this.state.prThreads[ws.id]?.data !== undefined) {
-      // Not on screen: forget the stale conversation so the next look fetches it.
-      this.setWith((s) => ({
-        prThreads: { ...s.prThreads, [ws.id]: { error: s.prThreads[ws.id]?.error ?? null } }
-      }))
+    const tabs = new Set(
+      this.layout(ws.id)
+        .views.map((v) => prDiffOf(v)?.number)
+        .filter((n) => n !== undefined)
+    )
+
+    for (const n of changed) {
+      const k = prKey(ws.id, n)
+      const open = listed && place.pr === n
+
+      if (listed && (place.pr === null || open) && next.has(n)) void this.fetchPrThread(ws.id, n)
+      else if (this.state.prThreads[k]?.data !== undefined) this.forget('prThreads', k)
+
+      if ((open || tabs.has(n)) && next.has(n)) void this.fetchPrDiff(ws.id, n)
+      else if (this.state.prDiffs[k]?.data !== undefined) this.forget('prDiffs', k)
     }
 
     if (!this.state.projects.some((p) => p.id === ws.projectId)) {
@@ -741,33 +815,104 @@ export class QueStore {
     writeStored(REVIEW_KEY, JSON.stringify(review))
   }
 
-  /** Opens the review pane on a tab and loads what it shows for the current workspace. */
-  openReview(tab: ReviewTab): void {
-    this.setReview({ open: true, tab })
-    const key = this.currentKey()
-
-    if (key === null || key === SCRATCH) return
-
-    if (tab === 'changes') void this.ensureDiff(key)
-    else if (tab === 'files') {
-      void this.ensureFiles(key)
-      void this.ensureDiff(key)
-    } else void this.fetchPrThread(key)
+  /** Drops a resource's value (keeping its error), so the next look fetches it. */
+  private forget(name: 'prThreads' | 'prDiffs', key: string): void {
+    this.setWith((s) => withEntry(s, name, key, { error: s[name][key]?.error ?? null }))
   }
 
-  /**
-   * With no tab, closes the pane when it is open, else opens it on its remembered tab.
-   * With a tab, closes the pane when it is open on that tab, else opens it there.
-   */
-  toggleReview(tab?: ReviewTab): void {
-    const { open, tab: current } = this.state.review
+  /** Where the review pane stands for a workspace: its own place, else the view last picked. */
+  reviewPlace(key: string): ReviewPlace {
+    return this.state.review.places[key] ?? { view: this.state.review.view, pr: null }
+  }
 
-    if (open && (tab === undefined || current === tab)) this.closeReview()
-    else this.openReview(tab ?? current)
+  private setPlace(key: string, place: ReviewPlace): void {
+    this.setReview({ view: place.view, places: { ...this.state.review.places, [key]: place } })
+  }
+
+  /** Opens the review pane where the current workspace left it and loads what it shows. */
+  openReview(): void {
+    this.setReview({ open: true })
+    this.ensureReview(this.currentKey(), true)
+  }
+
+  /** Closes the pane when it is open, else opens it. */
+  toggleReview(): void {
+    if (this.state.review.open) this.closeReview()
+    else this.openReview()
   }
 
   closeReview(): void {
     this.setReview({ open: false })
+  }
+
+  /** Shows a view for a workspace (the pull requests as their list) and loads it; remembered per workspace. */
+  setReviewView(key: string, view: ReviewView): void {
+    this.setPlace(key, { view, pr: null })
+    this.ensureReview(key)
+  }
+
+  /** Opens a pull request in place in the pane: its files, checks and conversation. */
+  openPullRequest(key: string, number: number): void {
+    this.setPlace(key, { view: 'prs', pr: number })
+    this.ensureReview(key, true)
+  }
+
+  /** Back from a pull request to the list. */
+  closePullRequest(key: string): void {
+    this.setReviewView(key, 'prs')
+  }
+
+  /**
+   * Loads what the pane shows for a workspace: the diff always (the strip counts its files), and
+   * the listing on Files; on the pull requests, every conversation (the list counts their
+   * comments), or the open one's conversation (`fresh`: fetched again) and its files.
+   */
+  ensureReview(key: string | null, fresh = false): void {
+    if (key === null || key === SCRATCH) return
+    const { view, pr: open } = this.reviewPlace(key)
+    const prs = this.state.workspaces[key]?.prs ?? []
+    void this.ensureDiff(key)
+
+    if (view === 'files') void this.ensureFiles(key)
+
+    if (view !== 'prs') return
+    // One the session no longer lists shows the list.
+    const pr = prs.some((p) => p.number === open) ? open : null
+
+    if (pr === null) {
+      for (const p of prs) void this.ensurePrThread(key, p.number)
+
+      return
+    }
+
+    void (fresh ? this.fetchPrThread(key, pr) : this.ensurePrThread(key, pr)).then(() =>
+      this.markPrSeen(key, pr)
+    )
+    void this.ensurePrDiff(key, pr)
+  }
+
+  /** Remembers a pull request's conversation as seen while it is open in the pane. */
+  private markPrSeen(key: string, number: number): void {
+    const place = this.reviewPlace(key)
+
+    if (!this.state.review.open || this.currentKey() !== key || place.pr !== number) return
+    const at = newestAt(this.state.prThreads[prKey(key, number)]?.data?.entries ?? [])
+    const k = seenKey(key, number)
+
+    if (at === undefined || this.state.prSeen[k] === at) return
+    const prSeen = { ...this.state.prSeen, [k]: at }
+    this.set({ prSeen })
+    writeStored(PR_SEEN_KEY, JSON.stringify(prSeen))
+  }
+
+  /** When a pull request's conversation was last opened: its newest entry's time then. */
+  prSeenAt(key: string, number: number): string | undefined {
+    return this.state.prSeen[seenKey(key, number)]
+  }
+
+  /** Opens or folds a section inside a pull request, for every pull request, this session. */
+  togglePrFold(section: PrSection): void {
+    this.setWith((s) => ({ prFolds: { ...s.prFolds, [section]: !s.prFolds[section] } }))
   }
 
   /**
@@ -795,20 +940,26 @@ export class QueStore {
   }
 
   private refetchShown(key: string): Promise<void> {
-    const { open, tab } = this.state.review
+    const { open } = this.state.review
+    const place = this.reviewPlace(key)
     const views = this.layout(key).views
     const fileTabs = views.some((v) => filePathOf(v) !== null)
 
     if (!open && views.length === 0) return Promise.resolve()
     const loads = [this.fetchDiff(key)]
 
-    if ((open && tab === 'files') || fileTabs) loads.push(this.reloadFiles(key))
+    if ((open && place.view === 'files') || fileTabs) loads.push(this.reloadFiles(key))
+
+    // A pull request's own files move with its branch: fetch the ones on screen again.
+    const prs = new Set(
+      views.map((v) => prDiffOf(v)?.number).filter((n): n is number => n !== undefined)
+    )
+
+    if (open && place.view === 'prs' && place.pr !== null) prs.add(place.pr)
+
+    for (const n of prs) loads.push(this.fetchPrDiff(key, n))
 
     return Promise.all(loads).then(() => undefined)
-  }
-
-  setReviewTab(tab: ReviewTab): void {
-    this.setReview({ tab })
   }
 
   setReviewWidth(px: number): void {
@@ -820,6 +971,20 @@ export class QueStore {
   /** Opens a file's diff tab and selects it: where it already is, or else in the focused pane. */
   openDiff(key: string, path: string): void {
     this.openView(key, diffId(path))
+  }
+
+  /**
+   * Opens a file's diff inside a pull request as its own tab and selects it; with a line (a line
+   * comment's), the tab shows that line.
+   */
+  openPrDiff(key: string, number: number, path: string, line?: number): void {
+    const id = prDiffId(number, path)
+    this.openView(key, id)
+
+    if (line === undefined) return
+    const target = `${key}\0${id}`
+    const nonce = (this.state.diffTargets[target]?.nonce ?? 0) + 1
+    this.setWith((s) => ({ diffTargets: { ...s.diffTargets, [target]: { line, nonce } } }))
   }
 
   /** Opens a worktree file's read-only tab and selects it: where it already is, or else in the focused pane. */
@@ -931,31 +1096,65 @@ export class QueStore {
   }
 
   /**
-   * Fetches the conversation of the pull request a workspace shows (none without one, nothing
-   * before the workspace is loaded); a failure (quiet hours too) is kept for the view.
+   * Fetches one pull request's conversation (nothing before the workspace is loaded); a failure
+   * (quiet hours too) is kept for the view. Open in the pane, it is then seen.
    */
-  fetchPrThread(key: string, refresh = false): Promise<void> {
-    const ws = this.state.workspaces[key]
-
-    if (!ws) return Promise.resolve()
-    const number = ws.pr?.number
+  fetchPrThread(key: string, number: number, refresh = false): Promise<void> {
+    if (!this.state.workspaces[key]) return Promise.resolve()
 
     return this.fetchInto(
       'prThreads',
-      key,
-      async () =>
-        number === undefined
-          ? null
-          : this.api.workspace.prThread(
-              refresh ? { id: key, number, refresh: true } : { id: key, number }
-            ),
+      prKey(key, number),
+      () =>
+        this.api.workspace.prThread(
+          refresh ? { id: key, number, refresh: true } : { id: key, number }
+        ),
       { latestOnly: false, keepOnError: true }
-    )
+    ).then(() => this.markPrSeen(key, number))
   }
 
   /** Fetches the conversation unless it is loaded or on its way. */
-  ensurePrThread(key: string): Promise<void> {
-    return this.ensure('prThreads', key, () => this.fetchPrThread(key))
+  ensurePrThread(key: string, number: number): Promise<void> {
+    return this.ensure('prThreads', prKey(key, number), () => this.fetchPrThread(key, number))
+  }
+
+  /**
+   * Fetches one pull request's own files: its branch against its base, committed only. Only the
+   * latest fetch lands; a failure (quiet hours too) is kept for the view.
+   */
+  fetchPrDiff(key: string, number: number): Promise<void> {
+    const pr = this.state.workspaces[key]?.prs.find((p) => p.number === number)
+
+    if (!pr) return Promise.resolve()
+
+    return this.fetchInto(
+      'prDiffs',
+      prKey(key, number),
+      async () => {
+        if (pr.head === '') throw new Error(`The branch of #${number} is unknown.`)
+
+        return this.api.workspace.diff({ id: key, base: pr.base || undefined, head: pr.head })
+      },
+      { latestOnly: true, keepOnError: false }
+    )
+  }
+
+  /** Fetches a pull request's files unless they are loaded or on their way. */
+  ensurePrDiff(key: string, number: number): Promise<void> {
+    return this.ensure('prDiffs', prKey(key, number), () => this.fetchPrDiff(key, number))
+  }
+
+  /** The pane's Refresh on the pull requests: every listed conversation, or the open one and its files. */
+  refreshPrs(key: string): Promise<void> {
+    const { pr } = this.reviewPlace(key)
+
+    const numbers =
+      pr === null ? (this.state.workspaces[key]?.prs ?? []).map((p) => p.number) : [pr]
+
+    return Promise.all([
+      ...numbers.map((n) => this.fetchPrThread(key, n, true)),
+      ...(pr === null ? [] : [this.fetchPrDiff(key, pr)])
+    ]).then(() => undefined)
   }
 
   /** The base and commit a workspace's diff is narrowed to. */

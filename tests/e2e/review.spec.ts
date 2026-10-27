@@ -1,19 +1,22 @@
 // The review journey end to end: a workspace made from the CLI with a file
 // edited in its worktree; the top bar's toggle opens the review pane on Changes,
 // a full-height column at the window's right edge beside the terminals, which
-// stay as they are; clicking the file opens its diff as a
-// tab beside the terminal tab (once, however often it is clicked); with the
-// edit and a second file committed, the Commits menu narrows the list to one
-// commit and back, and the base menu compares against another branch; the Files
-// tab shows the worktree as a tree with an untracked file under a folded
-// directory, opens an unchanged file as a read-only tab and a changed one as its
-// diff, collapses a directory, and Refresh drops a deleted file; the pane
-// drags wider; Pull request shows no pull request, then one appears (through
-// the fake GitHub CLI) with its checks and conversation, and Refresh picks up a
-// new comment; the app quits and relaunches on the same home and the pane, its
-// tab, its width, the chosen base, the diff tab and the file tab come back; ⌘W
-// closes the diff tab and the file tab, the pane closes and opens again on
-// the tab it was left on, and the Pull request tab follows the pull request to merged.
+// stay as they are; clicking the file opens its diff as a tab beside the terminal
+// tab (once, however often it is clicked); with the edit and a second file
+// committed, the commits menu narrows the list to one commit and back, and the
+// base menu compares against another branch; the Files view shows the worktree as
+// a tree with an untracked file under a folded directory, opens an unchanged file
+// as a read-only tab and a changed one as its diff, collapses a directory, Refresh
+// drops a deleted file, and its filter narrows the tree and opens a match; the pane
+// drags wider; the pull requests view shows none, then the worktree checks out a
+// second branch and each branch gets a pull request (through the fake GitHub CLI),
+// the second stacked on the first: both rows show, the first opens in place with
+// its checks and conversation, Refresh picks up a new comment, and the second's
+// file opens as a middle tab beside the session tab, against the first; the app
+// quits and relaunches on the same home and the pane, its view, its width, the
+// chosen base, the diff tab and the file tab come back; ⌘W closes the diff tab and
+// the file tab, the pane closes and opens again on the view it was left on, and the
+// list follows a pull request to merged.
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { expect, test } from '@playwright/test'
@@ -23,6 +26,7 @@ import {
   fakeComment,
   fakeLineComment,
   fakeReview,
+  addFakePullRequest,
   setFakePullRequest
 } from '../../src/testing/fakes'
 import { addBareOrigin, gitIn, makeTempRepo } from '../../src/testing/temp-repo'
@@ -64,6 +68,7 @@ test('The review pane lists the changes beside the terminals, opens diffs as tab
   let fileView: FileViewPage
   let pr: PullRequestPage
   let termId = ''
+  let capBranch = ''
   let widened = 0
   let sha1 = ''
   let sha2 = ''
@@ -93,6 +98,7 @@ test('The review pane lists the changes beside the terminals, opens diffs as tab
       '--json'
     )
     expect(workspace.projectId).toBe(project.id)
+    capBranch = `${workspace.branch}-cap`
   })
 
   await test.step('Launch the app and open the workspace', async () => {
@@ -109,17 +115,20 @@ test('The review pane lists the changes beside the terminals, opens diffs as tab
     await expect(tabRow.reviewToggle).toHaveAttribute('aria-pressed', 'false')
     await tabRow.reviewToggle.click()
     await expect(review.root).toBeVisible()
-    await expect(review.root).toHaveAttribute('data-tab', 'changes')
+    await expect(review.root).toHaveAttribute('data-view', 'changes')
+    await expect(review.viewChanges).toHaveAttribute('aria-selected', 'true')
     await expect(tabRow.reviewToggle).toHaveAttribute('aria-pressed', 'true')
-    expect(await review.state()).toMatchObject({ open: true, tab: 'changes' })
+    expect(await review.state()).toMatchObject({ open: true, view: 'changes', pr: null })
     await expect(terminal.tab(termId)).toBeVisible()
     await expect(terminal.viewport).toBeVisible()
     await expect.poll(async () => (await terminal.panes())[0]?.activeTab).toBe(termId)
-    await expect(changes.summary).toHaveText('Commits 0 vs origin/main')
+    await expect(changes.summary).toHaveText('commits 0 ▾ · vs origin/main ▾ · 1 uncommitted')
     await expect(changes.commits).toHaveText('0')
     await expect(changes.base).toHaveText('origin/main')
-    await expect(changes.summary).toHaveAttribute('title', /· 1 file ·/)
+    await expect(changes.totals).toContainText('· 1 file')
+    await expect(review.changesCount).toHaveText('1')
     await expect(changes.file(0)).toContainText('README.md')
+    await expect(changes.fileDirty(0)).toBeVisible()
     await expect(changes.file(0)).toContainText('+2')
     await expect(changes.file(0)).toHaveAttribute('data-path', 'README.md')
   })
@@ -194,8 +203,9 @@ test('The review pane lists the changes beside the terminals, opens diffs as tab
     sha2 = gitIn(workspace.path, 'rev-parse', 'HEAD')
     sha1 = gitIn(workspace.path, 'rev-parse', 'HEAD~1')
     // No Refresh: the daemon watches the worktree, and the commits reach Changes on their own.
-    await expect(changes.summary).toHaveText('Commits 2 vs origin/main')
-    await expect(changes.summary).toHaveAttribute('title', /· 2 files ·/)
+    await expect(changes.summary).toHaveText('commits 2 ▾ · vs origin/main ▾')
+    await expect(changes.totals).toContainText('· 2 files')
+    await expect(changes.fileDirty(0)).toHaveCount(0)
     await expect(changes.file(0)).toHaveAttribute('data-path', 'NOTES.md')
     await expect(changes.file(1)).toHaveAttribute('data-path', 'README.md')
     await expect(changes.file(2)).toHaveCount(0)
@@ -219,7 +229,7 @@ test('The review pane lists the changes beside the terminals, opens diffs as tab
     await expect(changes.commit(sha1)).toHaveAttribute('aria-checked', 'false')
     await changes.commit(sha1).click()
     await expect(changes.commitItems).toHaveCount(0)
-    await expect(changes.summary).toHaveText(`Commit ${sha1.slice(0, 7)} vs origin/main`)
+    await expect(changes.summary).toHaveText(`commit ${sha1.slice(0, 7)} ▾ · vs origin/main ▾`)
     await expect(changes.commits).toHaveText(sha1.slice(0, 7))
     await expect(changes.file(0)).toHaveAttribute('data-path', 'README.md')
     await expect(changes.file(1)).toHaveCount(0)
@@ -228,7 +238,7 @@ test('The review pane lists the changes beside the terminals, opens diffs as tab
     await changes.commitsMenu.click()
     await expect(changes.commit(sha1)).toHaveAttribute('aria-checked', 'true')
     await changes.commitAll.click()
-    await expect(changes.summary).toHaveText('Commits 2 vs origin/main')
+    await expect(changes.summary).toHaveText('commits 2 ▾ · vs origin/main ▾')
     await expect(changes.file(0)).toHaveAttribute('data-path', 'NOTES.md')
     await expect(changes.file(1)).toHaveAttribute('data-path', 'README.md')
   })
@@ -244,22 +254,23 @@ test('The review pane lists the changes beside the terminals, opens diffs as tab
     await launched.window.screenshot({ path: 'test-results/changes-menus.png' })
     await changes.baseRef('release').click()
     await expect(changes.baseOptions).toHaveCount(0)
-    await expect(changes.summary).toHaveText('Commits 1 vs release')
+    await expect(changes.summary).toHaveText('commits 1 ▾ · vs release ▾')
     await expect(changes.base).toHaveText('release')
     await expect(changes.file(0)).toHaveAttribute('data-path', 'NOTES.md')
     await expect(changes.file(1)).toHaveCount(0)
   })
 
-  await test.step('An untracked file: the Files tab shows the tree, changed files marked', async () => {
+  await test.step('An untracked file: the Files view shows the tree, changed files marked', async () => {
     mkdirSync(join(workspace.path, 'src/upload'), { recursive: true })
     writeFileSync(join(workspace.path, 'src/upload/retry.ts'), 'export const retries = 3\n')
     // No Refresh: the write reaches Changes through the watcher, so the tree opens knowing it.
     await expect(changes.file(1)).toHaveAttribute('data-path', 'src/upload/retry.ts')
-    await review.tabFiles.click()
-    await expect(review.root).toHaveAttribute('data-tab', 'files')
-    await expect(review.tabFiles).toHaveAttribute('aria-selected', 'true')
-    expect(await review.state()).toMatchObject({ open: true, tab: 'files' })
-    await expect(files.summary).toHaveText('Files 4 · 2 changed')
+    await review.viewFiles.click()
+    await expect(review.root).toHaveAttribute('data-view', 'files')
+    await expect(review.viewFiles).toHaveAttribute('aria-selected', 'true')
+    await expect(review.viewChanges).toHaveAttribute('aria-selected', 'false')
+    expect(await review.state()).toMatchObject({ open: true, view: 'files' })
+    await expect(files.summary).toHaveText('4 · 2 changed')
     await expect(files.count).toHaveText('4')
     await expect(files.rows).toHaveCount(5)
     // Directories first, the one-entry chain folded into one row, open because it holds a change.
@@ -326,10 +337,28 @@ test('The review pane lists the changes beside the terminals, opens diffs as tab
     await files.refresh.click()
     await expect(files.rowByPath('src/upload')).toHaveCount(0)
     await expect(files.count).toHaveText('3')
-    await expect(files.summary).toHaveText('Files 3 · 1 changed')
+    await expect(files.summary).toHaveText('3 · 1 changed')
     await expect(files.row(0)).toHaveAttribute('data-path', 'NOTES.md')
     await expect(fileView.tab('que.toml')).toHaveAttribute('data-active', 'true')
     await expect(fileView.text).toHaveText('1setup = "true"')
+  })
+
+  await test.step('The filter narrows the tree to the matches, Enter opens the first, Escape clears it', async () => {
+    await files.filter.fill('notes')
+    await expect(files.rows).toHaveCount(1)
+    await expect(files.row(0)).toHaveAttribute('data-path', 'NOTES.md')
+    await expect(files.filterHint).toHaveText('1 match · ⏎ opens')
+    await files.filter.press('Enter')
+    await expect(diff.tab('NOTES.md')).toHaveAttribute('data-active', 'true')
+    await expect(diff.patch).toContainText('+Backoff caps at 30s.')
+    await expect(terminal.tab(termId)).toBeVisible()
+    await launched.window.screenshot({ path: 'test-results/files-filter.png' })
+    await files.filter.press('Escape')
+    await expect(files.filter).toHaveValue('')
+    await expect(files.rows).toHaveCount(3)
+    await expect(files.filterHint).toHaveCount(0)
+    await diff.tabClose('NOTES.md').click()
+    await expect(diff.tabs).toHaveCount(1)
   })
 
   await test.step('Dragging the resizer 80px left widens the pane by about 80px', async () => {
@@ -349,26 +378,44 @@ test('The review pane lists the changes beside the terminals, opens diffs as tab
     await launched.window.screenshot({ path: 'test-results/review-pane.png' })
   })
 
-  await test.step('The Pull request tab switches the pane over: no pull request yet', async () => {
-    await review.tabPr.click()
-    await expect(review.root).toHaveAttribute('data-tab', 'pr')
-    await expect(review.tabPr).toHaveAttribute('aria-selected', 'true')
-    await expect(review.tabChanges).toHaveAttribute('aria-selected', 'false')
+  await test.step('The pull requests view: none from this session yet', async () => {
+    await review.viewPrs.click()
+    await expect(review.root).toHaveAttribute('data-view', 'prs')
+    await expect(review.viewPrs).toHaveAttribute('aria-selected', 'true')
+    await expect(review.viewFiles).toHaveAttribute('aria-selected', 'false')
     await expect(tabRow.reviewToggle).toHaveAttribute('aria-pressed', 'true')
-    await expect(pr.empty).toHaveText('No pull request yet')
-    await expect(pr.create).toHaveText('Create draft PR')
-    expect(await review.state()).toMatchObject({ open: true, tab: 'pr' })
+    await expect(pr.empty).toHaveText('No pull requests from this session yet.')
+    await expect(review.prsCount).toHaveText('0')
+    expect(await review.state()).toMatchObject({ open: true, view: 'prs', pr: null })
     await expect(diff.tab('README.md')).toBeVisible()
   })
 
-  await test.step('A pull request appears: its checks and conversation fill the pane', async () => {
+  await test.step('The worktree checks out a second branch; a pull request on each: both rows show', async () => {
+    // A second branch with its own commit, checked out long enough for the daemon to keep it.
+    gitIn(workspace.path, 'checkout', '--quiet', '-b', capBranch)
+    writeFileSync(join(workspace.path, 'CAP.md'), '# cap\n\nThirty seconds at most.\n')
+    gitIn(workspace.path, 'add', 'CAP.md')
+    gitIn(workspace.path, 'commit', '--quiet', '-m', 'Cap the backoff')
+    await expect
+      .poll(
+        () =>
+          queJson<Workspace[]>(queHome, 'ws', 'list', '--json').find((w) => w.id === workspace.id)
+            ?.branches,
+        { timeout: 15_000 }
+      )
+      .toContain(capBranch)
+    gitIn(workspace.path, 'checkout', '--quiet', workspace.branch)
     setFakePullRequest(prsFile, workspace.branch, {
       number: 7,
       url: 'https://github.com/rquellh/que/pull/7',
       title: 'Add retry logic',
       isDraft: false,
+      baseRefName: 'main',
+      headRefName: workspace.branch,
       reviewDecision: 'CHANGES_REQUESTED',
       updatedAt: '2026-10-14T03:05:00Z',
+      additions: 4,
+      deletions: 0,
       statusCheckRollup: [
         fakeCheckRun({ name: 'build' }),
         fakeCheckRun({
@@ -402,33 +449,73 @@ test('The review pane lists the changes beside the terminals, opens diffs as tab
         })
       ]
     })
-    await expect(pr.headerLink).toContainText('#7 · open · Add retry logic', { timeout: 15_000 })
+    addFakePullRequest(prsFile, capBranch, {
+      number: 8,
+      url: 'https://github.com/rquellh/que/pull/8',
+      title: 'Cap the backoff',
+      isDraft: false,
+      baseRefName: workspace.branch,
+      headRefName: capBranch,
+      updatedAt: '2026-10-14T03:06:00Z',
+      additions: 3,
+      deletions: 0,
+      statusCheckRollup: [fakeCheckRun({ name: 'build' })]
+    })
+    await expect(pr.activeRows).toHaveCount(2, { timeout: 15_000 })
+    // Newest first, aligned; the second is stacked on the first.
+    await expect(pr.activeRows.nth(0)).toHaveAttribute('data-testid', 'pr-row-8')
+    await expect(pr.activeRows.nth(1)).toHaveAttribute('data-testid', 'pr-row-7')
+    await expect(pr.row(8)).toContainText('#8Cap the backoff')
+    await expect(pr.rowMeta(8)).toHaveText('into #7✓ 1/1+3 −0')
+    await expect(pr.row(7)).toContainText('#7Add retry logic')
+    await expect(pr.rowMeta(7)).toHaveText('into main✗ lint · 1/2+4 −0')
+    await expect(pr.listSummary).toHaveText('2 open · 1 failing')
+    await expect(review.prsCount).toHaveText('2')
+    await expect(pr.rowComments(7)).toContainText('3')
+    await expect(pr.rowComments(7)).toHaveAttribute('data-new', 'true')
+    await launched.window.screenshot({ path: 'test-results/review-pull-requests.png' })
+  })
+
+  await test.step('#7 opens in place: its files, checks and conversation; the strip is its back link', async () => {
+    await pr.row(7).click()
+    await expect(review.root).toHaveAttribute('data-pr', '7')
+    await expect(review.back).toHaveText('‹ #7')
+    await expect(review.viewPrs).toHaveCount(0)
+    expect(await review.state()).toMatchObject({ open: true, view: 'prs', pr: 7 })
+    await expect(pr.title).toHaveText('Add retry logic')
+    await expect(pr.meta).toHaveText('open#7into mainopen ↗')
     await expect(pr.headerLink).toHaveAttribute('href', 'https://github.com/rquellh/que/pull/7')
-    await expect(pr.review).toHaveAttribute('data-review', 'changes_requested')
-    await expect(pr.checksSummary).toHaveText('1 passing · 1 failing')
+    await expect(pr.filesSummary).toContainText('· 2 · vs main')
+    await expect(pr.file(0)).toHaveAttribute('data-path', 'NOTES.md')
+    await expect(pr.file(1)).toHaveAttribute('data-path', 'README.md')
+    await expect(pr.checksSummary).toHaveText('1 failing · 1 passing')
     await expect(pr.check(0)).toHaveAttribute('data-state', 'failing')
     await expect(pr.check(0)).toContainText('lint')
     await expect(pr.checkLink(0)).toHaveAttribute(
       'href',
       'https://github.com/rquellh/que/actions/runs/42'
     )
+    await expect(pr.checksPassing).toHaveText('▸ 1 passing · build')
+    await pr.checksPassing.click()
     await expect(pr.check(1)).toHaveAttribute('data-state', 'passing')
     await expect(pr.check(1)).toContainText('build')
+    await expect(pr.commentsCount).toHaveText('3 · changes requested')
+    await expect(pr.review).toHaveAttribute('data-review', 'changes_requested')
     // Oldest first: the comment, the line comment, then the review.
     await expect(pr.comment(0)).toHaveAttribute('data-kind', 'comment')
     await expect(pr.comment(0)).toContainText('Looks close. One nit below.')
     await expect(pr.comment(1)).toHaveAttribute('data-kind', 'line')
-    await expect(pr.comment(1)).toContainText('README.md:3')
+    await expect(pr.commentPath(1)).toHaveText('README.md:3 →')
     await expect(pr.comment(1)).toContainText('Backoff should be capped.')
     await expect(pr.comment(2)).toHaveAttribute('data-kind', 'review')
     await expect(pr.comment(2)).toContainText('changes requested')
     await expect(pr.comment(2)).toContainText('Please add a test for the retry cap.')
-    await expect(pr.footerLink).toHaveAttribute('href', 'https://github.com/rquellh/que/pull/7')
     await launched.window.screenshot({ path: 'test-results/review-pull-request-filled.png' })
   })
 
   await test.step('Refresh fetches the conversation again and shows a new comment', async () => {
     setFakePullRequest(prsFile, workspace.branch, {
+      number: 7,
       comments: [
         fakeComment({
           author: 'reviewer',
@@ -447,9 +534,35 @@ test('The review pane lists the changes beside the terminals, opens diffs as tab
     await expect(pr.comment(3)).toHaveAttribute('data-kind', 'comment')
   })
 
-  await test.step('Back on the Files tab with the diff tab selected, before the quit', async () => {
-    await review.tabFiles.click()
-    await expect(review.root).toHaveAttribute('data-tab', 'files')
+  await test.step("Back to the list; #8's file opens as a middle tab beside the session tab, against #7", async () => {
+    await review.back.click()
+    await expect(review.root).not.toHaveAttribute('data-pr')
+    await expect(pr.rowComments(7)).toHaveAttribute('data-new', 'false')
+    await pr.row(8).click()
+    await expect(review.back).toHaveText('‹ #8')
+    await expect(pr.filesSummary).toHaveText('+3 −0 · 1 · vs #7')
+    await expect(pr.file(0)).toHaveAttribute('data-path', 'CAP.md')
+    await pr.file(0).click()
+    await expect(diff.prTab(8, 'CAP.md')).toHaveAttribute('data-active', 'true')
+    await expect
+      .poll(async () => (await terminal.panes())[0]?.activeTab)
+      .toBe('view:prdiff:8:CAP.md')
+    await expect(terminal.tab(termId)).toBeVisible()
+    await expect(diff.tab('README.md')).toBeVisible()
+    await expect(diff.against).toHaveText('#8 vs #7')
+    await expect(diff.header).toContainText('CAP.md · +3')
+    await expect(diff.patch).toContainText('+Thirty seconds at most.')
+    await expect(pr.file(0)).toHaveAttribute('data-active', 'true')
+    await launched.window.screenshot({ path: 'test-results/review-pr-diff.png' })
+    await diff.prTabClose(8, 'CAP.md').click()
+    await expect(diff.tabs).toHaveCount(1)
+    await review.back.click()
+    await expect(pr.list).toBeVisible()
+  })
+
+  await test.step('Back on the Files view with the diff tab selected, before the quit', async () => {
+    await review.viewFiles.click()
+    await expect(review.root).toHaveAttribute('data-view', 'files')
     await diff.tabSelect('README.md').click()
     await expect(diff.tab('README.md')).toHaveAttribute('data-active', 'true')
     await expect(fileView.tab('que.toml')).toHaveAttribute('data-active', 'false')
@@ -461,29 +574,29 @@ test('The review pane lists the changes beside the terminals, opens diffs as tab
     pages()
     await sidebar.waitForLoad()
     await sidebar.workspaceOpen(workspace.id).click()
-    await expect(review.root).toHaveAttribute('data-tab', 'files')
-    expect(await review.state()).toEqual({ open: true, tab: 'files', width: widened })
-    await expect(files.summary).toHaveText('Files 3 · 1 changed')
+    await expect(review.root).toHaveAttribute('data-view', 'files')
+    expect(await review.state()).toEqual({ open: true, view: 'files', pr: null, width: widened })
+    await expect(files.summary).toHaveText('3 · 1 changed')
     await expect(fileView.tab('que.toml')).toHaveAttribute('data-active', 'false')
     await expect(terminal.pane(0).diffTabs).toHaveCount(1)
     await expect(diff.tab('README.md')).toHaveAttribute('data-active', 'true')
-    await review.tabPr.click()
-    await expect(review.root).toHaveAttribute('data-tab', 'pr')
-    expect(await review.state()).toEqual({ open: true, tab: 'pr', width: widened })
-    await expect(pr.headerLink).toContainText('#7 · open · Add retry logic')
+    await review.viewPrs.click()
+    await expect(review.root).toHaveAttribute('data-view', 'prs')
+    expect(await review.state()).toEqual({ open: true, view: 'prs', pr: null, width: widened })
+    await expect(pr.activeRows).toHaveCount(2)
     // The base chosen before the quit is remembered: README.md is unchanged against it.
-    await review.tabChanges.click()
+    await review.viewChanges.click()
     await expect(changes.base).toHaveText('release')
-    await expect(changes.summary).toHaveText('Commits 1 vs release')
+    await expect(changes.summary).toHaveText('commits 1 ▾ · vs release ▾')
     await expect(diff.empty).toHaveText('No changes in README.md')
     await changes.baseMenu.click()
     await expect(changes.baseRef('release')).toHaveAttribute('aria-checked', 'true')
     await changes.baseRef('origin/main').click()
-    await expect(changes.summary).toHaveText('Commits 2 vs origin/main')
+    await expect(changes.summary).toHaveText('commits 2 ▾ · vs origin/main ▾')
     await expect(diff.patch).toContainText('+Retries with backoff.')
     await expect(terminal.tab(termId)).toBeVisible()
-    await review.tabPr.click()
-    await expect(review.root).toHaveAttribute('data-tab', 'pr')
+    await review.viewPrs.click()
+    await expect(review.root).toHaveAttribute('data-view', 'prs')
     // The file tab came back too and still shows the file.
     await fileView.tabSelect('que.toml').click()
     await expect(fileView.tab('que.toml')).toHaveAttribute('data-active', 'true')
@@ -511,34 +624,40 @@ test('The review pane lists the changes beside the terminals, opens diffs as tab
     await expect(terminal.viewport).toBeVisible()
   })
 
-  await test.step('The toggle closes the pane and opens it again on the tab it was left on', async () => {
+  await test.step('The toggle closes the pane and opens it again on the view it was left on', async () => {
     await tabRow.reviewToggle.click()
     await expect(review.root).toHaveCount(0)
     await expect(tabRow.reviewToggle).toHaveAttribute('aria-pressed', 'false')
     await tabRow.reviewToggle.click()
-    await expect(review.root).toHaveAttribute('data-tab', 'pr')
+    await expect(review.root).toHaveAttribute('data-view', 'prs')
     await expect(tabRow.reviewToggle).toHaveAttribute('aria-pressed', 'true')
   })
 
-  await test.step('The close button closes the pane; the toggle opens it again, then Changes', async () => {
-    await review.close.click()
+  await test.step('⌘B closes the pane (it has no close button); the toggle opens it again, then Changes', async () => {
+    await launched.window.keyboard.press('Meta+b')
     await expect(review.root).toHaveCount(0)
     expect((await review.state()).open).toBe(false)
     await expect(tabRow.reviewToggle).toHaveAttribute('aria-pressed', 'false')
     await tabRow.reviewToggle.click()
-    await review.tabChanges.click()
-    await expect(review.root).toHaveAttribute('data-tab', 'changes')
+    await review.viewChanges.click()
+    await expect(review.root).toHaveAttribute('data-view', 'changes')
     await expect(changes.file(1)).toContainText('README.md')
-    expect(await review.state()).toEqual({ open: true, tab: 'changes', width: widened })
+    expect(await review.state()).toEqual({ open: true, view: 'changes', pr: null, width: widened })
   })
 
-  await test.step('The Pull request tab follows the pull request to merged', async () => {
-    await review.tabPr.click()
-    await expect(pr.headerLink).toContainText('#7 · open · Add retry logic')
+  await test.step('The list follows #7 to merged, under the rule', async () => {
+    await review.viewPrs.click()
+    await expect(pr.activeRows).toHaveCount(2)
     setFakePullRequest(prsFile, workspace.branch, {
+      number: 7,
       state: 'MERGED',
-      mergedAt: '2026-10-14T03:30:00Z'
+      mergedAt: '2026-10-14T03:30:00Z',
+      updatedAt: '2026-10-14T03:30:00Z'
     })
-    await expect(pr.headerLink).toContainText('#7 · merged · Add retry logic', { timeout: 15_000 })
+    await expect(pr.row(7)).toHaveAttribute('data-state', 'merged', { timeout: 15_000 })
+    await expect(pr.settledLabel).toHaveText('[ merged · closed ]')
+    await expect(pr.settledRows).toHaveCount(1)
+    await expect(pr.activeRows).toHaveCount(1)
+    await expect(pr.listSummary).toHaveText('1 open')
   })
 })

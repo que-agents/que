@@ -87,22 +87,64 @@ remove. The quiet board uses the same tones on a dot or a word, never a badge.
   mirror: it runs from the window's top edge to the bottom on `--bg-side` behind a 1px
   hairline, and the tab row spans only the middle column. It is 320px wide, dragged
   between 240 and 520px on a 7px track like the sidebar's (double-click resets, arrow
-  keys move it), and remembered with its tab. Its strip is 40px tall, lined up with the
-  tab row above a solid hairline, and holds three tabs, Changes, Files and Pull request,
-  drawn like a pane's tabs, and a close button at the right end. One icon button at the right
-  end of the tab row (a frame with a divider toward its right edge, filled while open)
-  toggles the pane on its remembered tab, and so does ⌘B. The Changes header is one
-  line, `Commits n vs base` (the count and `vs` muted, the full counts in its tooltip),
-  with refresh and open-in-editor icon buttons at its right end. Each half of the line
-  opens a menu: `Commits n` lists the commits, newest first with their age, and narrows
-  the files to one (the line then reads `Commit <sha>`, its subject in the tooltip), and
-  `vs base` picks the ref to compare against, remembered per workspace; the current
-  choice is marked with the active fill; `Create draft PR` is
-  in the Pull request footer while the workspace has no pull request. Clicking a file in Changes opens that
-  file's diff as a tab in the middle, in the focused pane's strip beside the session
-  tabs: a line icon and the file's name, never a status dot, closed with ⌘W like a
-  terminal tab. The Files header is one line too, `Files n · m changed` (both counts
-  muted, the full detail in its tooltip), with the same two icon buttons. Below it the
+  keys move it), and remembered. One icon button at the right end of the tab row (a
+  frame with a divider toward its right edge, filled while open) toggles the pane, and
+  so does ⌘B; the pane has no close button of its own.
+- The pane's strip is 40px tall, lined up with the tab row above a solid hairline. At
+  its left, lined up with the session tabs, three `button.ghost.icon`s pick the view:
+  pull requests (a branch-merge line icon), changes (a page with ±) and files (a
+  folder). Pull requests and changes carry a count in mono 11px `--fg-faint` beside the
+  icon (the open and draft pull requests; the changed files); never a dot, since a
+  failure shows inside the pane and in the workspace popout. Each icon's name is its
+  tooltip and accessible name. The current one reads `--fg` with a 1px `--fg` line under
+  it, the others `--fg-faint`. The view's own buttons (refresh, open in editor) sit at
+  the strip's right end. The pane remembers its view per workspace. Each view opens with
+  a head: its `[ LABEL ]` at the left, its counts in mono `--fg-faint` at the right.
+- Pull requests lists every pull request the session opened (#192): `[ PULL REQUESTS ]`
+  with `n open · k failing` (only `k failing` in `--tone-bad`), then one two-line row
+  each. Line one: the dot, `#n` in mono `--fg-muted`, the title on one line with an
+  ellipsis, and the comment count with a line icon at the right, `--fg` while there are
+  comments since the pull request was last opened (remembered in the app), else
+  `--fg-faint`. Line two in mono 11px `--fg-faint`: `into <base>` (or `#n` when the base
+  is another of the session's pull requests), the checks (`✓ 7/7` good, `✗ <first
+  failing> · 6/7` bad, `running 4/7` busy, skipped runs left out), `+a −d` in the diff
+  tones, and `· subagent` when its branch is none this worktree checked out. A draft's
+  dot is a hollow ring, an open one takes the checks' tone, a merged or closed one
+  `--tone-muted`. Open and draft come first, newest first, every row aligned (no indent
+  for a stack; `into #n` is its only sign); then a dashed rule, `[ MERGED · CLOSED ]`,
+  and those rows with their number and title in `--fg-faint`. With none: `No pull
+  requests from this session yet.`, centred. There is no Create draft PR and no
+  "checked … ago" in the pane: sessions open their own pull requests.
+- A row opens its pull request in place; the strip's left end becomes `‹ #188`, the
+  back link. The title at 14px 600, then in mono `● open · #188 · into <base> · open ↗`
+  (the link in `--accent`). Three sections follow in this order, each folding at its head
+  (`▾ [ FILES ]`, the fold kept for every pull request this session), dashed rules
+  between: `[ FILES ]` with `+a −d · n · vs <base>`, the pull request's own committed
+  files against its base, rows like Changes; `[ CHECKS ]` with `k failing · m passing`,
+  the failing runs first (dot, name, source dim, duration, a link on hover), then the
+  running and skipped ones, the passing ones folded into one mono line that expands;
+  `[ COMMENTS ]` with `n · <review decision>`, the decision as a dot and words in its
+  tone, then the conversation oldest first. A line comment's `path:line →` (in
+  `--accent`) opens the diff at that line.
+- Changes is `[ CHANGES ]` with `+a −d · n files` (the worktree against its base,
+  uncommitted included), then one mono `--fg-faint` line: `commits n ▾ · vs base ▾ · k
+  uncommitted`. Each of its first two parts opens a menu: `commits n` lists the commits,
+  newest first with their age, and narrows the files to one (the line then reads
+  `commit <sha>`, its subject in the tooltip), and `vs base` picks the ref to compare
+  against, remembered per workspace; the current choice is marked with the active fill.
+  A row is the glyph, the path, `+a −d` in the diff tones; an uncommitted file carries
+  a 5px `--tone-attention` dot after its name.
+- Clicking a file in Changes opens that file's diff as a tab in the middle, in the
+  focused pane's strip beside the session tabs: a line icon and the file's name, never a
+  status dot, closed with ⌘W like a terminal tab. A file inside a pull request opens the
+  same way as a tab of its own (its id carries the number, so it never collides with
+  the Changes diff of the path), headed `#188 vs #187`, the pull request's line comments
+  under their lines on `--bg-side` behind a `--border-strong` hairline; the line a
+  comment asked for carries a 2px `--accent` edge.
+- Files is `[ FILES ]` with `n · m changed`, then a filter field: mono 12px on
+  `--bg-input` behind a 1px `--border`, `--accent` on focus, ⌘F while the pane has focus.
+  It narrows the tree to the matching paths with their folders open, `n matches · ⏎
+  opens` at its right end; Enter opens the first match, Escape clears it. Below it the
   worktree is a tree: directories first, then files, each sorted without regard to case,
   12px of indent per level, a chevron on each directory that turns while it is open, and
   a directory holding only another directory folded into one row (`src/renderer/src`).

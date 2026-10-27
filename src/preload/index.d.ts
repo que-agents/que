@@ -197,8 +197,13 @@ export interface WorkspaceApi {
   canRenameBranch(params: { id: string }): Promise<{ allowed: boolean }>
   /** The workspace is selected in a focused window: records it as seen (seenAt). */
   seen(params: { id: string }): Promise<Workspace>
-  /** What the workspace changed against its base, file by file. Refused in quiet hours. */
-  diff(params: { id: string; base?: string; commit?: string }): Promise<WorkspaceDiff>
+  /** What the workspace changed against its base, file by file; with `head`, that branch's committed files against `base` instead. Refused in quiet hours. */
+  diff(params: {
+    id: string
+    base?: string
+    head?: string
+    commit?: string
+  }): Promise<WorkspaceDiff>
   /** Pull request `number`'s conversation: comments, reviews, line comments. Null when the workspace has no such PR. Refused in quiet hours. */
   prThread(params: { id: string; number: number; refresh?: boolean }): Promise<PrThread | null>
   /** Every tracked and untracked file of the worktree, sorted; never the ignored ones. Refused in quiet hours. */
@@ -285,8 +290,8 @@ export interface QueTestHook {
     activeTab: string | null
     focused: boolean
   }>
-  /** The review pane at the right of the main area: open or not, its tab, its width in px. */
-  review(): { open: boolean; tab: 'changes' | 'files' | 'pr'; width: number }
+  /** The review pane at the right of the main area: open or not, the shown workspace's view and the pull request open in it, its width in px. */
+  review(): { open: boolean; view: 'prs' | 'changes' | 'files'; pr: number | null; width: number }
   /** The screen of any attached terminal by id ('' when it is not on screen). */
   screenTextOf(termId: string): string
   /** The tray's current title, from the main process. */

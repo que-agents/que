@@ -49,7 +49,7 @@ async function openFiles(user: ReturnType<typeof userEvent.setup>): Promise<stri
     expect(pane.dataset.activeTerm).not.toBe('')
   })
   await user.click(screen.getByTestId('topbar-review'))
-  await user.click(screen.getByTestId('review-tab-files'))
+  await user.click(screen.getByTestId('review-view-files'))
   await screen.findByTestId('files-row-8')
 
   return pane.dataset.activeTerm as string
@@ -80,7 +80,7 @@ describe('FilesTree', () => {
       await openFiles(user)
 
       const summary = screen.getByTestId('files-summary')
-      expect(summary).toHaveTextContent('Files 6 · 3 changed')
+      expect(summary).toHaveTextContent('6 · 3 changed')
       expect(summary).toHaveAttribute('title', '6 files · 3 changed')
       expect(screen.getByTestId('files-count')).toHaveTextContent('6')
       expect(outline()).toEqual([
@@ -141,14 +141,16 @@ describe('FilesTree', () => {
         { commit: commit.sha }
       )
       await openFiles(user)
-      await user.click(screen.getByTestId('review-tab-changes'))
+      await user.click(screen.getByTestId('review-view-changes'))
       await user.click(await screen.findByTestId('changes-commits-menu'))
       await user.click(screen.getByTestId(`changes-commit-${commit.sha}`))
-      await screen.findByText('Commit')
+      await waitFor(() => {
+        expect(screen.getByTestId('changes-commits-menu')).toHaveTextContent(/^commit /)
+      })
 
-      await user.click(screen.getByTestId('review-tab-files'))
+      await user.click(screen.getByTestId('review-view-files'))
 
-      expect(await screen.findByTestId('files-summary')).toHaveTextContent('Files 6 · 1 changed')
+      expect(await screen.findByTestId('files-summary')).toHaveTextContent('6 · 1 changed')
       expect(row('src/upload/retry.ts')).toHaveTextContent(/^retry\.ts$/)
       expect(row('README.md')).toHaveTextContent(/^README\.mdA$/)
     })
@@ -357,7 +359,7 @@ describe('FilesTree', () => {
         { id: retry.id, path: 'package.json' },
         { id: retry.id, path: 'package.json' }
       ])
-      expect(screen.getByTestId('files-summary')).toHaveTextContent('Files 7 · 5 changed')
+      expect(screen.getByTestId('files-summary')).toHaveTextContent('7 · 5 changed')
       expect(row('src')).toHaveAttribute('aria-expanded', 'false')
       expect(outline()).toEqual([
         '1 src',

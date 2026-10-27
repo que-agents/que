@@ -545,10 +545,25 @@ class FakeBridge {
 
           return this.createTerminal({ cwd: ws.path, cols, rows, name: ws.name }, ws.id)
         },
-        diff: async ({ id, base, commit }) => {
+        diff: async ({ id, base, head, commit }) => {
           this.refuseIfQuiet('workspace.diff')
           const ws = this.workspace(id)
-          this.diffCallLog.push({ id, base: base ?? null, commit: commit ?? null })
+
+          this.diffCallLog.push(
+            head === undefined
+              ? { id, base: base ?? null, commit: commit ?? null }
+              : { id, base: base ?? null, commit: commit ?? null, head }
+          )
+
+          if (head !== undefined) {
+            // A branch's own files: only what was seeded for it, never the worktree's diff.
+            const own = this.headDiffs.get(diffKey(id, base, head))
+
+            if (!own) throw rpcError('bad_request', `no such branch: ${head}`)
+
+            return structuredClone(own)
+          }
+
           const scoped = diffKey(id, base, commit)
           const failure = this.diffFailures.get(scoped)
 
@@ -606,7 +621,7 @@ class FakeBridge {
           this.refuseIfQuiet('workspace.prThread')
           this.workspace(id)
           this.prThreadCallLog.push({ id, number, refresh: refresh === true })
-          const seeded = this.prThreads.get(id)
+          const seeded = this.prThreads.get(`${id}:${number}`) ?? this.prThreads.get(`${id}:*`)
 
           return seeded ? structuredClone(seeded) : null
         },
@@ -821,6 +836,11 @@ class FakeBridge {
     this.putWorkspace({ ...this.workspace(id), pr, prs: pr ? [pr] : [] })
   }
 
+  /** Replaces the session's pull requests (the current one first), as a daemon refresh would. */
+  setWorkspacePrs(id: string, prs: PullRequest[]): void {
+    this.putWorkspace({ ...this.workspace(id), pr: prs[0] ?? null, prs: structuredClone(prs) })
+  }
+
   getWorkspace(id: string): Workspace | undefined {
     return this.workspaces.get(id)
   }
@@ -1023,7 +1043,12 @@ class FakeBridge {
 
   private diffs = new Map<string, WorkspaceDiff>()
   private diffFailures = new Map<string, string>()
-  private diffCallLog: Array<{ id: string; base: string | null; commit: string | null }> = []
+  private diffCallLog: Array<{
+    id: string
+    base: string | null
+    commit: string | null
+    head?: string
+  }> = []
 
   /**
    * What workspace.diff answers for a workspace: in exactly this scope (base and commit), or
@@ -1031,6 +1056,16 @@ class FakeBridge {
    */
   seedDiff(diff: WorkspaceDiff, scope: { base?: string; commit?: string } = {}): void {
     this.diffs.set(diffKey(diff.workspaceId, scope.base, scope.commit), structuredClone(diff))
+  }
+
+  private headDiffs = new Map<string, WorkspaceDiff>()
+
+  /**
+   * What workspace.diff answers with `head` (a branch's own committed files against `base`),
+   * as a pull request's files ask for them; any other branch is refused.
+   */
+  seedBranchDiff(diff: WorkspaceDiff, scope: { base?: string; head: string }): void {
+    this.headDiffs.set(diffKey(diff.workspaceId, scope.base, scope.head), structuredClone(diff))
   }
 
   /** Makes workspace.diff in exactly this scope fail with this message (the whole request fails, as when the workspace is gone). */
@@ -1061,7 +1096,7 @@ class FakeBridge {
   }
 
   /** Every workspace.diff call, in order. */
-  diffCalls(): Array<{ id: string; base: string | null; commit: string | null }> {
+  diffCalls(): Array<{ id: string; base: string | null; commit: string | null; head?: string }> {
     return this.diffCallLog.map((c) => ({ ...c }))
   }
 
@@ -1106,13 +1141,21 @@ class FakeBridge {
   private prThreads = new Map<string, PrThread>()
   private prThreadCallLog: Array<{ id: string; number: number; refresh: boolean }> = []
 
-  /** What workspace.prThread answers for a workspace; an entries array means number 1, fetched now. */
-  seedPrThread(workspaceId: string, thread: Omit<PrThread, 'workspaceId'> | PrThreadEntry[]): void {
+  /**
+   * What workspace.prThread answers for a workspace's pull request `thread.number`. An entries
+   * array, fetched now, answers for `number` when given, else for any number not seeded itself.
+   */
+  seedPrThread(
+    workspaceId: string,
+    thread: Omit<PrThread, 'workspaceId'> | PrThreadEntry[],
+    number?: number
+  ): void {
     const full: PrThread = Array.isArray(thread)
-      ? { workspaceId, number: 1, entries: thread, fetchedAt: new Date().toISOString() }
+      ? { workspaceId, number: number ?? 1, entries: thread, fetchedAt: new Date().toISOString() }
       : { ...thread, workspaceId }
 
-    this.prThreads.set(workspaceId, structuredClone(full))
+    const which = Array.isArray(thread) ? (number ?? '*') : thread.number
+    this.prThreads.set(`${workspaceId}:${which}`, structuredClone(full))
   }
 
   /** Every workspace.prThread call, in order. */
@@ -1123,6 +1166,7 @@ class FakeBridge {
   reset(): void {
     this.projects.clear()
     this.diffs.clear()
+    this.headDiffs.clear()
     this.diffFailures.clear()
     this.diffCallLog = []
     this.files.clear()

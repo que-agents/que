@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { DiffFile } from '../../../preload/index.d'
 import { GLYPH } from '../diff'
-import { buildTree, defaultExpanded, flatten, type TreeRow } from '../files'
+import { allDirs, buildTree, defaultExpanded, filterPaths, flatten, type TreeRow } from '../files'
 import { diffId, fileId, usePanes, useQueSelector } from '../store'
-import { ChevronIcon, EditorIcon, RefreshIcon } from './icons'
+import { ChevronIcon, SearchIcon } from './icons'
 
 const NO_FILES: readonly string[] = []
 
@@ -11,12 +11,20 @@ const NO_FILES: readonly string[] = []
  * A workspace's files as a tree, in the review pane. A changed file carries its
  * Changes glyph and opens its diff tab; an unchanged one opens a read-only file
  * tab beside the terminals. Directories holding changes start open and show
- * how many changed files sit beneath them.
+ * how many changed files sit beneath them. The filter at the top narrows the
+ * tree to the matching paths with their folders open; Enter opens the first
+ * match, Escape clears it. `focusFilter` changing (⌘F in the pane) focuses it.
  */
-export default function FilesTree({ termKey }: { termKey: string }): React.JSX.Element {
+export default function FilesTree({
+  termKey,
+  focusFilter = 0
+}: {
+  termKey: string
+  focusFilter?: number
+}): React.JSX.Element {
   const store = usePanes(termKey)
-  const connected = useQueSelector((s) => s.connected)
-  const ws = useQueSelector((s) => s.workspaces[termKey])
+  const [filter, setFilter] = useState('')
+  const filterField = useRef<HTMLInputElement>(null)
   const listing = useQueSelector((s) => s.fileLists[termKey])
   const diffed = useQueSelector((s) => s.diffs[termKey])
   const remembered = useQueSelector((s) => s.filesExpanded[termKey])
@@ -51,7 +59,30 @@ export default function FilesTree({ termKey }: { termKey: string }): React.JSX.E
     if (remembered === undefined && settled) store.setFilesExpanded(termKey, defaultExpanded(tree))
   }, [store, termKey, remembered, settled, tree])
 
-  const rows = useMemo(() => flatten(tree, expanded), [tree, expanded])
+  useEffect(() => {
+    if (focusFilter > 0) filterField.current?.focus()
+  }, [focusFilter])
+
+  // While the filter narrows the tree, every folder of a match is open.
+  const filtering = filter.trim() !== ''
+
+  const narrowed = useMemo(() => {
+    if (!filtering) return null
+    const keep = new Set(filterPaths([...listed, ...changed.keys()], filter))
+    const kept = new Map([...changed].filter(([p]) => keep.has(p)))
+
+    return buildTree(
+      listed.filter((p) => keep.has(p)),
+      kept
+    )
+  }, [filtering, filter, listed, changed])
+
+  const rows = useMemo(
+    () => (narrowed ? flatten(narrowed, allDirs(narrowed)) : flatten(tree, expanded)),
+    [narrowed, tree, expanded]
+  )
+
+  const matches = narrowed ? rows.filter((r) => r.node.kind === 'file').length : 0
   const at = Math.min(cursor, Math.max(rows.length - 1, 0))
 
   const setOpen = (path: string, open: boolean): void => {
@@ -69,9 +100,22 @@ export default function FilesTree({ termKey }: { termKey: string }): React.JSX.E
     setCursor(i)
     const node = row.node
 
-    if (node.kind === 'dir') setOpen(node.path, !row.open)
-    else if (node.change) store.openDiff(termKey, node.path)
+    if (node.kind === 'dir') {
+      if (!narrowed) setOpen(node.path, !row.open)
+    } else if (node.change) store.openDiff(termKey, node.path)
     else store.openFile(termKey, node.path)
+  }
+
+  const onFilterKey = (e: React.KeyboardEvent): void => {
+    if (e.key === 'Escape') {
+      e.preventDefault()
+      setFilter('')
+    } else if (e.key === 'Enter') {
+      e.preventDefault()
+      const first = rows.findIndex((r) => r.node.kind === 'file')
+
+      if (first >= 0) open(first)
+    }
   }
 
   const onKeyDown = (e: React.KeyboardEvent): void => {
@@ -132,45 +176,41 @@ export default function FilesTree({ termKey }: { termKey: string }): React.JSX.E
 
   return (
     <section className="changes files" data-testid="files" aria-label="Files">
-      <header className="changes-bar">
-        <p className="changes-summary" data-testid="files-summary" title={title}>
+      <header className="review-head">
+        <h2 className="label">[ Files ]</h2>
+        <span className="review-sum" data-testid="files-summary" title={title}>
           {list && (
             <>
-              Files{' '}
-              <span className="muted" data-testid="files-count">
-                {count.toLocaleString('en-US')}
-              </span>
-              {diff && <span className="muted"> · {changedCount} changed</span>}
+              <span data-testid="files-count">{count.toLocaleString('en-US')}</span>
+              {diff && ` · ${changedCount} changed`}
             </>
           )}
-        </p>
-        <div className="changes-actions">
-          <button
-            type="button"
-            className="ghost icon"
-            aria-label="Refresh"
-            title="Refresh"
-            data-testid="files-refresh"
-            disabled={!connected}
-            onClick={() => void store.refreshFiles(termKey)}
-          >
-            <RefreshIcon />
-          </button>
-          {ws && (
-            <button
-              type="button"
-              className="ghost icon"
-              aria-label="Open in editor"
-              title="Open in editor"
-              data-testid="files-open-editor"
-              disabled={!connected}
-              onClick={() => void store.openInEditor(ws.path)}
-            >
-              <EditorIcon />
-            </button>
-          )}
-        </div>
+        </span>
       </header>
+      <label className="files-filter">
+        <SearchIcon />
+        <input
+          ref={filterField}
+          type="text"
+          aria-label="Filter files"
+          placeholder="Filter"
+          spellCheck={false}
+          autoComplete="off"
+          data-testid="files-filter"
+          value={filter}
+          onChange={(e) => {
+            setFilter(e.target.value)
+            setCursor(0)
+          }}
+          onKeyDown={onFilterKey}
+        />
+        {filtering && (
+          <span className="files-filter-hint" data-testid="files-filter-hint">
+            {matches} {matches === 1 ? 'match' : 'matches'}
+            {matches > 0 && ' · ⏎ opens'}
+          </span>
+        )}
+      </label>
       {error && (
         <p className="form-error changes-error" role="alert" data-testid="files-error">
           {error}
@@ -178,7 +218,7 @@ export default function FilesTree({ termKey }: { termKey: string }): React.JSX.E
       )}
       {list && rows.length === 0 && (
         <p className="changes-note" data-testid="files-empty">
-          No files.
+          {filtering ? 'No files match.' : 'No files.'}
         </p>
       )}
       {rows.length > 0 && (

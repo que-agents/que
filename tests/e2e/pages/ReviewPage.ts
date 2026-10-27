@@ -1,10 +1,12 @@
-// The review pane, a full-height column at the right of the window: its bar, three tabs, its close
-// button, the resizer on its left edge, and its state from the test hook.
+// The review pane, a full-height column at the right of the window: its 40px strip (three view
+// icons with their counts, or a pull request's back link; the view's own buttons at its right
+// end), the resizer on its left edge, and its state from the test hook.
 import type { Locator, Page } from '@playwright/test'
 
 export interface ReviewState {
   open: boolean
-  tab: 'changes' | 'files' | 'pr'
+  view: 'prs' | 'changes' | 'files'
+  pr: number | null
   width: number
 }
 
@@ -12,10 +14,14 @@ export class ReviewPage {
   page: Page
   root: Locator
   bar: Locator
-  tabChanges: Locator
-  tabFiles: Locator
-  tabPr: Locator
-  close: Locator
+  viewPrs: Locator
+  viewChanges: Locator
+  viewFiles: Locator
+  // The counts beside the icons: open and draft pull requests, changed files.
+  prsCount: Locator
+  changesCount: Locator
+  // `‹ #n` while a pull request is open in place.
+  back: Locator
   resizer: Locator
   empty: Locator
 
@@ -23,10 +29,12 @@ export class ReviewPage {
     this.page = page
     this.root = page.getByTestId('review-pane')
     this.bar = page.getByTestId('review-bar')
-    this.tabChanges = page.getByTestId('review-tab-changes')
-    this.tabFiles = page.getByTestId('review-tab-files')
-    this.tabPr = page.getByTestId('review-tab-pr')
-    this.close = page.getByTestId('review-close')
+    this.viewPrs = page.getByTestId('review-view-prs')
+    this.viewChanges = page.getByTestId('review-view-changes')
+    this.viewFiles = page.getByTestId('review-view-files')
+    this.prsCount = page.getByTestId('review-view-prs-count')
+    this.changesCount = page.getByTestId('review-view-changes-count')
+    this.back = page.getByTestId('review-back')
     this.resizer = page.getByTestId('review-resizer')
     this.empty = page.getByTestId('review-empty')
   }
@@ -34,7 +42,7 @@ export class ReviewPage {
   // The pane as the renderer's test hook reports it.
   async state(): Promise<ReviewState> {
     return this.page.evaluate(
-      () => window.__que?.review() ?? { open: false, tab: 'changes' as const, width: 0 }
+      () => window.__que?.review() ?? { open: false, view: 'changes' as const, pr: null, width: 0 }
     )
   }
 }

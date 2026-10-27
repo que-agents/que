@@ -30,3 +30,32 @@ export function lineKind(line: string): LineKind {
 export function basename(path: string): string {
   return path.split('/').filter(Boolean).at(-1) ?? path
 }
+
+/**
+ * The new file's line number of each patch line (the same split the diff view draws: the
+ * patch without its last newline, on `\n`), or null for a line the new file does not have:
+ * a header, a hunk head, a removed line, `\ No newline at end of file`.
+ */
+export function newLineNumbers(patch: string): Array<number | null> {
+  let next: number | null = null
+
+  return patch
+    .replace(/\n$/, '')
+    .split('\n')
+    .map((line) => {
+      const kind = lineKind(line)
+
+      if (kind === 'hunk') {
+        const m = /^@@ -\d+(?:,\d+)? \+(\d+)/.exec(line)
+        next = m ? Number(m[1]) : null
+
+        return null
+      }
+
+      if (kind === 'header' || kind === 'removed' || next === null || line.startsWith('\\')) {
+        return null
+      }
+
+      return next++
+    })
+}

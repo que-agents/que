@@ -9,6 +9,8 @@ import {
   type PaneLayout,
   parseLayout,
   placeIn,
+  prDiffId,
+  prDiffOf,
   reconcileLayout
 } from './layout'
 
@@ -57,6 +59,40 @@ describe('file ids', () => {
     expect(filePathOf('t_01hzx3k9c2qf')).toBeNull()
     expect(filePathOf('view:file:')).toBeNull()
     expect(filePathOf(null)).toBeNull()
+  })
+})
+
+describe('pull request diff ids', () => {
+  it('names a file diff inside a pull request and reads the number and path back', () => {
+    const id = prDiffId(188, 'src/renderer/src/store.ts')
+    expect(id).toBe('view:prdiff:188:src/renderer/src/store.ts')
+    expect(prDiffOf(id)).toEqual({ number: 188, path: 'src/renderer/src/store.ts' })
+    expect(prDiffOf(prDiffId(7, 'docs/a file: with spaces.md'))).toEqual({
+      number: 7,
+      path: 'docs/a file: with spaces.md'
+    })
+    expect(isViewId(id)).toBe(true)
+  })
+
+  it('never collides with the Changes diff of the same path', () => {
+    const id = prDiffId(188, 'src/upload/put.ts')
+    expect(id).not.toBe(PUT)
+    expect(diffPathOf(id)).toBeNull()
+    expect(prDiffOf(PUT)).toBeNull()
+  })
+
+  it('is null without a number or a path', () => {
+    expect(prDiffOf('view:prdiff:')).toBeNull()
+    expect(prDiffOf('view:prdiff:188:')).toBeNull()
+    expect(prDiffOf('view:prdiff:x:README.md')).toBeNull()
+    expect(prDiffOf(null)).toBeNull()
+  })
+
+  it('survives a remembered layout', () => {
+    const id = prDiffId(188, 'README.md')
+    const l = split({ second: [id], active: ['t_1', id], views: [id] })
+
+    expect(parseLayout(JSON.stringify(l))?.views).toEqual([id])
   })
 })
 

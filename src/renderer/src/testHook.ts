@@ -12,7 +12,9 @@ export interface PaneInfo {
 
 export interface ReviewInfo {
   open: boolean
-  tab: 'changes' | 'files' | 'pr'
+  /** The shown workspace's view, and the pull request open in it. */
+  view: 'prs' | 'changes' | 'files'
+  pr: number | null
   width: number
 }
 
@@ -84,9 +86,9 @@ export function installTestHook(): void {
     },
     panes: () => paneSource?.() ?? [],
     review: () => {
-      const r = reviewSource?.() ?? { open: false, tab: 'changes', width: 0 }
+      const r = reviewSource?.() ?? { open: false, view: 'changes', pr: null, width: 0 }
 
-      return { open: r.open, tab: r.tab, width: r.width }
+      return { open: r.open, view: r.view, pr: r.pr, width: r.width }
     },
     screenTextOf,
     trayTitle: () => window.que.app.trayTitle(),

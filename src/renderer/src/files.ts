@@ -156,6 +156,29 @@ export function defaultExpanded(tree: DirNode): Set<string> {
   return open
 }
 
+/** The paths a filter keeps: those containing the text, ignoring case; every path for blank text. */
+export function filterPaths(paths: readonly string[], text: string): string[] {
+  const q = text.trim().toLowerCase()
+
+  return q === '' ? [...paths] : paths.filter((p) => p.toLowerCase().includes(q))
+}
+
+/** Every directory of the tree, at any depth: all of them open while a filter narrows it. */
+export function allDirs(tree: DirNode): Set<string> {
+  const open = new Set<string>()
+
+  const walk = (dir: DirNode): void => {
+    for (const d of dir.dirs) {
+      open.add(d.path)
+      walk(d)
+    }
+  }
+
+  walk(tree)
+
+  return open
+}
+
 /**
  * The directories that hold a changed file now and held none before, at any depth: those to
  * open when a workspace's diff lands again. `previous` is the changed paths before; a folded

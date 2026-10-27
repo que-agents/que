@@ -55,19 +55,23 @@ describe('ChangesList', () => {
 
       await openChanges(user)
 
-      const summary = await screen.findByTestId('changes-summary')
-      expect(summary).toHaveTextContent('Commits 2 vs origin/main')
-      expect(summary).toHaveAttribute(
+      expect(await screen.findByRole('heading', { name: '[ Changes ]' })).toBeInTheDocument()
+      const totals = screen.getByTestId('changes-totals')
+      expect(totals).toHaveTextContent('+16 −3 · 2 files')
+      expect(totals).toHaveAttribute(
         'title',
-        'app-1432-retry-logic vs origin/main · 2 commits ahead · 2 files · +16 −3'
+        'app-1432-retry-logic vs origin/main · 2 commits ahead'
       )
+      const summary = screen.getByTestId('changes-summary')
+      expect(summary).toHaveTextContent('commits 2 ▾ · vs origin/main ▾')
+      expect(screen.queryByTestId('changes-uncommitted')).not.toBeInTheDocument()
       expect(screen.getByTestId('changes-commits')).toHaveTextContent('2')
       expect(screen.getByTestId('changes-base')).toHaveTextContent('origin/main')
-      const commits = screen.getByRole('button', { name: 'Commits 2' })
+      const commits = screen.getByRole('button', { name: 'commits 2 ▾' })
       expect(commits).toHaveAttribute('data-testid', 'changes-commits-menu')
       expect(commits).toHaveAttribute('aria-haspopup', 'menu')
       expect(commits).toHaveAttribute('aria-expanded', 'false')
-      const base = screen.getByRole('button', { name: 'vs origin/main' })
+      const base = screen.getByRole('button', { name: 'vs origin/main ▾' })
       expect(base).toHaveAttribute('data-testid', 'changes-base-menu')
       expect(base).toHaveAttribute('aria-haspopup', 'menu')
       expect(base).toHaveAttribute('aria-expanded', 'false')
@@ -78,7 +82,7 @@ describe('ChangesList', () => {
       expect(screen.getByTestId('changes-file-1')).toHaveTextContent('AREADME.md+4 −0')
     })
 
-    it('marks an uncommitted file and shows where a rename came from', async () => {
+    it('marks an uncommitted file with a dot after its name and counts it, and shows where a rename came from', async () => {
       const user = userEvent.setup()
       seed([
         makeDiffFile({ dirty: true }),
@@ -87,7 +91,12 @@ describe('ChangesList', () => {
 
       await openChanges(user)
 
-      expect(await screen.findByTitle('uncommitted')).toHaveTextContent('*')
+      const dot = await screen.findByTestId('changes-file-0-dirty')
+      expect(dot).toHaveAttribute('title', 'uncommitted')
+      // After the name, before the counts.
+      expect(dot.previousElementSibling).toHaveTextContent('src/upload/put.ts')
+      expect(screen.queryByTestId('changes-file-1-dirty')).not.toBeInTheDocument()
+      expect(screen.getByTestId('changes-uncommitted')).toHaveTextContent('· 1 uncommitted')
       expect(screen.getByTestId('changes-file-1')).toHaveTextContent('src/old.ts → src/new.ts')
     })
 
@@ -160,10 +169,7 @@ describe('ChangesList', () => {
       await user.click(refresh)
 
       expect(await screen.findByTestId('changes-file-1')).toHaveTextContent('README.md')
-      expect(screen.getByTestId('changes-summary')).toHaveAttribute(
-        'title',
-        expect.stringContaining('· 2 files ·')
-      )
+      expect(screen.getByTestId('changes-totals')).toHaveTextContent('+16 −3 · 2 files')
     })
 
     it('opens the worktree in the editor, and not while disconnected', async () => {
@@ -234,10 +240,10 @@ describe('ChangesList', () => {
       })
       expect(screen.queryByRole('menu')).not.toBeInTheDocument()
       const button = screen.getByTestId('changes-commits-menu')
-      expect(button).toHaveTextContent('Commit a1b2c3d')
+      expect(button).toHaveTextContent('commit a1b2c3d ▾')
       expect(button).toHaveAttribute('title', 'Retry uploads with backoff')
       expect(screen.getByTestId('changes-summary')).toHaveTextContent(
-        'Commit a1b2c3d vs origin/main'
+        'commit a1b2c3d ▾ · vs origin/main ▾'
       )
 
       await user.click(button)
@@ -249,7 +255,9 @@ describe('ChangesList', () => {
 
       expect(await screen.findByTestId('changes-file-1')).toHaveAttribute('data-path', 'README.md')
       expect(fakeBridge.diffCalls().at(-1)).toEqual({ id: retry.id, base: null, commit: null })
-      expect(screen.getByTestId('changes-summary')).toHaveTextContent('Commits 2 vs origin/main')
+      expect(screen.getByTestId('changes-summary')).toHaveTextContent(
+        'commits 2 ▾ · vs origin/main ▾'
+      )
       expect(screen.getByTestId('changes-commits-menu')).not.toHaveAttribute('title')
     })
 
@@ -326,18 +334,18 @@ describe('ChangesList', () => {
       await user.click(await screen.findByTestId('changes-commits-menu'))
       await user.click(screen.getByTestId(`changes-commit-${newest.sha}`))
       await waitFor(() => {
-        expect(screen.getByTestId('changes-summary')).toHaveTextContent('Commit a1b2c3d')
+        expect(screen.getByTestId('changes-summary')).toHaveTextContent('commit a1b2c3d ▾')
       })
 
       await user.click(screen.getByTestId('changes-base-menu'))
       await user.click(screen.getByRole('menuitemradio', { name: 'main' }))
 
       await waitFor(() => {
-        expect(screen.getByTestId('changes-summary')).toHaveTextContent('Commits 3 vs main')
+        expect(screen.getByTestId('changes-summary')).toHaveTextContent('commits 3 ▾ · vs main ▾')
       })
       expect(fakeBridge.diffCalls().at(-1)).toEqual({ id: retry.id, base: 'main', commit: null })
       expect(screen.getByTestId('changes-file-0')).toHaveAttribute('data-path', 'src/upload/put.ts')
-      expect(screen.getByRole('button', { name: 'vs main' })).toHaveAttribute(
+      expect(screen.getByRole('button', { name: 'vs main ▾' })).toHaveAttribute(
         'data-testid',
         'changes-base-menu'
       )
@@ -360,7 +368,9 @@ describe('ChangesList', () => {
         </StoreContext.Provider>
       )
 
-      expect(await screen.findByTestId('changes-summary')).toHaveTextContent('Commits 2 vs main')
+      expect(await screen.findByTestId('changes-summary')).toHaveTextContent(
+        'commits 2 ▾ · vs main ▾'
+      )
       expect(fakeBridge.diffCalls()).toEqual([{ id: retry.id, base: 'main', commit: null }])
     })
 
@@ -376,7 +386,9 @@ describe('ChangesList', () => {
       )
 
       expect(await screen.findByTestId('changes-file-1')).toHaveAttribute('data-path', 'README.md')
-      expect(screen.getByTestId('changes-summary')).toHaveTextContent('Commits 2 vs origin/main')
+      expect(screen.getByTestId('changes-summary')).toHaveTextContent(
+        'commits 2 ▾ · vs origin/main ▾'
+      )
       expect(screen.queryByTestId('changes-error')).not.toBeInTheDocument()
       expect(fakeBridge.diffCalls()).toEqual([{ id: retry.id, base: 'feature/gone', commit: null }])
       expect(localStorage.getItem('que.diffBases')).toBeNull()
@@ -503,7 +515,7 @@ describe('ChangesList', () => {
         base: null,
         commit: newest.sha
       })
-      expect(screen.getByTestId('changes-commits-menu')).toHaveTextContent('Commit a1b2c3d')
+      expect(screen.getByTestId('changes-commits-menu')).toHaveTextContent('commit a1b2c3d ▾')
     })
 
     it('shows the new patch in an open diff tab with the pane closed', async () => {
