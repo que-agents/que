@@ -483,7 +483,7 @@ test('The review pane lists the changes beside the terminals, opens diffs as tab
     await expect(review.viewPrs).toHaveCount(0)
     expect(await review.state()).toMatchObject({ open: true, view: 'prs', pr: 7 })
     await expect(pr.title).toHaveText('Add retry logic')
-    await expect(pr.meta).toHaveText('open#7into mainopen ↗')
+    await expect(pr.meta).toHaveText('open#7 ↗into main')
     await expect(pr.headerLink).toHaveAttribute('href', 'https://github.com/rquellh/que/pull/7')
     await expect(pr.filesSummary).toContainText('· 2 · vs main')
     await expect(pr.file(0)).toHaveAttribute('data-path', 'NOTES.md')
@@ -495,12 +495,12 @@ test('The review pane lists the changes beside the terminals, opens diffs as tab
       'href',
       'https://github.com/rquellh/que/actions/runs/42'
     )
-    await expect(pr.checksPassing).toHaveText('▸ 1 passing · build')
+    await expect(pr.checksPassing).toHaveText('1 passing · build')
     await pr.checksPassing.click()
+    await expect(pr.checksPassing).toHaveText('1 passing')
     await expect(pr.check(1)).toHaveAttribute('data-state', 'passing')
     await expect(pr.check(1)).toContainText('build')
     await expect(pr.commentsCount).toHaveText('3 · changes requested')
-    await expect(pr.review).toHaveAttribute('data-review', 'changes_requested')
     // Oldest first: the comment, the line comment, then the review.
     await expect(pr.comment(0)).toHaveAttribute('data-kind', 'comment')
     await expect(pr.comment(0)).toContainText('Looks close. One nit below.')
@@ -546,7 +546,7 @@ test('The review pane lists the changes beside the terminals, opens diffs as tab
     await expect(diff.prTab(8, 'CAP.md')).toHaveAttribute('data-active', 'true')
     await expect
       .poll(async () => (await terminal.panes())[0]?.activeTab)
-      .toBe('view:prdiff:8:CAP.md')
+      .toBe(`view:diff:${capBranch}\0${workspace.branch}\0CAP.md`)
     await expect(terminal.tab(termId)).toBeVisible()
     await expect(diff.tab('README.md')).toBeVisible()
     await expect(diff.against).toHaveText('#8 vs #7')

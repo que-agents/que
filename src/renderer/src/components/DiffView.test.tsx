@@ -105,6 +105,25 @@ describe('DiffView', () => {
     })
   })
 
+  describe('user interactions', () => {
+    it('brings the line it is asked for into view, in the worktree diff as in any other', async () => {
+      seed()
+      const store = new QueStore(window.que)
+      store.openDiff(retry.id, put.path, { line: 2 })
+
+      render(
+        <StoreContext.Provider value={store}>
+          <DiffView termKey={retry.id} path={put.path} />
+        </StoreContext.Provider>
+      )
+
+      const patch = await screen.findByTestId('diff-patch')
+      const target = patch.querySelector('[data-target]')
+      expect(target).toHaveAttribute('data-line', '2')
+      expect(target).toHaveTextContent('+const backoffMs = 250')
+    })
+  })
+
   describe('errors', () => {
     it('fetches the diff itself and shows the refusal during quiet hours', async () => {
       seed()

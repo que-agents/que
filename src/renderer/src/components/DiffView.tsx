@@ -3,7 +3,15 @@ import type { PrThreadEntry } from '../../../preload/index.d'
 import { formatAge } from '../../../shared/format'
 import { GLYPH, lineKind, newLineNumbers } from '../diff'
 import { baseLabel } from '../pr-list'
-import { prDiffId, prKey, useQueSelector, useStore } from '../store'
+import {
+  type DiffAgainst,
+  diffId,
+  diffKey,
+  keyOf,
+  prOfDiff,
+  useQueSelector,
+  useStore
+} from '../store'
 import { useNow } from '../useNow'
 
 const NO_COMMENTS: readonly PrThreadEntry[] = []
@@ -66,34 +74,33 @@ const PatchLines = memo(function PatchLines({
 })
 
 /**
- * One changed file's patch as a tab beside the terminals. Read-only. Without `pr`, the
- * workspace's diff against its base; with it, that pull request's own diff against its base,
- * headed `#188 vs #187`, with its line comments under their lines.
+ * One changed file's patch as a tab beside the terminals. Read-only. Without `against`, the
+ * workspace's diff against its base; with it, a branch's own diff against a base. When that
+ * is a pull request's, it is headed `#188 vs #187` and its line comments show under their
+ * lines. A line asked for (openDiff's `line`) is brought into view.
  */
 export default function DiffView({
   termKey,
   path,
-  pr: number
+  against
 }: {
   termKey: string
   path: string
-  pr?: number
+  against?: DiffAgainst
 }): React.JSX.Element {
   const store = useStore()
-  const inPr = number !== undefined
-  const k = inPr ? prKey(termKey, number) : termKey
-  const entry = useQueSelector((s) => (inPr ? s.prDiffs[k] : s.diffs[k]))
-  const thread = useQueSelector((s) => (inPr ? s.prThreads[k]?.data : undefined))
+  const entry = useQueSelector((s) => s.diffs[diffKey(termKey, against)])
   const ws = useQueSelector((s) => s.workspaces[termKey])
+  const pull = prOfDiff(ws?.prs ?? [], against)
 
-  const target = useQueSelector((s) =>
-    inPr ? s.diffTargets[`${termKey}\0${prDiffId(number, path)}`] : undefined
+  const thread = useQueSelector((s) =>
+    pull ? s.prThreads[keyOf(termKey, pull.number)]?.data : undefined
   )
 
+  const target = useQueSelector((s) => s.diffTargets[keyOf(termKey, diffId(path, against))])
   const diff = entry?.data ?? null
   const error = entry?.error ?? null
   const file = diff?.files.find((f) => f.path === path)
-  const pull = inPr ? ws?.prs.find((p) => p.number === number) : undefined
   const patchRef = useRef<HTMLPreElement>(null)
 
   const comments = useMemo(
@@ -104,12 +111,16 @@ export default function DiffView({
     [thread, path]
   )
 
+  const head = against?.head
+  const base = against?.base
+  const number = pull?.number
+
   useEffect(() => {
-    if (number === undefined) void store.ensureDiff(termKey)
-    else {
-      void store.ensurePrDiff(termKey, number)
-      void store.ensurePrThread(termKey, number)
-    }
+    void store.ensureDiff(termKey, head === undefined ? undefined : { head, base: base ?? '' })
+  }, [store, termKey, head, base])
+
+  useEffect(() => {
+    if (number !== undefined) void store.ensurePrThread(termKey, number)
   }, [store, termKey, number])
 
   // A line comment asked for a line: bring it into view each time it asks.
@@ -125,7 +136,7 @@ export default function DiffView({
       className="diff"
       data-testid="diff-view"
       data-path={path}
-      data-pr={number}
+      data-pr={pull?.number}
       aria-label={`Diff of ${path}`}
     >
       {error && (

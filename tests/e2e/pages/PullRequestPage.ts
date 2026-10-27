@@ -33,7 +33,6 @@ export class PullRequestPage {
   checksPassing: Locator
   commentsHead: Locator
   commentsCount: Locator
-  review: Locator
   commentsEmpty: Locator
   comment: (index: number) => Locator
   commentPath: (index: number) => Locator
@@ -67,7 +66,6 @@ export class PullRequestPage {
     this.checksPassing = page.getByTestId('pr-checks-passing')
     this.commentsHead = page.getByTestId('pr-comments-head')
     this.commentsCount = page.getByTestId('pr-comments-count')
-    this.review = page.getByTestId('pr-review')
     this.commentsEmpty = page.getByTestId('pr-comments-empty')
     this.comment = (index) => page.getByTestId(`pr-comment-${index}`)
     this.commentPath = (index) => page.getByTestId(`pr-comment-${index}-path`)

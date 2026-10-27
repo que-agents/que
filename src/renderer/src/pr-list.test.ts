@@ -4,13 +4,11 @@ import {
   baseLabel,
   checkGroups,
   checksCount,
-  checksLine,
   fromSubagent,
-  hasNewEntries,
+  hasNewComments,
   newestAt,
   orderPrs,
-  prCounts,
-  prDot
+  prCounts
 } from './pr-list'
 
 const stack = [
@@ -47,52 +45,6 @@ describe('prCounts', () => {
     ]
 
     expect(prCounts(prs)).toEqual({ open: 2, failing: 1 })
-  })
-})
-
-describe('prDot', () => {
-  it('rings a draft, takes the checks tone while open, and mutes a settled one', () => {
-    expect(prDot(makePullRequest({ state: 'draft', checks: 'failing' }))).toBe('ring')
-    expect(prDot(makePullRequest({ state: 'open', checks: 'passing' }))).toBe('good')
-    expect(prDot(makePullRequest({ state: 'open', checks: 'failing' }))).toBe('bad')
-    expect(prDot(makePullRequest({ state: 'open', checks: 'pending' }))).toBe('busy')
-    expect(prDot(makePullRequest({ state: 'open', checks: 'none' }))).toBe('neutral')
-    expect(prDot(makePullRequest({ state: 'merged', checks: 'passing' }))).toBe('muted')
-    expect(prDot(makePullRequest({ state: 'closed', checks: 'failing' }))).toBe('muted')
-  })
-})
-
-describe('checksLine', () => {
-  const pass = (name: string) => makePrCheck({ name, state: 'passing' })
-
-  it('names the first failing run and counts the passing ones', () => {
-    const pr = makePullRequest({
-      checkRuns: [
-        pass('lint'),
-        makePrCheck({ name: 'e2e', state: 'failing' }),
-        makePrCheck({ name: 'unit', state: 'failing' }),
-        pass('build')
-      ]
-    })
-
-    expect(checksLine(pr)).toEqual({ tone: 'bad', text: '✗ e2e · 2/4' })
-  })
-
-  it('says running while any run is pending, all passing otherwise, skipped runs left out', () => {
-    const running = makePullRequest({
-      checkRuns: [pass('lint'), makePrCheck({ name: 'e2e', state: 'pending' })]
-    })
-
-    const green = makePullRequest({
-      checkRuns: [pass('lint'), pass('build'), makePrCheck({ name: 'deploy', state: 'skipped' })]
-    })
-
-    expect(checksLine(running)).toEqual({ tone: 'busy', text: 'running 1/2' })
-    expect(checksLine(green)).toEqual({ tone: 'good', text: '✓ 2/2' })
-  })
-
-  it('is null without runs', () => {
-    expect(checksLine(makePullRequest({ checkRuns: [] }))).toBeNull()
   })
 })
 
@@ -147,15 +99,22 @@ describe('checkGroups and checksCount', () => {
   })
 })
 
-describe('hasNewEntries and newestAt', () => {
+describe('hasNewComments and newestAt', () => {
   const older = makePrThreadEntry({ at: '2026-10-14T02:00:00.000Z' })
   const newer = makePrThreadEntry({ at: '2026-10-14T03:00:00.000Z' })
+  const commented = makePullRequest({ comments: 2, commentedAt: newer.at })
 
   it('is new when never opened and anything was posted, or posted since', () => {
-    expect(hasNewEntries([older], undefined)).toBe(true)
-    expect(hasNewEntries([], undefined)).toBe(false)
-    expect(hasNewEntries([older, newer], older.at)).toBe(true)
-    expect(hasNewEntries([older, newer], newer.at)).toBe(false)
+    expect(hasNewComments(commented, undefined)).toBe(true)
+    expect(hasNewComments(commented, older.at)).toBe(true)
+    expect(hasNewComments(commented, newer.at)).toBe(false)
+  })
+
+  it('is not new without comments, or before the daemon counted them', () => {
+    expect(hasNewComments(makePullRequest({ comments: 0, commentedAt: null }), undefined)).toBe(
+      false
+    )
+    expect(hasNewComments(makePullRequest(), undefined)).toBe(false)
   })
 
   it('remembers the newest entry as seen', () => {

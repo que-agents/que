@@ -13,6 +13,7 @@ import { NOW_SECONDS_INTERVAL_MS, useNow } from '../useNow'
 import { useDismiss } from '../useDismiss'
 import { firstFailingCheck, removalLines, tildePath } from '../workspace-popout'
 import { CopyIcon, EditorIcon, ExternalLinkIcon } from './icons'
+import { LineCounts } from './ReviewParts'
 import WorkingMark from './WorkingMark'
 
 /** The open card: which workspace, and the row it hangs off. */
@@ -126,7 +127,6 @@ function PullRequestRow({ ws, pr }: { ws: Workspace; pr: PullRequest }): React.J
   const { tone, text } = prBadge(pr)
   const failing = firstFailingCheck(pr)
   const id = `sidebar-workspace-${ws.id}-popout-pr-${pr.number}`
-  const counted = pr.additions !== null && pr.deletions !== null
 
   return (
     <li className="workspace-popout-pr" data-testid={id}>
@@ -137,11 +137,8 @@ function PullRequestRow({ ws, pr }: { ws: Workspace; pr: PullRequest }): React.J
         </span>
       </span>
       <span className="pr-diff" data-testid={`${id}-diff`}>
-        {counted && (
-          <>
-            <span className="added">+{pr.additions}</span>{' '}
-            <span className="removed">−{pr.deletions}</span>
-          </>
+        {pr.additions !== null && pr.deletions !== null && (
+          <LineCounts adds={pr.additions} dels={pr.deletions} />
         )}
       </span>
       <a

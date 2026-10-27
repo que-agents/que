@@ -124,7 +124,8 @@ export default function ReviewPane({ termKey }: { termKey: string }): React.JSX.
               aria-label="Refresh"
               title="Refresh"
               data-testid={`${testId}-refresh`}
-              disabled={!connected}
+              // The list has nothing of its own to fetch: the daemon keeps it fresh.
+              disabled={!connected || (place.view === 'prs' && !pr)}
               onClick={refresh}
             >
               <RefreshIcon />

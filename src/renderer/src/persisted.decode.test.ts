@@ -10,44 +10,37 @@ import {
 describe('decodeReview', () => {
   it('reads back the review pane the store writes', () => {
     const stored = JSON.parse(
-      '{"open":true,"view":"files","width":412,' +
-        '"places":{"ws_01hzx3k9c2qf":{"view":"prs","pr":188},"ws_01hzx4m1p8rt":{"view":"changes","pr":null}}}'
+      '{"open":true,"width":412,' +
+        '"places":{"ws_01hzx3k9c2qf":{"view":"prs","pr":188},"ws_01hzx4m1p8rt":{"view":"changes","pr":null}},' +
+        '"seen":{"ws_01hzx3k9c2qf":{"187":"2026-10-14T03:00:00.000Z","188":"2026-10-14T03:20:00.000Z"}}}'
     )
 
     expect(decodeReview(stored)).toEqual({
       open: true,
-      view: 'files',
       width: 412,
       places: {
         ws_01hzx3k9c2qf: { view: 'prs', pr: 188 },
         ws_01hzx4m1p8rt: { view: 'changes', pr: null }
+      },
+      seen: {
+        ws_01hzx3k9c2qf: { 187: '2026-10-14T03:00:00.000Z', 188: '2026-10-14T03:20:00.000Z' }
       }
     })
-  })
-
-  it('reads an older memory: its tab is the view, Pull request now the pull requests', () => {
-    expect(decodeReview({ open: true, tab: 'pr', width: 320 })).toEqual({
-      open: true,
-      view: 'prs',
-      width: 320,
-      places: {}
-    })
-    expect(decodeReview({ open: false, tab: 'files', width: 320 })?.view).toBe('files')
   })
 
   it('nulls out fields of the wrong type and drops anything that is not an object', () => {
     expect(
       decodeReview({
         open: 'yes',
-        view: 3,
         width: '400',
-        places: { ws_a: 'prs', ws_b: { view: 4, pr: '188' }, ws_c: { view: 'prs', pr: -1 } }
+        places: { ws_a: 'prs', ws_b: { view: 4, pr: '188' }, ws_c: { view: 'prs', pr: -1 } },
+        seen: { ws_a: 'x', ws_b: { 188: '', x: '2026-10-14T03:00:00.000Z' }, ws_c: { 7: 'at' } }
       })
     ).toEqual({
       open: false,
-      view: null,
       width: null,
-      places: { ws_b: { view: null, pr: null }, ws_c: { view: 'prs', pr: null } }
+      places: { ws_b: { view: null, pr: null }, ws_c: { view: 'prs', pr: null } },
+      seen: { ws_c: { 7: 'at' } }
     })
     expect(decodeReview(null)).toBeNull()
     expect(decodeReview(['changes'])).toBeNull()

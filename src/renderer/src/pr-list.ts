@@ -1,9 +1,8 @@
-// The review pane's pull requests, as pure rules: their order, each row's dot and checks
-// line, what a pull request merges into, whether it came from another worktree, and whether
-// its conversation has news. PullRequestList.tsx and PullRequestDetail.tsx draw them.
-// docs/design.md "Shapes", the review pane.
+// The review pane's pull requests, as pure rules: their order, what a pull request merges
+// into, whether it came from another worktree, and whether its conversation has news. The
+// dot and the checks line are in format.ts. PullRequestList.tsx and PullRequestDetail.tsx
+// draw them. docs/design.md "Shapes", the review pane.
 import type { PrCheck, PrThreadEntry, PullRequest } from '../../preload/index.d'
-import type { Tone } from './format'
 
 /** Open and draft pull requests are still in play; merged and closed ones are settled. */
 export function isActive(pr: PullRequest): boolean {
@@ -35,42 +34,6 @@ export function prCounts(prs: readonly PullRequest[]): PrCounts {
   const active = prs.filter(isActive)
 
   return { open: active.length, failing: active.filter((pr) => pr.checks === 'failing').length }
-}
-
-/** A row's dot: a hollow ring for a draft, the checks' tone while open, muted once settled. */
-export type PrDot = Tone | 'ring'
-
-const CHECKS_TONE: Record<PullRequest['checks'], Tone> = {
-  passing: 'good',
-  failing: 'bad',
-  pending: 'busy',
-  none: 'neutral'
-}
-
-export function prDot(pr: PullRequest): PrDot {
-  if (pr.state === 'draft') return 'ring'
-
-  return pr.state === 'open' ? CHECKS_TONE[pr.checks] : 'muted'
-}
-
-/**
- * The checks on a row's second line, skipped runs left out: `✗ <first failing> · 6/7`, else
- * `running 4/7` while any run, else `✓ 7/7`, counting the passing ones. Null without runs.
- */
-export function checksLine(
-  pr: PullRequest
-): { tone: 'good' | 'bad' | 'busy'; text: string } | null {
-  const runs = pr.checkRuns.filter((c) => c.state !== 'skipped')
-
-  if (runs.length === 0) return null
-  const passed = `${runs.filter((c) => c.state === 'passing').length}/${runs.length}`
-  const failing = runs.find((c) => c.state === 'failing')
-
-  if (failing) return { tone: 'bad', text: `✗ ${failing.name} · ${passed}` }
-
-  if (runs.some((c) => c.state === 'pending')) return { tone: 'busy', text: `running ${passed}` }
-
-  return { tone: 'good', text: `✓ ${passed}` }
 }
 
 /**
@@ -128,16 +91,14 @@ export function checksCount(runs: readonly PrCheck[]): ChecksCount {
 }
 
 /**
- * Whether a conversation has entries posted after it was last opened (`seenAt`, the newest
- * entry's time then); never opened, any entry is new.
+ * Whether a pull request's conversation has entries posted after it was last opened
+ * (`seenAt`, the newest entry's time then); never opened, any entry is new. Unknown until
+ * the daemon has counted its comments.
  */
-export function hasNewEntries(
-  entries: readonly PrThreadEntry[],
-  seenAt: string | undefined
-): boolean {
-  if (seenAt === undefined) return entries.length > 0
+export function hasNewComments(pr: PullRequest, seenAt: string | undefined): boolean {
+  if (pr.commentedAt === null) return false
 
-  return entries.some((e) => e.at > seenAt)
+  return seenAt === undefined || pr.commentedAt > seenAt
 }
 
 /** The newest entry's time, what opening a conversation remembers as seen; undefined when empty. */

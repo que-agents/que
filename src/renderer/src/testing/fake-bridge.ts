@@ -8,7 +8,6 @@ import type {
   InstructionsGetResult,
   Events,
   PrThread,
-  PrThreadEntry,
   Project,
   PullRequest,
   QueApi,
@@ -34,6 +33,7 @@ import { titleOf } from '../../../shared/brief'
 import { patchToToml } from '../../../shared/config-keys.decode'
 import { mergeConfigPatch } from '../../../shared/config-patch.decode'
 import { randomWorkspaceName } from '../../../shared/names'
+import { keyOf } from '../keys'
 import {
   ErrorCodes,
   QUIET_REFUSED_METHODS,
@@ -110,7 +110,7 @@ function rpcError(code: string, message: string): Error {
 
 /** A seeded diff's key: the workspace and the exact scope it answers for. */
 function diffKey(id: string, base?: string, commit?: string): string {
-  return JSON.stringify([id, base ?? '', commit ?? ''])
+  return keyOf(id, base ?? '', commit ?? '')
 }
 
 let idCounter = 0
@@ -598,7 +598,7 @@ class FakeBridge {
           this.refuseIfQuiet('workspace.readFile')
           this.workspace(id)
           this.readFileCallLog.push({ id, path })
-          const seeded = this.fileContents.get(`${id}\0${path}`)
+          const seeded = this.fileContents.get(keyOf(id, path))
 
           if (!seeded) throw rpcError(ErrorCodes.NotFound, `no such file: ${path}`)
 
@@ -621,7 +621,7 @@ class FakeBridge {
           this.refuseIfQuiet('workspace.prThread')
           this.workspace(id)
           this.prThreadCallLog.push({ id, number, refresh: refresh === true })
-          const seeded = this.prThreads.get(`${id}:${number}`) ?? this.prThreads.get(`${id}:*`)
+          const seeded = this.prThreads.get(keyOf(id, number))
 
           return seeded ? structuredClone(seeded) : null
         },
@@ -829,11 +829,6 @@ class FakeBridge {
   private putWorkspace(w: Workspace): void {
     this.workspaces.set(w.id, w)
     this.emit('workspace.updated', { ...w })
-  }
-
-  /** Sets (or clears) the workspace's pull request, as a daemon refresh would. */
-  setWorkspacePr(id: string, pr: PullRequest | null): void {
-    this.putWorkspace({ ...this.workspace(id), pr, prs: pr ? [pr] : [] })
   }
 
   /** Replaces the session's pull requests (the current one first), as a daemon refresh would. */
@@ -1112,7 +1107,7 @@ class FakeBridge {
 
   /** What workspace.readFile answers for one path of a workspace; unseeded paths are not found. */
   seedFile(file: WorkspaceFile): void {
-    this.fileContents.set(`${file.workspaceId}\0${file.path}`, structuredClone(file))
+    this.fileContents.set(keyOf(file.workspaceId, file.path), structuredClone(file))
   }
 
   /** Every workspace.files call, the workspace ids in order. */
@@ -1141,21 +1136,12 @@ class FakeBridge {
   private prThreads = new Map<string, PrThread>()
   private prThreadCallLog: Array<{ id: string; number: number; refresh: boolean }> = []
 
-  /**
-   * What workspace.prThread answers for a workspace's pull request `thread.number`. An entries
-   * array, fetched now, answers for `number` when given, else for any number not seeded itself.
-   */
-  seedPrThread(
-    workspaceId: string,
-    thread: Omit<PrThread, 'workspaceId'> | PrThreadEntry[],
-    number?: number
-  ): void {
-    const full: PrThread = Array.isArray(thread)
-      ? { workspaceId, number: number ?? 1, entries: thread, fetchedAt: new Date().toISOString() }
-      : { ...thread, workspaceId }
-
-    const which = Array.isArray(thread) ? (number ?? '*') : thread.number
-    this.prThreads.set(`${workspaceId}:${which}`, structuredClone(full))
+  /** What workspace.prThread answers for a workspace's pull request `thread.number`. */
+  seedPrThread(workspaceId: string, thread: Omit<PrThread, 'workspaceId'>): void {
+    this.prThreads.set(
+      keyOf(workspaceId, thread.number),
+      structuredClone({ ...thread, workspaceId })
+    )
   }
 
   /** Every workspace.prThread call, in order. */

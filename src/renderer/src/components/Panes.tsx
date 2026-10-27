@@ -2,9 +2,9 @@ import { useEffect, useRef, useState } from 'react'
 import { basename } from '../diff'
 import { clampRatio } from '../layout'
 import {
-  diffPathOf,
+  diffOf,
   filePathOf,
-  prDiffOf,
+  prOfDiff,
   RATIO_DEFAULT,
   RATIO_MAX,
   RATIO_MIN,
@@ -222,9 +222,9 @@ function Pane({
   const views = store.paneViews(termKey, index)
   const activeId = store.paneActiveId(termKey, index)
   const active = store.paneActive(termKey, index)
-  const activeDiff = diffPathOf(activeId)
+  const activeDiff = diffOf(activeId)
   const activeFile = filePathOf(activeId)
-  const activePrDiff = prDiffOf(activeId)
+  const prs = useQueSelector((s) => s.workspaces[termKey]?.prs)
   const focused = store.focusedPane(termKey) === index
 
   return (
@@ -279,9 +279,11 @@ function Pane({
           ))}
           {views.map((id) => {
             const filePath = filePathOf(id)
-            const inPr = prDiffOf(id)
+            const diff = diffOf(id)
+            // A pull request's diff of the file: the tab says which.
+            const inPr = prOfDiff(prs ?? [], diff?.against)
             const kind = filePath === null ? 'diff' : 'file'
-            const path = filePath ?? inPr?.path ?? diffPathOf(id) ?? id
+            const path = filePath ?? diff?.path ?? id
             const label = basename(path)
             const selected = id === activeId
 
@@ -339,13 +341,11 @@ function Pane({
         {controls && <PaneControls termKey={termKey} />}
       </div>
       {activeDiff !== null ? (
-        <DiffView termKey={termKey} path={activeDiff} />
-      ) : activePrDiff !== null ? (
         <DiffView
           key={activeId}
           termKey={termKey}
-          path={activePrDiff.path}
-          pr={activePrDiff.number}
+          path={activeDiff.path}
+          against={activeDiff.against}
         />
       ) : activeFile !== null ? (
         <FileView key={activeFile} termKey={termKey} path={activeFile} />

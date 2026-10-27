@@ -211,7 +211,7 @@ describe('QuietBoard', () => {
 
     it('carries no PR, and nothing to act on but Unlock', async () => {
       seed()
-      fakeBridge.setWorkspacePr(retry.id, makePullRequest({ state: 'open', checks: 'failing' }))
+      fakeBridge.setWorkspacePrs(retry.id, [makePullRequest({ state: 'open', checks: 'failing' })])
 
       render(<App board now={clock} />)
 

@@ -347,9 +347,16 @@ describe('Panes', () => {
       expect(screen.getByTestId('topbar-review')).toHaveAttribute('aria-pressed', 'true')
     })
 
-    it('opens on the view the pane was last left on', async () => {
+    it('opens on the view the pane was last left on for the workspace', async () => {
       const user = userEvent.setup()
-      localStorage.setItem('que.review', JSON.stringify({ open: false, tab: 'pr', width: 320 }))
+      localStorage.setItem(
+        'que.review',
+        JSON.stringify({
+          open: false,
+          width: 320,
+          places: { [retry.id]: { view: 'prs', pr: null } }
+        })
+      )
       await openRetry(user)
 
       await user.click(screen.getByRole('button', { name: 'Review pane' }))

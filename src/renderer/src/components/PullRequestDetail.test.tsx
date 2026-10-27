@@ -14,7 +14,7 @@ import {
 } from '@renderer/testing/fixtures'
 import type { PullRequest } from '../../../preload/index.d'
 import App from '../App'
-import { QueStore, StoreContext } from '../store'
+import { diffId, QueStore, StoreContext } from '../store'
 import ReviewPane from './ReviewPane'
 
 const NOW = Date.parse('2026-10-14T04:00:00.000Z')
@@ -134,7 +134,7 @@ async function openDetail(user: ReturnType<typeof userEvent.setup>): Promise<HTM
 
 describe('PullRequestDetail', () => {
   describe('rendering', () => {
-    it('heads it with the title, then its state, number, base and link', async () => {
+    it('heads it with the title, then its state, its number as the link, and its base', async () => {
       const user = userEvent.setup()
       seed()
 
@@ -144,9 +144,9 @@ describe('PullRequestDetail', () => {
         'data-testid',
         'pr-title'
       )
-      expect(screen.getByTestId('pr-meta')).toHaveTextContent('open#188into #187open ↗')
+      expect(screen.getByTestId('pr-meta')).toHaveTextContent(/^open#188 ↗into #187$/)
       expect(screen.getByTestId('pr-state')).toHaveAttribute('data-state', 'open')
-      expect(screen.getByRole('link', { name: 'open ↗' })).toHaveAttribute(
+      expect(screen.getByRole('link', { name: '#188 ↗' })).toHaveAttribute(
         'href',
         'https://github.com/rquellh/que/pull/188'
       )
@@ -163,9 +163,9 @@ describe('PullRequestDetail', () => {
         .filter((b) => b.classList.contains('review-fold'))
 
       expect(heads.map((h) => h.textContent)).toEqual([
-        expect.stringMatching(/^▾ \[ Files \]/),
-        expect.stringMatching(/^▾ \[ Checks \]/),
-        expect.stringMatching(/^▾ \[ Comments \]/)
+        expect.stringMatching(/^ \[ Files \]/),
+        expect.stringMatching(/^ \[ Checks \]/),
+        expect.stringMatching(/^ \[ Comments \]/)
       ])
     })
 
@@ -203,25 +203,26 @@ describe('PullRequestDetail', () => {
         'https://github.com/rquellh/que/actions/runs/42'
       )
       const passing = screen.getByTestId('pr-checks-passing')
-      expect(passing).toHaveTextContent('▸ 2 passing · lint, test')
+      expect(passing).toHaveTextContent(/^2 passing · lint, test$/)
       expect(screen.queryByTestId('pr-check-1')).not.toBeInTheDocument()
 
       await user.click(passing)
 
       expect(passing).toHaveAttribute('aria-expanded', 'true')
+      expect(passing).toHaveTextContent(/^2 passing$/)
       expect(screen.getByTestId('pr-check-1')).toHaveTextContent('lint')
       expect(screen.getByTestId('pr-check-2')).toHaveTextContent('test')
     })
 
-    it('reads the review decision as a status line above the conversation', async () => {
+    it('reads the review decision once, in the comments head, above the conversation', async () => {
       const user = userEvent.setup()
       seed()
       await openDetail(user)
 
       expect(screen.getByTestId('pr-comments-count')).toHaveTextContent('2 · changes requested')
-      const decision = screen.getByTestId('pr-review')
-      expect(decision).toHaveTextContent('changes requested')
-      expect(decision).toHaveClass('tone-bad')
+      expect(
+        within(screen.getByTestId('pr-comments')).getAllByText(/changes requested/)
+      ).toHaveLength(1)
       expect(await screen.findByTestId('pr-comment-0')).toHaveTextContent('Otherwise looks right.')
       expect(screen.getByTestId('pr-comment-1')).toHaveAttribute('data-kind', 'line')
       expect(screen.getByTestId('pr-comment-1-path')).toHaveTextContent(`${card.path}:40 →`)
@@ -254,7 +255,7 @@ describe('PullRequestDetail', () => {
       await user.click(screen.getByTestId('pr-checks-head'))
 
       expect(screen.getByTestId('pr-checks-head')).toHaveAttribute('aria-expanded', 'false')
-      expect(screen.getByTestId('pr-checks-head')).toHaveTextContent('▸ [ Checks ]')
+      expect(screen.getByTestId('pr-checks-head').querySelector('.chevron')).not.toHaveClass('open')
       expect(screen.queryByTestId('pr-check-0')).not.toBeInTheDocument()
       expect(screen.getByTestId('pr-files-head')).toHaveAttribute('aria-expanded', 'true')
 
@@ -281,7 +282,10 @@ describe('PullRequestDetail', () => {
 
       const pane = screen.getByTestId('pane-0')
       await waitFor(() => {
-        expect(pane).toHaveAttribute('data-active-tab', `view:prdiff:188:${card.path}`)
+        expect(pane).toHaveAttribute(
+          'data-active-tab',
+          diffId(card.path, { head: 'removal-app', base: 'removal-daemon' })
+        )
       })
       const tabs = within(pane).getAllByTestId('view-tab-diff')
       expect(tabs.map((t) => t.dataset.pr ?? '')).toEqual(['', '188'])
@@ -343,6 +347,32 @@ describe('PullRequestDetail', () => {
         expect(calls(188)).toBe(before + 1)
       })
       expect(calls(187)).toBe(other)
+    })
+  })
+
+  describe('caching', () => {
+    it('keeps its conversation and files while it holds still, back from the list or after a worktree change', async () => {
+      const user = userEvent.setup()
+      seed()
+      await openDetail(user)
+      await screen.findByTestId('pr-file-0')
+      await screen.findByTestId('pr-comment-0')
+      const threads = fakeBridge.prThreadCalls().length
+      const ownFiles = () => fakeBridge.diffCalls().filter((c) => c.head === 'removal-app').length
+      const worktree = () => fakeBridge.diffCalls().filter((c) => c.head === undefined).length
+      const files = ownFiles()
+      const before = worktree()
+
+      await user.click(screen.getByRole('button', { name: 'Back to pull requests' }))
+      await user.click(await screen.findByTestId('pr-row-188'))
+      expect(await screen.findByTestId('pr-comment-0')).toBeInTheDocument()
+      fakeBridge.changeWorkspace(ID)
+
+      await waitFor(() => {
+        expect(worktree()).toBeGreaterThan(before)
+      })
+      expect(fakeBridge.prThreadCalls()).toHaveLength(threads)
+      expect(ownFiles()).toBe(files)
     })
   })
 

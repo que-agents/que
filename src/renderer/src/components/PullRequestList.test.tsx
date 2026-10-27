@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { fakeBridge } from '@renderer/testing/fake-bridge'
 import { openWorkspace } from '@renderer/testing/helpers'
@@ -171,45 +171,40 @@ describe('PullRequestList', () => {
       )
     })
 
-    it('counts each conversation, bright while it has comments since it was last opened', async () => {
+    it('counts each conversation from the daemon, bright while it has comments since it was last opened', async () => {
       const user = userEvent.setup()
-      seed()
-      fakeBridge.seedPrThread(ID, {
-        number: 188,
-        entries: [
-          makePrThreadEntry({ at: '2026-10-14T02:00:00.000Z' }),
-          makePrThreadEntry({ at: '2026-10-14T03:00:00.000Z' })
-        ],
-        fetchedAt: '2026-10-14T03:10:00.000Z'
-      })
-      fakeBridge.seedPrThread(ID, {
-        number: 187,
-        entries: [makePrThreadEntry({ at: '2026-10-14T01:00:00.000Z' })],
-        fetchedAt: '2026-10-14T03:10:00.000Z'
-      })
-      fakeBridge.seedPrThread(ID, {
-        number: 189,
-        entries: [],
-        fetchedAt: '2026-10-14T03:10:00.000Z'
-      })
+      seed(
+        stack.map((pr) =>
+          pr.number === 188
+            ? { ...pr, comments: 2, commentedAt: '2026-10-14T03:00:00.000Z' }
+            : pr.number === 187
+              ? { ...pr, comments: 1, commentedAt: '2026-10-14T01:00:00.000Z' }
+              : pr.number === 189
+                ? { ...pr, comments: 0, commentedAt: null }
+                : pr
+        )
+      )
       // #188 last opened before its newest comment, #187 after its only one.
       localStorage.setItem(
-        'que.prSeen',
+        'que.review',
         JSON.stringify({
-          [`${ID}:188`]: '2026-10-14T02:00:00.000Z',
-          [`${ID}:187`]: '2026-10-14T01:00:00.000Z'
+          open: false,
+          width: 320,
+          places: {},
+          seen: { [ID]: { 188: '2026-10-14T02:00:00.000Z', 187: '2026-10-14T01:00:00.000Z' } }
         })
       )
 
       await openList(user)
 
-      await waitFor(() => {
-        expect(screen.getByTestId('pr-row-188-comments')).toHaveTextContent('2')
-      })
+      expect(screen.getByTestId('pr-row-188-comments')).toHaveTextContent('2')
       expect(screen.getByTestId('pr-row-188-comments')).toHaveAttribute('data-new', 'true')
       expect(screen.getByTestId('pr-row-187-comments')).toHaveTextContent('1')
       expect(screen.getByTestId('pr-row-187-comments')).toHaveAttribute('data-new', 'false')
       expect(screen.getByTestId('pr-row-189-comments')).toHaveTextContent('')
+      // Not counted yet: nothing shown, nothing fetched to count it.
+      expect(screen.getByTestId('pr-row-190-comments')).toHaveTextContent('')
+      expect(fakeBridge.prThreadCalls()).toEqual([])
     })
 
     it('says so while the session has opened none', async () => {
@@ -254,40 +249,32 @@ describe('PullRequestList', () => {
 
     it('opening a pull request remembers its conversation as seen', async () => {
       const user = userEvent.setup()
-      seed()
+      const at = '2026-10-14T03:00:00.000Z'
+      seed(stack.map((pr) => (pr.number === 188 ? { ...pr, comments: 1, commentedAt: at } : pr)))
       fakeBridge.seedPrThread(ID, {
         number: 188,
-        entries: [makePrThreadEntry({ at: '2026-10-14T03:00:00.000Z' })],
+        entries: [makePrThreadEntry({ at })],
         fetchedAt: '2026-10-14T03:10:00.000Z'
       })
       await openList(user)
-      await waitFor(() => {
-        expect(screen.getByTestId('pr-row-188-comments')).toHaveAttribute('data-new', 'true')
-      })
+      expect(screen.getByTestId('pr-row-188-comments')).toHaveAttribute('data-new', 'true')
 
       await user.click(screen.getByTestId('pr-row-188'))
-      await screen.findByTestId('pr-view')
+      await screen.findByTestId('pr-comment-0')
       await user.click(screen.getByRole('button', { name: 'Back to pull requests' }))
 
       expect(await screen.findByTestId('pr-row-188-comments')).toHaveAttribute('data-new', 'false')
-      expect(JSON.parse(localStorage.getItem('que.prSeen') ?? '{}')).toEqual({
-        [`${ID}:188`]: '2026-10-14T03:00:00.000Z'
+      expect(JSON.parse(localStorage.getItem('que.review') ?? '{}').seen).toEqual({
+        [ID]: { 188: at }
       })
     })
 
-    it('Refresh fetches every listed conversation again', async () => {
+    it('has no Refresh of its own: the daemon keeps the list fresh', async () => {
       const user = userEvent.setup()
       seed(stack.slice(1, 3))
       await openList(user)
 
-      await user.click(screen.getByTestId('pr-refresh'))
-
-      await waitFor(() => {
-        expect(fakeBridge.prThreadCalls().filter((c) => c.refresh)).toEqual([
-          { id: ID, number: 187, refresh: true },
-          { id: ID, number: 188, refresh: true }
-        ])
-      })
+      expect(screen.getByTestId('pr-refresh')).toBeDisabled()
     })
   })
 

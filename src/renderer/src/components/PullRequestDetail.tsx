@@ -1,35 +1,22 @@
 import { useState } from 'react'
-import type { PrCheck, PrThreadEntry, PullRequest, ReviewState } from '../../../preload/index.d'
+import type { PrCheck, PrThreadEntry } from '../../../preload/index.d'
 import { formatAge, formatSpan } from '../../../shared/format'
-import { GLYPH } from '../diff'
-import type { Tone } from '../format'
+import { CHECK_TONE, REVIEW_TEXT, reviewBadge } from '../format'
 import { baseLabel, checkGroups, checksCount } from '../pr-list'
 import { splitFences } from '../pr-text'
-import { type PrSection, prDiffId, prKey, usePanes, useQueSelector, useStore } from '../store'
+import {
+  diffId,
+  diffKey,
+  keyOf,
+  type PrSection,
+  prAgainst,
+  usePanes,
+  useQueSelector,
+  useStore
+} from '../store'
 import { useNow } from '../useNow'
-import { ExternalLinkIcon } from './icons'
-import { PrDotMark } from './PullRequestList'
-
-const CHECK_TONE: Record<PrCheck['state'], Tone> = {
-  passing: 'good',
-  failing: 'bad',
-  pending: 'busy',
-  skipped: 'muted'
-}
-
-const DECISION: Record<NonNullable<PullRequest['review']>, { label: string; tone: Tone }> = {
-  approved: { label: 'approved', tone: 'good' },
-  changes_requested: { label: 'changes requested', tone: 'bad' },
-  review_required: { label: 'review required', tone: 'attention' }
-}
-
-const REVIEW: Record<ReviewState, { label: string; tone: Tone }> = {
-  approved: { label: 'approved', tone: 'good' },
-  changes_requested: { label: 'changes requested', tone: 'bad' },
-  commented: { label: 'commented', tone: 'neutral' },
-  dismissed: { label: 'dismissed', tone: 'muted' },
-  pending: { label: 'pending', tone: 'attention' }
-}
+import { ChevronIcon, ExternalLinkIcon } from './icons'
+import { DiffTotals, Dot, FileRow, PrDotMark } from './ReviewParts'
 
 /** A comment body: text with its line breaks, fenced blocks in mono. */
 function Body({ body }: { body: string }): React.JSX.Element {
@@ -65,7 +52,7 @@ export function Comment({
   onOpenLine?: (path: string, line: number | undefined) => void
 }): React.JSX.Element {
   const id = `pr-comment-${index}`
-  const review = entry.kind === 'review' && entry.state ? REVIEW[entry.state] : null
+  const review = entry.kind === 'review' && entry.state ? reviewBadge(entry.state) : null
   const where = entry.path && (entry.line === null ? entry.path : `${entry.path}:${entry.line}`)
 
   return (
@@ -144,7 +131,7 @@ function Fold({
         onClick={() => store.togglePrFold(section)}
       >
         <span className="label">
-          {open ? '▾' : '▸'} [ {label} ]
+          <ChevronIcon open={open} /> [ {label} ]
         </span>
         <span className="review-sum">{right}</span>
       </button>
@@ -155,12 +142,8 @@ function Fold({
 
 function CheckRow({ check, index }: { check: PrCheck; index: number }): React.JSX.Element {
   return (
-    <li
-      className={`pr-check tone-${CHECK_TONE[check.state]}`}
-      data-testid={`pr-check-${index}`}
-      data-state={check.state}
-    >
-      <span className="pr-dot" title={check.state} />
+    <li className="pr-check" data-testid={`pr-check-${index}`} data-state={check.state}>
+      <Dot tone={CHECK_TONE[check.state]} title={check.state} />
       <span className="pr-check-name">{check.name}</span>
       {check.source && <span className="pr-check-source">{check.source}</span>}
       <span className="pr-check-time">{formatSpan(check.startedAt, check.completedAt)}</span>
@@ -194,28 +177,30 @@ export default function PullRequestDetail({
 }): React.JSX.Element | null {
   const store = usePanes(termKey)
   const ws = useQueSelector((s) => s.workspaces[termKey])
-  const threadEntry = useQueSelector((s) => s.prThreads[prKey(termKey, number)])
-  const diffEntry = useQueSelector((s) => s.prDiffs[prKey(termKey, number)])
+  const pr = ws?.prs.find((p) => p.number === number)
+  const against = pr && prAgainst(pr)
+  const threadEntry = useQueSelector((s) => s.prThreads[keyOf(termKey, number)])
+
+  const diffEntry = useQueSelector((s) =>
+    against ? s.diffs[diffKey(termKey, against)] : undefined
+  )
+
   const [passingOpen, setPassingOpen] = useState(false)
   const activeId = store.paneActiveId(termKey, store.focusedPane(termKey))
   const now = useNow()
-  const pr = ws?.prs.find((p) => p.number === number)
 
-  if (!ws || !pr) return null
+  if (!ws || !pr || !against) return null
 
   const thread = threadEntry?.data ?? null
   const entries: PrThreadEntry[] = thread?.entries ?? []
   const files = diffEntry?.data?.files ?? []
   const into = baseLabel(pr, ws.prs)
-  const adds = files.reduce((n, f) => n + f.additions, 0)
-  const dels = files.reduce((n, f) => n + f.deletions, 0)
   const checks = pr.checkRuns
   const { listed, passing } = checkGroups(checks)
   const count = checksCount(checks)
-  const decision = pr.review ? DECISION[pr.review] : null
 
   const openLine = (path: string, line?: number): void =>
-    store.openPrDiff(termKey, number, path, line)
+    store.openDiff(termKey, path, { against, line })
 
   return (
     <section className="pr" data-testid="pr-view" data-pr={number} aria-label={`#${number}`}>
@@ -234,11 +219,10 @@ export default function PullRequestDetail({
               <PrDotMark pr={pr} />
               {pr.state}
             </span>
-            <span>#{pr.number}</span>
-            <span>into {into}</span>
             <a href={pr.url} target="_blank" rel="noreferrer" data-testid="pr-header-link">
-              open ↗
+              #{pr.number} ↗
             </a>
+            <span>into {into}</span>
           </p>
         </header>
         <Fold
@@ -248,8 +232,7 @@ export default function PullRequestDetail({
             <span data-testid="pr-files-summary">
               {diffEntry?.data ? (
                 <>
-                  <span className="add">+{adds}</span> <span className="del">−{dels}</span> ·{' '}
-                  {files.length} · vs {into}
+                  <DiffTotals files={files} /> · vs {into}
                 </>
               ) : (
                 `vs ${into}`
@@ -268,35 +251,17 @@ export default function PullRequestDetail({
             </p>
           )}
           {files.length > 0 && (
-            <ul className="changes-files pr-files">
-              {files.map((f, i) => {
-                const g = GLYPH[f.status]
-
-                return (
-                  <li key={f.path}>
-                    <button
-                      type="button"
-                      className="changes-file"
-                      data-testid={`pr-file-${i}`}
-                      data-path={f.path}
-                      data-active={activeId === prDiffId(number, f.path)}
-                      onClick={() => openLine(f.path)}
-                    >
-                      <span className={`glyph tone-${g.tone}`} title={g.label}>
-                        {g.glyph}
-                      </span>
-                      <span className="path" title={f.path}>
-                        {f.from ? `${f.from} → ${f.path}` : f.path}
-                      </span>
-                      <span className="count">
-                        <span className="add">+{f.additions}</span>{' '}
-                        <span className="del">−{f.deletions}</span>
-                      </span>
-                    </button>
-                  </li>
-                )
-              })}
-            </ul>
+            <div className="changes-files" role="listbox" aria-label={`Files of #${number}`}>
+              {files.map((f, i) => (
+                <FileRow
+                  key={f.path}
+                  file={f}
+                  testId={`pr-file-${i}`}
+                  active={activeId === diffId(f.path, against)}
+                  onOpen={() => openLine(f.path)}
+                />
+              ))}
+            </div>
           )}
         </Fold>
         <hr className="review-rule" />
@@ -330,8 +295,8 @@ export default function PullRequestDetail({
                     data-testid="pr-checks-passing"
                     onClick={() => setPassingOpen((o) => !o)}
                   >
-                    {passingOpen ? '▾' : '▸'} {passing.length} passing ·{' '}
-                    {passing.map((c) => c.name).join(', ')}
+                    <ChevronIcon open={passingOpen} /> {passing.length} passing
+                    {!passingOpen && ` · ${passing.map((c) => c.name).join(', ')}`}
                   </button>
                 </li>
               )}
@@ -349,20 +314,10 @@ export default function PullRequestDetail({
           right={
             <span data-testid="pr-comments-count">
               {entries.length}
-              {decision && ` · ${decision.label}`}
+              {pr.review && ` · ${REVIEW_TEXT[pr.review]}`}
             </span>
           }
         >
-          {decision && (
-            <p
-              className={`pr-decision tone-${decision.tone}`}
-              data-testid="pr-review"
-              data-review={pr.review}
-            >
-              <span className="pr-dot" />
-              {decision.label}
-            </p>
-          )}
           {entries.length === 0 ? (
             <p className="pr-note" data-testid="pr-comments-empty">
               No comments yet

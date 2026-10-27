@@ -105,7 +105,7 @@ remove. The quiet board uses the same tones on a dot or a word, never a badge.
   each. Line one: the dot, `#n` in mono `--fg-muted`, the title on one line with an
   ellipsis, and the comment count with a line icon at the right, `--fg` while there are
   comments since the pull request was last opened (remembered in the app), else
-  `--fg-faint`. Line two in mono 11px `--fg-faint`: `into <base>` (or `#n` when the base
+  `--fg-faint` (the daemon counts them; nothing shows until it has). Line two in mono 11px `--fg-faint`: `into <base>` (or `#n` when the base
   is another of the session's pull requests), the checks (`✓ 7/7` good, `✗ <first
   failing> · 6/7` bad, `running 4/7` busy, skipped runs left out), `+a −d` in the diff
   tones, and `· subagent` when its branch is none this worktree checked out. A draft's
@@ -116,15 +116,15 @@ remove. The quiet board uses the same tones on a dot or a word, never a badge.
   requests from this session yet.`, centred. There is no Create draft PR and no
   "checked … ago" in the pane: sessions open their own pull requests.
 - A row opens its pull request in place; the strip's left end becomes `‹ #188`, the
-  back link. The title at 14px 600, then in mono `● open · #188 · into <base> · open ↗`
-  (the link in `--accent`). Three sections follow in this order, each folding at its head
-  (`▾ [ FILES ]`, the fold kept for every pull request this session), dashed rules
+  back link. The title at 14px 600, then in mono `● open · #188 ↗ · into <base>` (the
+  number is the link, in `--accent`). Three sections follow in this order, each folding at
+  its head (a chevron and `[ FILES ]`, the fold kept for every pull request this session), dashed rules
   between: `[ FILES ]` with `+a −d · n · vs <base>`, the pull request's own committed
   files against its base, rows like Changes; `[ CHECKS ]` with `k failing · m passing`,
   the failing runs first (dot, name, source dim, duration, a link on hover), then the
-  running and skipped ones, the passing ones folded into one mono line that expands;
-  `[ COMMENTS ]` with `n · <review decision>`, the decision as a dot and words in its
-  tone, then the conversation oldest first. A line comment's `path:line →` (in
+  running and skipped ones, the passing ones folded into one mono line (`n passing · their
+  names`) that expands (then just `n passing`); `[ COMMENTS ]` with `n · <review
+  decision>`, then the conversation oldest first, each review with its own state. A line comment's `path:line →` (in
   `--accent`) opens the diff at that line.
 - Changes is `[ CHANGES ]` with `+a −d · n files` (the worktree against its base,
   uncommitted included), then one mono `--fg-faint` line: `commits n ▾ · vs base ▾ · k
@@ -137,8 +137,8 @@ remove. The quiet board uses the same tones on a dot or a word, never a badge.
 - Clicking a file in Changes opens that file's diff as a tab in the middle, in the
   focused pane's strip beside the session tabs: a line icon and the file's name, never a
   status dot, closed with ⌘W like a terminal tab. A file inside a pull request opens the
-  same way as a tab of its own (its id carries the number, so it never collides with
-  the Changes diff of the path), headed `#188 vs #187`, the pull request's line comments
+  same way as a tab of its own (its id carries the branch and base, so it never collides
+  with the Changes diff of the path), headed `#188 vs #187`, the pull request's line comments
   under their lines on `--bg-side` behind a `--border-strong` hairline; the line a
   comment asked for carries a 2px `--accent` edge.
 - Files is `[ FILES ]` with `n · m changed`, then a filter field: mono 12px on

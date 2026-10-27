@@ -1,28 +1,9 @@
 import type { PullRequest, Workspace } from '../../../preload/index.d'
-import {
-  baseLabel,
-  checksLine,
-  fromSubagent,
-  hasNewEntries,
-  orderPrs,
-  prCounts,
-  prDot
-} from '../pr-list'
-import { prKey, useQueSelector, useStore } from '../store'
+import { checksLine } from '../format'
+import { baseLabel, fromSubagent, hasNewComments, orderPrs, prCounts } from '../pr-list'
+import { useQueSelector, useStore } from '../store'
 import { CommentIcon } from './icons'
-
-/** A pull request's dot: a hollow ring for a draft, else its tone. */
-export function PrDotMark({ pr }: { pr: PullRequest }): React.JSX.Element {
-  const dot = prDot(pr)
-
-  return (
-    <span
-      className={`pr-dot${dot === 'ring' ? ' ring' : ` tone-${dot}`}`}
-      title={pr.state}
-      data-dot={dot}
-    />
-  )
-}
+import { LineCounts, PrDotMark } from './ReviewParts'
 
 function Row({
   ws,
@@ -34,10 +15,8 @@ function Row({
   settled: boolean
 }): React.JSX.Element {
   const store = useStore()
-  const thread = useQueSelector((s) => s.prThreads[prKey(ws.id, pr.number)]?.data)
-  const seenAt = useQueSelector((s) => s.prSeen[`${ws.id}:${pr.number}`])
-  const entries = thread?.entries ?? []
-  const fresh = thread ? hasNewEntries(entries, seenAt) : false
+  const seenAt = useQueSelector((s) => s.review.seen[ws.id]?.[pr.number])
+  const fresh = hasNewComments(pr, seenAt)
   const checks = checksLine(pr)
   const id = `pr-row-${pr.number}`
 
@@ -62,10 +41,10 @@ function Row({
           data-new={fresh}
           title={fresh ? 'New comments since you last opened it' : undefined}
         >
-          {entries.length > 0 && (
+          {pr.comments !== null && pr.comments > 0 && (
             <>
               <CommentIcon />
-              {entries.length}
+              {pr.comments}
             </>
           )}
         </span>
@@ -80,8 +59,7 @@ function Row({
           )}
           {pr.additions !== null && pr.deletions !== null && (
             <span>
-              <span className="add">+{pr.additions}</span>{' '}
-              <span className="del">−{pr.deletions}</span>
+              <LineCounts adds={pr.additions} dels={pr.deletions} />
             </span>
           )}
           {fromSubagent(pr, ws.branches) && <span data-testid={`${id}-subagent`}>· subagent</span>}

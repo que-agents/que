@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { GLYPH } from '../diff'
 import { formatAge } from '../../../shared/format'
 import { diffId, usePanes, useQueSelector } from '../store'
 import { useNow } from '../useNow'
 import Menu, { type MenuItem } from './Menu'
+import { DiffTotals, FileRow } from './ReviewParts'
 
 /**
  * A workspace's changed files against its base, in the review pane: `[ CHANGES ]` with the
@@ -59,8 +59,6 @@ export default function ChangesList({ termKey }: { termKey: string }): React.JSX
     if (next >= 0 && next < files.length) setCursor(next)
   }
 
-  const adds = files.reduce((n, f) => n + f.additions, 0)
-  const dels = files.reduce((n, f) => n + f.deletions, 0)
   const dirty = files.filter((f) => f.dirty).length
 
   const now = useNow()
@@ -101,8 +99,7 @@ export default function ChangesList({ termKey }: { termKey: string }): React.JSX
               diff.commitsAhead === 1 ? 'commit' : 'commits'
             } ahead`}
           >
-            <span className="add">+{adds}</span> <span className="del">−{dels}</span> ·{' '}
-            {files.length} {files.length === 1 ? 'file' : 'files'}
+            <DiffTotals files={files} noun />
           </span>
         )}
       </header>
@@ -186,47 +183,16 @@ export default function ChangesList({ termKey }: { termKey: string }): React.JSX
           data-testid="changes-files"
           onKeyDown={onKeyDown}
         >
-          {files.map((f, i) => {
-            const g = GLYPH[f.status]
-
-            return (
-              <div
-                key={f.path}
-                role="option"
-                tabIndex={-1}
-                aria-selected={i === at}
-                className="changes-file"
-                data-testid={`changes-file-${i}`}
-                data-path={f.path}
-                data-active={activeId === diffId(f.path)}
-                onClick={() => open(i)}
-                onKeyDown={(e) => {
-                  if (e.key !== 'Enter' && e.key !== ' ') return
-                  e.preventDefault()
-                  e.stopPropagation()
-                  open(i)
-                }}
-              >
-                <span className={`glyph tone-${g.tone}`} title={g.label}>
-                  {g.glyph}
-                </span>
-                <span className="path" title={f.path}>
-                  {f.from ? `${f.from} → ${f.path}` : f.path}
-                </span>
-                {f.dirty && (
-                  <span
-                    className="dirty-dot"
-                    title="uncommitted"
-                    data-testid={`changes-file-${i}-dirty`}
-                  />
-                )}
-                <span className="count">
-                  <span className="add">+{f.additions}</span>{' '}
-                  <span className="del">−{f.deletions}</span>
-                </span>
-              </div>
-            )
-          })}
+          {files.map((f, i) => (
+            <FileRow
+              key={f.path}
+              file={f}
+              testId={`changes-file-${i}`}
+              active={activeId === diffId(f.path)}
+              selected={i === at}
+              onOpen={() => open(i)}
+            />
+          ))}
         </div>
       )}
     </section>

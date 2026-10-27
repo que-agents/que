@@ -301,12 +301,17 @@ reviews from `gh pr view <n> --json comments,reviews`, line comments from
 `gh api repos/{owner}/{repo}/pulls/<n>/comments --paginate`, parsed by
 `pr-thread.ts` and sorted oldest first. It answers for the pull request
 `number` among the workspace's (the app passes the one it shows).
-Threads are fetched on demand, never polled: each is cached per workspace and
-pull request number with the `updatedAt` it was fetched for, and reused until
-the tracker stores a different one (or the caller passes `refresh`). Concurrent
-calls share one fetch. A failed `gh` raises `gh_failed` and caches nothing; the
-cache entries go when the workspace is removed or its pull request leaves the
-list.
+Each thread is cached per workspace and pull request number with the
+`updatedAt` it was fetched for, and reused until the tracker stores a different
+one (or the caller passes `refresh`). Concurrent calls share one fetch. A failed
+`gh` raises `gh_failed` and caches nothing; the cache entries go when the
+workspace is removed or its pull request leaves the list. After each check the
+tracker fetches, three at a time, the threads of the open and draft pull
+requests not cached for their current `updatedAt`, so each `PullRequest`
+carries `comments` (how many entries) and `commentedAt` (the newest entry's
+time), filled from the cache and stored; both stay null until a thread has been
+fetched, and a merged or closed one keeps what it had. A fetched thread whose
+counts differ updates the workspace and emits `workspace.updated`.
 
 ## The diff view
 
@@ -314,7 +319,7 @@ list.
 
 `workspace.files` (`que ws files`) lists every file of a workspace's worktree that git would show: tracked and untracked, never ignored (`git ls-files --cached --others --exclude-standard`), deduplicated and sorted, cut at 20,000 paths with `truncated` set; a missing worktree lists nothing. `workspace.readFile` reads one of them for the file view. The path must be relative and strictly inside the worktree: an absolute path, the root itself, or any empty, `.` or `..` segment is a `bad_request`, and so is a path whose real location, symlinks followed, falls outside the worktree's real root, or a directory. A missing path is `not_found`. A NUL byte in the first 8 KB marks the file binary and its content null; text is decoded as UTF-8 and cut at 500,000 characters with `truncated` set; `size` is always the byte size on disk. Both only read, and quiet hours refuse them like any other workspace read.
 
-In the app, Changes and Files follow `workspace.changed` for the workspace on screen: while the review pane or one of its diff or file tabs is open, the store fetches the diff again in its scope (the base and commit stay), and while Files or a file tab is open, the listing and every open file tab too. A change that arrives during that fetch is followed once more after it lands; a closed pane with no view tabs fetches nothing until it opens, and a failure is kept for the views as any other. The Files tree keeps the directories the user opened and closed, except that a directory that newly holds a changed file opens. A pull request open in the pane, and each of its diff tabs, fetches its own files again too (`head` set to its branch, `base` to its base). The pull requests list fetches each listed conversation once to count its comments, and again when that pull request's `updatedAt` moves while the list or it is on screen; off screen, the stale one is dropped so the next look fetches it. Which comments are new since a pull request was last opened is the app's own memory (`que.prSeen` in local storage, the newest entry's time when it was opened); the daemon keeps nothing of it.
+In the app, Changes and Files follow `workspace.changed` for the workspace on screen: while the review pane or one of its diff or file tabs is open, the store fetches the diff again in its scope (the base and commit stay), and while Files or a file tab is open, the listing and every open file tab too. A change that arrives during that fetch is followed once more after it lands; a closed pane with no view tabs fetches nothing until it opens, and a failure is kept for the views as any other. The Files tree keeps the directories the user opened and closed, except that a directory that newly holds a changed file opens. A pull request open in the pane, and each of its diff tabs, fetches its own files again too (`head` set to its branch, `base` to its base). The pull requests list reads each pull request's `comments` and `commentedAt` from the daemon and fetches no conversation itself; only the pull request open in the pane fetches its own, again when its `updatedAt` moves, and the pane's Refresh fetches only that one with `refresh`. A conversation fetched earlier stays cached in the app until its pull request's `updatedAt` moves. Which comments are new since a pull request was last opened is the app's own memory (in the review pane's local storage, the newest entry's time when it was opened, compared with `commentedAt`); the daemon keeps nothing of it.
 `workspace.changed { id }` tells clients a workspace's worktree changed, so they can ask for the diff or the files again; the event carries nothing else and the daemon computes nothing for it. The daemon watches a workspace only while a window shows it or some connection is attached to one of its live terminals. The app says which workspace a window shows with `workspace.watch { id }` when it shows one and `workspace.unwatch { id }` when it leaves it, so the watch holds while a diff or a file tab covers the terminal; the daemon keeps the ids per connection. A watch or an attach starts the watch, and it stops when no connection wants the workspace any more: an unwatch, the last detach, the terminal's exit or kill, the connection closing, or the workspace's removal; shutdown closes every watch. Each watched workspace has two recursive watches. One is the worktree, ignoring the `.git` entry and everything under it. The other is the gitdir: a linked worktree's `.git` is a file whose `gitdir:` line points into the repository's `.git/worktrees/<name>`, which is where a commit, checkout or reset writes, and a main worktree's `.git` is the gitdir itself. Only `HEAD`, `ORIG_HEAD`, `index`, `packed-refs` and anything under `logs/` and `refs/` count there, so object writes do not. The first change that counts opens a 300 ms window and the event goes out when it closes, once per window per workspace however many changes it held.
 
 ## The ticket queue

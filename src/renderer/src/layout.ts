@@ -5,19 +5,40 @@ import { decodeLayout } from './persisted.decode'
 
 const DIFF_PREFIX = 'view:diff:'
 const FILE_PREFIX = 'view:file:'
-const PR_DIFF_PREFIX = 'view:prdiff:'
 
-/** The tab id of a file's diff: `view:diff:<path>`, the path verbatim. */
-export function diffId(path: string): string {
-  return DIFF_PREFIX + path
+/**
+ * What a diff compares instead of the worktree: a branch's own committed files against a base
+ * (a pull request's head and base; an empty base is the daemon's default).
+ */
+export interface DiffAgainst {
+  head: string
+  base: string
 }
 
-/** The file a diff tab id shows, or null for any other id (a terminal's). */
-export function diffPathOf(id: string | null): string | null {
-  if (!id?.startsWith(DIFF_PREFIX)) return null
-  const path = id.slice(DIFF_PREFIX.length)
+/** A diff tab: the file it shows, and the branch and base when it is not the worktree's. */
+export interface DiffTab {
+  path: string
+  against?: DiffAgainst
+}
 
-  return path === '' ? null : path
+/**
+ * The tab id of a file's diff: `view:diff:<path>`, the path verbatim; against a branch,
+ * `view:diff:<head>\0<base>\0<path>`. Neither a ref nor a path can hold a NUL, so the two
+ * never collide.
+ */
+export function diffId(path: string, against?: DiffAgainst): string {
+  return DIFF_PREFIX + (against ? `${against.head}\0${against.base}\0${path}` : path)
+}
+
+/** The diff a diff tab id shows, or null for any other id (a terminal's). */
+export function diffOf(id: string | null): DiffTab | null {
+  if (!id?.startsWith(DIFF_PREFIX)) return null
+  const parts = id.slice(DIFF_PREFIX.length).split('\0')
+
+  if (parts.length === 1) return parts[0] === '' ? null : { path: parts[0] }
+  const [head, base, path] = parts
+
+  return parts.length === 3 && head !== '' && path !== '' ? { path, against: { head, base } } : null
 }
 
 /** The tab id of a worktree file's view: `view:file:<path>`, the path verbatim. */
@@ -33,25 +54,9 @@ export function filePathOf(id: string | null): string | null {
   return path === '' ? null : path
 }
 
-/**
- * The tab id of a file's diff inside one pull request: `view:prdiff:<number>:<path>`. The number
- * keeps it apart from the Changes diff of the same path.
- */
-export function prDiffId(number: number, path: string): string {
-  return `${PR_DIFF_PREFIX}${number}:${path}`
-}
-
-/** The pull request and file a pull request's diff tab id shows, or null for any other id. */
-export function prDiffOf(id: string | null): { number: number; path: string } | null {
-  if (!id?.startsWith(PR_DIFF_PREFIX)) return null
-  const m = /^(\d+):(.+)$/s.exec(id.slice(PR_DIFF_PREFIX.length))
-
-  return m ? { number: Number(m[1]), path: m[2] } : null
-}
-
-/** Whether a tab id is a view tab (a diff, a pull request's diff, or a file) rather than a terminal. */
+/** Whether a tab id is a view tab (a diff or a file) rather than a terminal. */
 export function isViewId(id: string | null): boolean {
-  return diffPathOf(id) !== null || filePathOf(id) !== null || prDiffOf(id) !== null
+  return diffOf(id) !== null || filePathOf(id) !== null
 }
 
 /** One workspace's tabs in one or two panes (a tree of depth one). */

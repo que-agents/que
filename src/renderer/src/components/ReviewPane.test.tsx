@@ -188,18 +188,6 @@ describe('ReviewPane', () => {
       expect(await screen.findByTestId('files-tree')).toBeInTheDocument()
     })
 
-    it('reads an older memory: its Pull request tab is the pull requests view', async () => {
-      const user = userEvent.setup()
-      seed()
-      localStorage.setItem('que.review', JSON.stringify({ open: true, tab: 'pr', width: 320 }))
-      render(<App />)
-
-      await openWorkspace(user, retry.id)
-
-      expect(screen.getByTestId('review-pane')).toHaveAttribute('data-view', 'prs')
-      expect(await screen.findByTestId('pr-list')).toBeInTheDocument()
-    })
-
     it('falls back to the defaults for an unreadable or out-of-range memory', async () => {
       const user = userEvent.setup()
       seed()
