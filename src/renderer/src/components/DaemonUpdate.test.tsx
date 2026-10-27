@@ -1,8 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { fakeBridge } from '@renderer/testing/fake-bridge'
-import { makeProject, makeTermInfo, makeWorkspace } from '@renderer/testing/fixtures'
+import {
+  makeProject,
+  makeQuietState,
+  makeTermInfo,
+  makeWorkspace
+} from '@renderer/testing/fixtures'
 import { openWorkspace } from '@renderer/testing/helpers'
 import App from '../App'
 
@@ -46,7 +51,7 @@ async function aliveFlags(): Promise<boolean[]> {
 
 describe('DaemonUpdate', () => {
   describe('rendering', () => {
-    it('sits at the right end of the Settings row while the service runs the previous build, and says why', async () => {
+    it('sits at the right end of the Quiet row while the service runs the previous build, and says why', async () => {
       seed()
       fakeBridge.setDaemon(STALE)
 
@@ -55,10 +60,31 @@ describe('DaemonUpdate', () => {
       const update = await screen.findByRole('button', { name: 'Update' })
       expect(update).toBeEnabled()
       expect(update).toHaveAttribute('title', TITLE)
-      const settings = screen.getByTestId('sidebar-settings')
-      expect(update.parentElement).toBe(settings.parentElement)
+      const row = screen.getByTestId('sidebar-foot-row')
+      const quiet = within(row).getByRole('group', { name: 'Quiet' })
+      expect(update.parentElement).toBe(row)
+      expect(quiet.compareDocumentPosition(update) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+      // Outside the Quiet group, and never in the icon strip.
+      expect(within(quiet).queryByRole('button', { name: 'Update' })).not.toBeInTheDocument()
       expect(
-        settings.compareDocumentPosition(update) & Node.DOCUMENT_POSITION_FOLLOWING
+        within(screen.getByTestId('sidebar-strip')).queryByRole('button', { name: 'Update' })
+      ).not.toBeInTheDocument()
+    })
+
+    it('sits after lock now while an unlock runs', async () => {
+      seed()
+      fakeBridge.setDaemon(STALE)
+      fakeBridge.setQuietState(makeQuietState({ inQuietHours: true }))
+      await window.que.quiet.unlock({ minutes: 5, why: 'check the deploy' })
+
+      render(<App />)
+
+      const update = await screen.findByRole('button', { name: 'Update' })
+      const row = screen.getByTestId('sidebar-foot-row')
+      expect(update.parentElement).toBe(row)
+      expect(
+        screen.getByTestId('sidebar-lock').compareDocumentPosition(update) &
+          Node.DOCUMENT_POSITION_FOLLOWING
       ).toBeTruthy()
     })
   })

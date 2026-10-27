@@ -23,6 +23,7 @@ export class TicketsPage {
 
   constructor(page: Page) {
     this.page = page
+    // The Tickets icon in the sidebar foot's strip, its count beside it.
     this.sidebarEntry = page.getByTestId('sidebar-tickets')
     this.sidebarCount = page.getByTestId('sidebar-tickets-count')
     this.root = page.getByTestId('tickets-view')

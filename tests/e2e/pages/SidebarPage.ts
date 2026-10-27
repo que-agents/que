@@ -1,6 +1,7 @@
 // Sessions (loose terminals) above projects → workspaces with their status dots
-// (`data-status`, `data-unseen`) and the word under the pointer, the unlock row and
-// the report entry in the foot, the project context menu, and the new-workspace and
+// (`data-status`, `data-unseen`) and the word under the pointer, the foot (the Quiet row,
+// or the unlock row in its place, with Update at its right end, over the icon strip of
+// Report, Tickets and Settings), the project context menu, and the new-workspace and
 // remove-project and remove-workspace dialogs, a removing row's step word, and the card a workspace row opens under a resting pointer.
 import { expect, type Locator, type Page } from '@playwright/test'
 
@@ -19,10 +20,19 @@ export class SidebarPage {
   session: (id: string) => Locator
   sessionOpen: (id: string) => Locator
   sessionExited: (id: string) => Locator
+  foot: Locator
+  footRow: Locator
+  quietButton: Locator
+  quietLength: (minutes: number) => Locator
+  daemonUpdate: Locator
   unlockRow: Locator
   unlockCountdown: Locator
   lockButton: Locator
+  strip: Locator
   reportButton: Locator
+  ticketsButton: Locator
+  settingsButton: Locator
+  footEnd: Locator
   newWorkspaceDialog: Locator
   newWorkspaceBrief: Locator
   newWorkspaceStart: Locator
@@ -74,10 +84,21 @@ export class SidebarPage {
     this.session = (id: string) => page.getByTestId(`sidebar-session-${id}`)
     this.sessionOpen = (id: string) => page.getByTestId(`sidebar-session-${id}-open`)
     this.sessionExited = (id: string) => page.getByTestId(`sidebar-session-${id}-exited`)
+    this.foot = page.getByTestId('sidebar-bottom')
+    this.footRow = page.getByTestId('sidebar-foot-row')
+    this.quietButton = page.getByTestId('sidebar-quiet')
+    this.quietLength = (minutes: number) => page.getByTestId(`sidebar-quiet-${minutes}`)
+    this.daemonUpdate = page.getByTestId('sidebar-daemon-update')
     this.unlockRow = page.getByTestId('sidebar-unlock')
     this.unlockCountdown = page.getByTestId('sidebar-unlock-countdown')
     this.lockButton = page.getByTestId('sidebar-lock')
+    // The icon strip: each view's icon, `aria-current="page"` while its view is open.
+    this.strip = page.getByTestId('sidebar-strip')
     this.reportButton = page.getByTestId('sidebar-report')
+    this.ticketsButton = page.getByTestId('sidebar-tickets')
+    this.settingsButton = page.getByTestId('sidebar-settings')
+    // The strip's right end, kept for usage.
+    this.footEnd = page.getByTestId('sidebar-foot-end')
     this.newWorkspaceDialog = page.getByTestId('dialog-new-workspace')
     this.newWorkspaceBrief = page.getByTestId('dialog-new-workspace-brief')
     this.newWorkspaceStart = page.getByTestId('dialog-new-workspace-start')

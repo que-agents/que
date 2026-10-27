@@ -26,7 +26,7 @@ Surfaces step up by one token per layer: the sidebar is darker than the main
 area, raised things (menus, dialogs) sit one step above it. Regions are divided
 by a 1px hairline; the tab row uses the dashed
 guide (`--dash`, 6px on, 6px off) instead, so the eye reads them as sections of
-one drawing rather than separate panels. The sidebar's bottom group (Report, Tickets, Settings) is pinned to
+one drawing rather than separate panels. The sidebar's foot (the Quiet row and the icon strip) is pinned to
 the window's bottom edge above a solid hairline.
 
 ## Text
@@ -272,20 +272,27 @@ only under the pointer.
   and each pull request's link in its 18px column always show, the link `--accent` under
   the pointer. Every action sits on the line it belongs to, and the card never holds a
   destructive one: Remove… stays in the ⋯ menu.
-- **The foot.** Quiet, Report, Tickets and Settings are 26px rows in `--fg-muted`, `--fg`
-  under the pointer. The Quiet row, at the top, starts a manual quiet: its word starts an
-  hour, and at its right end, always visible, `30m`, `1h` and `2h` in mono 11px tabular
-  pick a length, `1h` in `--fg-muted` as the default and the other two in `--fg-faint`,
-  each `--fg` under the pointer. The row is a `role="group"` of four buttons; the word fills the row up to
-  the lengths, so the row takes `--bg-hover` as a whole and the word brightens with it; it is absent while a quiet window is in progress. While the background service runs an older build than the app, a
-  20px control sits at the right end of the Settings row: the 5px status dot in `--accent`
-  and the word Update in 11px `--fg-muted`, hairline-bordered, `--fg` under the pointer,
-  its tooltip saying why it is there. It reads Updating… at 0.4 opacity while the update
-  runs, and is absent otherwise; a failed update goes to the error line above the tab
-  strip. During an unlock a row above them carries the open lock at 12px
-  and `m:ss left` in mono 11px `--accent`, and `lock now` in mono 11px `--fg-faint` at
-  its right end (`--fg-muted` under the pointer), always visible: locking again is the
-  behaviour we want. The row is a `role="status"` region.
+- **The foot.** Above a solid hairline, two rows: the Quiet row, then a 36px icon strip.
+  The Quiet row starts a manual quiet: the word Quiet in `--fg-muted` starts an hour, and
+  right after it (6px on) `30m`, `1h` and `2h` in mono 11px tabular pick a length, `1h` in
+  `--fg-muted` as the default and the other two in `--fg-faint`, each `--fg` under the
+  pointer. The four are a `role="group"` of buttons, as wide as they are, so the group
+  takes `--bg-hover` as a whole and the word brightens with it; it is absent while a quiet
+  window is in progress. While the background service runs an older build than the app, a
+  20px control sits at the Quiet row's right end, so it never pushes the icons around: the
+  5px status dot in `--accent` and the word Update in 11px `--fg-muted`, hairline-bordered,
+  `--fg` under the pointer, its tooltip saying why it is there. It reads Updating… at 0.4
+  opacity while the update runs, and is absent otherwise; a failed update goes to the error
+  line above the tab strip. During an unlock the unlock row takes the Quiet row's place: the
+  open lock at 12px and `m:ss left` in mono 11px `--accent`, and `lock now` in mono 11px
+  `--fg-faint` at its right end (`--fg-muted` under the pointer), always visible: locking
+  again is the behaviour we want. The row is a `role="status"` region, and Update, when one
+  is waiting, sits after `lock now`. The strip holds three `button.ghost.icon`s: Report (a
+  page with lines), Tickets (a ticket outline, the open tickets counted beside it in mono
+  11px `--fg-faint`) and Settings (a gear), in `--fg-faint`, `--fg` under the pointer. Each
+  icon's name is its tooltip and accessible name. The view open in the main area reads
+  `--fg` with a 1px `--fg` line under it, like the review pane's strip. The strip's right
+  end is kept for usage.
 
 ## Quiet board
 
