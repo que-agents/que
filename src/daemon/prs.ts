@@ -124,6 +124,8 @@ export class PrService {
   /** Each pull request's last fetched conversation (by threadKey), valid while its updatedAt holds. */
   private threads = new Map<string, CachedThread>()
   private threadFetches = new Map<string, Promise<PrThread>>()
+  /** Created pull requests are recorded one hook at a time, so they keep the order they were made in. */
+  private recording: Promise<void> = Promise.resolve()
 
   private readonly poller = new Poller({
     intervalMs: () => Math.max(100, this.opts.config().prPollSeconds * 1000),
@@ -441,19 +443,31 @@ export class PrService {
    * Records the pull requests a hook event shows the workspace's session (or one of its
    * subagents) creating with `gh pr create` on the project's origin, and checks them now.
    */
-  async hook(id: string, event: HookEvent): Promise<void> {
-    if (this.stopped || !prCreateCall(event)) return
+  hook(id: string, event: HookEvent): Promise<void> {
+    if (this.stopped || !prCreateCall(event)) return Promise.resolve()
+    const recorded = this.recording.then(() => this.record(id, event))
+    this.recording = recorded.then(
+      () => {},
+      () => {}
+    )
+
+    return recorded.then((added) => (added ? this.refresh(id) : undefined))
+  }
+
+  /** Stores what the hook shows created; true when one was new. */
+  private async record(id: string, event: HookEvent): Promise<boolean> {
     const ws = this.opts.store.getWorkspace(id)
 
-    if (!ws || ws.archivedAt) return
+    if (!ws || ws.archivedAt) return false
     const project = this.opts.workspaces.project(ws.projectId)
     const origin = await git(project.path, ['remote', 'get-url', 'origin'], 10_000)
     const urls = origin.ok ? createdPullRequests(event, origin.stdout) : []
 
-    if (urls.length === 0 || !this.opts.store.addWorkspacePrUrls(id, urls)) return
+    if (urls.length === 0 || !this.opts.store.addWorkspacePrUrls(id, urls)) return false
     this.opts.log?.(`workspace ${id} created ${urls.join(', ')}`)
     this.opts.bus.emit('workspace.updated', this.opts.workspaces.get(id))
-    await this.refresh(id)
+
+    return true
   }
 
   /**
