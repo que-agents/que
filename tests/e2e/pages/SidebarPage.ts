@@ -33,7 +33,6 @@ export class SidebarPage {
   reportButton: Locator
   ticketsButton: Locator
   settingsButton: Locator
-  footEnd: Locator
   usageButton: Locator
   usageFiveHour: Locator
   usageWeekly: Locator
@@ -106,7 +105,6 @@ export class SidebarPage {
     this.ticketsButton = page.getByTestId('sidebar-tickets')
     this.settingsButton = page.getByTestId('sidebar-settings')
     // The strip's right end: Claude usage (`5h 42%  wk 18%`) and the card a click opens.
-    this.footEnd = page.getByTestId('sidebar-foot-end')
     this.usageButton = page.getByTestId('sidebar-usage')
     this.usageFiveHour = page.getByTestId('sidebar-usage-five-hour')
     this.usageWeekly = page.getByTestId('sidebar-usage-weekly')

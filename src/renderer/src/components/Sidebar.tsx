@@ -165,6 +165,8 @@ export default function Sidebar(): React.JSX.Element {
   const showPopout = popout.show
 
   const searchRef = useRef<HTMLInputElement>(null)
+  // The usage card stands beside it.
+  const asideRef = useRef<HTMLElement>(null)
   // the nonce re-runs the focus on every request
   useEffect(() => {
     if (!searchOpen) return
@@ -280,7 +282,7 @@ export default function Sidebar(): React.JSX.Element {
     menu?.kind === kind && menu.id === id ? menu : null
 
   return (
-    <aside className="sidebar" data-testid="sidebar" aria-label="Sidebar">
+    <aside ref={asideRef} className="sidebar" data-testid="sidebar" aria-label="Sidebar">
       <button
         type="button"
         className={`ghost icon sidebar-search-toggle${searchOpen ? ' active' : ''}`}
@@ -616,9 +618,7 @@ export default function Sidebar(): React.JSX.Element {
             </button>
           ))}
           {/* The right end: Claude plan usage. */}
-          <div className="foot-end" data-testid="sidebar-foot-end">
-            <UsageFoot />
-          </div>
+          <UsageFoot sidebar={asideRef} />
         </div>
       </div>
     </aside>

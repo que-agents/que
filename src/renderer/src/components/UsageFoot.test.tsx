@@ -34,7 +34,7 @@ async function renderWith(u: Usage | null): Promise<void> {
   await screen.findByTestId('sidebar-usage')
   // The first load has brought the reading in (or there is none).
   await waitFor(() => {
-    expect(button().classList.contains('empty')).toBe(u === null)
+    expect(button().classList.contains('no-reading')).toBe(u === null)
   })
 }
 
@@ -43,7 +43,7 @@ describe('UsageFoot', () => {
     it('reads both windows at the strip’s right end, named for a screen reader', async () => {
       await renderWith(reading())
 
-      expect(button().parentElement).toBe(screen.getByTestId('sidebar-foot-end'))
+      expect(button().parentElement).toBe(screen.getByTestId('sidebar-strip'))
       expect(button()).toHaveAccessibleName('Claude usage: 5-hour 42%, weekly 18%')
       expect(button()).toHaveTextContent(/^5h 42%wk 18%$/)
       expect(fiveHour()).not.toHaveAttribute('data-tone')
@@ -52,26 +52,15 @@ describe('UsageFoot', () => {
     })
 
     it.each([
-      { pct: 79, tone: null, text: /^5h 79%wk 18%$/, className: 'usage-num' },
-      {
-        pct: 80,
-        tone: 'attention',
-        text: /^5h 80%wk 18%$/,
-        className: 'usage-num toned tone-attention'
-      },
+      { pct: 79, tone: null, text: /^5h 79%wk 18%$/ },
+      { pct: 80, tone: 'attention', text: /^5h 80%wk 18%$/ },
       // Only a full window reads the time until it resets.
-      {
-        pct: 100,
-        tone: 'bad',
-        text: /^5h 100% · 38mwk 18%$/,
-        className: 'usage-num toned tone-bad'
-      }
-    ])('tones a window at $pct%', async ({ pct, tone, text, className }) => {
+      { pct: 100, tone: 'bad', text: /^5h 100% · 38mwk 18%$/ }
+    ])('tones a window at $pct%', async ({ pct, tone, text }) => {
       await renderWith(reading({ fiveHour: { pct, resetsAt: at(27, 14, 48) } }))
 
       expect(button()).toHaveTextContent(text)
       expect(fiveHour().getAttribute('data-tone')).toBe(tone)
-      expect(fiveHour().className).toBe(className)
     })
 
     it('tones the weekly window apart from the five-hour one', async () => {
@@ -89,7 +78,7 @@ describe('UsageFoot', () => {
       await renderWith(null)
 
       expect(button()).toHaveTextContent(/^5h —wk —$/)
-      expect(button()).toHaveClass('empty')
+      expect(button()).toHaveClass('no-reading')
       expect(button()).toHaveAccessibleName('Claude usage: no reading yet')
       expect(button()).toHaveAttribute(
         'title',
@@ -151,13 +140,16 @@ describe('UsageFoot', () => {
       expect(fivePct).toHaveTextContent('104%')
       expect(fivePct).toHaveAttribute('data-tone', 'bad')
       const fiveMeter = screen.getByTestId('sidebar-usage-card-five-hour-meter')
-      expect(fiveMeter).toHaveClass('toned', 'tone-bad')
+      expect(fiveMeter).toHaveAttribute('data-tone', 'bad')
       expect(fiveMeter).toHaveStyle({ width: '100%' })
       expect(screen.getByTestId('sidebar-usage-card-weekly-percent')).toHaveAttribute(
         'data-tone',
         'attention'
       )
-      expect(screen.getByTestId('sidebar-usage-card-weekly-meter')).toHaveClass('tone-attention')
+      expect(screen.getByTestId('sidebar-usage-card-weekly-meter')).toHaveAttribute(
+        'data-tone',
+        'attention'
+      )
     })
 
     it('leaves the workspace out of the as-of line when it is not known', async () => {
@@ -241,7 +233,7 @@ describe('UsageFoot', () => {
       expect(screen.getByTestId('sidebar-usage-card-as-of')).toHaveTextContent(/^as of 14:09$/)
     })
 
-    it('goes back to dashes, and the card away, when the reading is dropped', async () => {
+    it('goes back to dashes, and the card away, when the reading is dropped, and a later one leaves it closed', async () => {
       const user = userEvent.setup()
       await renderWith(reading())
       await user.click(button())
@@ -251,6 +243,15 @@ describe('UsageFoot', () => {
       await waitFor(() => {
         expect(button()).toHaveTextContent(/^5h —wk —$/)
       })
+      expect(screen.queryByTestId('sidebar-usage-card')).not.toBeInTheDocument()
+
+      // The next reading fills the button in but does not open the card again.
+      fakeBridge.setUsage(reading({ at: at(27, 14, 9) }))
+
+      await waitFor(() => {
+        expect(button()).toHaveAccessibleName('Claude usage: 5-hour 42%, weekly 18%')
+      })
+      expect(button()).toHaveAttribute('aria-expanded', 'false')
       expect(screen.queryByTestId('sidebar-usage-card')).not.toBeInTheDocument()
     })
   })

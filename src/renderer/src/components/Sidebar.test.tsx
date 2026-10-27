@@ -680,9 +680,9 @@ describe('Sidebar', () => {
     it('holds Claude usage at its right end', async () => {
       render(<App />)
 
-      const end = await screen.findByTestId('sidebar-foot-end')
-      expect(end.parentElement).toBe(screen.getByTestId('sidebar-strip'))
-      expect(within(end).getByTestId('sidebar-usage')).toBeInTheDocument()
+      const usage = await screen.findByTestId('sidebar-usage')
+      expect(usage.parentElement).toBe(screen.getByTestId('sidebar-strip'))
+      expect(usage.parentElement?.lastElementChild).toBe(usage)
     })
   })
 
