@@ -301,6 +301,30 @@ describe('QuietBoard', () => {
     })
   })
 
+  describe('removing', () => {
+    it('leaves a workspace being removed off the rows and the counts, even while its terminal lives', async () => {
+      seed()
+      // Marked removing on its first step, before the terminals are killed.
+      fakeBridge.seedWorkspace({
+        ...dotfilesMain,
+        status: 'removing',
+        removal: {
+          plan: ['terminals', 'teardown', 'worktree'],
+          since: minutesAgo(now, 0),
+          done: []
+        }
+      })
+
+      render(<App board now={clock} />)
+
+      expect(await screen.findByTestId('quiet-board-counts')).toHaveTextContent(
+        /^1 stuck · 1 running · 1 waiting$/
+      )
+      expect(screen.queryByTestId(`quiet-board-row-${dotfilesMain.id}`)).not.toBeInTheDocument()
+      expect(screen.getByTestId(`quiet-board-row-${retry.id}`)).toBeInTheDocument()
+    })
+  })
+
   describe('user interactions', () => {
     it('asks the daemon for the configured unlock', async () => {
       const user = userEvent.setup()

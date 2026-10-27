@@ -14,7 +14,8 @@ import type {
   TicketsSyncState,
   UserConfig,
   Workspace,
-  WorkspaceStatus
+  WorkspaceStatus,
+  RemovalFailure
 } from './types'
 
 // ---- method types ---------------------------------------------------------
@@ -178,7 +179,8 @@ export interface WorkspaceListParams {
 
 export interface WorkspaceRemoveParams {
   id: string
-  deleteBranch?: boolean
+  /** Delete the branch the worktree had checked out, after the worktree. */
+  deleteBranch: boolean
 }
 
 export interface WorkspaceOpenTerminalParams {
@@ -582,7 +584,8 @@ export interface Events {
   'workspace.created': Workspace
   /** The row after any commit: status, reason, activity, session, title, branch, pull request. */
   'workspace.updated': Workspace
-  'workspace.removed': { id: string }
+  /** Gone from the list; `failed` lists the removal steps that went wrong, when any did. */
+  'workspace.removed': { id: string; failed?: RemovalFailure[] }
   /** Its worktree changed on disk (a write, a commit): the daemon computes nothing until asked. */
   'workspace.changed': { id: string }
   'project.added': Project

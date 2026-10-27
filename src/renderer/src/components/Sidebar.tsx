@@ -6,7 +6,7 @@ import { SCRATCH, usePanes, useQueSelector, useStore } from '../store'
 import { countOpenTickets } from '../ticket-tree'
 import { filterSidebar, matches, sortProjects, sortWorkspaces } from '../sidebar-order'
 import { hoverWord, type RowTone, rowTone } from '../sidebar-row'
-import { useNow } from '../useNow'
+import { NOW_SECONDS_INTERVAL_MS, useNow } from '../useNow'
 import { useUnlockCountdown } from '../useUnlockCountdown'
 import DaemonUpdate from './DaemonUpdate'
 import {
@@ -28,7 +28,7 @@ type OpenMenu = { kind: 'project' | 'workspace'; id: string; at?: Point }
 
 /**
  * A workspace's status at rest: a 5px dot in its tone, or, while it works, the working
- * mark. Its tooltip is the hover word, and why when the workspace is
+ * mark (in the neutral tone while it is being removed). Its tooltip is the hover word, and why when the workspace is
  * stuck. It carries `data-status` and `data-unseen` for tests.
  */
 function StatusMark({
@@ -49,6 +49,10 @@ function StatusMark({
 
   if (look.working) {
     return <WorkingMark {...common} />
+  }
+
+  if (look.removing) {
+    return <WorkingMark tone="neutral" {...common} />
   }
 
   return <span className={`status-dot tone-${look.tone}`} {...common} />
@@ -141,7 +145,9 @@ export default function Sidebar(): React.JSX.Element {
   const sort = useQueSelector((s) => s.sort)
   const locked = useQueSelector((s) => s.quiet?.locked ?? false)
   const dialog = useQueSelector((s) => s.dialog)
-  const now = useNow()
+  // A removal's step word counts seconds; everything else here reads in minutes.
+  const removing = Object.values(workspaces).some((w) => w.status === 'removing')
+  const now = useNow(removing ? NOW_SECONDS_INTERVAL_MS : undefined)
   // The workspace card: detail, so never while quiet hours lock the app.
   const popout = usePopout(!locked)
   const rows = useRef(new Map<string, HTMLLIElement>())
@@ -471,8 +477,8 @@ export default function Sidebar(): React.JSX.Element {
               {open && (
                 <ul>
                   {list.map((w, i) => {
-                    const workspaceMenu = menuFor('workspace', w.id)
                     const look = looks[i]
+                    const workspaceMenu = look.removing ? null : menuFor('workspace', w.id)
                     const word = hoverWord(w, look, now)
 
                     return (
@@ -484,7 +490,11 @@ export default function Sidebar(): React.JSX.Element {
                           if (el) rows.current.set(w.id, el)
                           else rows.current.delete(w.id)
                         }}
-                        onContextMenu={(e) => menuAtPointer(e, 'workspace', w.id)}
+                        onContextMenu={
+                          look.removing
+                            ? (e) => e.preventDefault()
+                            : (e) => menuAtPointer(e, 'workspace', w.id)
+                        }
                         onMouseEnter={(e) => popout.enter(w.id, e.currentTarget)}
                         onMouseLeave={popout.leave}
                         onMouseDown={popout.press}
@@ -494,6 +504,7 @@ export default function Sidebar(): React.JSX.Element {
                           className="row-button"
                           data-testid={`sidebar-workspace-${w.id}-open`}
                           aria-current={selected === w.id ? 'page' : undefined}
+                          disabled={look.removing}
                           onClick={() => store.showTerminals(w.id)}
                         >
                           <span className="ico" aria-hidden="true">
@@ -505,6 +516,14 @@ export default function Sidebar(): React.JSX.Element {
                           {look.background.length > 0 && (
                             <BackgroundMark data-testid={`sidebar-workspace-${w.id}-background`} />
                           )}
+                          {look.removing && (
+                            <span
+                              className="step-word"
+                              data-testid={`sidebar-workspace-${w.id}-step`}
+                            >
+                              {word.word}
+                            </span>
+                          )}
                         </button>
                         <span className="reveal" data-testid={`sidebar-workspace-${w.id}-reveal`}>
                           <span
@@ -513,17 +532,19 @@ export default function Sidebar(): React.JSX.Element {
                           >
                             {word.word}
                           </span>
-                          <button
-                            type="button"
-                            className="ghost icon sm more"
-                            data-testid={`sidebar-workspace-${w.id}-menu`}
-                            aria-label={`More actions for ${w.title ?? w.name}`}
-                            aria-haspopup="menu"
-                            aria-expanded={workspaceMenu !== null}
-                            onClick={() => toggleMenu('workspace', w.id)}
-                          >
-                            ⋯
-                          </button>
+                          {!look.removing && (
+                            <button
+                              type="button"
+                              className="ghost icon sm more"
+                              data-testid={`sidebar-workspace-${w.id}-menu`}
+                              aria-label={`More actions for ${w.title ?? w.name}`}
+                              aria-haspopup="menu"
+                              aria-expanded={workspaceMenu !== null}
+                              onClick={() => toggleMenu('workspace', w.id)}
+                            >
+                              ⋯
+                            </button>
+                          )}
                         </span>
                         {popout.open?.id === w.id && (
                           <WorkspacePopout ws={w} row={popout.open.row} onClose={popout.close} />

@@ -11,7 +11,7 @@ import {
   makeTermInfo,
   makeWorkspace
 } from '@renderer/testing/fixtures'
-import { minutesAgo } from '@renderer/testing/helpers'
+import { minutesAgo, openWorkspace } from '@renderer/testing/helpers'
 import App from '../App'
 
 const uploader = makeProject()
@@ -295,13 +295,132 @@ describe('Sidebar', () => {
         name: 'APP-1460 upload resume'
       })
 
-      await window.que.workspace.remove({ id: board.id })
+      await window.que.workspace.remove({ id: board.id, deleteBranch: false })
 
       expect(await screen.findByTestId(`sidebar-workspace-${created.id}-status`)).toHaveAttribute(
         'data-status',
         'preparing'
       )
       expect(screen.queryByTestId(`sidebar-workspace-${board.id}`)).not.toBeInTheDocument()
+    })
+  })
+
+  describe('removing', () => {
+    const step = (id: string): HTMLElement => screen.getByTestId(`sidebar-workspace-${id}-step`)
+
+    /** When the removal's current step started, as the daemon stamped it. */
+    const since = (id: string): number =>
+      Date.parse(fakeBridge.getWorkspace(id)?.removal?.since ?? '')
+
+    it('draws the working mark in the neutral tone, the step and its clock at the right end, and a faint name', async () => {
+      seed()
+      fakeBridge.holdRemovals()
+      render(<App />)
+      await screen.findByTestId(`sidebar-workspace-${auth.id}`)
+
+      await window.que.workspace.remove({ id: auth.id, deleteBranch: true })
+
+      await waitFor(() => {
+        expect(mark(auth.id)).toHaveAttribute('data-status', 'removing')
+      })
+      expect(mark(auth.id)).toHaveClass('working-mark', 'neutral')
+      expect(mark(auth.id).querySelectorAll('i')).toHaveLength(4)
+      expect(mark(auth.id)).toHaveAttribute('data-unseen', 'false')
+      expect(row(auth.id)).toHaveClass('weight-faint')
+      expect(step(auth.id)).toHaveTextContent(/^killing terminals \ds$/)
+      // Always shown, in the row itself, not the overlay the pointer reveals.
+      expect(screen.getByTestId(`sidebar-workspace-${auth.id}-open`)).toContainElement(
+        step(auth.id)
+      )
+    })
+
+    it('changes the word with the step, and ticks its clock every second', async () => {
+      let t = NOW
+      seed()
+      fakeBridge.holdRemovals()
+      render(<App now={() => t} />)
+      await screen.findByTestId(`sidebar-workspace-${board.id}`)
+      await window.que.workspace.remove({ id: board.id, deleteBranch: true })
+      await screen.findByTestId(`sidebar-workspace-${board.id}-step`)
+
+      fakeBridge.advanceRemoval(board.id)
+      t = since(board.id) + 12_000
+
+      // Nothing else re-renders the row: the second-long tick brings the new age.
+      await waitFor(
+        () => {
+          expect(step(board.id)).toHaveTextContent(/^running teardown 12s$/)
+        },
+        { timeout: 2_500 }
+      )
+      t += 1_000
+      await waitFor(
+        () => {
+          expect(step(board.id)).toHaveTextContent(/^running teardown 13s$/)
+        },
+        { timeout: 2_500 }
+      )
+
+      fakeBridge.advanceRemoval(board.id)
+      t = since(board.id) + 3_000
+
+      await waitFor(
+        () => {
+          expect(step(board.id)).toHaveTextContent(/^removing worktree 3s$/)
+        },
+        { timeout: 2_500 }
+      )
+
+      fakeBridge.advanceRemoval(board.id)
+      t = since(board.id)
+
+      await waitFor(
+        () => {
+          expect(step(board.id)).toHaveTextContent(/^deleting branch 0s$/)
+        },
+        { timeout: 2_500 }
+      )
+    })
+
+    it('disables the row: no menu, no ⋯, and the step as the hover word', async () => {
+      const user = userEvent.setup()
+      seed()
+      fakeBridge.holdRemovals()
+      render(<App />)
+      await screen.findByTestId(`sidebar-workspace-${retry.id}`)
+      await window.que.workspace.remove({ id: retry.id, deleteBranch: false })
+
+      await waitFor(() => {
+        expect(screen.getByTestId(`sidebar-workspace-${retry.id}-open`)).toBeDisabled()
+      })
+      expect(screen.queryByTestId(`sidebar-workspace-${retry.id}-menu`)).not.toBeInTheDocument()
+      expect(word(retry.id)).toHaveTextContent(/^killing terminals \ds$/)
+      expect(word(retry.id)).not.toHaveClass('toned')
+
+      await user.pointer({ keys: '[MouseRight]', target: row(retry.id) })
+
+      expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+    })
+
+    it('keeps the row through every step and drops it when the daemon says it is gone', async () => {
+      seed()
+      fakeBridge.holdRemovals()
+      render(<App />)
+      await screen.findByTestId(`sidebar-workspace-${board.id}`)
+      await window.que.workspace.remove({ id: board.id, deleteBranch: false })
+      await screen.findByTestId(`sidebar-workspace-${board.id}-step`)
+
+      fakeBridge.advanceRemoval(board.id)
+      fakeBridge.advanceRemoval(board.id)
+      await waitFor(() => {
+        expect(step(board.id)).toHaveTextContent(/^removing worktree \ds$/)
+      })
+
+      fakeBridge.advanceRemoval(board.id)
+
+      await waitFor(() => {
+        expect(screen.queryByTestId(`sidebar-workspace-${board.id}`)).not.toBeInTheDocument()
+      })
     })
   })
 
@@ -544,9 +663,63 @@ describe('Sidebar', () => {
       ])
     })
 
-    it('removes a workspace from its menu, deleting the branch when asked', async () => {
+    it('removes a workspace from its menu, deleting the branch unless told not to', async () => {
       const user = userEvent.setup()
       seed()
+      render(<App />)
+
+      await user.click(
+        await screen.findByRole('button', { name: 'More actions for app-1440-quiet-board' })
+      )
+      await user.click(screen.getByRole('menuitem', { name: 'Remove…' }))
+      const dialog = screen.getByRole('dialog', { name: 'Remove app-1440-quiet-board?' })
+      expect(within(dialog).getByRole('checkbox', { name: /delete the branch/ })).toBeChecked()
+      await user.click(within(dialog).getByRole('button', { name: 'Remove' }))
+
+      await waitFor(() => {
+        expect(fakeBridge.getWorkspace(board.id)).toBeUndefined()
+      })
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+      expect(screen.queryByTestId(`sidebar-workspace-${board.id}`)).not.toBeInTheDocument()
+    })
+
+    it('closes the remove dialog at once, leaving the row removing and the view off it', async () => {
+      const user = userEvent.setup()
+      seed()
+      fakeBridge.holdRemovals()
+      render(<App />)
+      await openWorkspace(user, board.id)
+      expect(screen.getByTestId(`sidebar-workspace-${board.id}-open`)).toHaveAttribute(
+        'aria-current',
+        'page'
+      )
+
+      await user.click(
+        screen.getByRole('button', { name: 'More actions for app-1440-quiet-board' })
+      )
+      await user.click(screen.getByRole('menuitem', { name: 'Remove…' }))
+      const dialog = screen.getByRole('dialog', { name: 'Remove app-1440-quiet-board?' })
+      await user.click(within(dialog).getByRole('button', { name: 'Remove' }))
+
+      await waitFor(() => {
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+      })
+      expect(mark(board.id)).toHaveAttribute('data-status', 'removing')
+      expect(screen.getByTestId(`sidebar-workspace-${board.id}-open`)).not.toHaveAttribute(
+        'aria-current'
+      )
+      expect(fakeBridge.getWorkspace(board.id)?.removal?.plan).toEqual([
+        'terminals',
+        'teardown',
+        'worktree',
+        'branch'
+      ])
+    })
+
+    it('keeps the branch when the box is unchecked', async () => {
+      const user = userEvent.setup()
+      seed()
+      fakeBridge.holdRemovals()
       render(<App />)
 
       await user.click(
@@ -558,10 +731,12 @@ describe('Sidebar', () => {
       await user.click(within(dialog).getByRole('button', { name: 'Remove' }))
 
       await waitFor(() => {
-        expect(fakeBridge.getWorkspace(board.id)).toBeUndefined()
+        expect(fakeBridge.getWorkspace(board.id)?.removal?.plan).toEqual([
+          'terminals',
+          'teardown',
+          'worktree'
+        ])
       })
-      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
-      expect(screen.queryByTestId(`sidebar-workspace-${board.id}`)).not.toBeInTheDocument()
     })
 
     it('renames a workspace from its menu, and its branch when it was never pushed', async () => {

@@ -353,6 +353,36 @@ describe('reduce', () => {
     })
   })
 
+  describe('removal', () => {
+    it('moves any workspace to removing and drops its background tasks', () => {
+      const busy: StatusState = { ...working, backgroundTasks: [shellTask] }
+
+      expect(reduce(busy, { kind: 'remove' }, T0 + 1_000)).toMatchObject({
+        status: 'removing',
+        reason: null,
+        statusAt: T0 + 1_000,
+        backgroundTasks: []
+      })
+    })
+
+    it('ignores every input once the workspace is removing', () => {
+      const removing = reduce(working, { kind: 'remove' }, T0 + 1_000)
+      const stop = makeHookEvent('SessionEnd')
+
+      const inputs = [
+        { kind: 'terminal_exit' },
+        { kind: 'hook', event: stop.hook_event_name, payload: stop },
+        { kind: 'tick' },
+        { kind: 'agents_json', entry: { status: 'waiting' } },
+        { kind: 'setup_failed' }
+      ] as const
+
+      for (const input of inputs) {
+        expect(reduce(removing, input, T0 + 900_000, STALL)).toEqual(removing)
+      }
+    })
+  })
+
   describe('purity', () => {
     it('returns a new state and never mutates its input', () => {
       const before = structuredClone(working)
@@ -373,7 +403,8 @@ describe('summarize and trayTitle', () => {
       { status: 'working' },
       { status: 'needs_input' },
       { status: 'idle' },
-      { status: 'preparing' }
+      { status: 'preparing' },
+      { status: 'removing' }
     ])
 
     expect(summary).toEqual({
@@ -382,7 +413,8 @@ describe('summarize and trayTitle', () => {
       needs_input: 1,
       stuck: 0,
       exited: 0,
-      preparing: 1
+      preparing: 1,
+      removing: 1
     })
     expect(trayTitle(summary)).toBe('● 3 ▸ 1 ✕ 0')
   })

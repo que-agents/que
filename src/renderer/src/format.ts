@@ -10,7 +10,8 @@ const STATUS: Record<WorkspaceStatus, { label: string; tone: Tone }> = {
   working: { label: 'working', tone: 'busy' },
   needs_input: { label: 'needs input', tone: 'attention' },
   stuck: { label: 'stuck', tone: 'bad' },
-  exited: { label: 'exited', tone: 'muted' }
+  exited: { label: 'exited', tone: 'muted' },
+  removing: { label: 'removing', tone: 'muted' }
 }
 
 export function statusBadge(status: WorkspaceStatus): { label: string; tone: Tone } {

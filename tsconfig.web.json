@@ -35,6 +35,7 @@
     "src/shared/pr-url.ts",
     "src/shared/protocol.ts",
     "src/shared/quiet-board.ts",
+    "src/shared/removal.ts",
     "src/shared/slug.ts",
     "src/shared/brief.ts",
     "src/shared/names.ts",

@@ -1,6 +1,13 @@
 // Domain types shared by the daemon, CLI, and renderer.
 
-export type WorkspaceStatus = 'preparing' | 'idle' | 'working' | 'needs_input' | 'stuck' | 'exited'
+export type WorkspaceStatus =
+  | 'preparing'
+  | 'idle'
+  | 'working'
+  | 'needs_input'
+  | 'stuck'
+  | 'exited'
+  | 'removing'
 
 /** A git repository registered with que. */
 export interface Project {
@@ -21,6 +28,31 @@ export interface BackgroundTask {
   description: string
   /** When the daemon first saw it (ISO). */
   since: string
+}
+
+/** The steps a removal runs, in this order. */
+export const REMOVAL_STEPS = ['terminals', 'teardown', 'worktree', 'branch'] as const
+
+export type RemovalStep = (typeof REMOVAL_STEPS)[number]
+
+/** A finished removal step: how long it took, and why it failed when it did. */
+export interface RemovalResult {
+  step: RemovalStep
+  ms: number
+  error?: string
+}
+
+/** A removal step that failed: its result with the reason. */
+export type RemovalFailure = RemovalResult & { error: string }
+
+/** Where a removal stands: the steps it runs, since when the current one runs, and those done. */
+export interface Removal {
+  /** The steps this removal runs, in order. */
+  plan: RemovalStep[]
+  /** When the step running now started (ISO): the removal was marked, or the previous step finished. */
+  since: string
+  /** The steps finished so far, with their durations and failures. */
+  done: RemovalResult[]
 }
 
 /** A git worktree on its own branch, with its own terminals and status. */
@@ -58,6 +90,8 @@ export interface Workspace {
   seenAt: string | null
   /** Still running after the last turn ended; agent-like kinds keep the status working, shell and monitor do not. */
   backgroundTasks: BackgroundTask[]
+  /** Where its removal stands; present only while it is `removing`. */
+  removal?: Removal
   /** What the work is, in a line (shown instead of the name); absent for a workspace made from a name. */
   title?: string
   /** The description the workspace was made from (written to `.que/brief.md`). */
@@ -254,6 +288,8 @@ export interface RepoEntry {
 export interface UserConfig {
   worktreeRoot: string
   stallTimeoutMinutes: number
+  /** How long a repo's teardown hook may run when a workspace is removed before it is killed. */
+  teardownTimeoutSeconds: number
   statusPollSeconds: number
   /** How often the daemon refreshes each workspace's pull request from GitHub. */
   prPollSeconds: number

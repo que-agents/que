@@ -40,6 +40,8 @@ import {
 import { buildTree, newlyChanged } from './files'
 import { chime, shouldChime } from './sound'
 import { errorCode, errorMessage } from '../../shared/errors.decode'
+import { removalStepLabel } from '../../shared/format'
+import type { RemovalFailure } from '../../shared/types'
 import { decodeDiffBases, decodeReview, readStored, writeStored } from './persisted.decode'
 
 const DEFAULT_COLS = 80
@@ -597,8 +599,15 @@ export class QueStore {
         if (prev !== ws.status) this.maybeChime({ state: ws.status, prev })
       }),
       workspace.on('workspace.changed', ({ id }) => this.followChange(id)),
-      workspace.on('workspace.removed', ({ id }) => {
+      workspace.on('workspace.removed', ({ id, failed }) => {
         if (id in this.state.diffScopes) rememberDiffBase(id, null)
+        // The name is read before the row goes.
+        const gone = this.state.workspaces[id]
+
+        if (failed && failed.length > 0) {
+          this.set({ error: removalFailedMessage(gone ? (gone.title ?? gone.name) : id, failed) })
+        }
+
         this.setWith((s) => ({
           workspaces: without(s.workspaces, id),
           diffScopes: without(s.diffScopes, id),
@@ -1433,12 +1442,13 @@ export class QueStore {
     this.setWith((s) => dropProject(s, id))
   }
 
+  /**
+   * Starts the workspace's removal and moves the view off it at once. The daemon answers
+   * straight away; the row stays, `removing`, until workspace.removed drops it.
+   */
   async removeWorkspace(id: string, deleteBranch: boolean): Promise<void> {
     await this.api.workspace.remove({ id, deleteBranch })
-    this.setWith((s) => ({
-      workspaces: without(s.workspaces, id),
-      view: viewWithout(s.view, [id])
-    }))
+    this.setWith((s) => ({ view: viewWithout(s.view, [id]) }))
   }
 
   openInEditor(path: string): Promise<void> {
@@ -1509,6 +1519,13 @@ function mergeById<T extends { id: string; createdAt: string }>(
   return [...a, ...b.filter((x) => !seen.has(x.id))].sort((x, y) =>
     x.createdAt.localeCompare(y.createdAt)
   )
+}
+
+/** The error line for a removal with failed steps: `Removing <name>: running teardown failed, timed out after 60s`. */
+function removalFailedMessage(name: string, failed: RemovalFailure[]): string {
+  const steps = failed.map((f) => `${removalStepLabel(f.step)} failed, ${f.error}`)
+
+  return `Removing ${name}: ${steps.join('; ')}`
 }
 
 /** The view, or the scratch terminals when it shows one of these workspaces. */

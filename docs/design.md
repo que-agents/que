@@ -55,7 +55,7 @@ so the DOM keeps the plain word.
 | `--tone-attention` | `#f99c00` | needs input.                                                                                                                                       |
 | `--tone-bad`       | `#fb2c36` | stuck, exited badly; the danger button.                                                                                                            |
 | `--tone-good`      | `#34c26b` | idle after work: a sidebar row that finished since you last looked at it.                                                                          |
-| `--tone-neutral`   | `#7a7a7a` | idle.                                                                                                                                              |
+| `--tone-neutral`   | `#7a7a7a` | idle; the working mark while a workspace is being removed (sidebar and card).                                                                      |
 | `--tone-muted`     | `#5a5a5a` | exited.                                                                                                                                            |
 
 The accent is a teal, apart in hue from both the done green and the working
@@ -167,6 +167,16 @@ only under the pointer.
   `›_` in mono 11px `--fg-faint` at its right end (the session glyph: something is
   still running there); the overlay under the pointer covers it, and a working row
   never shows it, since the ripple already says so.
+- **Being removed.** A workspace keeps its row until the daemon has removed it. Its
+  mark is the working mark drawn in `--tone-neutral` (the one other place the mark
+  appears, and the one time it is not the accent: the ripple says something is moving,
+  the grey says it is not a session), its name reads `--fg-faint`, and it is never
+  painted as unseen. Where `›_` would sit, always shown, is the step it is on with its
+  verb and a clock since the step started: `killing terminals 1s`, `running teardown
+  12s`, `removing worktree 0s`, `deleting branch 0s`, mono 11px `--fg-faint` with
+  tabular numbers, ticking every second; the name gives way with its ellipsis before the
+  word does. Under the pointer the overlay shows the same word and no ⋯; the row cannot
+  be selected and has no menu, but its card still opens. The quiet board leaves it out.
 - **The weight of a name.** `--fg` when the row needs you (finished since you last
   looked, needs input, or stuck); `--fg-secondary` while it works; `--fg-faint` once you have
   looked and nothing is new, and the same faint for an exited workspace, told apart by
@@ -202,7 +212,16 @@ only under the pointer.
   `--fg-faint` (the dot in its tone, the word, a reason, `since HH:MM`, the last
   activity); while anything runs in the background, `[ BACKGROUND ]` and a line per task:
   the kind in `--fg-faint`, the description in `--fg-secondary`, and its age at the right
-  (a working row lists its subagents here); a hairline; and `[ PULL REQUESTS ]`, newest
+  (a working row lists its subagents here); while the workspace is being removed (the
+  status line reads `removing`, and there is no background, since its terminals are gone),
+  `[ REMOVING ]` and a line per step it runs, mono 11px, the dot in an 8px column so the
+  dots and the mark line up: a done step's filled `--tone-muted` dot, its words in
+  `--fg-faint` and its time at the right (`0.1s`, `12s`); a failed step's `--tone-bad` dot,
+  its words in `--fg-secondary` and the reason at the right in `--tone-bad`; the step
+  running now with the working mark in `--tone-neutral`, its words in `--fg-secondary` and
+  its clock at the right, ticking each second; a step still to come with a hollow dot (a
+  1px `--tone-muted` ring), its words in `--fg-faint` and nothing at the right; a hairline;
+  and `[ PULL REQUESTS ]`, newest
   first: `#n` in `--fg-secondary`, the state in its tone, `+added −removed` in
   `--tone-good` and `--tone-bad` at the right, then the title in sans 12px
   `--fg-secondary` over at most two lines and a failing check's name in `--fg-faint`

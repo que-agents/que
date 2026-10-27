@@ -159,6 +159,8 @@ function prefixed(sub: ConfigError[], prefix: string, errors: ConfigError[]): vo
 
 const isPositive = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v) && v > 0
 
+const isAtLeastOne = (v: unknown): v is number => isPositive(v) && v >= 1
+
 const isString = (v: unknown): v is string => typeof v === 'string'
 
 const isNonEmptyString = (v: unknown): v is string => typeof v === 'string' && v.length > 0
@@ -342,6 +344,9 @@ export function parseConfig(text: string, env: ConfigEnv): ConfigResult<UserConf
   if (root) config.worktreeRoot = expandHome(root)
   config.stallTimeoutMinutes =
     positive(t, 'stall_timeout_minutes', errors) ?? config.stallTimeoutMinutes
+  config.teardownTimeoutSeconds =
+    field(t, 'teardown_timeout_seconds', errors, isAtLeastOne, 'must be a number of at least 1') ??
+    config.teardownTimeoutSeconds
   config.statusPollSeconds = positive(t, 'status_poll_seconds', errors) ?? config.statusPollSeconds
   config.prPollSeconds = positive(t, 'pr_poll_seconds', errors) ?? config.prPollSeconds
   config.defaultPermissionMode = permissionMode(t, 'default_permission_mode', errors)

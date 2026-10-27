@@ -1,7 +1,7 @@
 // Sessions (loose terminals) above projects → workspaces with their status dots
 // (`data-status`, `data-unseen`) and the word under the pointer, the unlock row and
 // the report entry in the foot, the project context menu, and the new-workspace and
-// remove-project dialogs, and the card a workspace row opens under a resting pointer.
+// remove-project and remove-workspace dialogs, a removing row's step word, and the card a workspace row opens under a resting pointer.
 import { expect, type Locator, type Page } from '@playwright/test'
 
 export class SidebarPage {
@@ -32,6 +32,9 @@ export class SidebarPage {
   newWorkspaceSubmit: Locator
   removeProjectDialog: Locator
   removeProjectSubmit: Locator
+  removeWorkspaceDialog: Locator
+  removeWorkspaceDeleteBranch: Locator
+  removeWorkspaceSubmit: Locator
   project: (id: string) => Locator
   projectToggle: (id: string) => Locator
   projectMenuRemove: (id: string) => Locator
@@ -44,6 +47,8 @@ export class SidebarPage {
   workspaceReveal: (id: string) => Locator
   workspaceWord: (id: string) => Locator
   workspaceMenu: (id: string) => Locator
+  workspaceMenuRemove: (id: string) => Locator
+  workspaceStep: (id: string) => Locator
   workspacePopout: (id: string) => Locator
   workspacePopoutPath: (id: string) => Locator
   workspacePopoutBranch: (id: string) => Locator
@@ -82,6 +87,9 @@ export class SidebarPage {
     this.newWorkspaceSubmit = page.getByTestId('dialog-new-workspace-submit')
     this.removeProjectDialog = page.getByTestId('dialog-remove-project')
     this.removeProjectSubmit = page.getByTestId('dialog-remove-project-submit')
+    this.removeWorkspaceDialog = page.getByTestId('dialog-remove-workspace')
+    this.removeWorkspaceDeleteBranch = page.getByTestId('dialog-remove-workspace-delete-branch')
+    this.removeWorkspaceSubmit = page.getByTestId('dialog-remove-workspace-submit')
     this.project = (id: string) => page.getByTestId(`sidebar-project-${id}`)
     this.projectToggle = (id: string) => page.getByTestId(`sidebar-project-${id}-toggle`)
     this.projectMenuRemove = (id: string) => page.getByTestId(`sidebar-project-${id}-menu-remove`)
@@ -96,6 +104,10 @@ export class SidebarPage {
     this.workspaceReveal = (id: string) => page.getByTestId(`sidebar-workspace-${id}-reveal`)
     this.workspaceWord = (id: string) => page.getByTestId(`sidebar-workspace-${id}-word`)
     this.workspaceMenu = (id: string) => page.getByTestId(`sidebar-workspace-${id}-menu`)
+    this.workspaceMenuRemove = (id: string) =>
+      page.getByTestId(`sidebar-workspace-${id}-menu-remove`)
+    // While the workspace is removed: its step and the clock since it started, always shown.
+    this.workspaceStep = (id: string) => page.getByTestId(`sidebar-workspace-${id}-step`)
     // The card beside a row: opens once the pointer rests on the row.
     this.workspacePopout = (id: string) => page.getByTestId(`sidebar-workspace-${id}-popout`)
     this.workspacePopoutPath = (id: string) =>

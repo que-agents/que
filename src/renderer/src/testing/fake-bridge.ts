@@ -40,7 +40,9 @@ import {
   type WorkspaceCreateParams,
   type WorkspaceRenameParams
 } from '../../../shared/protocol'
+import { removalStep } from '../../../shared/removal'
 import { workspaceSlug } from '../../../shared/slug'
+import type { RemovalFailure, RemovalResult, RemovalStep } from '../../../shared/types'
 import { makeQuietState, makeUserConfig } from './fixtures'
 
 export type FakeQueApi = QueApi
@@ -170,6 +172,8 @@ class FakeBridge {
   private configSets: ConfigSetParams[] = []
   /** A test's hold or refusal on config.set. */
   private configGate = new Gate()
+  /** workspace.remove stops on its first step until the test advances it. */
+  private removalsHeld = false
   /** The instructions file's text; null while it does not exist. */
   private instructionsText: string | null = null
   private instructionsSets: string[] = []
@@ -528,9 +532,9 @@ class FakeBridge {
             !p?.projectId || w.projectId === p.projectId ? [{ ...w }] : []
           ),
         get: async ({ id }) => ({ ...this.workspace(id) }),
-        remove: async ({ id }) => {
+        remove: async ({ id, deleteBranch }) => {
           this.workspace(id)
-          this.removeWorkspace(id)
+          this.startRemoval(id, deleteBranch)
 
           return { ok: true }
         },
@@ -1165,6 +1169,7 @@ class FakeBridge {
     this.configGate.reset()
     this.instructionsText = null
     this.instructionsSets = []
+    this.removalsHeld = false
   }
 
   private workspace(id: string): Workspace {
@@ -1189,16 +1194,80 @@ class FakeBridge {
     return { ...report, since: since ?? report.generatedAt }
   }
 
-  private removeWorkspace(id: string): void {
+  private killTerminalsOf(id: string): void {
     for (const t of [...this.terminals.values()]) {
       if (t.workspaceId === id) {
         this.terminals.delete(t.id)
         this.emit('term.killed', { id: t.id })
       }
     }
+  }
 
+  /** Gone at once, as a project's removal takes its workspaces. */
+  private removeWorkspace(id: string): void {
+    this.killTerminalsOf(id)
     this.workspaces.delete(id)
     this.emit('workspace.removed', { id })
+  }
+
+  /**
+   * workspace.remove: kills the terminals, marks the row `removing` on its first step and emits
+   * workspace.updated, as the daemon does before it answers. Then every step runs at once,
+   * unless holdRemovals() leaves each one to advanceRemoval().
+   */
+  private startRemoval(id: string, deleteBranch: boolean): void {
+    this.killTerminalsOf(id)
+    const at = new Date().toISOString()
+    const plan: RemovalStep[] = ['terminals', 'teardown', 'worktree']
+
+    if (deleteBranch) plan.push('branch')
+
+    this.putWorkspace({
+      ...this.workspace(id),
+      status: 'removing',
+      statusReason: null,
+      statusAt: at,
+      removal: { plan, since: at, done: [] }
+    })
+
+    if (this.removalsHeld) return
+
+    while (this.workspaces.has(id)) this.advanceRemoval(id)
+  }
+
+  /** From now until reset, workspace.remove stops on its first step; advanceRemoval() walks it. */
+  holdRemovals(): void {
+    this.removalsHeld = true
+  }
+
+  /**
+   * Finishes the removal's current step (failed with `error` when given) and starts the next,
+   * emitting workspace.updated; past the last step, the row goes with workspace.removed, whose
+   * `failed` lists the steps that failed.
+   */
+  advanceRemoval(id: string, opts: { error?: string } = {}): void {
+    const ws = this.workspace(id)
+    const removal = ws.removal
+    const step = removal ? removalStep(removal) : null
+
+    if (ws.status !== 'removing' || !removal || !step) {
+      throw new Error(`workspace ${id} is not being removed`)
+    }
+
+    const finished: RemovalResult = { step, ms: 4 }
+
+    if (opts.error) finished.error = opts.error
+    const done = [...removal.done, finished]
+
+    if (done.length === removal.plan.length) {
+      const failed = done.filter((d): d is RemovalFailure => d.error !== undefined)
+      this.workspaces.delete(id)
+      this.emit('workspace.removed', failed.length > 0 ? { id, failed } : { id })
+
+      return
+    }
+
+    this.putWorkspace({ ...ws, removal: { ...removal, since: new Date().toISOString(), done } })
   }
 
   private createTerminal(

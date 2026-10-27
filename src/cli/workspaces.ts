@@ -4,7 +4,13 @@ import { join, resolve } from 'node:path'
 import type { Command } from 'commander'
 import { summarize, trayTitle } from '../daemon/status-engine'
 import type { DaemonClient } from '../shared/client'
-import { formatAge, formatDuration, spanMs } from '../shared/format'
+import {
+  formatAge,
+  formatDuration,
+  formatStepDuration,
+  removalStepLabel,
+  spanMs
+} from '../shared/format'
 import { quePaths } from '../shared/paths'
 import type { DiffFile, WorkspaceDiff, WorkspaceFiles } from '../shared/protocol'
 import type {
@@ -13,6 +19,7 @@ import type {
   Project,
   PullRequest,
   QuietState,
+  RemovalResult,
   Workspace
 } from '../shared/types'
 import { attach } from './attach'
@@ -172,6 +179,64 @@ async function waitForSetup(c: DaemonClient, ws: Workspace, seen: Workspace[]): 
   return c.request('workspace.get', { id: ws.id })
 }
 
+/** A finished removal step as `que ws remove` prints it: `killing terminals 0.1s`. */
+function formatRemovalStep(r: RemovalResult): string {
+  const line = `${removalStepLabel(r.step)} ${formatStepDuration(r.ms)}`
+
+  return r.error ? `${line}: ${r.error}` : line
+}
+
+/**
+ * Removes a workspace and waits for workspace.removed, printing each step as it finishes
+ * (a failed one to stderr). Returns whether any step failed.
+ */
+async function removeWorkspace(
+  c: DaemonClient,
+  ws: Workspace,
+  deleteBranch: boolean
+): Promise<boolean> {
+  let printed = 0
+  let failed = false
+
+  const print = (done: RemovalResult[]): void => {
+    for (const r of done.slice(printed)) {
+      if (r.error) {
+        process.stderr.write(`que: ${formatRemovalStep(r)}\n`)
+      } else {
+        console.log(formatRemovalStep(r))
+      }
+    }
+
+    printed = Math.max(printed, done.length)
+  }
+
+  const offs: Array<() => void> = []
+
+  // Listening before the request, so no step can finish unseen.
+  const removed = new Promise<void>((done) => {
+    offs.push(
+      c.on('workspace.updated', (e) => {
+        if (e.id === ws.id && e.removal) print(e.removal.done)
+      }),
+      c.on('workspace.removed', (e) => {
+        if (e.id !== ws.id) return
+
+        if (e.failed?.length) failed = true
+        done()
+      })
+    )
+  })
+
+  try {
+    await c.request('workspace.remove', { id: ws.id, deleteBranch })
+    await removed
+  } finally {
+    for (const off of offs) off()
+  }
+
+  return failed
+}
+
 /** The workspace's most recent live terminal, or a new one. */
 async function workspaceTerminal(
   c: DaemonClient,
@@ -313,13 +378,17 @@ export function registerWorkspaceCommands(program: Command): void {
       })
     )
   ws.command('remove <workspace>')
-    .description('remove a workspace: kill its terminals, run teardown, remove the worktree')
-    .option('--delete-branch', 'also delete its branch')
-    .action((ref: string, opts: { deleteBranch?: boolean }) =>
+    .description(
+      'remove a workspace: kill its terminals, run teardown, remove the worktree and delete its branch'
+    )
+    .option('--keep-branch', 'keep its branch')
+    .action((ref: string, opts: { keepBranch?: boolean }) =>
       withClient(async (c) => {
         const w = await findWorkspace(c, ref)
-        await c.request('workspace.remove', { id: w.id, deleteBranch: opts.deleteBranch === true })
+        const failed = await removeWorkspace(c, w, opts.keepBranch !== true)
         console.log(`removed ${w.id} (${w.name})`)
+
+        if (failed) process.exitCode = 1
       })
     )
   ws.command('diff <workspace>')
@@ -426,7 +495,7 @@ export function registerWorkspaceCommands(program: Command): void {
 
         if (quiet.inQuietHours) console.log(describeQuietState(quiet))
         console.log(
-          `${trayTitle(summary)}   working ${summary.working} · needs input ${summary.needs_input} · stuck ${summary.stuck} · idle ${summary.idle} · exited ${summary.exited} · preparing ${summary.preparing}`
+          `${trayTitle(summary)}   working ${summary.working} · needs input ${summary.needs_input} · stuck ${summary.stuck} · idle ${summary.idle} · exited ${summary.exited} · preparing ${summary.preparing} · removing ${summary.removing}`
         )
 
         if (list.length === 0) return console.log('no workspaces')

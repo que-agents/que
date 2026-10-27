@@ -78,6 +78,23 @@ const lonely = makeWorkspace({
   status: 'idle'
 })
 
+// Being removed: the terminals went in 0.1s, the teardown timed out, the worktree is going
+// now (12s in), and the branch waits.
+const leaving = makeWorkspace({
+  id: 'ws_01hzx6r3d8vn',
+  name: 'app-1460-old-spike',
+  status: 'removing',
+  statusAt: new Date(2026, 9, 17, 16, 0).toISOString(),
+  removal: {
+    plan: ['terminals', 'teardown', 'worktree', 'branch'],
+    since: new Date(NOW - 12_000).toISOString(),
+    done: [
+      { step: 'terminals', ms: 100 },
+      { step: 'teardown', ms: 60_000, error: 'timed out 60s' }
+    ]
+  }
+})
+
 /** The sidebar on a store with the popout's delays injected, as the app would start it. */
 function renderSidebar(delays: PopoutDelays = { open: 0, close: 0 }): void {
   fakeBridge.seedProject(uploader)
@@ -322,6 +339,74 @@ describe('WorkspacePopout', () => {
         'no pull request'
       )
       expect(within(popout).queryByTestId(/-popout-pr-\d+$/)).not.toBeInTheDocument()
+    })
+
+    it('lists a removal’s steps under [ REMOVING ]: done with its time, failed with its reason, the current one with its clock, the rest pending', async () => {
+      const user = userEvent.setup()
+      fakeBridge.seedProject(uploader)
+      fakeBridge.seedWorkspace(leaving)
+      const store = new QueStore(window.que, { now: clock, popoutDelays: { open: 0, close: 0 } })
+      store.start()
+      render(
+        <StoreContext.Provider value={store}>
+          <Sidebar />
+        </StoreContext.Provider>
+      )
+      const popout = await hoverCard(user, leaving.id)
+      const id = `sidebar-workspace-${leaving.id}-popout`
+      const step = (s: string): HTMLElement => screen.getByTestId(`${id}-removal-${s}`)
+      const right = (s: string): HTMLElement => screen.getByTestId(`${id}-removal-${s}-right`)
+
+      expect(within(popout).getByText('Removing')).toHaveClass('label')
+      expect(screen.getByTestId(`${id}-status`)).toHaveTextContent('removing since 16:00')
+      const lines = within(screen.getByTestId(`${id}-removal`)).getAllByRole('listitem')
+      expect(lines.map((l) => [l.dataset.state, l.textContent])).toEqual([
+        ['done', 'killing terminals0.1s'],
+        ['failed', 'running teardowntimed out 60s'],
+        ['current', 'removing worktree12s'],
+        ['pending', 'deleting branch']
+      ])
+      expect(right('teardown')).toHaveAttribute('title', 'timed out 60s')
+      expect(right('branch')).toBeEmptyDOMElement()
+      expect(step('worktree').querySelector('.working-mark.neutral')).toBeInTheDocument()
+      expect(step('terminals').querySelector('.working-mark')).not.toBeInTheDocument()
+      expect(within(popout).queryByText('Background')).not.toBeInTheDocument()
+    })
+
+    it('ticks the current step’s clock every second with the store’s clock', async () => {
+      const user = userEvent.setup()
+      let t = NOW
+      fakeBridge.seedProject(uploader)
+      fakeBridge.seedWorkspace(leaving)
+      const store = new QueStore(window.que, { now: () => t, popoutDelays: { open: 0, close: 0 } })
+      store.start()
+      render(
+        <StoreContext.Provider value={store}>
+          <Sidebar />
+        </StoreContext.Provider>
+      )
+      await hoverCard(user, leaving.id)
+
+      const right = screen.getByTestId(
+        `sidebar-workspace-${leaving.id}-popout-removal-worktree-right`
+      )
+
+      expect(right).toHaveTextContent('12s')
+
+      t = NOW + 5_000
+
+      await waitFor(() => expect(right).toHaveTextContent('17s'), { timeout: 3_000 })
+    })
+
+    it('has no removal section while the workspace is not being removed', async () => {
+      const user = userEvent.setup()
+      renderSidebar()
+      const popout = await hoverCard(user, retry.id)
+
+      expect(
+        screen.queryByTestId(`sidebar-workspace-${retry.id}-popout-removal`)
+      ).not.toBeInTheDocument()
+      expect(within(popout).queryByText('Removing')).not.toBeInTheDocument()
     })
 
     it('draws the copy icons only under the pointer, the editor icon and the links always', async () => {

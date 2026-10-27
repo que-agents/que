@@ -6,8 +6,10 @@ import {
   formatMinSec,
   formatSince,
   formatSpan,
+  formatStepDuration,
   hhmm,
-  plural
+  plural,
+  removalStepLabel
 } from './format'
 
 describe('formatCost', () => {
@@ -104,5 +106,30 @@ describe('plural', () => {
     [2, '2 terminals']
   ])('counts %i', (n, text) => {
     expect(plural(n, 'terminal')).toBe(text)
+  })
+})
+
+describe('removalStepLabel', () => {
+  it.each([
+    ['terminals', 'killing terminals'],
+    ['teardown', 'running teardown'],
+    ['worktree', 'removing worktree'],
+    ['branch', 'deleting branch']
+  ] as const)('says what the %s step is doing', (step, label) => {
+    expect(removalStepLabel(step)).toBe(label)
+  })
+})
+
+describe('formatStepDuration', () => {
+  it.each([
+    [0, '0.0s'],
+    [100, '0.1s'],
+    [2_440, '2.4s'],
+    [9_940, '9.9s'],
+    [9_960, '10s'],
+    [12_000, '12s'],
+    [65_000, '1m 05s']
+  ])('writes %i ms as %s', (ms, text) => {
+    expect(formatStepDuration(ms)).toBe(text)
   })
 })

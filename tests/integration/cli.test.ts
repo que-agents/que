@@ -162,16 +162,45 @@ describe('que work and que ws', () => {
     expect(project).toMatchObject({ name: 'uploader-api', path: repo })
   }, 30_000)
 
-  it('removes a workspace by name and deletes its branch', async () => {
+  it('removes a workspace by name, printing each step, and deletes its branch', async () => {
     const repo = makeTempRepo(daemon.home)
     await runCli('work', '--name', 'app-1470-cleanup', '-r', repo)
 
-    const r = await runCli('ws', 'remove', 'app-1470-cleanup', '--delete-branch')
+    const r = await runCli('ws', 'remove', 'app-1470-cleanup')
 
     expect(r.code).toBe(0)
-    expect(r.stdout).toMatch(/^removed ws_[a-z2-7]{12} \(app-1470-cleanup\)/)
+    expect(r.stdout.trim().split('\n')).toEqual([
+      expect.stringMatching(/^killing terminals \d+\.\ds$/),
+      expect.stringMatching(/^removing worktree \d+\.\ds$/),
+      expect.stringMatching(/^deleting branch \d+\.\ds$/),
+      expect.stringMatching(/^removed ws_[a-z2-7]{12} \(app-1470-cleanup\)$/)
+    ])
     expect(await daemon.client.request('workspace.list')).toEqual([])
     expect(gitIn(repo, 'branch', '--list', 'app-1470-cleanup')).toBe('')
+  }, 30_000)
+
+  it('keeps the branch with --keep-branch', async () => {
+    const repo = makeTempRepo(daemon.home)
+    await runCli('work', '--name', 'app-1471-keep', '-r', repo)
+
+    const r = await runCli('ws', 'remove', 'app-1471-keep', '--keep-branch')
+
+    expect(r.code).toBe(0)
+    expect(r.stdout).not.toContain('deleting branch')
+    expect(await daemon.client.request('workspace.list')).toEqual([])
+    expect(gitIn(repo, 'branch', '--list', 'app-1471-keep')).toBe('app-1471-keep')
+  }, 30_000)
+
+  it('prints a failed step to stderr and exits 1, still removing the workspace', async () => {
+    const repo = makeTempRepo(daemon.home, { queToml: 'setup = "true"\nteardown = "exit 3"\n' })
+    await runCli('work', '--name', 'app-1472-bad-teardown', '-r', repo)
+
+    const r = await runCli('ws', 'remove', 'app-1472-bad-teardown')
+
+    expect(r.code).toBe(1)
+    expect(r.stderr).toMatch(/^que: running teardown \d+\.\ds: exited with code 3$/m)
+    expect(r.stdout).toMatch(/^removed ws_[a-z2-7]{12} \(app-1472-bad-teardown\)$/m)
+    expect(await daemon.client.request('workspace.list')).toEqual([])
   }, 30_000)
 
   it('opens a workspace with code -n', async () => {
@@ -213,7 +242,8 @@ describe('que status', () => {
       needs_input: 1,
       stuck: 0,
       exited: 0,
-      preparing: 0
+      preparing: 0,
+      removing: 0
     })
     expect(status.tray).toBe('● 0 ▸ 1 ✕ 0')
     expect(status.workspaces).toEqual([

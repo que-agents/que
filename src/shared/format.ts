@@ -1,5 +1,6 @@
 // Pure text formatters shared by the daemon, the CLI and the renderer: money,
 // lengths of time, ages, and wall-clock times. No Node imports.
+import type { RemovalStep } from './types'
 
 /** `$0.42`; whole cents, never `$0.4200001`. */
 export function formatCost(usd: number): string {
@@ -148,4 +149,23 @@ export function formatSince(sinceMs: number, nowMs: number): string {
 /** A count with its noun, an s added past one: "3 terminals", "1 terminal". */
 export function plural(n: number, word: string): string {
   return `${n} ${word}${n === 1 ? '' : 's'}`
+}
+
+const REMOVAL_STEP_LABELS: Record<RemovalStep, string> = {
+  terminals: 'killing terminals',
+  teardown: 'running teardown',
+  worktree: 'removing worktree',
+  branch: 'deleting branch'
+}
+
+/** What a removal step is doing, as the app and the CLI say it: `running teardown`. */
+export function removalStepLabel(step: RemovalStep): string {
+  return REMOVAL_STEP_LABELS[step]
+}
+
+/** How long a finished removal step took: tenths under ten seconds (`0.1s`, `2.4s`), else `12s`, `1m 05s`. */
+export function formatStepDuration(ms: number): string {
+  const tenths = Math.round(Math.max(0, ms) / 100)
+
+  return tenths < 100 ? `${(tenths / 10).toFixed(1)}s` : formatDuration(ms)
 }

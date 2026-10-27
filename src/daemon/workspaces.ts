@@ -6,12 +6,14 @@ import fs from 'node:fs'
 import { basename, dirname, isAbsolute, join, normalize, resolve } from 'node:path'
 import { titleOf } from '../shared/brief'
 import {
+  defaultConfig,
   formatConfigErrors,
   loadRepoConfig,
   type RepoConfig,
   resolvePermissionMode,
   type UserConfig
 } from '../shared/config'
+import { errorMessage } from '../shared/errors.decode'
 import { run } from '../shared/exec'
 import { loginShell } from '../shared/login-path'
 import type { QuePaths } from '../shared/paths'
@@ -23,7 +25,15 @@ import type {
 } from '../shared/protocol'
 import { randomWorkspaceName } from '../shared/names'
 import { workspaceSlug } from '../shared/slug'
-import type { Project, Workspace } from '../shared/types'
+import { removalStep } from '../shared/removal'
+import type {
+  Project,
+  Removal,
+  RemovalFailure,
+  RemovalResult,
+  RemovalStep,
+  Workspace
+} from '../shared/types'
 import { badRequest, conflict, notFound } from './errors'
 import type { Emit } from './bus'
 import type { StatusService } from './status'
@@ -137,6 +147,11 @@ export interface WorkspaceManagerOptions {
 
 export class WorkspaceManager {
   private setups = new Map<string, ChildProcess>()
+  private teardowns = new Map<string, ChildProcess>()
+  /** Each workspace's removal in progress, settling when it has finished. */
+  private removals = new Map<string, Promise<void>>()
+  /** After close(): the store may be closed, so a removal stops where it is. */
+  private closed = false
 
   constructor(private opts: WorkspaceManagerOptions) {}
 
@@ -239,7 +254,9 @@ export class WorkspaceManager {
       throw conflict(`project ${id} has ${open.length} workspace(s); remove them or pass force`)
     }
 
-    for (const ws of open) await this.remove({ id: ws.id })
+    // A project removed by force keeps its branches.
+    for (const ws of open) await this.remove({ id: ws.id, deleteBranch: false })
+    await Promise.all(open.map((ws) => this.removals.get(ws.id)))
     this.opts.store.deleteProject(id)
   }
 
@@ -508,20 +525,15 @@ export class WorkspaceManager {
 
     const child = this.runInWorktree(ws, 'setup', command)
     this.setups.set(ws.id, child)
-    let done = false
 
-    const finish = (ok: boolean): void => {
-      if (done) return
-      done = true
+    void exited(child).then(({ code, error }) => {
+      const ok = code === 0 && error === undefined
 
       if (this.setups.get(ws.id) === child) this.setups.delete(ws.id)
       this.log(`workspace ${ws.id} setup ${ok ? 'finished' : 'failed'}`)
 
       this.opts.status.apply(ws.id, { kind: ok ? 'setup_done' : 'setup_failed' })
-    }
-
-    child.once('error', () => finish(false))
-    child.once('exit', (code) => finish(code === 0))
+    })
   }
 
   /** Runs a que.toml command in the worktree via /bin/sh, logging to logs/workspaces/. */
@@ -542,56 +554,283 @@ export class WorkspaceManager {
     }
   }
 
-  /** Tears down and removes the worktree, and with deleteBranch the branch it has checked out. */
+  /**
+   * Marks the workspace `removing` and starts its removal in the background (see runRemoval);
+   * resolves once it is marked. A workspace already being removed is left to that removal.
+   */
   async remove(p: WorkspaceRemoveParams): Promise<void> {
-    const ws = await this.syncBranch(p.id)
+    const ws = this.get(p.id)
+
+    if (ws.status === 'removing' || this.removals.has(ws.id)) return
+    const marked = this.markRemoving(ws.id, p.deleteBranch)
+
+    // Held from the first await, so a second remove of the same workspace finds it.
+    this.removals.set(
+      ws.id,
+      marked
+        .then(() => this.runRemoval(ws.id))
+        .catch(() => {})
+        .finally(() => this.removals.delete(ws.id))
+    )
+    await marked
+  }
+
+  /**
+   * Resumes the removals a previous daemon left unfinished, from the step each one was on,
+   * and empties the trash in the background.
+   */
+  start(): void {
+    for (const id of this.opts.store.listWorkspaceIdsByStatus('removing')) {
+      if (this.removals.has(id)) continue
+      const ws = this.opts.store.getWorkspace(id)
+
+      if (!ws?.removal) continue
+      const removal = ws.removal
+      this.log(`workspace ${id} removal resumes at ${removalStep(removal) ?? 'the end'}`)
+      this.saveRemoval(id, { ...removal, since: new Date().toISOString() })
+      this.removals.set(
+        id,
+        this.runRemoval(id).finally(() => this.removals.delete(id))
+      )
+    }
+
+    const trash = this.trashDir()
+    void fs.promises
+      .readdir(trash)
+      .then((names) => {
+        for (const name of names) this.discard(join(trash, name))
+      })
+      .catch(() => {})
+  }
+
+  /** Records the branch it has checked out, plans the steps, and moves it to `removing`. */
+  private async markRemoving(id: string, deleteBranch: boolean): Promise<void> {
+    const ws = await this.syncBranch(id)
     const project = this.opts.store.getProject(ws.projectId)
-    this.opts.killTerminals(ws.id)
-    const setup = this.setups.get(ws.id)
+    const plan: RemovalStep[] = ['terminals']
+
+    if (project && fs.existsSync(ws.path) && this.teardownCommand(project)) plan.push('teardown')
+
+    if (project) plan.push('worktree')
+
+    if (project && deleteBranch) plan.push('branch')
+    this.opts.store.setWorkspaceRemoval(ws.id, newRemoval(plan))
+    // The engine commits `removing` and announces the row, removal included.
+    this.opts.status.apply(ws.id, { kind: 'remove' })
+    this.log(`workspace ${ws.id} removing: ${plan.join(', ')}`)
+  }
+
+  private teardownCommand(project: Project): string | undefined {
+    const r = loadRepoConfig(project.path)
+
+    return r.ok ? r.config.teardown : undefined
+  }
+
+  /** Stores where the removal stands and announces the row with workspace.updated. */
+  private saveRemoval(id: string, removal: Removal): Removal {
+    this.opts.store.setWorkspaceRemoval(id, removal)
+    const ws = this.opts.store.getWorkspace(id)
+
+    if (ws) this.opts.emit('workspace.updated', ws)
+
+    return removal
+  }
+
+  /**
+   * Runs the planned steps from the current one, announcing each result (which starts the next
+   * step's clock); a step that fails is recorded and the rest still run. Then archives the row
+   * and sends workspace.removed with the failures. Stops where it is when the daemon shuts down, to be resumed by start().
+   */
+  private async runRemoval(id: string): Promise<void> {
+    try {
+      const ws = this.opts.store.getWorkspace(id)
+
+      if (!ws?.removal) return
+      const project = this.opts.store.getProject(ws.projectId)
+      let removal = ws.removal
+
+      for (const step of removal.plan.slice(removal.done.length)) {
+        const started = Date.now()
+        const error = await this.runStep(step, ws, project)
+
+        if (this.closed) return
+        const result: RemovalResult = { step, ms: Date.now() - started }
+
+        if (error) {
+          result.error = error
+          this.log(`workspace ${id} removal: ${step} failed: ${error}`)
+        }
+
+        removal = this.saveRemoval(id, {
+          ...removal,
+          done: [...removal.done, result],
+          since: new Date().toISOString()
+        })
+      }
+
+      this.opts.store.archiveWorkspace(id, new Date().toISOString())
+      this.opts.status.forget(id)
+      const failed = removal.done.filter((r): r is RemovalFailure => r.error !== undefined)
+      this.log(
+        `workspace ${id} removed${failed.length ? ` (${failed.length} step(s) failed)` : ''}`
+      )
+      this.opts.emit('workspace.removed', failed.length ? { id, failed } : { id })
+    } catch (err) {
+      if (!this.closed) this.log(`workspace ${id} removal stopped: ${errorMessage(err)}`)
+    }
+  }
+
+  /** Runs one removal step; returns why it failed, or undefined. Never throws. */
+  private async runStep(
+    step: RemovalStep,
+    ws: Workspace,
+    project: Project | undefined
+  ): Promise<string | undefined> {
+    try {
+      switch (step) {
+        case 'terminals':
+          this.killAll(ws.id)
+
+          return undefined
+        case 'teardown':
+          return project ? await this.teardown(ws, project) : undefined
+        case 'worktree':
+          return project ? await this.removeWorktree(ws, project) : 'its project is gone'
+        case 'branch': {
+          if (!project) return 'its project is gone'
+          const deleted = await git(project.path, ['branch', '-D', ws.branch])
+
+          return deleted.ok ? undefined : `git branch -D ${ws.branch} failed: ${deleted.stderr}`
+        }
+      }
+    } catch (err) {
+      return errorMessage(err)
+    }
+  }
+
+  /** Kills the workspace's terminals and a setup command still running. */
+  private killAll(id: string): void {
+    this.opts.killTerminals(id)
+    const setup = this.setups.get(id)
 
     if (setup) {
-      this.setups.delete(ws.id)
+      this.setups.delete(id)
       killGroup(setup)
     }
-
-    if (project && fs.existsSync(ws.path)) {
-      const teardown = loadRepoConfig(project.path)
-
-      if (teardown.ok && teardown.config.teardown) {
-        const child = this.runInWorktree(ws, 'teardown', teardown.config.teardown)
-        const timer = setTimeout(() => killGroup(child), 60_000)
-        await new Promise<void>((resolve) => {
-          child.once('exit', () => resolve())
-          child.once('error', () => resolve())
-        })
-        clearTimeout(timer)
-      }
-    }
-
-    if (project) {
-      const removed = await git(project.path, ['worktree', 'remove', '--force', ws.path])
-
-      if (!removed.ok) this.log(`git worktree remove ${ws.path} failed: ${removed.stderr}`)
-      await git(project.path, ['worktree', 'prune'])
-
-      if (p.deleteBranch) {
-        const deleted = await git(project.path, ['branch', '-D', ws.branch])
-
-        if (!deleted.ok) this.log(`git branch -D ${ws.branch} failed: ${deleted.stderr}`)
-      }
-    }
-
-    this.opts.store.archiveWorkspace(ws.id, new Date().toISOString())
-    this.opts.status.forget(ws.id)
-    this.log(`workspace ${ws.id} removed`)
-    this.opts.emit('workspace.removed', { id: ws.id })
   }
 
-  /** Stops setup commands still running (daemon shutdown). */
+  /** The repo's teardown hook, killed after teardown_timeout_seconds; skipped when the worktree is gone. */
+  private async teardown(ws: Workspace, project: Project): Promise<string | undefined> {
+    const command = this.teardownCommand(project)
+
+    if (!command || !fs.existsSync(ws.path)) return undefined
+    const seconds = this.configOrDefaults().teardownTimeoutSeconds
+    const child = this.runInWorktree(ws, 'teardown', command)
+    this.teardowns.set(ws.id, child)
+    let timedOut = false
+
+    const timer = setTimeout(() => {
+      timedOut = true
+      killGroup(child)
+    }, seconds * 1000)
+
+    const exit = await exited(child)
+
+    clearTimeout(timer)
+
+    if (this.teardowns.get(ws.id) === child) this.teardowns.delete(ws.id)
+
+    if (timedOut) return `timed out after ${seconds}s`
+
+    if (exit.error) return exit.error
+
+    return exit.code === 0 || this.closed ? undefined : `exited with code ${exit.code ?? 'null'}`
+  }
+
+  /**
+   * Moves the worktree into `<worktree_root>/.trash/<id>` (instant on the same volume) and
+   * prunes git's record of it; the folder is deleted afterwards with nothing waiting on it.
+   * When the move fails, `git worktree remove --force` deletes it in place.
+   */
+  private async removeWorktree(ws: Workspace, project: Project): Promise<string | undefined> {
+    if (!fs.existsSync(ws.path)) {
+      // Moved already (a removal resumed after a restart), or deleted by hand.
+      const pruned = await git(project.path, ['worktree', 'prune'])
+
+      return pruned.ok ? undefined : `git worktree prune failed: ${pruned.stderr}`
+    }
+
+    const trash = join(this.trashDir(), ws.id)
+    let moveError = ''
+
+    try {
+      await fs.promises.mkdir(dirname(trash), { recursive: true })
+      await fs.promises.rm(trash, { recursive: true, force: true })
+      await fs.promises.rename(ws.path, trash)
+    } catch (err) {
+      moveError = errorMessage(err)
+    }
+
+    if (!moveError) {
+      this.discard(trash)
+      const pruned = await git(project.path, ['worktree', 'prune'])
+
+      return pruned.ok ? undefined : `git worktree prune failed: ${pruned.stderr}`
+    }
+
+    this.log(`moving ${ws.path} to the trash failed (${moveError}); removing it in place`)
+    const removed = await git(project.path, ['worktree', 'remove', '--force', ws.path])
+    await git(project.path, ['worktree', 'prune'])
+
+    if (removed.ok) return undefined
+
+    return `could not move ${ws.path} to the trash (${moveError}) or remove it (${removed.stderr}); it is still there`
+  }
+
+  /** Deletes a trash folder in the background; a failure is logged and swept at the next start. */
+  private discard(path: string): void {
+    void fs.promises
+      .rm(path, { recursive: true, force: true })
+      .catch((err: Error) => this.log(`deleting ${path} failed: ${errorMessage(err)}`))
+  }
+
+  /** The user config, or its defaults while the file cannot be read: a removal goes on regardless. */
+  private configOrDefaults(): UserConfig {
+    try {
+      return this.opts.config()
+    } catch {
+      return defaultConfig({ queHome: this.opts.paths.home })
+    }
+  }
+
+  /** Where removed worktrees go before they are deleted: `<worktree_root>/.trash`. */
+  private trashDir(): string {
+    return join(this.configOrDefaults().worktreeRoot, '.trash')
+  }
+
+  /** Stops setup and teardown commands still running (daemon shutdown); removals resume at the next start. */
   close(): void {
+    this.closed = true
+
     for (const child of this.setups.values()) killGroup(child)
+
+    for (const child of this.teardowns.values()) killGroup(child)
     this.setups.clear()
+    this.teardowns.clear()
   }
+}
+
+/** A removal at the first of its planned steps, starting now. */
+function newRemoval(plan: RemovalStep[]): Removal {
+  return { plan, since: new Date().toISOString(), done: [] }
+}
+
+/** The child's exit: its code, or the spawn error's message. */
+function exited(child: ChildProcess): Promise<{ code: number | null; error?: string }> {
+  return new Promise((resolve) => {
+    child.once('exit', (code) => resolve({ code }))
+    child.once('error', (err) => resolve({ code: null, error: err.message }))
+  })
 }
 
 function killGroup(child: ChildProcess): void {

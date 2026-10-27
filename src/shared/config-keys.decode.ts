@@ -35,6 +35,7 @@ const section = <T>(file: string, keys: Record<keyof T, Node>): Node => ({
 const SCHEMA: Node = section<ConfigPatch>('', {
   worktreeRoot: value('worktree_root'),
   stallTimeoutMinutes: value('stall_timeout_minutes'),
+  teardownTimeoutSeconds: value('teardown_timeout_seconds'),
   statusPollSeconds: value('status_poll_seconds'),
   prPollSeconds: value('pr_poll_seconds'),
   defaultPermissionMode: value('default_permission_mode'),
