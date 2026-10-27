@@ -10,6 +10,7 @@ import { appExecutable, cliScriptFrom, packagedResourcesDir } from '../shared/pa
 import { HOOK_EVENT_NAMES } from '../shared/protocol'
 import type { QuePaths } from '../shared/paths'
 import { QUE_STATUSLINE_COMMAND } from '../shared/statusline'
+import { writeFileAtomic } from './atomic-write'
 
 export interface WrapperOptions {
   paths: QuePaths
@@ -286,24 +287,17 @@ export function zshDir(paths: QuePaths): string {
   return join(paths.shellDir, 'zsh')
 }
 
-function writeFile(path: string, content: string, mode: number): void {
-  const tmp = `${path}.${process.pid}.tmp`
-  fs.writeFileSync(tmp, content, { mode })
-  fs.chmodSync(tmp, mode)
-  fs.renameSync(tmp, path)
-}
-
 /** Writes bin/claude, bin/que, hooks.json, and the zsh startup files under QUE_HOME. */
 export function installWrapper(opts: WrapperOptions): void {
   const { paths } = opts
   fs.mkdirSync(paths.binDir, { recursive: true, mode: 0o700 })
   const zdir = zshDir(paths)
   fs.mkdirSync(zdir, { recursive: true, mode: 0o700 })
-  writeFile(join(paths.binDir, 'claude'), claudeScript(paths), 0o755)
-  writeFile(join(paths.binDir, 'que'), queScript(opts), 0o755)
-  writeFile(paths.hooksJson, `${JSON.stringify(hooksSettings(), null, 2)}\n`, 0o644)
+  writeFileAtomic(join(paths.binDir, 'claude'), claudeScript(paths), 0o755)
+  writeFileAtomic(join(paths.binDir, 'que'), queScript(opts), 0o755)
+  writeFileAtomic(paths.hooksJson, `${JSON.stringify(hooksSettings(), null, 2)}\n`, 0o644)
 
   for (const [name, content] of Object.entries(zshFiles())) {
-    writeFile(join(zdir, name), content, 0o644)
+    writeFileAtomic(join(zdir, name), content, 0o644)
   }
 }

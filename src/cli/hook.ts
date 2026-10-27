@@ -46,6 +46,11 @@ export function readStdin(): Promise<string> {
   })
 }
 
+/** Waits for `work` at most `ms`, never rejecting: a session must not wait on que. */
+export async function withBudget(work: Promise<unknown>, ms: number): Promise<void> {
+  await Promise.race([work.catch(() => {}), new Promise((r) => setTimeout(r, ms).unref())])
+}
+
 /** The daemon's socket as a session sees it: QUE_SOCKET when the terminal set it. */
 export function sessionSocket(): string {
   return process.env.QUE_SOCKET || quePaths().socket
@@ -76,5 +81,5 @@ export async function runHook(): Promise<void> {
     })
   })()
 
-  await Promise.race([work.catch(() => {}), new Promise((r) => setTimeout(r, BUDGET_MS).unref())])
+  await withBudget(work, BUDGET_MS)
 }

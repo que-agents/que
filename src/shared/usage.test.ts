@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatUntil, formatUntilShort, formatUsage, formatWeekdayClock, usageTone } from './usage'
+import { formatUntil, formatUntilShort, formatUsage, usageTone } from './usage'
 
 // Local wall-clock times: Tue 27 Oct 2026, 14:08.
 const at = (day: number, h: number, m = 0, s = 0) => new Date(2026, 9, day, h, m, s).getTime()
@@ -58,13 +58,6 @@ describe('usageTone', () => {
     expect(tone(79.4)).toBeNull()
     expect(tone(79.5)).toBe('attention')
     expect(tone(99.5)).toBe('bad')
-  })
-})
-
-describe('formatWeekdayClock', () => {
-  it('names the weekday and the local clock', () => {
-    expect(formatWeekdayClock(at(2, 21, 45))).toBe('Fri 21:45')
-    expect(formatWeekdayClock(new Date(2026, 10, 2, 9, 0).getTime())).toBe('Mon 09:00')
   })
 })
 

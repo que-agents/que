@@ -1,14 +1,8 @@
 import { useCallback, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { hhmm } from '../../../shared/format'
+import { formatWeekdayClock, hhmm } from '../../../shared/format'
 import type { Usage, UsageWindow } from '../../../shared/types'
-import {
-  formatUntil,
-  formatUntilShort,
-  formatWeekdayClock,
-  usagePercent,
-  usageTone
-} from '../../../shared/usage'
+import { formatUntil, formatUntilShort, usagePercent, usageTone } from '../../../shared/usage'
 import { useQueSelector } from '../store'
 import { useNow } from '../useNow'
 import { useDismiss } from '../useDismiss'

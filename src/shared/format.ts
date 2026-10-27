@@ -103,6 +103,11 @@ const WEEKDAY_NAMES = [
   'Saturday'
 ] as const
 
+/** `Mon 09:00`: the short weekday and the clock, local time. */
+export function formatWeekdayClock(t: number): string {
+  return `${WEEKDAY_NAMES[new Date(t).getDay()].slice(0, 3)} ${hhmm(t)}`
+}
+
 const MONTH_NAMES = [
   'Jan',
   'Feb',

@@ -1,24 +1,19 @@
 // Claude plan usage as text: how long until a window resets (`in 2h 10m`),
 // when (`16:20`, `Mon 09:00`), and the lines `que usage` prints. Shared by the
-// CLI and the app. Local time, English names from a fixed table, no Node imports.
-import { hhmm } from './format'
+// CLI and the app. Local time, no Node imports.
+import { formatDuration, formatWeekdayClock, hhmm } from './format'
 import type { Usage, UsageWindow } from './types'
-
-const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const
 
 /** `in 2h 10m`, `in 45m`, `in 3d 4h`; `in <1m` under a minute, `now` once it has passed. */
 export function formatUntil(t: number, now: number): string {
   const ms = t - now
 
   if (ms <= 0) return 'now'
-  const minutes = Math.floor(ms / 60_000)
 
-  if (minutes < 1) return 'in <1m'
+  if (ms < 60_000) return 'in <1m'
+  const hours = Math.floor(ms / 3_600_000)
 
-  if (minutes < 60) return `in ${minutes}m`
-  const hours = Math.floor(minutes / 60)
-
-  if (hours < 24) return `in ${hours}h ${minutes % 60}m`
+  if (hours < 24) return `in ${formatDuration(ms, { seconds: false, pad: false })}`
 
   return `in ${Math.floor(hours / 24)}d ${hours % 24}h`
 }
@@ -26,11 +21,6 @@ export function formatUntil(t: number, now: number): string {
 /** `38m`, `2h 10m`: the time until `t` without its `in` (`now` once it has passed). */
 export function formatUntilShort(t: number, now: number): string {
   return formatUntil(t, now).replace(/^in /, '')
-}
-
-/** `Mon 09:00`: the weekday and clock, local time. */
-export function formatWeekdayClock(t: number): string {
-  return `${WEEKDAYS[new Date(t).getDay()]} ${hhmm(t)}`
 }
 
 /** A percentage used, as a whole number. */

@@ -4,7 +4,7 @@
 import { expect, test } from '@playwright/test'
 import { hhmm } from '../../src/shared/format'
 import type { Project, Workspace } from '../../src/shared/types'
-import { formatWeekdayClock } from '../../src/shared/usage'
+import { formatWeekdayClock } from '../../src/shared/format'
 import { makeTempRepo } from '../../src/testing/temp-repo'
 import { AppShellPage } from './pages/AppShellPage'
 import { SidebarPage } from './pages/SidebarPage'
