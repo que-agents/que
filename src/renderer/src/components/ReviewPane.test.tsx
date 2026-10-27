@@ -107,8 +107,8 @@ describe('ReviewPane', () => {
       expect(screen.getByTestId('review-view-prs-count')).toHaveTextContent('2')
       expect(await screen.findByTestId('review-view-changes-count')).toHaveTextContent('2')
       expect(screen.queryByTestId('review-view-files-count')).not.toBeInTheDocument()
-      expect(tabs[1]).toHaveClass('active')
-      expect(tabs[0]).not.toHaveClass('active')
+      expect(tabs[1]).toHaveAttribute('aria-selected', 'true')
+      expect(tabs[0]).toHaveAttribute('aria-selected', 'false')
       expect(screen.queryByRole('button', { name: 'Close review' })).not.toBeInTheDocument()
     })
 
