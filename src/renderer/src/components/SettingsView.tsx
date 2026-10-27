@@ -978,8 +978,8 @@ export default function SettingsView(): React.JSX.Element {
             {error('protected-branches')}
           </label>
           <p className="hint">
-            Never pushed to by Create draft PR, besides each project&apos;s default branch.
-            Comma-separated.
+            Branches whose pull requests que does not look up, besides each project&apos;s default
+            branch. Comma-separated.
           </p>
         </fieldset>
       </form>

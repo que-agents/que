@@ -8,7 +8,6 @@ import type {
   InstructionsGetResult,
   Events,
   PrThread,
-  PrThreadEntry,
   Project,
   PullRequest,
   QueApi,
@@ -34,6 +33,7 @@ import { titleOf } from '../../../shared/brief'
 import { patchToToml } from '../../../shared/config-keys.decode'
 import { mergeConfigPatch } from '../../../shared/config-patch.decode'
 import { randomWorkspaceName } from '../../../shared/names'
+import { keyOf } from '../keys'
 import {
   ErrorCodes,
   QUIET_REFUSED_METHODS,
@@ -110,7 +110,7 @@ function rpcError(code: string, message: string): Error {
 
 /** A seeded diff's key: the workspace and the exact scope it answers for. */
 function diffKey(id: string, base?: string, commit?: string): string {
-  return JSON.stringify([id, base ?? '', commit ?? ''])
+  return keyOf(id, base ?? '', commit ?? '')
 }
 
 let idCounter = 0
@@ -155,7 +155,6 @@ class FakeBridge {
   private updateInfo: UpdateInfo | null = null
   private updateListeners = new Set<(info: UpdateInfo) => void>()
   private updateOpens = 0
-  private prCalls: Array<{ id: string; title: string }> = []
   private createCallLog: WorkspaceCreateParams[] = []
   private startCallLog: string[] = []
   private termListCalls = 0
@@ -499,6 +498,7 @@ class FakeBridge {
             projectId,
             name: s,
             branch: branch ?? s,
+            branches: [branch ?? s],
             path: `${this.home}/.que/worktrees/${project.name}/${s}`,
             baseRef: baseRef ?? `origin/${project.defaultBranch}`,
             status: 'preparing',
@@ -508,7 +508,7 @@ class FakeBridge {
             sessionId: null,
             createdAt: now,
             archivedAt: null,
-            prUrl: null,
+            prUrls: [],
             pr: null,
             prs: [],
             finishedAt: null,
@@ -544,10 +544,25 @@ class FakeBridge {
 
           return this.createTerminal({ cwd: ws.path, cols, rows, name: ws.name }, ws.id)
         },
-        diff: async ({ id, base, commit }) => {
+        diff: async ({ id, base, head, commit }) => {
           this.refuseIfQuiet('workspace.diff')
           const ws = this.workspace(id)
-          this.diffCallLog.push({ id, base: base ?? null, commit: commit ?? null })
+
+          this.diffCallLog.push(
+            head === undefined
+              ? { id, base: base ?? null, commit: commit ?? null }
+              : { id, base: base ?? null, commit: commit ?? null, head }
+          )
+
+          if (head !== undefined) {
+            // A branch's own files: only what was seeded for it, never the worktree's diff.
+            const own = this.headDiffs.get(diffKey(id, base, head))
+
+            if (!own) throw rpcError('bad_request', `no such branch: ${head}`)
+
+            return structuredClone(own)
+          }
+
           const scoped = diffKey(id, base, commit)
           const failure = this.diffFailures.get(scoped)
 
@@ -582,7 +597,7 @@ class FakeBridge {
           this.refuseIfQuiet('workspace.readFile')
           this.workspace(id)
           this.readFileCallLog.push({ id, path })
-          const seeded = this.fileContents.get(`${id}\0${path}`)
+          const seeded = this.fileContents.get(keyOf(id, path))
 
           if (!seeded) throw rpcError(ErrorCodes.NotFound, `no such file: ${path}`)
 
@@ -601,25 +616,13 @@ class FakeBridge {
 
           return { ok: true }
         },
-        prThread: async ({ id, refresh }) => {
+        prThread: async ({ id, number, refresh }) => {
           this.refuseIfQuiet('workspace.prThread')
           this.workspace(id)
-          this.prThreadCallLog.push({ id, refresh: refresh === true })
-          const seeded = this.prThreads.get(id)
+          this.prThreadCallLog.push({ id, number, refresh: refresh === true })
+          const seeded = this.prThreads.get(keyOf(id, number))
 
           return seeded ? structuredClone(seeded) : null
-        },
-        createPr: async ({ id, title }) => {
-          this.refuseIfQuiet('workspace.createPr')
-          const ws = this.workspace(id)
-
-          if (!title.trim()) throw rpcError('bad_request', 'title is required')
-          this.prCalls.push({ id, title })
-          const prUrl = `https://github.com/rquellh/que/pull/${40 + this.prCalls.length}`
-          this.workspaces.set(id, { ...ws, prUrl })
-          this.emit('workspace.updated', { ...ws, prUrl })
-
-          return { prUrl }
         },
         start: async ({ id, cols, rows }) => {
           this.refuseIfQuiet('workspace.start')
@@ -814,9 +817,9 @@ class FakeBridge {
     this.emit('workspace.updated', { ...w })
   }
 
-  /** Sets (or clears) the workspace's pull request, as a daemon refresh would. */
-  setWorkspacePr(id: string, pr: PullRequest | null): void {
-    this.putWorkspace({ ...this.workspace(id), pr, prs: pr ? [pr] : [] })
+  /** Replaces the session's pull requests (the current one first), as a daemon refresh would. */
+  setWorkspacePrs(id: string, prs: PullRequest[]): void {
+    this.putWorkspace({ ...this.workspace(id), pr: prs[0] ?? null, prs: structuredClone(prs) })
   }
 
   getWorkspace(id: string): Workspace | undefined {
@@ -889,11 +892,6 @@ class FakeBridge {
   /** Every path app.openInEditor was asked to open, in order. */
   openInEditorCalls(): string[] {
     return [...this.editorCalls]
-  }
-
-  /** Every workspace.createPr call, in order. */
-  createPrCalls(): Array<{ id: string; title: string }> {
-    return this.prCalls.map((c) => ({ ...c }))
   }
 
   /** Every workspace.create call's params, in order. */
@@ -1021,7 +1019,12 @@ class FakeBridge {
 
   private diffs = new Map<string, WorkspaceDiff>()
   private diffFailures = new Map<string, string>()
-  private diffCallLog: Array<{ id: string; base: string | null; commit: string | null }> = []
+  private diffCallLog: Array<{
+    id: string
+    base: string | null
+    commit: string | null
+    head?: string
+  }> = []
 
   /**
    * What workspace.diff answers for a workspace: in exactly this scope (base and commit), or
@@ -1029,6 +1032,16 @@ class FakeBridge {
    */
   seedDiff(diff: WorkspaceDiff, scope: { base?: string; commit?: string } = {}): void {
     this.diffs.set(diffKey(diff.workspaceId, scope.base, scope.commit), structuredClone(diff))
+  }
+
+  private headDiffs = new Map<string, WorkspaceDiff>()
+
+  /**
+   * What workspace.diff answers with `head` (a branch's own committed files against `base`),
+   * as a pull request's files ask for them; any other branch is refused.
+   */
+  seedBranchDiff(diff: WorkspaceDiff, scope: { base?: string; head: string }): void {
+    this.headDiffs.set(diffKey(diff.workspaceId, scope.base, scope.head), structuredClone(diff))
   }
 
   /** Makes workspace.diff in exactly this scope fail with this message (the whole request fails, as when the workspace is gone). */
@@ -1059,7 +1072,7 @@ class FakeBridge {
   }
 
   /** Every workspace.diff call, in order. */
-  diffCalls(): Array<{ id: string; base: string | null; commit: string | null }> {
+  diffCalls(): Array<{ id: string; base: string | null; commit: string | null; head?: string }> {
     return this.diffCallLog.map((c) => ({ ...c }))
   }
 
@@ -1075,7 +1088,7 @@ class FakeBridge {
 
   /** What workspace.readFile answers for one path of a workspace; unseeded paths are not found. */
   seedFile(file: WorkspaceFile): void {
-    this.fileContents.set(`${file.workspaceId}\0${file.path}`, structuredClone(file))
+    this.fileContents.set(keyOf(file.workspaceId, file.path), structuredClone(file))
   }
 
   /** Every workspace.files call, the workspace ids in order. */
@@ -1102,25 +1115,25 @@ class FakeBridge {
   }
 
   private prThreads = new Map<string, PrThread>()
-  private prThreadCallLog: Array<{ id: string; refresh: boolean }> = []
+  private prThreadCallLog: Array<{ id: string; number: number; refresh: boolean }> = []
 
-  /** What workspace.prThread answers for a workspace; an entries array means number 1, fetched now. */
-  seedPrThread(workspaceId: string, thread: Omit<PrThread, 'workspaceId'> | PrThreadEntry[]): void {
-    const full: PrThread = Array.isArray(thread)
-      ? { workspaceId, number: 1, entries: thread, fetchedAt: new Date().toISOString() }
-      : { ...thread, workspaceId }
-
-    this.prThreads.set(workspaceId, structuredClone(full))
+  /** What workspace.prThread answers for a workspace's pull request `thread.number`. */
+  seedPrThread(workspaceId: string, thread: Omit<PrThread, 'workspaceId'>): void {
+    this.prThreads.set(
+      keyOf(workspaceId, thread.number),
+      structuredClone({ ...thread, workspaceId })
+    )
   }
 
   /** Every workspace.prThread call, in order. */
-  prThreadCalls(): Array<{ id: string; refresh: boolean }> {
+  prThreadCalls(): Array<{ id: string; number: number; refresh: boolean }> {
     return this.prThreadCallLog.map((c) => ({ ...c }))
   }
 
   reset(): void {
     this.projects.clear()
     this.diffs.clear()
+    this.headDiffs.clear()
     this.diffFailures.clear()
     this.diffCallLog = []
     this.files.clear()
@@ -1153,7 +1166,6 @@ class FakeBridge {
     this.updateInfo = null
     this.updateListeners.clear()
     this.updateOpens = 0
-    this.prCalls = []
     this.createCallLog = []
     this.startCallLog = []
     this.termListCalls = 0

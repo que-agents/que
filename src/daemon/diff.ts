@@ -211,6 +211,12 @@ export function splitPatches(out: string): string[] {
 export interface DiffOptions {
   /** Compare against this ref instead of the default base. */
   base?: string
+  /**
+   * Compare this branch instead of the worktree: `merge-base(base, head)..head`, with no working
+   * tree and no untracked files. `head` resolves here first, then as `origin/<ref>`; `base` the
+   * other way round.
+   */
+  head?: string
   /** Narrow the files to this commit's own changes. */
   commit?: string
 }
@@ -228,7 +234,7 @@ export async function workspaceDiff(
   const empty = (base: string): WorkspaceDiff => ({
     workspaceId: ws.id,
     base,
-    head: ws.branch,
+    head: opts.head ?? ws.branch,
     commitsAhead: 0,
     commits: [],
     bases: [base],
@@ -248,13 +254,33 @@ export async function workspaceDiff(
     return r.ok && r.stdout ? r.stdout : null
   }
 
-  const refs = await run('for-each-ref', '--format=%(refname)', 'refs/heads', 'refs/remotes/origin')
-  const allRefs = parseRefs(refs.stdout)
+  // A pull request's head may be a branch only origin has: the ref here first (it holds the
+  // session's unpushed work), else origin's. Its base is origin's first, since a local default
+  // branch is often behind.
+  const resolveRef = async (ref: string, originFirst = false): Promise<string | null> => {
+    const names = originFirst ? [`origin/${ref}`, ref] : [ref, `origin/${ref}`]
+    const found = await Promise.all(names.map((name) => resolveCommit(name)))
+
+    return names.find((_, i) => found[i] !== null) ?? null
+  }
 
   // A remembered base can outlive its branch, so one that is not a commit falls back to the
   // default comparison and is reported, letting the caller forget it.
-  const requested =
-    opts.base !== undefined && (await resolveCommit(opts.base)) !== null ? opts.base : null
+  // Against another branch, the base is a branch name too (that pull request's base).
+  const resolveBase = async (base: string): Promise<string | null> => {
+    if (opts.head !== undefined) return resolveRef(base, true)
+
+    return (await resolveCommit(base)) === null ? null : base
+  }
+
+  const [tip, requested, refs] = await Promise.all([
+    opts.head === undefined ? 'HEAD' : resolveRef(opts.head),
+    opts.base === undefined ? null : resolveBase(opts.base),
+    run('for-each-ref', '--format=%(refname)', 'refs/heads', 'refs/remotes/origin')
+  ])
+
+  if (tip === null) throw badRequest(`head ${opts.head} is not a branch here or on origin`)
+  const allRefs = parseRefs(refs.stdout)
 
   const base = requested ?? chooseBase(ws, project, allRefs)
   const rejectedBase = requested === null && opts.base !== undefined ? opts.base : null
@@ -265,7 +291,7 @@ export async function workspaceDiff(
 
     const onBranch =
       sha !== null &&
-      (await run('merge-base', '--is-ancestor', sha, 'HEAD')).ok &&
+      (await run('merge-base', '--is-ancestor', sha, tip)).ok &&
       !(await run('merge-base', '--is-ancestor', sha, base)).ok
 
     if (!sha || !onBranch) {
@@ -277,12 +303,12 @@ export async function workspaceDiff(
 
   try {
     const [counted, log] = await Promise.all([
-      run('rev-list', '--count', `${base}..HEAD`),
-      run('log', '--format=%H%x00%s%x00%an%x00%aI', '-n', String(MAX_COMMITS), `${base}..HEAD`)
+      run('rev-list', '--count', `${base}..${tip}`),
+      run('log', '--format=%H%x00%s%x00%an%x00%aI', '-n', String(MAX_COMMITS), `${base}..${tip}`)
     ])
 
-    // Never the workspace's own branch: comparing it against itself shows nothing.
-    const refNames = allRefs.filter((r) => r !== ws.branch)
+    // Never the branch being compared: comparing it against itself shows nothing.
+    const refNames = allRefs.filter((r) => r !== ws.branch && r !== opts.head)
 
     const result = (files: DiffFile[]): WorkspaceDiff => ({
       ...empty(base),
@@ -302,8 +328,11 @@ export async function workspaceDiff(
       return result(await listFiles(run, [hasParent ? `${commit}^` : EMPTY_TREE, commit]))
     }
 
-    const mb = await run('merge-base', base, 'HEAD')
+    const mb = await run('merge-base', base, tip)
     const mergeBase = mb.ok && mb.stdout ? mb.stdout : base
+
+    // Another branch's own changes: committed only, the worktree has nothing to do with it.
+    if (opts.head !== undefined) return result(await listFiles(run, [mergeBase, tip]))
 
     const [status, others] = await Promise.all([
       run('status', '--porcelain'),

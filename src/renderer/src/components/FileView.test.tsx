@@ -128,7 +128,7 @@ describe('FileView', () => {
       })
       const term = pane.dataset.activeTerm as string
       await user.click(screen.getByTestId('topbar-review'))
-      await user.click(screen.getByTestId('review-tab-files'))
+      await user.click(screen.getByTestId('review-view-files'))
       const row = await screen.findByTestId('files-row-2')
       expect(row).toHaveAttribute('data-path', 'package.json')
       await user.click(row)

@@ -7,19 +7,6 @@ import App from '../App'
 
 const uploader = makeProject()
 
-const retry = makeWorkspace({
-  id: 'ws_01hzx3k9c2qf',
-  name: 'app-1432-retry-logic',
-  sessionId: 'b3c1d2e4-0000-4000-8000-1a2b3c4d5e6f'
-})
-
-async function openRetry(user: ReturnType<typeof userEvent.setup>): Promise<void> {
-  fakeBridge.seedProject(uploader)
-  fakeBridge.seedWorkspace(retry)
-  render(<App />)
-  await user.click(await screen.findByTestId(`sidebar-workspace-${retry.id}-open`))
-}
-
 describe('work-mode dialogs', () => {
   describe('new workspace', () => {
     it('offers a random name, draws another on New name, and slugs a typed one live', async () => {
@@ -158,25 +145,6 @@ describe('work-mode dialogs', () => {
 
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
       expect(opener).toHaveFocus()
-    })
-  })
-
-  describe('review pane', () => {
-    it('creates a draft PR from Pull request and shows its URL', async () => {
-      const user = userEvent.setup()
-      await openRetry(user)
-      await user.click(await screen.findByRole('button', { name: 'Review pane' }))
-      await user.click(screen.getByRole('tab', { name: 'Pull request' }))
-
-      await user.click(await screen.findByRole('button', { name: 'Create draft PR' }))
-      const dialog = screen.getByRole('dialog', { name: `Draft PR from ${retry.branch}` })
-      await user.type(within(dialog).getByRole('textbox', { name: 'Title' }), 'Add retry logic')
-      await user.click(within(dialog).getByRole('button', { name: 'Create draft PR' }))
-
-      const link = await within(dialog).findByRole('link', { name: /pull\/41$/ })
-      expect(link).toHaveAttribute('href', 'https://github.com/rquellh/que/pull/41')
-      expect(fakeBridge.createPrCalls()).toEqual([{ id: retry.id, title: 'Add retry logic' }])
-      expect(await screen.findByTestId('pr-footer-link')).toHaveTextContent('#41 on GitHub')
     })
   })
 })

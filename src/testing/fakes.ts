@@ -58,6 +58,7 @@ export interface FakePr {
   title: string
   state: 'OPEN' | 'CLOSED' | 'MERGED'
   isDraft: boolean
+  baseRefName?: string
   headRefName?: string
   reviewDecision: string
   statusCheckRollup: Array<Record<string, unknown>>
@@ -88,6 +89,7 @@ const fakePrDefaults = (branch: string, number: number): FakePr => ({
   title: 'Add retry logic',
   state: 'OPEN',
   isDraft: true,
+  baseRefName: 'main',
   headRefName: branch,
   reviewDecision: '',
   statusCheckRollup: [],

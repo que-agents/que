@@ -246,6 +246,52 @@ describe('workspace.diff commits, bases and narrowing', () => {
     expect(d.base).toBe('origin/main')
   })
 
+  it("lists only another branch's own commits and files against its base, with no working tree", async () => {
+    branchTwoAhead()
+    gitIn(ws.path, 'checkout', '--quiet', '-b', 'APP-1433-jitter')
+    fs.writeFileSync(join(ws.path, 'jitter.ts'), 'export const jitterMs = 250\n')
+    commitAll('Add jitter to the backoff')
+    // The worktree's own state never shows in another branch's files.
+    fs.appendFileSync(join(ws.path, 'retry.ts'), 'export const loose = true\n')
+    fs.writeFileSync(join(ws.path, 'scratch.txt'), 'loose\n')
+
+    const d = await daemon.client.request('workspace.diff', {
+      id: ws.id,
+      base: ws.branch,
+      head: 'APP-1433-jitter'
+    })
+
+    expect(d).toMatchObject({ base: ws.branch, head: 'APP-1433-jitter', commitsAhead: 1 })
+    expect(d.commits.map((c) => c.subject)).toEqual(['Add jitter to the backoff'])
+    expect(d.files.map((f) => [f.path, f.status, f.additions, f.dirty])).toEqual([
+      ['jitter.ts', 'added', 1, false]
+    ])
+    expect(d.bases).not.toContain('APP-1433-jitter')
+  })
+
+  it("finds a branch only origin has, takes origin's base first, and refuses one that is nowhere", async () => {
+    gitIn(repo, 'checkout', '--quiet', '-b', 'APP-1434-remote-only')
+    fs.writeFileSync(join(repo, 'remote.ts'), 'export const remote = true\n')
+    gitIn(repo, 'add', '.')
+    gitIn(repo, 'commit', '-m', 'Add the remote flag')
+    gitIn(repo, 'push', '--quiet', 'origin', 'APP-1434-remote-only')
+    gitIn(repo, 'checkout', '--quiet', 'main')
+    gitIn(repo, 'branch', '--quiet', '-D', 'APP-1434-remote-only')
+
+    const d = await daemon.client.request('workspace.diff', {
+      id: ws.id,
+      base: 'main',
+      head: 'APP-1434-remote-only'
+    })
+
+    // The base is origin's copy first: a local default branch is often behind.
+    expect(d).toMatchObject({ base: 'origin/main', head: 'APP-1434-remote-only', commitsAhead: 1 })
+    expect(d.files.map((f) => f.path)).toEqual(['remote.ts'])
+    await expect(
+      daemon.client.request('workspace.diff', { id: ws.id, head: 'APP-1499-nowhere' })
+    ).rejects.toMatchObject({ code: 'bad_request', message: expect.stringContaining('nowhere') })
+  })
+
   it('rejects a commit that is not on the branch past the base', async () => {
     const onMain = gitIn(repo, 'rev-parse', 'main')
 

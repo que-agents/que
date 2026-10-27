@@ -1829,15 +1829,16 @@ body.resizing .pane-divider::after {
   border-left: 1px solid var(--border);
 }
 
-/* Its tab strip, drawn like a pane's: the active tab carries the accent underline. It lines up
- * with the tab row and, like it, drags the window from its empty space. */
+/* Its 40px strip: the view icons at the left (or a pull request's back link), the view's own
+ * buttons at the right. It lines up with the tab row and, like it, drags the window from its
+ * empty space. */
 .review-bar {
   box-sizing: border-box;
   display: flex;
-  align-items: center;
+  align-items: stretch;
   gap: 2px;
-  min-height: 40px;
-  padding: 0 4px 0 8px;
+  height: 40px;
+  padding: 0 6px 0 4px;
   border-bottom: 1px solid var(--border);
   flex: none;
   -webkit-app-region: drag;
@@ -1847,37 +1848,114 @@ body.resizing .pane-divider::after {
   -webkit-app-region: no-drag;
 }
 
-.review-tabs {
-  flex: 1;
-  align-self: stretch;
-  min-width: 0;
+.review-views {
   display: flex;
-  gap: 2px;
+  align-items: stretch;
+  min-width: 0;
 }
 
-.review-tab {
-  flex: none;
+/* A view icon, with its count beside it in mono: faint, the current one at full strength with
+ * a 1px line under it. */
+button.ghost.icon.review-view {
+  width: auto;
+  height: auto;
+  gap: 4px;
   margin-bottom: -1px;
-  padding: 6px 8px;
-  background: none;
-  border: none;
-  border-bottom: 2px solid transparent;
+  padding: 0 8px;
   border-radius: 0;
-  color: var(--fg-muted);
+  color: var(--fg-faint);
 }
 
-.review-tab:hover:not(:disabled) {
+button.ghost.icon.review-view:hover:not(:disabled) {
   background: none;
   color: var(--fg-secondary);
 }
 
-.review-tab.active {
-  border-bottom-color: var(--accent);
+button.ghost.icon.review-view.active {
+  color: var(--fg);
+  box-shadow: inset 0 -1px 0 var(--fg);
+}
+
+.review-view-count {
+  font: 11px var(--mono);
+  color: var(--fg-faint);
+}
+
+/* `‹ #188`: back from a pull request to the list. */
+button.ghost.review-back {
+  align-self: center;
+  padding: 3px 8px;
+  font-size: 12px;
+  color: var(--fg-muted);
+}
+
+.review-back-number {
   color: var(--fg);
 }
 
-.review-bar .ghost.icon {
-  margin: 3px 0;
+.review-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+/* A view's head: `[ CHANGES ]` at the left, its counts in mono at the right. */
+.review-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 12px 12px 6px;
+  flex: none;
+}
+
+.review-head h2 {
+  margin: 0;
+}
+
+.review-sum {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 11px var(--mono);
+  color: var(--fg-faint);
+}
+
+.review-sum .tone-bad,
+.pr-row-meta .tone-bad {
+  color: var(--tone-bad);
+}
+
+/* Lines added and removed, in the diff tones. */
+.added {
+  color: var(--tone-good);
+}
+
+.removed {
+  color: var(--tone-bad);
+}
+
+/* A dashed guide between groups. */
+hr.review-rule {
+  height: 1px;
+  margin: 6px 12px;
+  border: 0;
+  background: var(--dash);
+}
+
+.review-group {
+  margin: 0;
+  padding: 6px 12px 4px;
+}
+
+.review-empty-note {
+  margin: auto;
+  padding: 24px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--fg-muted);
 }
 
 /* The divider on the review pane's left edge, like the sidebar's. */
@@ -1910,39 +1988,32 @@ body.resizing .review-resizer {
   flex-direction: column;
 }
 
-/* One quiet line: `Commits n vs base`, truncating as the pane narrows; icon actions at its end.
-   Both halves of the line open a menu: the commits to narrow to, the ref to compare against. */
+/* One quiet mono line under the head: `commits n ▾ · vs base ▾ · k uncommitted`, truncating as
+   the pane narrows. Its first two parts open a menu: the commits to narrow to, the ref to
+   compare against. */
 .changes-bar {
   position: relative;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 4px 6px 4px 12px;
-  border-bottom: 1px solid var(--border);
+  padding: 0 12px 4px;
 }
 
-.changes-summary {
-  flex: 1;
-  min-width: 0;
+.review-subline {
   margin: 0;
-  font: 12px var(--sans);
-  color: var(--fg);
+  font: 11px var(--mono);
+  color: var(--fg-faint);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.changes-actions {
-  display: flex;
-  flex: none;
-  gap: 2px;
+/* A part of the line that opens a menu: text at rest, a ghost button on hover. */
+button.changes-pick {
+  padding: 1px 2px;
+  font: inherit;
+  color: var(--fg-faint);
 }
 
-/* A part of the summary line that opens a menu: text at rest, a ghost button on hover. */
-button.changes-pick {
-  padding: 1px 3px;
-  font-weight: inherit;
-  color: var(--fg);
+.changes-pick .bright {
+  color: var(--fg-secondary);
 }
 
 .changes-menu {
@@ -2043,9 +2114,13 @@ button.changes-pick {
   color: var(--tone);
 }
 
-.changes-file .dirty {
-  font: 11px var(--mono);
-  color: var(--tone-attention);
+/* An uncommitted file: a 5px dot after its name. */
+.changes-file .dirty-dot {
+  flex: none;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--tone-attention);
 }
 
 .changes-file .path {
@@ -2262,48 +2337,123 @@ button.changes-pick {
   overflow-y: auto;
 }
 
+/* Inside a pull request: its title at 14px, then `● open · #188 ↗ · into #187` in mono. */
 .pr-header {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 20px;
-  border-bottom: 1px solid var(--border);
+  display: grid;
+  gap: 4px;
+  padding: 12px 12px 10px;
 }
 
 .pr-title {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  margin: 0;
+  font-size: 14px;
   font-weight: 600;
+  line-height: 1.3;
+  text-wrap: balance;
   color: var(--fg);
 }
 
-.pr-section {
-  padding: 12px 14px;
-  border-bottom: 1px solid var(--border);
-}
-
-.pr-section:last-child {
-  border-bottom: 0;
-}
-
-.pr-count {
+.pr-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  margin: 0;
   font: 11px var(--mono);
   color: var(--fg-faint);
 }
 
-.pr-note {
-  margin: 0;
-  padding: 4px 6px;
-  font-size: 12px;
+.pr-meta > :not(:first-child)::before {
+  content: '·';
+  margin-right: 8px;
   color: var(--fg-faint);
 }
 
-.pr-empty {
-  flex: 1;
-  padding: 16px 20px;
+.pr-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--fg-secondary);
+}
+
+.pr-meta a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.pr-meta a:hover {
+  color: var(--accent-hover);
+}
+
+/* A section head that folds it: `▾ [ FILES ]` at the left, its counts at the right. */
+button.review-fold {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 12px 6px;
+  background: none;
+  border: 0;
+  border-radius: 0;
+  text-align: left;
+  cursor: pointer;
+}
+
+button.review-fold:hover:not(:disabled) {
+  background: none;
+}
+
+button.review-fold:hover .label {
+  color: var(--fg-muted);
+}
+
+/* A fold's chevron, as in the Files tree: pointing right, turned down while open. */
+.review-fold .chevron,
+.pr-checks-fold .chevron {
+  width: 10px;
+  height: 10px;
+  vertical-align: -1px;
+  color: var(--fg-faint);
+  transition: transform 0.1s ease;
+}
+
+.review-fold .chevron.open,
+.pr-checks-fold .chevron.open {
+  transform: rotate(90deg);
+}
+
+.pr-section .changes-files,
+.pr-section .pr-checks,
+.pr-section .pr-comments {
+  padding: 0 4px 4px;
+}
+
+/* The passing checks folded into one line that expands. */
+button.pr-checks-fold {
+  display: block;
+  width: 100%;
+  padding: 4px 6px 4px 19px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+  background: none;
+  border: 0;
+  font: 11px var(--mono);
+  color: var(--fg-faint);
+}
+
+button.pr-checks-fold:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--fg-muted);
+}
+
+.pr-note {
+  margin: 0;
+  padding: 4px 12px;
+  font-size: 12px;
+  color: var(--fg-faint);
 }
 
 .pr-error {
@@ -2404,6 +2554,211 @@ button.changes-pick {
   color: var(--fg-muted);
 }
 
+/* A line comment's `path:line →`: a link that opens the diff tab at that line. */
+button.pr-path {
+  display: block;
+  padding: 0;
+  background: none;
+  border: 0;
+  text-align: left;
+  color: var(--accent);
+}
+
+button.pr-path:hover:not(:disabled) {
+  background: none;
+  color: var(--accent-hover);
+}
+
+/* ---- the pull request list ----------------------------------------------- */
+
+.pr-list {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+.pr-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* One pull request in two lines: dot, `#n` and title, comments at the right; then in mono
+ * `into <base> · checks · +a −d · subagent`. Every row aligned; a settled one reads faint. */
+button.pr-row {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 2px 6px;
+  width: 100%;
+  padding: 8px 12px 8px 10px;
+  background: none;
+  border: 0;
+  border-radius: 0;
+  text-align: left;
+  color: var(--fg);
+}
+
+button.pr-row:hover:not(:disabled),
+button.pr-row:focus-visible {
+  background: var(--bg-hover);
+}
+
+button.pr-row > .pr-dot {
+  justify-self: center;
+}
+
+/* A draft's dot is a hollow ring. */
+.pr-dot.ring {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--fg-muted);
+}
+
+.pr-row-title {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+
+.pr-row-number {
+  flex: none;
+  font: 12px var(--mono);
+  color: var(--fg-muted);
+}
+
+.pr-row-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+}
+
+.pr-row-comments {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font: 11px var(--mono);
+  color: var(--fg-faint);
+}
+
+.pr-row-comments svg {
+  width: 12px;
+  height: 12px;
+}
+
+.pr-row-comments.new {
+  color: var(--fg);
+}
+
+.pr-row-meta {
+  grid-column: 2 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 8px;
+  font: 11px var(--mono);
+  color: var(--fg-faint);
+}
+
+.pr-row-meta [class*='tone-'] {
+  color: var(--tone);
+}
+
+button.pr-row.settled .pr-row-name,
+button.pr-row.settled .pr-row-number {
+  color: var(--fg-faint);
+}
+
+/* ---- the files filter ----------------------------------------------------- */
+
+.files-filter {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 2px 12px 6px;
+  padding: 0 8px;
+  height: 26px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  color: var(--fg-faint);
+}
+
+.files-filter:focus-within {
+  border-color: var(--accent);
+}
+
+.files-filter svg {
+  flex: none;
+  width: 12px;
+  height: 12px;
+}
+
+.files-filter input {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  background: none;
+  border: 0;
+  outline: none;
+  font: 12px var(--mono);
+  color: var(--fg);
+}
+
+.files-filter input:focus-visible {
+  outline: none;
+}
+
+.files-filter-hint {
+  flex: none;
+  font: 10px var(--mono);
+  color: var(--fg-faint);
+  white-space: nowrap;
+}
+
+/* ---- a pull request's diff tab ------------------------------------------- */
+
+.diff-against {
+  flex: none;
+  font: 11px var(--mono);
+  color: var(--fg-faint);
+}
+
+.changes-patch .line-group {
+  display: block;
+}
+
+/* The line a line comment asked for, marked at its left edge. */
+.changes-patch .line[data-target] {
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+/* A line comment under its line, in the reading font. */
+.changes-patch .line-comment {
+  display: grid;
+  gap: 4px;
+  margin: 6px 16px 10px 48px;
+  padding: 8px 10px;
+  white-space: normal;
+  font: 12px / 1.45 var(--sans);
+  color: var(--fg-secondary);
+  background: var(--bg-side);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+}
+
+.line-comment-who {
+  font: 11px var(--mono);
+  color: var(--fg-muted);
+}
+
+.line-comment-body {
+  white-space: pre-wrap;
+}
+
 .pr-hunk {
   margin-top: 6px;
 }
@@ -2434,23 +2789,6 @@ button.changes-pick {
   font: 12px / 18px var(--mono);
   color: var(--fg-secondary);
   background: var(--bg-input);
-}
-
-.pr-footer {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 20px;
-  border-top: 1px solid var(--border);
-  font: 11px var(--mono);
-}
-
-.pr-footer a {
-  margin-right: auto;
-}
-
-.pr-footer .pr-create {
-  margin-right: auto;
 }
 
 /* ---- ticket hierarchy --------------------------------------------------- */
@@ -2734,14 +3072,6 @@ button.changes-pick {
 .workspace-popout-pr .pr-diff {
   text-align: right;
   font-variant-numeric: tabular-nums;
-}
-
-.workspace-popout-pr .added {
-  color: var(--tone-good);
-}
-
-.workspace-popout-pr .removed {
-  color: var(--tone-bad);
 }
 
 .workspace-popout .popout-link {

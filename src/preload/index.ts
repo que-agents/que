@@ -89,7 +89,6 @@ const api: QueApi = {
     get: (p) => call('workspace.get', p),
     remove: (p) => call('workspace.remove', p),
     openTerminal: (p) => call('workspace.openTerminal', p),
-    createPr: (p) => call('workspace.createPr', p),
     start: (p) => call('workspace.start', p),
     rename: (p) => call('workspace.rename', p),
     canRenameBranch: (p) => call('workspace.canRenameBranch', p),

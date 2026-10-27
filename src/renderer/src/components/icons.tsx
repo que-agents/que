@@ -22,6 +22,25 @@ export function FolderIcon(): React.JSX.Element {
   )
 }
 
+/** A page with a plus over a minus: the worktree's changes. */
+export function ChangesIcon(): React.JSX.Element {
+  return (
+    <svg {...base} aria-hidden="true">
+      <path d="M9.5 1.75h-5.75a1 1 0 0 0-1 1v10.5a1 1 0 0 0 1 1h8.5a1 1 0 0 0 1-1V5.5z" />
+      <path d="M8 5.25v3.5M6.25 7h3.5M6.25 11.25h3.5" />
+    </svg>
+  )
+}
+
+/** A speech bubble: a pull request's comments. */
+export function CommentIcon(): React.JSX.Element {
+  return (
+    <svg {...base} aria-hidden="true">
+      <path d="M2.5 3h11v7.5H8l-3.5 2.75V10.5h-2z" />
+    </svg>
+  )
+}
+
 /** A folder with a plus on its bottom-right corner: add a repository. */
 export function FolderPlusIcon(): React.JSX.Element {
   return (

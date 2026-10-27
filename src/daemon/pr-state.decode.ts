@@ -6,7 +6,7 @@ import { isObj, numOrNull, type Obj, strOrEmpty, strOrNull } from '../shared/jso
 
 /** The fields que asks `gh pr list` / `gh pr view` for: the contract decodePullRequest reads. */
 export const FIELDS =
-  'number,url,title,state,isDraft,reviewDecision,statusCheckRollup,mergedAt,updatedAt,additions,deletions'
+  'number,url,title,state,isDraft,reviewDecision,statusCheckRollup,mergedAt,updatedAt,additions,deletions,baseRefName,headRefName'
 
 /** A check run in the rollup (GitHub Actions and other apps). */
 export interface GhCheckRun {
@@ -48,6 +48,9 @@ export interface GhPullRequest {
   /** Lines added and removed; null when gh did not print them. */
   additions: number | null
   deletions: number | null
+  /** The branch it merges into and the branch it merges from; empty when missing. */
+  baseRefName: string
+  headRefName: string
   checks: GhCheck[]
 }
 
@@ -97,11 +100,6 @@ export function decodeCheckRollup(v: unknown): GhCheck[] {
   return checks
 }
 
-/** The head branch of one `gh pr list` item (asked for with `headRefName`); null without one. */
-export function decodeHeadRef(v: unknown): string | null {
-  return isObj(v) ? strOrNull(v.headRefName) : null
-}
-
 /** One `gh pr list` item; null when it has no number or url. */
 export function decodePullRequest(v: unknown): GhPullRequest | null {
   if (!isObj(v)) return null
@@ -119,6 +117,8 @@ export function decodePullRequest(v: unknown): GhPullRequest | null {
     updatedAt: typeof v.updatedAt === 'string' ? v.updatedAt : null,
     additions: numOrNull(v.additions),
     deletions: numOrNull(v.deletions),
+    baseRefName: strOrEmpty(v.baseRefName),
+    headRefName: strOrEmpty(v.headRefName),
     checks: decodeCheckRollup(v.statusCheckRollup)
   }
 }

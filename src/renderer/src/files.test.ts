@@ -1,7 +1,36 @@
 import { describe, expect, it } from 'vitest'
 import type { DiffFile } from '../../preload/index.d'
-import { buildTree, type DirNode, defaultExpanded, flatten, newlyChanged } from './files'
+import {
+  allDirs,
+  buildTree,
+  type DirNode,
+  defaultExpanded,
+  filterPaths,
+  flatten,
+  newlyChanged
+} from './files'
 import { makeDiffFile } from './testing/fixtures'
+
+describe('filterPaths and allDirs', () => {
+  const paths = [
+    'src/daemon/prs.ts',
+    'src/daemon/pr-thread.ts',
+    'src/renderer/App.tsx',
+    'README.md'
+  ]
+
+  it('keeps the paths containing the text, ignoring case, and all of them for blank text', () => {
+    expect(filterPaths(paths, 'PR')).toEqual(['src/daemon/prs.ts', 'src/daemon/pr-thread.ts'])
+    expect(filterPaths(paths, ' readme ')).toEqual(['README.md'])
+    expect(filterPaths(paths, '  ')).toEqual(paths)
+  })
+
+  it('opens every directory of a narrowed tree, at any depth', () => {
+    const tree = buildTree(['src/daemon/prs.ts', 'src/renderer/a/App.tsx', 'README.md'], new Map())
+
+    expect([...allDirs(tree)].sort()).toEqual(['src', 'src/daemon', 'src/renderer/a'])
+  })
+})
 
 function changes(...files: DiffFile[]): Map<string, DiffFile> {
   return new Map(files.map((f) => [f.path, f]))

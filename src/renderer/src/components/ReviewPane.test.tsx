@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { fakeBridge } from '@renderer/testing/fake-bridge'
 import { openWorkspace } from '@renderer/testing/helpers'
 import {
+  makeDiffFile,
   makeProject,
   makePullRequest,
   makeWorkspace,
@@ -15,18 +16,39 @@ import App from '../App'
 const retry = makeWorkspace({
   id: 'ws_01hzx3k9c2qf',
   name: 'app-1432-retry-logic',
-  pr: makePullRequest()
+  prs: [
+    makePullRequest({ number: 43, state: 'open', head: 'app-1432-retry-logic' }),
+    makePullRequest({ number: 42, state: 'draft', head: 'app-1432-retry-cap' }),
+    makePullRequest({ number: 41, state: 'merged', head: 'app-1432-retry-base' })
+  ]
 })
+
+const board = makeWorkspace({ id: 'ws_01hzx4m1p8rt', name: 'app-1440-quiet-board' })
 
 function seed(): void {
   fakeBridge.seedProject(makeProject())
   fakeBridge.seedWorkspace(retry)
-  fakeBridge.seedDiff(makeWorkspaceDiff({ workspaceId: retry.id }))
+  fakeBridge.seedWorkspace(board)
+  fakeBridge.seedDiff(
+    makeWorkspaceDiff({
+      workspaceId: retry.id,
+      files: [makeDiffFile(), makeDiffFile({ path: 'README.md', status: 'added' })]
+    })
+  )
+  fakeBridge.seedDiff(makeWorkspaceDiff({ workspaceId: board.id, files: [] }))
   fakeBridge.seedFiles(makeWorkspaceFiles({ workspaceId: retry.id }))
+  fakeBridge.seedFiles(makeWorkspaceFiles({ workspaceId: board.id }))
+}
+
+async function openPane(user: ReturnType<typeof userEvent.setup>): Promise<string> {
+  const term = await openWorkspace(user, retry.id)
+  await user.click(screen.getByRole('button', { name: 'Review pane' }))
+
+  return term
 }
 
 describe('ReviewPane', () => {
-  describe('opening and closing', () => {
+  describe('opening', () => {
     it('opens on Changes from the top bar, beside the terminal, which stays selected', async () => {
       const user = userEvent.setup()
       seed()
@@ -37,8 +59,8 @@ describe('ReviewPane', () => {
       await user.click(screen.getByTestId('topbar-review'))
 
       const pane = screen.getByTestId('review-pane')
-      expect(pane).toHaveAttribute('data-tab', 'changes')
-      expect(within(pane).getByTestId('review-tab-changes')).toHaveAttribute(
+      expect(pane).toHaveAttribute('data-view', 'changes')
+      expect(within(pane).getByRole('tab', { name: 'Changes' })).toHaveAttribute(
         'aria-selected',
         'true'
       )
@@ -49,115 +71,111 @@ describe('ReviewPane', () => {
       expect(screen.getByTestId('review-resizer')).toHaveAttribute('aria-valuenow', '320')
     })
 
-    it('shows the Pull request tab and fetches the conversation once', async () => {
-      const user = userEvent.setup()
-      seed()
-      render(<App />)
-      await openWorkspace(user, retry.id)
-      await user.click(screen.getByTestId('topbar-review'))
-
-      await user.click(screen.getByTestId('review-tab-pr'))
-
-      const pane = screen.getByTestId('review-pane')
-      expect(pane).toHaveAttribute('data-tab', 'pr')
-      expect(await within(pane).findByTestId('pr-header-link')).toBeInTheDocument()
-      expect(fakeBridge.prThreadCalls()).toEqual([{ id: retry.id, refresh: false }])
-    })
-
-    it('holds Changes, Files and Pull request in that order; Files lists the worktree', async () => {
-      const user = userEvent.setup()
-      seed()
-      render(<App />)
-      await openWorkspace(user, retry.id)
-      await user.click(screen.getByTestId('topbar-review'))
-
-      const tabs = within(screen.getByRole('tablist', { name: 'Review' })).getAllByRole('tab')
-      expect(tabs.map((t) => t.textContent)).toEqual(['Changes', 'Files', 'Pull request'])
-      expect(tabs[1]).toHaveAttribute('data-testid', 'review-tab-files')
-
-      await user.click(tabs[1])
-
-      const pane = screen.getByTestId('review-pane')
-      expect(pane).toHaveAttribute('data-tab', 'files')
-      expect(tabs[1]).toHaveAttribute('aria-selected', 'true')
-      expect(await within(pane).findByTestId('files-tree')).toBeInTheDocument()
-      expect(screen.queryByTestId('changes-list')).not.toBeInTheDocument()
-      expect(fakeBridge.filesCalls()).toEqual([retry.id])
-    })
-
     it('runs the full height of the window beside the top bar, not under it', async () => {
       const user = userEvent.setup()
       seed()
       render(<App />)
-      await openWorkspace(user, retry.id)
-
-      await user.click(screen.getByTestId('topbar-review'))
+      await openPane(user)
 
       const pane = screen.getByTestId('review-pane')
       expect(pane.parentElement).toBe(screen.getByTestId('app-shell'))
       expect(within(pane).queryByTestId('pane-controls')).not.toBeInTheDocument()
       expect(screen.getByTestId('app-shell')).toHaveStyle({ '--review-width': '320px' })
     })
+  })
 
-    it('switches between its tabs and closes from its own button', async () => {
+  describe('the icon strip', () => {
+    it('holds pull requests, changes and files as named icons with counts, and no close button', async () => {
       const user = userEvent.setup()
       seed()
       render(<App />)
-      await openWorkspace(user, retry.id)
-      await user.click(screen.getByTestId('topbar-review'))
+      await openPane(user)
 
-      await user.click(screen.getByRole('tab', { name: 'Pull request' }))
+      const strip = screen.getByRole('tablist', { name: 'Review' })
+      const tabs = within(strip).getAllByRole('tab')
+      expect(tabs.map((t) => t.getAttribute('aria-label'))).toEqual([
+        'Pull requests',
+        'Changes',
+        'Files'
+      ])
+      expect(tabs.map((t) => t.getAttribute('title'))).toEqual([
+        'Pull requests',
+        'Changes',
+        'Files'
+      ])
+      // The open and draft pull requests, and the changed files; Files has no count.
+      expect(screen.getByTestId('review-view-prs-count')).toHaveTextContent('2')
+      expect(await screen.findByTestId('review-view-changes-count')).toHaveTextContent('2')
+      expect(screen.queryByTestId('review-view-files-count')).not.toBeInTheDocument()
+      expect(tabs[1]).toHaveClass('active')
+      expect(tabs[0]).not.toHaveClass('active')
+      expect(screen.queryByRole('button', { name: 'Close review' })).not.toBeInTheDocument()
+    })
 
-      expect(screen.getByTestId('review-pane')).toHaveAttribute('data-tab', 'pr')
-      expect(screen.getByTestId('review-tab-pr')).toHaveAttribute('data-active', 'true')
-      expect(await screen.findByTestId('pr-view')).toBeInTheDocument()
+    it("switches views, the current icon marked, and holds the view's own buttons at its right end", async () => {
+      const user = userEvent.setup()
+      seed()
+      render(<App />)
+      await openPane(user)
+
+      await user.click(screen.getByRole('tab', { name: 'Files' }))
+
+      const pane = screen.getByTestId('review-pane')
+      expect(pane).toHaveAttribute('data-view', 'files')
+      expect(screen.getByRole('tab', { name: 'Files' })).toHaveAttribute('aria-selected', 'true')
+      expect(screen.getByRole('tab', { name: 'Changes' })).toHaveAttribute('aria-selected', 'false')
+      expect(await within(pane).findByTestId('files-tree')).toBeInTheDocument()
       expect(screen.queryByTestId('changes-list')).not.toBeInTheDocument()
+      expect(within(screen.getByTestId('review-bar')).getByTestId('files-refresh')).toBeVisible()
+      expect(screen.getByTestId('files-open-editor')).toBeVisible()
 
-      await user.click(screen.getByRole('tab', { name: 'Changes' }))
-      expect(await screen.findByTestId('changes-list')).toBeInTheDocument()
+      await user.click(screen.getByRole('tab', { name: 'Pull requests' }))
 
-      await user.click(screen.getByRole('button', { name: 'Close review' }))
-
-      expect(screen.queryByTestId('review-pane')).not.toBeInTheDocument()
-      expect(screen.getByTestId('topbar-review')).toHaveAttribute('aria-pressed', 'false')
+      expect(pane).toHaveAttribute('data-view', 'prs')
+      expect(await screen.findByTestId('pr-list')).toBeInTheDocument()
+      expect(screen.queryByTestId('pr-refresh')).toBeNull()
+      expect(screen.getByTestId('pr-open-editor')).toBeVisible()
     })
-  })
 
-  describe('resizing', () => {
-    it('widens with ArrowLeft, narrows with ArrowRight, stops at the limits, resets on double-click', async () => {
+    it('⌘F in the pane goes to Files and focuses its filter', async () => {
       const user = userEvent.setup()
       seed()
       render(<App />)
-      await openWorkspace(user, retry.id)
-      await user.click(screen.getByTestId('topbar-review'))
-      const resizer = screen.getByRole('separator', { name: 'Resize review' })
-      expect(resizer).toHaveAttribute('data-testid', 'review-resizer')
-      expect(resizer).toHaveAttribute('aria-orientation', 'vertical')
+      await openPane(user)
+      await user.click(screen.getByRole('tab', { name: 'Pull requests' }))
 
-      resizer.focus()
-      await user.keyboard('{ArrowLeft}{ArrowLeft}')
-      expect(resizer).toHaveAttribute('aria-valuenow', '352')
-      await user.keyboard('{ArrowRight}')
-      expect(resizer).toHaveAttribute('aria-valuenow', '336')
-      await user.keyboard('{End}{ArrowLeft}')
-      expect(resizer).toHaveAttribute('aria-valuenow', '520')
-      await user.keyboard('{Home}{ArrowRight}')
-      expect(resizer).toHaveAttribute('aria-valuenow', '240')
+      await user.keyboard('{Meta>}f{/Meta}')
 
-      await user.dblClick(resizer)
-
-      expect(resizer).toHaveAttribute('aria-valuenow', '320')
+      expect(screen.getByTestId('review-pane')).toHaveAttribute('data-view', 'files')
+      expect(await screen.findByRole('textbox', { name: 'Filter files' })).toHaveFocus()
     })
   })
 
-  describe('persistence', () => {
-    it('comes back open on its tab at its width after the app reloads', async () => {
+  describe('remembering', () => {
+    it('remembers the view per workspace', async () => {
+      const user = userEvent.setup()
+      seed()
+      render(<App />)
+      await openPane(user)
+      await user.click(screen.getByRole('tab', { name: 'Files' }))
+
+      await openWorkspace(user, board.id)
+      await user.click(screen.getByRole('tab', { name: 'Pull requests' }))
+      expect(screen.getByTestId('review-pane')).toHaveAttribute('data-view', 'prs')
+
+      await openWorkspace(user, retry.id)
+      expect(screen.getByTestId('review-pane')).toHaveAttribute('data-view', 'files')
+
+      await openWorkspace(user, board.id)
+      expect(screen.getByTestId('review-pane')).toHaveAttribute('data-view', 'prs')
+    })
+
+    it('comes back open on its view at its width after the app reloads', async () => {
       const user = userEvent.setup()
       seed()
       const first = render(<App />)
-      await openWorkspace(user, retry.id)
-      await user.click(screen.getByTestId('topbar-review'))
-      await user.click(screen.getByTestId('review-tab-pr'))
+      await openPane(user)
+      await user.click(screen.getByRole('tab', { name: 'Files' }))
       screen.getByTestId('review-resizer').focus()
       await user.keyboard('{ArrowLeft}{ArrowLeft}{ArrowLeft}')
       first.unmount()
@@ -165,25 +183,9 @@ describe('ReviewPane', () => {
       render(<App />)
       await openWorkspace(user, retry.id)
 
-      expect(screen.getByTestId('review-pane')).toHaveAttribute('data-tab', 'pr')
+      expect(screen.getByTestId('review-pane')).toHaveAttribute('data-view', 'files')
+      expect(screen.getByRole('tab', { name: 'Files' })).toHaveAttribute('aria-selected', 'true')
       expect(screen.getByTestId('review-resizer')).toHaveAttribute('aria-valuenow', '368')
-      expect(await screen.findByTestId('pr-view')).toBeInTheDocument()
-    })
-
-    it('comes back on Files after the app reloads', async () => {
-      const user = userEvent.setup()
-      seed()
-      const first = render(<App />)
-      await openWorkspace(user, retry.id)
-      await user.click(screen.getByTestId('topbar-review'))
-      await user.click(screen.getByTestId('review-tab-files'))
-      first.unmount()
-
-      render(<App />)
-      await openWorkspace(user, retry.id)
-
-      expect(screen.getByTestId('review-pane')).toHaveAttribute('data-tab', 'files')
-      expect(screen.getByTestId('review-tab-files')).toHaveAttribute('aria-selected', 'true')
       expect(await screen.findByTestId('files-tree')).toBeInTheDocument()
     })
 
@@ -196,36 +198,31 @@ describe('ReviewPane', () => {
       expect(screen.queryByTestId('review-pane')).not.toBeInTheDocument()
       first.unmount()
 
-      localStorage.setItem('que.review', JSON.stringify({ open: true, tab: 'notes', width: 9999 }))
+      localStorage.setItem(
+        'que.review',
+        JSON.stringify({ open: true, view: 'notes', width: 9999, places: { [retry.id]: 7 } })
+      )
       render(<App />)
       await openWorkspace(user, retry.id)
 
-      expect(screen.getByTestId('review-pane')).toHaveAttribute('data-tab', 'changes')
+      expect(screen.getByTestId('review-pane')).toHaveAttribute('data-view', 'changes')
       expect(screen.getByTestId('review-resizer')).toHaveAttribute('aria-valuenow', '520')
     })
   })
 
   describe('the loose sessions', () => {
-    it('says there is no workspace to review', async () => {
-      localStorage.setItem('que.review', JSON.stringify({ open: true, tab: 'changes', width: 320 }))
-
-      render(<App />)
-
-      expect(await screen.findByTestId('review-empty')).toHaveTextContent('No workspace')
-      expect(screen.queryByTestId('changes-list')).not.toBeInTheDocument()
-    })
-
-    it('says so on Files too, and lists nothing', async () => {
+    it('says there is no workspace to review, on any view, and lists nothing', async () => {
       const user = userEvent.setup()
-      localStorage.setItem('que.review', JSON.stringify({ open: true, tab: 'files', width: 320 }))
+      localStorage.setItem('que.review', JSON.stringify({ open: true, view: 'files', width: 320 }))
       render(<App />)
       expect(await screen.findByTestId('review-empty')).toHaveTextContent('No workspace')
 
-      await user.click(screen.getByTestId('review-tab-changes'))
-      await user.click(screen.getByTestId('review-tab-files'))
+      await user.click(screen.getByRole('tab', { name: 'Changes' }))
+      await user.click(screen.getByRole('tab', { name: 'Pull requests' }))
 
       expect(screen.getByTestId('review-empty')).toHaveTextContent('No workspace')
-      expect(screen.queryByTestId('files-tree')).not.toBeInTheDocument()
+      expect(screen.queryByTestId('changes-list')).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Refresh' })).not.toBeInTheDocument()
       expect(fakeBridge.filesCalls()).toEqual([])
     })
   })

@@ -218,9 +218,10 @@ export interface WorkspaceDiff {
   workspaceId: string
   /** The ref the branch is compared against: the caller's `base`, else origin/<default> when it exists. */
   base: string
+  /** The branch compared: the caller's `head`, else the workspace's branch (with its working tree). */
   head: string
   commitsAhead: number
-  /** The commits in `base..HEAD`, newest first, at most 200. */
+  /** The commits in `base..head`, newest first, at most 200. */
   commits: DiffCommit[]
   /** Refs worth comparing against: `base` first, then the default branch here and on origin, then the other branches, at most 50. */
   bases: string[]
@@ -258,16 +259,6 @@ export interface WorkspaceFile {
   size: number
   /** True when `content` was cut at MAX_FILE_CHARS (500,000). */
   truncated: boolean
-}
-
-export interface WorkspaceCreatePrParams {
-  id: string
-  /** The commit message for uncommitted changes, and the pull request title. */
-  title: string
-}
-
-export interface WorkspaceCreatePrResult {
-  prUrl: string
 }
 
 export interface HookEventParams {
@@ -402,7 +393,6 @@ export interface Methods {
   'workspace.get': { params: { id: string }; result: Workspace }
   'workspace.remove': { params: WorkspaceRemoveParams; result: Ok }
   'workspace.openTerminal': { params: WorkspaceOpenTerminalParams; result: TermInfo }
-  'workspace.createPr': { params: WorkspaceCreatePrParams; result: WorkspaceCreatePrResult }
   /** Types `claude '<start_prompt>'` into the workspace's first terminal once setup is done. */
   'workspace.start': { params: WorkspaceStartParams; result: WorkspaceStartResult }
   /** Sets the title (and, when allowed and asked, renames the branch); emits workspace.updated. */
@@ -411,13 +401,22 @@ export interface Methods {
   'workspace.canRenameBranch': { params: { id: string }; result: { allowed: boolean } }
   /** The app had it selected in a focused window: sets seenAt; emits workspace.updated. */
   'workspace.seen': { params: { id: string }; result: Workspace }
-  /** What the workspace changed against its base: committed and uncommitted, file by file. */
+  /**
+   * What the workspace changed against its base: committed and uncommitted, file by file. With
+   * `head`, what that branch changed against its base instead (committed only).
+   */
   'workspace.diff': {
-    params: { id: string; base?: string; commit?: string }
+    params: { id: string; base?: string; head?: string; commit?: string }
     result: WorkspaceDiff
   }
-  /** The pull request's conversation (comments, reviews, line comments); null without a pull request. */
-  'workspace.prThread': { params: { id: string; refresh?: boolean }; result: PrThread | null }
+  /**
+   * A pull request's conversation (comments, reviews, line comments): the workspace's pull
+   * request `number`; null when it has no such pull request.
+   */
+  'workspace.prThread': {
+    params: { id: string; number: number; refresh?: boolean }
+    result: PrThread | null
+  }
   'workspace.files': { params: { id: string }; result: WorkspaceFiles }
   'workspace.readFile': { params: { id: string; path: string }; result: WorkspaceFile }
   /**
@@ -498,10 +497,6 @@ export const METHODS: {
     quiet: false
   },
   'workspace.openTerminal': {
-    renderer: true,
-    quiet: true
-  },
-  'workspace.createPr': {
     renderer: true,
     quiet: true
   },

@@ -439,7 +439,11 @@ export function registerWorkspaceCommands(program: Command): void {
         const pr = (await c.request('workspace.get', { id: w.id })).pr
 
         const thread = pr
-          ? await c.request('workspace.prThread', { id: w.id, refresh: opts.refresh === true })
+          ? await c.request('workspace.prThread', {
+              id: w.id,
+              number: pr.number,
+              refresh: opts.refresh === true
+            })
           : null
 
         if (opts.json) return printJson({ pr, thread })

@@ -2,8 +2,9 @@ import { useEffect, useRef, useState } from 'react'
 import { basename } from '../diff'
 import { clampRatio } from '../layout'
 import {
-  diffPathOf,
+  diffOf,
   filePathOf,
+  prOfDiff,
   RATIO_DEFAULT,
   RATIO_MAX,
   RATIO_MIN,
@@ -191,7 +192,7 @@ function PaneControls({ termKey }: { termKey: string }): React.JSX.Element {
           className="ghost icon"
           aria-label="Review pane"
           aria-pressed={review.open}
-          title="Review pane: changes and pull request (⌘B)"
+          title="Review pane: pull requests, changes and files (⌘B)"
           data-testid="topbar-review"
           disabled={!connected}
           onClick={() => store.toggleReview()}
@@ -221,8 +222,9 @@ function Pane({
   const views = store.paneViews(termKey, index)
   const activeId = store.paneActiveId(termKey, index)
   const active = store.paneActive(termKey, index)
-  const activeDiff = diffPathOf(activeId)
+  const activeDiff = diffOf(activeId)
   const activeFile = filePathOf(activeId)
+  const prs = useQueSelector((s) => s.workspaces[termKey]?.prs)
   const focused = store.focusedPane(termKey) === index
 
   return (
@@ -277,8 +279,11 @@ function Pane({
           ))}
           {views.map((id) => {
             const filePath = filePathOf(id)
+            const diff = diffOf(id)
+            // A pull request's diff of the file: the tab says which.
+            const inPr = prOfDiff(prs ?? [], diff?.against)
             const kind = filePath === null ? 'diff' : 'file'
-            const path = filePath ?? diffPathOf(id) ?? id
+            const path = filePath ?? diff?.path ?? id
             const label = basename(path)
             const selected = id === activeId
 
@@ -288,15 +293,17 @@ function Pane({
                 className={`tab view-tab${selected ? ' active' : ''}`}
                 data-testid={`view-tab-${kind}`}
                 data-path={path}
+                data-pr={inPr?.number}
                 data-active={selected}
               >
                 <button
                   type="button"
                   role="tab"
                   aria-selected={selected}
-                  title={path}
+                  title={inPr ? `#${inPr.number} · ${path}` : path}
                   data-testid={`view-tab-${kind}-select`}
                   data-path={path}
+                  data-pr={inPr?.number}
                   onClick={() => store.selectTerminal(termKey, id)}
                 >
                   {kind === 'file' ? <FileIcon /> : <DiffIcon />}
@@ -308,6 +315,7 @@ function Pane({
                   aria-label={`Close ${label}`}
                   data-testid={`view-tab-${kind}-close`}
                   data-path={path}
+                  data-pr={inPr?.number}
                   onClick={() => store.closeView(termKey, id)}
                 >
                   ×
@@ -333,7 +341,12 @@ function Pane({
         {controls && <PaneControls termKey={termKey} />}
       </div>
       {activeDiff !== null ? (
-        <DiffView termKey={termKey} path={activeDiff} />
+        <DiffView
+          key={activeId}
+          termKey={termKey}
+          path={activeDiff.path}
+          against={activeDiff.against}
+        />
       ) : activeFile !== null ? (
         <FileView key={activeFile} termKey={termKey} path={activeFile} />
       ) : active ? (

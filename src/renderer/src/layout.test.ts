@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   diffId,
-  diffPathOf,
+  diffOf,
   fileId,
   filePathOf,
   isViewId,
@@ -28,16 +28,18 @@ const split = (over: Partial<PaneLayout> = {}): PaneLayout => ({
 describe('diff ids', () => {
   it('names a file diff tab and reads the path back verbatim', () => {
     expect(PUT).toBe('view:diff:src/upload/put.ts')
-    expect(diffPathOf(PUT)).toBe('src/upload/put.ts')
-    expect(diffPathOf(diffId('docs/a file: with spaces.md'))).toBe('docs/a file: with spaces.md')
+    expect(diffOf(PUT)).toEqual({ path: 'src/upload/put.ts' })
+    expect(diffOf(diffId('docs/a file: with spaces.md'))).toEqual({
+      path: 'docs/a file: with spaces.md'
+    })
     expect(isViewId(PUT)).toBe(true)
   })
 
   it('is null for a terminal id, an empty path, the old view ids, and null', () => {
-    expect(diffPathOf('t_01hzx3k9c2qf')).toBeNull()
-    expect(diffPathOf('view:diff:')).toBeNull()
-    expect(diffPathOf('view:changes')).toBeNull()
-    expect(diffPathOf(null)).toBeNull()
+    expect(diffOf('t_01hzx3k9c2qf')).toBeNull()
+    expect(diffOf('view:diff:')).toBeNull()
+    expect(diffOf('view:changes')).toBeNull()
+    expect(diffOf(null)).toBeNull()
     expect(isViewId('t_01hzx3k9c2qf')).toBe(false)
     expect(isViewId('view:pr')).toBe(false)
   })
@@ -53,10 +55,45 @@ describe('file ids', () => {
 
   it('keeps the two kinds apart, and is null for a terminal id, an empty path, and null', () => {
     expect(filePathOf(PUT)).toBeNull()
-    expect(diffPathOf(INDEX)).toBeNull()
+    expect(diffOf(INDEX)).toBeNull()
     expect(filePathOf('t_01hzx3k9c2qf')).toBeNull()
     expect(filePathOf('view:file:')).toBeNull()
     expect(filePathOf(null)).toBeNull()
+  })
+})
+
+describe('diff ids against a branch', () => {
+  const against = { head: 'APP-1433-backoff', base: 'APP-1432-retry-logic' }
+
+  it('names a file diff against a branch and base and reads all three back', () => {
+    const id = diffId('src/renderer/src/store.ts', against)
+
+    expect(diffOf(id)).toEqual({ path: 'src/renderer/src/store.ts', against })
+    expect(diffOf(diffId('docs/a file: with spaces.md', { head: 'x', base: '' }))).toEqual({
+      path: 'docs/a file: with spaces.md',
+      against: { head: 'x', base: '' }
+    })
+    expect(isViewId(id)).toBe(true)
+  })
+
+  it("never collides with the worktree's diff of the same path", () => {
+    const id = diffId('src/upload/put.ts', against)
+
+    expect(id).not.toBe(PUT)
+    expect(diffOf(PUT)?.against).toBeUndefined()
+  })
+
+  it('is null without a head or a path', () => {
+    expect(diffOf('view:diff:\0main\0README.md')).toBeNull()
+    expect(diffOf('view:diff:x\0main\0')).toBeNull()
+    expect(diffOf('view:diff:x\0README.md')).toBeNull()
+  })
+
+  it('survives a remembered layout', () => {
+    const id = diffId('README.md', against)
+    const l = split({ second: [id], active: ['t_1', id], views: [id] })
+
+    expect(parseLayout(JSON.stringify(l))?.views).toEqual([id])
   })
 })
 

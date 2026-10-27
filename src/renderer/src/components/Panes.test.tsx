@@ -320,7 +320,7 @@ describe('Panes', () => {
       await openRetry(user)
       const toggle = screen.getByRole('button', { name: 'Review pane' })
       expect(toggle).toHaveAttribute('data-testid', 'topbar-review')
-      expect(toggle).toHaveAttribute('title', 'Review pane: changes and pull request (⌘B)')
+      expect(toggle).toHaveAttribute('title', 'Review pane: pull requests, changes and files (⌘B)')
       expect(toggle).toHaveAttribute('aria-pressed', 'false')
       expect(
         within(screen.getByTestId('pane-controls')).getByRole('button', { name: 'Review pane' })
@@ -329,7 +329,7 @@ describe('Panes', () => {
       await user.click(toggle)
 
       expect(toggle).toHaveAttribute('aria-pressed', 'true')
-      expect(screen.getByTestId('review-pane')).toHaveAttribute('data-tab', 'changes')
+      expect(screen.getByTestId('review-pane')).toHaveAttribute('data-view', 'changes')
 
       await user.click(toggle)
 
@@ -347,27 +347,35 @@ describe('Panes', () => {
       expect(screen.getByTestId('topbar-review')).toHaveAttribute('aria-pressed', 'true')
     })
 
-    it('opens on the tab the pane was last left on', async () => {
+    it('opens on the view the pane was last left on for the workspace', async () => {
       const user = userEvent.setup()
-      localStorage.setItem('que.review', JSON.stringify({ open: false, tab: 'pr', width: 320 }))
+      localStorage.setItem(
+        'que.review',
+        JSON.stringify({
+          open: false,
+          width: 320,
+          places: { [retry.id]: { view: 'prs', pr: null } }
+        })
+      )
       await openRetry(user)
 
       await user.click(screen.getByRole('button', { name: 'Review pane' }))
 
-      expect(screen.getByTestId('review-pane')).toHaveAttribute('data-tab', 'pr')
-      expect(screen.getByTestId('review-tab-pr')).toHaveAttribute('aria-selected', 'true')
+      expect(screen.getByTestId('review-pane')).toHaveAttribute('data-view', 'prs')
+      expect(screen.getByTestId('review-view-prs')).toHaveAttribute('aria-selected', 'true')
     })
 
-    it('stays pressed while switching tabs and unpresses when the pane closes itself', async () => {
+    it('stays pressed while switching views, and ⌘B is the way to close it: the pane has no close button', async () => {
       const user = userEvent.setup()
       await openRetry(user)
       const toggle = screen.getByRole('button', { name: 'Review pane' })
       await user.click(toggle)
 
-      await user.click(screen.getByRole('tab', { name: 'Pull request' }))
+      await user.click(screen.getByRole('tab', { name: 'Pull requests' }))
       expect(toggle).toHaveAttribute('aria-pressed', 'true')
+      expect(screen.queryByRole('button', { name: 'Close review' })).not.toBeInTheDocument()
 
-      await user.click(screen.getByRole('button', { name: 'Close review' }))
+      await user.keyboard('{Meta>}b{/Meta}')
       expect(toggle).toHaveAttribute('aria-pressed', 'false')
     })
 
@@ -660,7 +668,7 @@ describe('Panes', () => {
       const term = await openWorkspace(user, retry.id)
       await openChanges(user)
       await user.click(screen.getByTestId('changes-file-0'))
-      await user.click(screen.getByTestId('review-tab-files'))
+      await user.click(screen.getByTestId('review-view-files'))
       const index = await screen.findByTestId('files-row-5')
       expect(index).toHaveAttribute('data-path', 'src/index.ts')
 
@@ -704,7 +712,7 @@ describe('Panes', () => {
       await openWorkspace(user, retry.id)
       await openChanges(user)
       await user.click(screen.getByTestId('changes-file-0'))
-      await user.click(screen.getByTestId('review-tab-files'))
+      await user.click(screen.getByTestId('review-view-files'))
       const pkg = await screen.findByTestId('files-row-7')
       expect(pkg).toHaveAttribute('data-path', 'package.json')
       await user.click(pkg)

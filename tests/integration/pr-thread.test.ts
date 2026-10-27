@@ -1,7 +1,8 @@
 // workspace.prThread and the check runs over the real socket: the daemon reads
 // the fake gh's pull request file (comments, reviews, line comments, rollup),
 // caches the conversation until the tracker sees updatedAt move, and maps gh
-// failures to gh_failed. `que ws pr` prints both.
+// failures to gh_failed. The tracker fetches the open pull requests' conversations
+// itself, so each carries its comment count. `que ws pr` prints both.
 // Quiet-hours refusal of workspace.prThread is covered by the safety table.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { DaemonClient } from '@shared/client'
@@ -9,6 +10,7 @@ import type { PrThread, PullRequest, Workspace } from '@shared/types'
 import { runCli, runCliJson } from '../../src/testing/cli'
 import { recordEvents, startTestDaemon, type TestDaemon } from '../../src/testing/daemon-harness'
 import {
+  addFakePullRequest,
   fakeCheckRun,
   fakeComment,
   fakeLineComment,
@@ -95,7 +97,7 @@ describe('workspace.prThread', () => {
   it('returns the conversation oldest first and caches it while the pull request holds still', async () => {
     const ws = await workspaceWithThread()
 
-    const thread = await client.request('workspace.prThread', { id: ws.id })
+    const thread = await client.request('workspace.prThread', { id: ws.id, number: 42 })
 
     expect(thread).toMatchObject({ workspaceId: ws.id, number: 42 })
     expect(thread?.entries.map((e) => [e.kind, e.author, e.state, e.path, e.line])).toEqual([
@@ -109,7 +111,7 @@ describe('workspace.prThread', () => {
       ['repos/{owner}/{repo}/pulls/42/comments', ws.path]
     ])
 
-    const again = await client.request('workspace.prThread', { id: ws.id })
+    const again = await client.request('workspace.prThread', { id: ws.id, number: 42 })
 
     expect(again).toEqual(thread)
     expect(views()).toHaveLength(1)
@@ -117,7 +119,7 @@ describe('workspace.prThread', () => {
 
   it('fetches again once the tracker sees updatedAt move, and on refresh', async () => {
     const ws = await workspaceWithThread()
-    await client.request('workspace.prThread', { id: ws.id })
+    await client.request('workspace.prThread', { id: ws.id, number: 42 })
 
     setFakePullRequest(daemon.ghPrs, ws.branch, {
       updatedAt: '2026-10-14T04:00:00Z',
@@ -128,22 +130,25 @@ describe('workspace.prThread', () => {
       lineComments: []
     })
     await expect.poll(async () => (await prOf(ws.id))?.updatedAt, opts).toBe('2026-10-14T04:00:00Z')
-    const changed = await client.request('workspace.prThread', { id: ws.id })
+    const changed = await client.request('workspace.prThread', { id: ws.id, number: 42 })
 
     expect(changed?.entries.map((e) => e.body)).toEqual(['Thanks!'])
     expect(views()).toHaveLength(2)
 
-    await client.request('workspace.prThread', { id: ws.id, refresh: true })
+    await client.request('workspace.prThread', { id: ws.id, number: 42, refresh: true })
 
     expect(views()).toHaveLength(3)
   }, 30_000)
 
   it('fails with gh_failed and leaves the stored pull request alone when gh fails', async () => {
     const ws = await workspaceWithThread()
+    await expect.poll(async () => (await prOf(ws.id))?.comments, opts).toBe(4)
     const before = await prOf(ws.id)
     vi.stubEnv('QUE_FAKE_GH_FAIL', '1')
 
-    await expect(client.request('workspace.prThread', { id: ws.id })).rejects.toMatchObject({
+    await expect(
+      client.request('workspace.prThread', { id: ws.id, number: 42, refresh: true })
+    ).rejects.toMatchObject({
       code: 'gh_failed',
       message: 'gh: failed (fake)'
     })
@@ -151,18 +156,104 @@ describe('workspace.prThread', () => {
     expect((await prOf(ws.id))?.number).toBe(before?.number)
     expect((await prOf(ws.id))?.updatedAt).toBe(before?.updatedAt)
     vi.stubEnv('QUE_FAKE_GH_FAIL', '')
-    const thread = await client.request('workspace.prThread', { id: ws.id })
+    const thread = await client.request('workspace.prThread', { id: ws.id, number: 42 })
     expect(thread?.entries).toHaveLength(4)
   }, 30_000)
 
-  it('is null for a workspace without a pull request, not_found for an unknown one', async () => {
+  it("fetches and caches each of the workspace's pull requests by number", async () => {
+    const ws = await workspaceWithThread()
+    addFakePullRequest(daemon.ghPrs, ws.branch, {
+      number: 43,
+      title: 'Back off between retries',
+      state: 'MERGED',
+      isDraft: false,
+      mergedAt: '2026-10-14T02:00:00Z',
+      updatedAt: '2026-10-14T02:00:00Z',
+      comments: [
+        fakeComment({ author: 'mara', body: 'Merging the backoff first.', createdAt: UPDATED })
+      ]
+    })
+    await expect
+      .poll(async () => (await client.request('workspace.get', { id: ws.id })).prs.length, opts)
+      .toBe(2)
+
+    const older = await client.request('workspace.prThread', { id: ws.id, number: 43 })
+    const current = await client.request('workspace.prThread', { id: ws.id, number: 42 })
+
+    expect(older).toMatchObject({ number: 43 })
+    expect(older?.entries.map((e) => e.body)).toEqual(['Merging the backoff first.'])
+    expect(current).toMatchObject({ number: 42 })
+    expect(current?.entries).toHaveLength(4)
+
+    expect(await client.request('workspace.prThread', { id: ws.id, number: 43 })).toEqual(older)
+    expect(
+      views()
+        .map((c) => c.argv[2])
+        .sort()
+    ).toEqual(['42', '43'])
+    expect(await client.request('workspace.prThread', { id: ws.id, number: 99 })).toBeNull()
+  }, 30_000)
+
+  it('is null for a pull request the workspace does not have, not_found for an unknown one', async () => {
     const ws = await workspace()
 
-    expect(await client.request('workspace.prThread', { id: ws.id })).toBeNull()
+    expect(await client.request('workspace.prThread', { id: ws.id, number: 42 })).toBeNull()
     await expect(
-      client.request('workspace.prThread', { id: 'ws_missing00000' })
+      client.request('workspace.prThread', { id: 'ws_missing00000', number: 42 })
     ).rejects.toMatchObject({ code: 'not_found' })
     expect(views()).toEqual([])
+  }, 30_000)
+})
+
+describe('comment counts', () => {
+  const prsOf = async (id: string) => (await client.request('workspace.get', { id })).prs
+
+  it('are filled in for each open pull request in the background, a merged one left unfetched', async () => {
+    const ws = await workspaceWithThread()
+    addFakePullRequest(daemon.ghPrs, ws.branch, {
+      number: 43,
+      state: 'MERGED',
+      isDraft: false,
+      mergedAt: '2026-10-14T02:00:00Z',
+      updatedAt: '2026-10-14T02:00:00Z',
+      comments: [fakeComment({ author: 'mara', body: 'Merged.', createdAt: UPDATED })]
+    })
+
+    await expect
+      .poll(
+        async () => (await prsOf(ws.id)).map((p) => [p.number, p.comments, p.commentedAt] as const),
+        opts
+      )
+      .toEqual([
+        [43, null, null],
+        [42, 4, '2026-10-14T03:20:00Z']
+      ])
+    expect(views().map((c) => c.argv[2])).toEqual(['42'])
+  }, 30_000)
+
+  it('are fetched again only when the pull request moves, and announced', async () => {
+    const ws = await workspaceWithThread()
+    await expect.poll(async () => (await prOf(ws.id))?.comments, opts).toBe(4)
+    const updates = recordEvents(client, 'workspace.updated')
+
+    setFakePullRequest(daemon.ghPrs, ws.branch, {
+      updatedAt: '2026-10-14T04:00:00Z',
+      comments: [
+        fakeComment({ author: 'mara', body: 'Thanks!', createdAt: '2026-10-14T04:00:00Z' })
+      ],
+      reviews: [],
+      lineComments: []
+    })
+
+    await expect
+      .poll(
+        () => updates.some((w) => w.id === ws.id && w.pr?.commentedAt === '2026-10-14T04:00:00Z'),
+        opts
+      )
+      .toBe(true)
+    expect((await prOf(ws.id))?.comments).toBe(1)
+    // One fetch per updatedAt, however many ticks ran in between.
+    expect(views()).toHaveLength(2)
   }, 30_000)
 })
 

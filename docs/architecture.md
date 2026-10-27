@@ -20,7 +20,7 @@ their own; they are clients of the daemon's unix socket and can come and go.
   │  DaemonServer ─ quiet gate ─┬─ PtyHost: node-pty + @xterm/headless mirrors    │
   │                             ├─ Workspaces: projects, git worktrees, setup     │
   │                             ├─ Status engine: hooks + ticks → workspace status│
-  │                             ├─ Draft PRs and pull request tracking (gh)       │
+  │                             ├─ Pull request tracking (gh)                     │
   │                             └─ Store: SQLite (node:sqlite) in QUE_HOME        │
   └──────────────────────────────────────────────────────────────────────────────┘
           │ spawns                         │ spawns                    │ spawns
@@ -252,20 +252,38 @@ rest are sorted with those needing input first, then stuck, then working.
 
 ## Pull request tracking
 
-`prs.ts` keeps `Workspace.pr` fresh. Every `pr_poll_seconds` (default 60) it
-asks `gh pr list --head <branch> --state all --limit 1` in each unarchived,
-unprotected workspace, one call at a time; a merged or closed pull request is
-re-checked only every fifth time. `pr-state.ts` maps the answer to state
-(draft, open, merged, closed), checks (none, pending, passing, failing) and
-review decision. When the result differs from the stored one (ignoring
-`checkedAt`) it is saved in `pr_json` and `workspace.updated` is emitted. A
-failed `gh` keeps the stored value and logs one line until a call succeeds
-again. A successful `workspace.createPr` triggers an immediate check of that
-workspace.
+`prs.ts` keeps `Workspace.prs`, the session's pull requests, fresh, and
+`Workspace.pr`, the current one among them. The session's pull requests are
+those whose head is any branch the worktree has had checked out, plus every one
+the session created, on any branch:
 
-`workspace.createPr` (Create draft PR) runs `openDraftPr` in `draft-pr.ts`:
-it commits what is left uncommitted, pushes the workspace branch (never the
-default or a protected branch), and opens a draft pull request with `gh`.
+- **Branch history.** `Workspace.branches` lists every branch the worktree has
+  had checked out, oldest first (`branches_json`). `syncBranch` appends the
+  branch it finds checked out; a workspace stored before the list was kept has
+  it seeded once from the worktree's own `git reflog show HEAD` (the
+  `checkout: moving from <a> to <b>` entries; `branch-history.ts`).
+- **Created pull requests.** `Workspace.prUrls` (`pr_urls_json`, the old
+  `pr_url` migrated in) has one writer: `hook.event` appends any pull request a
+  Bash `PostToolUse` shows `gh pr create` printing (stdout, stderr or a plain
+  string), main session and subagents alike, when its owner and name match the
+  project's `origin` remote (`pr-created.ts`; the origin is read once per
+  project). A URL for another repository is ignored.
+
+Every `pr_poll_seconds` (default 60) it lists each project's newest pull
+requests once (`gh pr list --state all --limit 100`), grouped by head branch; a
+branch missing from a full page is asked about on its own (`--head <branch>`).
+Protected branches are never asked about, but a created pull request is always
+looked up (`gh pr view <n>`) when no listed branch holds it. A merged or closed
+pull request is re-checked only every fifth time. `pr-state.ts` maps each answer
+to state (draft, open, merged, closed), checks (none, pending, passing,
+failing), review decision, and the branches it merges into and from
+(`base`/`head`, from `baseRefName`/`headRefName`; the app derives a stack from
+them). One already stored stays when its branch moves on, so nothing drops out;
+the list is newest first by number, at most 20. When it differs from the stored
+one (ignoring `checkedAt`) it is saved in `prs_json` and `workspace.updated` is
+emitted. A failed `gh` keeps the stored value and logs one line until a call
+succeeds again. A created pull request seen in a hook triggers an immediate
+check of that workspace.
 
 Each check run and commit status from the rollup is kept too, as
 `PullRequest.checkRuns`: name, workflow, state (failing, pending, passing,
@@ -276,20 +294,27 @@ when a check finishes even though `updatedAt` stays put.
 `workspace.prThread` (`que ws pr`) answers the conversation: issue comments and
 reviews from `gh pr view <n> --json comments,reviews`, line comments from
 `gh api repos/{owner}/{repo}/pulls/<n>/comments --paginate`, parsed by
-`pr-thread.ts` and sorted oldest first. Threads are fetched on demand, never
-polled: each workspace's thread is cached with the pull request number and
+`pr-thread.ts` and sorted oldest first. It answers for the pull request
+`number` among the workspace's (the app passes the one it shows).
+Each thread is cached per workspace and pull request number with the
 `updatedAt` it was fetched for, and reused until the tracker stores a different
 one (or the caller passes `refresh`). Concurrent calls share one fetch. A failed
-`gh` raises `gh_failed` and caches nothing; the cache entry goes when the
-workspace is removed or its pull request disappears.
+`gh` raises `gh_failed` and caches nothing; the cache entries go when the
+workspace is removed or its pull request leaves the list. After each check the
+tracker fetches, three at a time, the threads of the open and draft pull
+requests not cached for their current `updatedAt`, so each `PullRequest`
+carries `comments` (how many entries) and `commentedAt` (the newest entry's
+time), filled from the cache and stored; both stay null until a thread has been
+fetched, and a merged or closed one keeps what it had. A fetched thread whose
+counts differ updates the workspace and emits `workspace.updated`.
 
 ## The diff view
 
-`workspace.diff` (`que ws diff`) compares a workspace against its base: `origin/<default>` when that remote ref exists, else the default branch, unless the caller names another ref as `base` (`--base`), which must resolve to a commit. Everything is measured from the merge base of the base and `HEAD`, so committed and uncommitted changes appear together, and untracked files are listed too. Each file carries its status, line counts, whether it is still uncommitted, and a unified patch (null for binary files and patches over 200,000 characters). The result also lists the branch's commits past the base, newest first (at most 200), and the refs worth comparing against: the base, the default branch here and on origin, then the other local and origin branches, never the workspace's own (at most 50). Given a `commit` (`--commit`) that is on the branch and not on the base, the files narrow to that commit's own changes, against its parent (or the empty tree for a root commit), with nothing from the working tree; the commit count and list still describe the whole branch. A base or commit that does not qualify is a `bad_request`. It only reads: `git diff`, `git status`, `git log`, `git ls-files`, and `git for-each-ref`. Quiet hours refuse it like any other workspace read.
+`workspace.diff` (`que ws diff`) compares a workspace against its base: `origin/<default>` when that remote ref exists, else the default branch, unless the caller names another ref as `base` (`--base`), which must resolve to a commit. Everything is measured from the merge base of the base and `HEAD`, so committed and uncommitted changes appear together, and untracked files are listed too. Each file carries its status, line counts, whether it is still uncommitted, and a unified patch (null for binary files and patches over 200,000 characters). The result also lists the branch's commits past the base, newest first (at most 200), and the refs worth comparing against: the base, the default branch here and on origin, then the other local and origin branches, never the workspace's own (at most 50). Given a `commit` (`--commit`) that is on the branch and not on the base, the files narrow to that commit's own changes, against its parent (or the empty tree for a root commit), with nothing from the working tree; the commit count and list still describe the whole branch. A base or commit that does not qualify is a `bad_request`. Given a `head`, it compares that branch instead of the worktree, for one pull request's own files: `merge-base(base, head)..head`, committed changes only, with no working tree and no untracked files. The head and the base each resolve as a branch here first (refs are shared between worktrees, so a subagent's branch usually is one), then as `origin/<ref>`; a head that resolves to neither is a `bad_request`. A pull request into another pull request's branch passes that branch as `base`, so it diffs against it, not the default. It only reads: `git diff`, `git status`, `git log`, `git ls-files`, and `git for-each-ref`. Quiet hours refuse it like any other workspace read.
 
 `workspace.files` (`que ws files`) lists every file of a workspace's worktree that git would show: tracked and untracked, never ignored (`git ls-files --cached --others --exclude-standard`), deduplicated and sorted, cut at 20,000 paths with `truncated` set; a missing worktree lists nothing. `workspace.readFile` reads one of them for the file view. The path must be relative and strictly inside the worktree: an absolute path, the root itself, or any empty, `.` or `..` segment is a `bad_request`, and so is a path whose real location, symlinks followed, falls outside the worktree's real root, or a directory. A missing path is `not_found`. A NUL byte in the first 8 KB marks the file binary and its content null; text is decoded as UTF-8 and cut at 500,000 characters with `truncated` set; `size` is always the byte size on disk. Both only read, and quiet hours refuse them like any other workspace read.
 
-In the app, Changes and Files follow `workspace.changed` for the workspace on screen: while the review pane or one of its diff or file tabs is open, the store fetches the diff again in its scope (the base and commit stay), and while Files or a file tab is open, the listing and every open file tab too. A change that arrives during that fetch is followed once more after it lands; a closed pane with no view tabs fetches nothing until it opens, and a failure is kept for the views as any other. The Files tree keeps the directories the user opened and closed, except that a directory that newly holds a changed file opens.
+In the app, Changes and Files follow `workspace.changed` for the workspace on screen: while the review pane or one of its diff or file tabs is open, the store fetches the diff again in its scope (the base and commit stay), and while Files or a file tab is open, the listing and every open file tab too. A change that arrives during that fetch is followed once more after it lands; a closed pane with no view tabs fetches nothing until it opens, and a failure is kept for the views as any other. The Files tree keeps the directories the user opened and closed, except that a directory that newly holds a changed file opens. A pull request open in the pane, and each of its diff tabs, fetches its own files again too (`head` set to its branch, `base` to its base). The pull requests list reads each pull request's `comments` and `commentedAt` from the daemon and fetches no conversation itself; only the pull request open in the pane fetches its own, again when its `updatedAt` moves, and the pane's Refresh fetches only that one with `refresh`. A conversation fetched earlier stays cached in the app until its pull request's `updatedAt` moves. Which comments are new since a pull request was last opened is the app's own memory (in the review pane's local storage, the newest entry's time when it was opened, compared with `commentedAt`); the daemon keeps nothing of it.
 `workspace.changed { id }` tells clients a workspace's worktree changed, so they can ask for the diff or the files again; the event carries nothing else and the daemon computes nothing for it. The daemon watches a workspace only while a window shows it or some connection is attached to one of its live terminals. The app says which workspace a window shows with `workspace.watch { id }` when it shows one and `workspace.unwatch { id }` when it leaves it, so the watch holds while a diff or a file tab covers the terminal; the daemon keeps the ids per connection. A watch or an attach starts the watch, and it stops when no connection wants the workspace any more: an unwatch, the last detach, the terminal's exit or kill, the connection closing, or the workspace's removal; shutdown closes every watch. Each watched workspace has two recursive watches. One is the worktree, ignoring the `.git` entry and everything under it. The other is the gitdir: a linked worktree's `.git` is a file whose `gitdir:` line points into the repository's `.git/worktrees/<name>`, which is where a commit, checkout or reset writes, and a main worktree's `.git` is the gitdir itself. Only `HEAD`, `ORIG_HEAD`, `index`, `packed-refs` and anything under `logs/` and `refs/` count there, so object writes do not. The first change that counts opens a 300 ms window and the event goes out when it closes, once per window per workspace however many changes it held.
 
 ## The ticket queue

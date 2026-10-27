@@ -60,7 +60,13 @@ export interface Workspace {
   id: string
   projectId: string
   name: string
+  /** The branch the worktree has checked out. */
   branch: string
+  /**
+   * Every branch the worktree has had checked out, oldest first (`branch` among them). Empty for
+   * a workspace stored before branches were kept, until the daemon next reads its branch.
+   */
+  branches: string[]
   path: string
   baseRef: string
   status: WorkspaceStatus
@@ -72,16 +78,19 @@ export interface Workspace {
   sessionId: string | null
   createdAt: string
   archivedAt: string | null
-  /** The draft pull request opened from this workspace (workspace.createPr). */
-  prUrl: string | null
+  /**
+   * The pull requests the session created, oldest first: by its own `gh pr create` (its
+   * subagents' included) on the project's origin, on any branch.
+   */
+  prUrls: string[]
   /**
    * The current pull request, as last seen on GitHub: the open or draft one among `prs`, else
    * the most recently updated; null when there is none.
    */
   pr: PullRequest | null
   /**
-   * Every pull request opened from this workspace: those whose head is its branch, plus the one
-   * workspace.createPr recorded as its `prUrl`. Newest first by number, at most 10.
+   * The session's pull requests: those whose head is any of its `branches`, plus each of its
+   * `prUrls`. One seen stays when the branch moves on. Newest first by number, at most 20.
    */
   prs: PullRequest[]
   /** When its last turn ended (working to idle); null before one has. */
@@ -165,8 +174,16 @@ export interface PullRequest {
   /** Lines added and removed across the pull request, or null when unknown. */
   additions: number | null
   deletions: number | null
+  /** The branch it merges into (`baseRefName`); empty when unknown. */
+  base: string
+  /** The branch it merges from (`headRefName`); empty when unknown. */
+  head: string
   /** When que last refreshed this from GitHub. */
   checkedAt: string
+  /** How many entries its conversation holds, or null before the daemon has fetched it. */
+  comments: number | null
+  /** When the newest entry of its conversation was posted (ISO); null without one or before it was fetched. */
+  commentedAt: string | null
 }
 
 /** Workspace counts per status, for the tray and `que status`. */
@@ -299,7 +316,7 @@ export interface UserConfig {
   defaultPermissionMode?: PermissionMode
   /** Required (with the repo opting in) before a workspace session may run with bypassPermissions. */
   allowBypassPermissions: boolean
-  /** Branches Create draft PR never pushes, besides each project's default branch. */
+  /** Branches whose pull requests que does not look up, besides each project's default branch. */
   protectedBranches: string[]
   /**
    * A file appended to every interactive session's system prompt inside a

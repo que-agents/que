@@ -1,5 +1,5 @@
 // Pure display rules for the renderer: badge labels and tones. Money and durations are in shared/format.
-import type { PullRequest, WorkspaceStatus } from '../../preload/index.d'
+import type { CheckState, PullRequest, ReviewState, WorkspaceStatus } from '../../preload/index.d'
 import { prUrlNumber } from '../../shared/pr-url'
 
 export type Tone = 'neutral' | 'busy' | 'attention' | 'bad' | 'good' | 'muted'
@@ -18,11 +18,68 @@ export function statusBadge(status: WorkspaceStatus): { label: string; tone: Ton
   return STATUS[status]
 }
 
-const REVIEW_TEXT = {
+/** The words for a review decision, or for one review in a conversation. */
+export const REVIEW_TEXT: Record<ReviewState | NonNullable<PullRequest['review']>, string> = {
   approved: 'approved',
   changes_requested: 'changes requested',
-  review_required: 'review required'
-} as const
+  review_required: 'review required',
+  commented: 'commented',
+  dismissed: 'dismissed',
+  pending: 'pending'
+}
+
+const REVIEW_TONE: Record<ReviewState, Tone> = {
+  approved: 'good',
+  changes_requested: 'bad',
+  commented: 'neutral',
+  dismissed: 'muted',
+  pending: 'attention'
+}
+
+/** One review in a conversation: its words and tone. */
+export function reviewBadge(state: ReviewState) {
+  return { label: REVIEW_TEXT[state], tone: REVIEW_TONE[state] }
+}
+
+/** A check run's tone. */
+export const CHECK_TONE: Record<CheckState, Tone> = {
+  passing: 'good',
+  failing: 'bad',
+  pending: 'busy',
+  skipped: 'muted'
+}
+
+/** A pull request's dot: a hollow ring for a draft, its checks' tone while open, muted once settled. */
+export type PrDot = Tone | 'ring'
+
+export function prDot(pr: PullRequest): PrDot {
+  if (pr.state === 'draft') return 'ring'
+
+  if (pr.state !== 'open') return 'muted'
+
+  return pr.checks === 'none' ? 'neutral' : CHECK_TONE[pr.checks]
+}
+
+/**
+ * The checks on a pull request row's second line, skipped runs left out: `✗ <first failing> ·
+ * 6/7`, else `running 4/7` while any run, else `✓ 7/7`, counting the passing ones, in the tone
+ * of the state that decided it. Null without runs.
+ */
+export function checksLine(pr: PullRequest): { tone: Tone; text: string } | null {
+  const runs = pr.checkRuns.filter((c) => c.state !== 'skipped')
+
+  if (runs.length === 0) return null
+  const passed = `${runs.filter((c) => c.state === 'passing').length}/${runs.length}`
+  const failing = runs.find((c) => c.state === 'failing')
+
+  if (failing) return { tone: CHECK_TONE.failing, text: `✗ ${failing.name} · ${passed}` }
+
+  if (runs.some((c) => c.state === 'pending')) {
+    return { tone: CHECK_TONE.pending, text: `running ${passed}` }
+  }
+
+  return { tone: CHECK_TONE.passing, text: `✓ ${passed}` }
+}
 
 /** A pull request's tone and the words the workspace card writes for it, from one ladder. */
 function prTone(pr: PullRequest): [Tone, string] {

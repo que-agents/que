@@ -1,21 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { GLYPH } from '../diff'
 import { formatAge } from '../../../shared/format'
 import { diffId, usePanes, useQueSelector } from '../store'
 import { useNow } from '../useNow'
-import { EditorIcon, RefreshIcon } from './icons'
 import Menu, { type MenuItem } from './Menu'
+import { DiffTotals, FileRow } from './ReviewParts'
 
 /**
- * A workspace's changed files against its base, in the review pane. Clicking a
- * file (or Enter on the cursor's) opens its diff as a tab beside the terminals.
- * The header's `Commits n` narrows the files to one commit, and `vs base` picks
- * the ref they are compared against.
+ * A workspace's changed files against its base, in the review pane: `[ CHANGES ]` with the
+ * totals, then `commits n ▾ · vs base ▾ · k uncommitted`. Clicking a file (or Enter on the
+ * cursor's) opens its diff as a tab beside the terminals. `commits n` narrows the files to one
+ * commit, and `vs base` picks the ref they are compared against.
  */
 export default function ChangesList({ termKey }: { termKey: string }): React.JSX.Element {
   const store = usePanes(termKey)
-  const connected = useQueSelector((s) => s.connected)
-  const ws = useQueSelector((s) => s.workspaces[termKey])
   const entry = useQueSelector((s) => s.diffs[termKey])
   const scope = useQueSelector((s) => s.diffScopes[termKey])
   const diff = entry?.data ?? null
@@ -62,8 +59,7 @@ export default function ChangesList({ termKey }: { termKey: string }): React.JSX
     if (next >= 0 && next < files.length) setCursor(next)
   }
 
-  const adds = files.reduce((n, f) => n + f.additions, 0)
-  const dels = files.reduce((n, f) => n + f.deletions, 0)
+  const dirty = files.filter((f) => f.dirty).length
 
   const now = useNow()
 
@@ -93,18 +89,22 @@ export default function ChangesList({ termKey }: { termKey: string }): React.JSX
 
   return (
     <section className="changes" data-testid="changes-list" aria-label="Changes">
-      <header className="changes-bar">
-        <p
-          className="changes-summary"
-          data-testid="changes-summary"
-          title={
-            diff
-              ? `${diff.head} vs ${diff.base} · ${diff.commitsAhead} ${
-                  diff.commitsAhead === 1 ? 'commit' : 'commits'
-                } ahead · ${files.length} ${files.length === 1 ? 'file' : 'files'} · +${adds} −${dels}`
-              : undefined
-          }
-        >
+      <header className="review-head">
+        <h2 className="label">[ Changes ]</h2>
+        {diff && (
+          <span
+            className="review-sum"
+            data-testid="changes-totals"
+            title={`${diff.head} vs ${diff.base} · ${diff.commitsAhead} ${
+              diff.commitsAhead === 1 ? 'commit' : 'commits'
+            } ahead`}
+          >
+            <DiffTotals files={files} noun />
+          </span>
+        )}
+      </header>
+      <div className="changes-bar">
+        <p className="review-subline" data-testid="changes-summary">
           {diff && (
             <>
               <button
@@ -117,11 +117,13 @@ export default function ChangesList({ termKey }: { termKey: string }): React.JSX
                 title={chosen ? (chosenCommit?.subject ?? chosen) : undefined}
                 onClick={() => toggleMenu('commits')}
               >
-                {chosen ? 'Commit' : 'Commits'}{' '}
-                <span className="muted" data-testid="changes-commits">
+                {chosen ? 'commit' : 'commits'}{' '}
+                <span className="bright" data-testid="changes-commits">
                   {chosen ? (chosenCommit?.shortSha ?? chosen.slice(0, 7)) : diff.commitsAhead}
-                </span>
-              </button>{' '}
+                </span>{' '}
+                ▾
+              </button>
+              {' · '}
               <button
                 type="button"
                 className="ghost changes-pick"
@@ -131,9 +133,13 @@ export default function ChangesList({ termKey }: { termKey: string }): React.JSX
                 aria-expanded={menu === 'base'}
                 onClick={() => toggleMenu('base')}
               >
-                <span className="muted">vs</span>{' '}
-                <span data-testid="changes-base">{diff.base}</span>
+                vs{' '}
+                <span className="bright" data-testid="changes-base">
+                  {diff.base}
+                </span>{' '}
+                ▾
               </button>
+              {dirty > 0 && <span data-testid="changes-uncommitted"> · {dirty} uncommitted</span>}
             </>
           )}
         </p>
@@ -157,33 +163,7 @@ export default function ChangesList({ termKey }: { termKey: string }): React.JSX
             onClose={closeMenu}
           />
         )}
-        <div className="changes-actions">
-          <button
-            type="button"
-            className="ghost icon"
-            aria-label="Refresh"
-            title="Refresh"
-            data-testid="changes-refresh"
-            disabled={!connected}
-            onClick={() => void store.fetchDiff(termKey)}
-          >
-            <RefreshIcon />
-          </button>
-          {ws && (
-            <button
-              type="button"
-              className="ghost icon"
-              aria-label="Open in editor"
-              title="Open in editor"
-              data-testid="changes-open-editor"
-              disabled={!connected}
-              onClick={() => void store.openInEditor(ws.path)}
-            >
-              <EditorIcon />
-            </button>
-          )}
-        </div>
-      </header>
+      </div>
       {error && (
         <p className="form-error changes-error" role="alert" data-testid="changes-error">
           {error}
@@ -203,44 +183,16 @@ export default function ChangesList({ termKey }: { termKey: string }): React.JSX
           data-testid="changes-files"
           onKeyDown={onKeyDown}
         >
-          {files.map((f, i) => {
-            const g = GLYPH[f.status]
-
-            return (
-              <div
-                key={f.path}
-                role="option"
-                tabIndex={-1}
-                aria-selected={i === at}
-                className="changes-file"
-                data-testid={`changes-file-${i}`}
-                data-path={f.path}
-                data-active={activeId === diffId(f.path)}
-                onClick={() => open(i)}
-                onKeyDown={(e) => {
-                  if (e.key !== 'Enter' && e.key !== ' ') return
-                  e.preventDefault()
-                  e.stopPropagation()
-                  open(i)
-                }}
-              >
-                <span className={`glyph tone-${g.tone}`} title={g.label}>
-                  {g.glyph}
-                </span>
-                {f.dirty && (
-                  <span className="dirty" title="uncommitted">
-                    *
-                  </span>
-                )}
-                <span className="path" title={f.path}>
-                  {f.from ? `${f.from} → ${f.path}` : f.path}
-                </span>
-                <span className="count">
-                  +{f.additions} −{f.deletions}
-                </span>
-              </div>
-            )
-          })}
+          {files.map((f, i) => (
+            <FileRow
+              key={f.path}
+              file={f}
+              testId={`changes-file-${i}`}
+              active={activeId === diffId(f.path)}
+              selected={i === at}
+              onOpen={() => open(i)}
+            />
+          ))}
         </div>
       )}
     </section>

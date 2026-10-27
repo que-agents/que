@@ -1,7 +1,8 @@
-// A workspace's Files tab in the review pane: the summary line (`Files n · m changed`),
-// Refresh, Open in editor, and the tree. Rows are keyed by their index among the
-// visible rows, with the path in data-path and `dir` or `file` in data-kind. The
-// pane's tab is ReviewPage.tabFiles; a file's tab is FileViewPage, a diff's DiffPage.
+// A workspace's Files view in the review pane: the head's counts (`n · m changed`), the filter
+// (and its `n matches · ⏎ opens` hint), Refresh and Open in editor in the pane's strip, and the
+// tree. Rows are keyed by their index among the visible rows, with the path in data-path and
+// `dir` or `file` in data-kind. The pane's icon is ReviewPage.viewFiles; a file's tab is
+// FileViewPage, a diff's DiffPage.
 import type { Locator, Page } from '@playwright/test'
 
 export class FilesPage {
@@ -10,6 +11,8 @@ export class FilesPage {
   summary: Locator
   count: Locator
   error: Locator
+  filter: Locator
+  filterHint: Locator
   refresh: Locator
   openEditor: Locator
   // Every visible row, in tree order.
@@ -25,6 +28,8 @@ export class FilesPage {
     this.summary = page.getByTestId('files-summary')
     this.count = page.getByTestId('files-count')
     this.error = page.getByTestId('files-error')
+    this.filter = page.getByTestId('files-filter')
+    this.filterHint = page.getByTestId('files-filter-hint')
     this.refresh = page.getByTestId('files-refresh')
     this.openEditor = page.getByTestId('files-open-editor')
     this.rows = this.root.getByRole('treeitem')

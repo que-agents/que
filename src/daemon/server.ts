@@ -874,7 +874,6 @@ export class DaemonServer {
       return { ok: true }
     },
     'workspace.openTerminal': (p) => this.openWorkspaceTerminal(p.id, p.cols, p.rows),
-    'workspace.createPr': (p) => this.prs.create(p.id, p.title),
     'workspace.start': (p) => this.startWorkspace(p.id, p.cols, p.rows),
     'workspace.rename': (p) => this.workspaces.rename(p),
     'workspace.canRenameBranch': async (p) => ({
@@ -886,13 +885,14 @@ export class DaemonServer {
 
       return workspaceDiff(ws, this.workspaces.project(ws.projectId), Date.now, {
         base: p.base,
+        head: p.head,
         commit: p.commit
       })
     },
     'workspace.prThread': (p) => {
       const ws = this.workspaces.get(p.id)
 
-      return this.prs.thread(ws.id, p.refresh === true)
+      return this.prs.thread(ws.id, p.number, p.refresh === true)
     },
     'workspace.files': (p) => workspaceFiles(this.workspaces.get(p.id), Date.now),
     'workspace.readFile': (p) => readWorkspaceFile(this.workspaces.get(p.id), p.path),
@@ -912,6 +912,9 @@ export class DaemonServer {
       const ws = this.workspaces.get(p.workspaceId)
       this.liveSessions.hook(ws.id, p.terminalId, p.payload)
       this.status.hook(ws.id, p.payload)
+      this.prs.hook(ws.id, p.payload).catch((e: unknown) => {
+        this.log(`pull request capture failed for ${ws.id}: ${errorMessage(e)}`)
+      })
 
       return { ok: true }
     },

@@ -47,6 +47,7 @@ const VIEW_FIELDS = [
   'updatedAt',
   'additions',
   'deletions',
+  'baseRefName',
   'headRefName',
   'comments',
   'reviews'
@@ -68,6 +69,18 @@ function failIfAsked() {
     process.stderr.write('gh: failed (fake)\n')
     process.exit(1)
   }
+}
+
+/** git's trimmed stdout in the cwd, or '' when it fails. */
+function gitOut(args) {
+  const r = spawnSync('git', args, { cwd: process.cwd(), encoding: 'utf8' })
+  return r.status === 0 ? r.stdout.trim() : ''
+}
+
+/** origin's default branch (origin/HEAD), else main. */
+function defaultBranch() {
+  const ref = gitOut(['symbolic-ref', '--quiet', '--short', 'refs/remotes/origin/HEAD'])
+  return ref.startsWith('origin/') ? ref.slice('origin/'.length) : 'main'
 }
 
 function flag(name) {
@@ -96,10 +109,7 @@ if (cmd === 'auth' && sub === 'status') {
 } else if (cmd === 'pr' && sub === 'create') {
   const url = `https://github.com/rquellh/que/pull/${prNumber}`
   if (prsFile) {
-    const head = spawnSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], {
-      cwd: process.cwd(),
-      encoding: 'utf8'
-    }).stdout.trim()
+    const head = flag('--head') ?? gitOut(['rev-parse', '--abbrev-ref', 'HEAD'])
     if (head) {
       const prs = readPrs()
       const created = {
@@ -108,6 +118,7 @@ if (cmd === 'auth' && sub === 'status') {
         title: flag('--title') ?? '',
         state: 'OPEN',
         isDraft: argv.includes('--draft'),
+        baseRefName: flag('--base') ?? defaultBranch(),
         headRefName: head,
         reviewDecision: '',
         statusCheckRollup: [],

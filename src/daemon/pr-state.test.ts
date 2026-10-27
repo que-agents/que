@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
+import type { PrThreadEntry } from '../shared/types'
 import {
   checkRunsOf,
+  commentCounts,
   currentPullRequest,
   parsePullRequest,
   pullRequestList,
@@ -32,8 +34,18 @@ describe('parsePullRequest', () => {
       updatedAt: null,
       additions: null,
       deletions: null,
-      checkedAt: AT
+      base: '',
+      head: '',
+      checkedAt: AT,
+      comments: null,
+      commentedAt: null
     })
+  })
+
+  it('keeps the branches it merges into and from', () => {
+    expect(
+      parse({ state: 'OPEN', baseRefName: 'APP-1432-retry-logic', headRefName: 'APP-1433-backoff' })
+    ).toMatchObject({ base: 'APP-1432-retry-logic', head: 'APP-1433-backoff' })
   })
 
   it('keeps the line counts gh printed', () => {
@@ -244,6 +256,13 @@ describe('samePullRequest', () => {
     expect(samePullRequest(a, parse({ state: 'OPEN', additions: 3, deletions: 0 }))).toBe(false)
   })
 
+  it('tells pull requests apart by their comment counts', () => {
+    const counted = a && { ...a, comments: 3, commentedAt: '2026-10-14T03:20:00Z' }
+
+    expect(samePullRequest(a, counted)).toBe(false)
+    expect(samePullRequest(counted, counted && { ...counted, commentedAt: 'later' })).toBe(false)
+  })
+
   it('tells pull requests apart by their check runs', () => {
     const pending = parse({
       state: 'OPEN',
@@ -271,6 +290,44 @@ describe('samePullRequest', () => {
     expect(samePullRequest(null, null)).toBe(true)
     expect(samePullRequest(null, a)).toBe(false)
     expect(samePullRequest(a, null)).toBe(false)
+  })
+})
+
+describe('commentCounts', () => {
+  const entry = (id: string, at: string): PrThreadEntry => ({
+    id,
+    kind: 'comment',
+    author: 'mara',
+    body: 'Can we cap the retries?',
+    at,
+    url: null,
+    state: null,
+    path: null,
+    line: null,
+    hunk: null
+  })
+
+  const thread = (entries: PrThreadEntry[]) => ({
+    workspaceId: 'ws_01hzx3k9c2qf',
+    number: 7,
+    entries,
+    fetchedAt: AT
+  })
+
+  it('counts the entries and keeps the newest time, whatever their order', () => {
+    expect(
+      commentCounts(
+        thread([
+          entry('c1', '2026-10-14T03:00:00Z'),
+          entry('c3', '2026-10-14T03:20:00Z'),
+          entry('c2', '2026-10-14T03:10:00Z')
+        ])
+      )
+    ).toEqual({ comments: 3, commentedAt: '2026-10-14T03:20:00Z' })
+  })
+
+  it('is zero with no time for an empty conversation', () => {
+    expect(commentCounts(thread([]))).toEqual({ comments: 0, commentedAt: null })
   })
 })
 
@@ -332,21 +389,37 @@ describe('pullRequestList', () => {
     ])
   })
 
-  it('keeps the newest ten', () => {
-    const fifteen = Array.from({ length: 15 }, (_, i) => pr(i + 1, { state: 'CLOSED' }))
+  it('keeps the newest twenty, stored ones counted', () => {
+    const fresh = Array.from({ length: 15 }, (_, i) => pr(i + 11, { state: 'CLOSED' }))
+    const stored = Array.from({ length: 10 }, (_, i) => pr(i + 1, { state: 'MERGED' }))
 
-    expect(pullRequestList(fifteen).map((p) => p.number)).toEqual([
-      15, 14, 13, 12, 11, 10, 9, 8, 7, 6
+    expect(pullRequestList(fresh, stored).map((p) => p.number)).toEqual(
+      Array.from({ length: 20 }, (_, i) => 25 - i)
+    )
+  })
+
+  it('keeps a stored pull request missing from the fresh ones, and takes the fresh copy of the rest', () => {
+    const stored = [
+      pr(41, { state: 'OPEN', title: 'On the branch it left' }),
+      pr(44, { state: 'OPEN', title: 'Before review' })
+    ]
+
+    const list = pullRequestList([pr(44, { state: 'MERGED', title: 'After review' })], stored)
+
+    expect(list.map((p) => [p.number, p.state, p.title])).toEqual([
+      [44, 'merged', 'After review'],
+      [41, 'open', 'On the branch it left']
     ])
   })
 
   it('leaves its input untouched', () => {
     const input = [pr(3, { state: 'OPEN' }), pr(9, { state: 'MERGED' })]
-    const before = structuredClone(input)
+    const stored = [pr(2, { state: 'CLOSED' })]
+    const before = structuredClone([input, stored])
 
-    const list = pullRequestList(input)
+    const list = pullRequestList(input, stored)
 
-    expect(input).toEqual(before)
+    expect([input, stored]).toEqual(before)
     expect(list).not.toBe(input)
   })
 })

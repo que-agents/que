@@ -23,7 +23,8 @@ export function makeWorkspace(overrides: Partial<Workspace> = {}): Workspace {
     id: `ws_01hzx${wsCounter.toString(36).padStart(7, '0')}`,
     projectId: 'prj_01hzw7q2m4nb',
     name,
-    branch: name,
+    branch: overrides.branch ?? name,
+    branches: [overrides.branch ?? name],
     path: `/Users/dev/.que/worktrees/uploader/${name}`,
     baseRef: 'origin/main',
     status: 'idle',
@@ -33,7 +34,7 @@ export function makeWorkspace(overrides: Partial<Workspace> = {}): Workspace {
     sessionId: null,
     createdAt: '2026-10-13T21:04:00.000Z',
     archivedAt: null,
-    prUrl: null,
+    prUrls: [],
     pr: null,
     prs: [],
     finishedAt: null,
@@ -149,7 +150,11 @@ export function makePullRequest(overrides: Partial<PullRequest> = {}): PullReque
     updatedAt: null,
     additions: null,
     deletions: null,
+    base: 'main',
+    head: 'ha-1431-retry-logic',
     checkedAt: '2026-10-14T01:00:00.000Z',
+    comments: null,
+    commentedAt: null,
     ...overrides
   }
 }

@@ -7,8 +7,11 @@ import { isObj, strings } from '../../shared/json.decode'
 /** A remembered review pane, as stored. Fields that are missing or of the wrong type are null. */
 export interface PersistedReview {
   open: boolean
-  tab: string | null
   width: number | null
+  /** Per workspace id: its view and the pull request open in it. */
+  places: Record<string, { view: string | null; pr: number | null }>
+  /** Per workspace id, then pull request number: when its conversation was last seen. */
+  seen: Record<string, Record<number, string>>
 }
 
 /** A remembered pane layout, as stored: only the string and number fields survive. */
@@ -24,24 +27,51 @@ function stringOrNull(v: unknown): string | null {
   return typeof v === 'string' ? v : null
 }
 
+const positive = (v: unknown): number | null =>
+  Number.isInteger(v) && Number(v) > 0 ? Number(v) : null
+
+/** The entries of an object that `pick` keeps, or none when it is not an object. */
+function entriesOf<T>(
+  v: unknown,
+  pick: (key: string, value: unknown) => T | null
+): Record<string, T> {
+  if (!isObj(v)) return {}
+
+  return Object.fromEntries(
+    Object.entries(v).flatMap(([key, value]) => {
+      const kept = pick(key, value)
+
+      return kept === null ? [] : [[key, kept]]
+    })
+  )
+}
+
+const nonEmpty = (_: string, v: unknown): string | null =>
+  typeof v === 'string' && v !== '' ? v : null
+
 /** The review pane state `que.review` holds, or null when it is not an object. */
 export function decodeReview(v: unknown): PersistedReview | null {
   if (!isObj(v)) return null
 
   return {
     open: v.open === true,
-    tab: stringOrNull(v.tab),
-    width: typeof v.width === 'number' ? v.width : null
+    width: typeof v.width === 'number' ? v.width : null,
+    places: entriesOf(v.places, (_, place) =>
+      isObj(place) ? { view: stringOrNull(place.view), pr: positive(place.pr) } : null
+    ),
+    seen: entriesOf(v.seen, (_, prs) => {
+      const times = entriesOf(prs, (n, at) =>
+        positive(Number(n)) === null ? null : nonEmpty(n, at)
+      )
+
+      return Object.keys(times).length > 0 ? times : null
+    })
   }
 }
 
 /** The per-workspace diff bases `que.diffBases` holds; entries that are not non-empty strings are dropped. */
 export function decodeDiffBases(v: unknown): Record<string, string> {
-  if (!isObj(v)) return {}
-
-  return Object.fromEntries(
-    Object.entries(v).filter((e): e is [string, string] => typeof e[1] === 'string' && e[1] !== '')
-  )
+  return entriesOf(v, nonEmpty)
 }
 
 /** A layout `que.layout.<key>` holds, or null when it is not an object. */

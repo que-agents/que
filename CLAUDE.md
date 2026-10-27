@@ -8,7 +8,7 @@ so sessions outlive the app; the app and the `que` CLI are thin clients of its u
 
 ```
 src/daemon/         daemon: PtyHost (node-pty + @xterm/headless mirror), DaemonServer (socket API),
-                    workspaces, status engine, quiet hours, draft PRs, the sessions report
+                    workspaces, status engine, quiet hours, pull requests, the sessions report
 src/shared/         protocol.ts (Methods, Events, framing), client.ts (DaemonClient), paths.ts, types.ts
 src/cli/            the `que` CLI (commander), a DaemonClient
 src/main/           Electron main: proxies the renderer's calls and events to the daemon

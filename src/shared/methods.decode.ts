@@ -100,7 +100,6 @@ export const decoders: { [M in MethodName]: (p: Params) => ParamsOf<M> } = {
     cols: num(p, 'cols'),
     rows: num(p, 'rows')
   }),
-  'workspace.createPr': (p) => ({ id: str(p, 'id'), title: str(p, 'title') }),
   'workspace.start': (p) => ({
     id: str(p, 'id'),
     cols: optNumber(p, 'cols'),
@@ -116,9 +115,14 @@ export const decoders: { [M in MethodName]: (p: Params) => ParamsOf<M> } = {
   'workspace.diff': (p) => ({
     id: str(p, 'id'),
     base: optString(p, 'base'),
+    head: optString(p, 'head'),
     commit: optString(p, 'commit')
   }),
-  'workspace.prThread': (p) => ({ id: str(p, 'id'), refresh: optBool(p, 'refresh') }),
+  'workspace.prThread': (p) => ({
+    id: str(p, 'id'),
+    number: num(p, 'number'),
+    refresh: optBool(p, 'refresh')
+  }),
   'workspace.files': idOnly,
   'workspace.readFile': (p) => ({ id: str(p, 'id'), path: str(p, 'path') }),
   'workspace.watch': idOnly,

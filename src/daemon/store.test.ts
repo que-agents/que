@@ -89,6 +89,80 @@ describe('migrations', () => {
   })
 })
 
+describe('migrations to the session pull requests', () => {
+  it('carries the pull request a workspace recorded into its list, and leaves its branches to be seeded', () => {
+    const dir = fs.mkdtempSync(join(os.tmpdir(), 'que-store-'))
+    const path = join(dir, 'que.db')
+    const previous = new DatabaseSync(path)
+    previous.exec('CREATE TABLE migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)')
+
+    const prUrls = MIGRATIONS.findIndex((sql) => sql.includes('pr_urls_json'))
+
+    MIGRATIONS.slice(0, prUrls).forEach((sql, i) => {
+      previous.exec(sql)
+      previous
+        .prepare('INSERT INTO migrations (version, applied_at) VALUES (?, ?)')
+        .run(i + 1, '2026-10-26T21:00:00.000Z')
+    })
+
+    previous.exec(`
+      INSERT INTO projects (id, name, path, default_branch, created_at)
+        VALUES ('prj_01hzw7q2m4nb', 'uploader', '/Users/dev/src/uploader', 'main', '2026-10-13T21:00:00.000Z');
+      INSERT INTO workspaces (id, project_id, name, branch, path, base_ref, status, status_at, created_at, pr_url)
+        VALUES ('ws_01hzx3k9c2qf', 'prj_01hzw7q2m4nb', 'APP-1432-retry-logic', 'APP-1432-retry-logic',
+          '/Users/dev/.que/worktrees/uploader/APP-1432-retry-logic', 'main', 'idle',
+          '2026-10-13T21:05:00.000Z', '2026-10-13T21:05:00.000Z', 'https://github.com/rquellh/uploader/pull/12'),
+        ('ws_01hzx4m1p8rt', 'prj_01hzw7q2m4nb', 'APP-1440-quiet-board', 'APP-1440-quiet-board',
+          '/Users/dev/.que/worktrees/uploader/APP-1440-quiet-board', 'main', 'idle',
+          '2026-10-13T21:06:00.000Z', '2026-10-13T21:06:00.000Z', NULL);
+    `)
+
+    previous.close()
+
+    const reopened = new Store(path)
+
+    const read = (id: string) => {
+      const ws = reopened.getWorkspace(id)
+
+      return { prUrls: ws?.prUrls, branches: ws?.branches }
+    }
+
+    const kept = [read('ws_01hzx3k9c2qf'), read('ws_01hzx4m1p8rt')]
+    reopened.close()
+    fs.rmSync(dir, { recursive: true, force: true })
+
+    expect(kept).toEqual([
+      { prUrls: ['https://github.com/rquellh/uploader/pull/12'], branches: [] },
+      { prUrls: [], branches: [] }
+    ])
+  })
+})
+
+describe('created pull requests', () => {
+  it('appends each new one once, oldest first', () => {
+    const ws = makeWorkspace({ id: 'ws_01hzx3k9c2qf' })
+    store.insertWorkspace(ws)
+
+    expect(store.addWorkspacePrUrls(ws.id, ['https://github.com/rquellh/uploader/pull/12'])).toBe(
+      true
+    )
+    expect(
+      store.addWorkspacePrUrls(ws.id, [
+        'https://github.com/rquellh/uploader/pull/12',
+        'https://github.com/rquellh/uploader/pull/15',
+        'https://github.com/rquellh/uploader/pull/15'
+      ])
+    ).toBe(true)
+    expect(store.addWorkspacePrUrls(ws.id, ['https://github.com/rquellh/uploader/pull/15'])).toBe(
+      false
+    )
+    expect(store.getWorkspace(ws.id)?.prUrls).toEqual([
+      'https://github.com/rquellh/uploader/pull/12',
+      'https://github.com/rquellh/uploader/pull/15'
+    ])
+  })
+})
+
 describe('hook events', () => {
   it('keeps the newest 500 per workspace and leaves other workspaces alone', () => {
     for (let i = 0; i < 503; i++) {

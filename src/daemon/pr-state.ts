@@ -1,6 +1,6 @@
 // Maps one decoded item of `gh pr list --json ...` (pr-state.decode.ts) onto
 // the PullRequest que keeps.
-import type { CheckState, PrCheck, PullRequest } from '../shared/types'
+import type { CheckState, PrCheck, PrThread, PullRequest } from '../shared/types'
 import type { GhCheck, GhPullRequest } from './pr-state.decode'
 
 const FAILED = new Set([
@@ -109,19 +109,40 @@ export function parsePullRequest(r: GhPullRequest, checkedAt: string): PullReque
     updatedAt: r.updatedAt,
     additions: r.additions,
     deletions: r.deletions,
-    checkedAt
+    base: r.baseRefName,
+    head: r.headRefName,
+    checkedAt,
+    comments: null,
+    commentedAt: null
   }
 }
 
-/** At most this many pull requests are kept per workspace. */
-export const PR_LIST_CAP = 10
+/** A pull request's comment count and newest comment time, as its conversation gives them. */
+export type CommentCounts = Pick<PullRequest, 'comments' | 'commentedAt'>
 
-/** One entry per number (the first seen wins), newest first by number, at most PR_LIST_CAP. */
-export function pullRequestList(prs: PullRequest[]): PullRequest[] {
+/** How many entries a conversation holds and when the newest was posted. */
+export function commentCounts(thread: PrThread): CommentCounts {
+  const commentedAt = thread.entries.reduce<string | null>(
+    (max, e) => (max === null || e.at > max ? e.at : max),
+    null
+  )
+
+  return { comments: thread.entries.length, commentedAt }
+}
+
+/** At most this many pull requests are kept per workspace. */
+export const PR_LIST_CAP = 20
+
+/**
+ * One entry per number (the first seen wins), newest first by number, at most PR_LIST_CAP.
+ * `stored` is what the workspace held before: an entry missing from `prs` is kept (its branch
+ * moved on), one in `prs` gives way to the fresh copy.
+ */
+export function pullRequestList(prs: PullRequest[], stored: PullRequest[] = []): PullRequest[] {
   const seen = new Set<number>()
   const out: PullRequest[] = []
 
-  for (const pr of prs) {
+  for (const pr of [...prs, ...stored]) {
     if (seen.has(pr.number)) continue
     seen.add(pr.number)
     out.push(pr)
@@ -176,6 +197,11 @@ export function samePullRequest(a: PullRequest | null, b: PullRequest | null): b
     a.checks === b.checks &&
     a.review === b.review &&
     a.updatedAt === b.updatedAt &&
+    a.base === b.base &&
+    a.head === b.head &&
+    // A pull request stored before comment counts were kept has none.
+    (a.comments ?? null) === (b.comments ?? null) &&
+    (a.commentedAt ?? null) === (b.commentedAt ?? null) &&
     // A pull request stored before line counts were kept has none.
     (a.additions ?? null) === (b.additions ?? null) &&
     (a.deletions ?? null) === (b.deletions ?? null) &&

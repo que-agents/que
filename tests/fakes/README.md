@@ -57,12 +57,14 @@ already in the log. Everything else exits 0 silently.
 missing file means no pull requests). A branch's entry is a list of its pull request
 objects (one merged and a newer one open, say). When
 it is set, `gh pr create` records `{ number, url, title, state: "OPEN", isDraft,
-headRefName, reviewDecision: "", statusCheckRollup: [], mergedAt: null, updatedAt }`
-(`updatedAt` now) under the current branch of its cwd: it replaces the branch's open pull
-request, and otherwise joins its merged and closed ones in the list. `gh pr list --head
+baseRefName, headRefName, reviewDecision: "", statusCheckRollup: [], mergedAt: null, updatedAt }`
+(`updatedAt` now) under its head: `--head` when given, else the current branch of its cwd;
+`baseRefName` is `--base` when given, else origin's default branch (`origin/HEAD`, else `main`).
+It replaces the head's open pull request, and otherwise joins its merged and closed ones in
+the list. `gh pr list --head
 <branch> --state all --limit <n> --json <fields>` prints a JSON array of that branch's pull
-requests, newest first by number, with only the requested fields (`additions` and
-`deletions` among them when the entry has them), or `[]`; without `--head` it prints every
+requests, newest first by number, with only the requested fields (`additions`,
+`deletions`, `baseRefName` and `headRefName` among them when the entry has them), or `[]`; without `--head` it prints every
 branch's, up to `--limit` (default 30). With `$QUE_FAKE_GH_FAIL` set, `pr list` exits 1
 printing `gh: failed (fake)` on stderr. Tests edit the file with `setFakePullRequest()`
 (merges into the branch's pull request with the patch's `number`, else the newest,
@@ -71,7 +73,7 @@ the highest in the file unless told), and read it with `readFakePullRequests()`,
 `src/testing/fakes.ts`.
 **The conversation.** `gh pr view <n> --json <fields>` finds the pull request (in any branch's entry) whose `number` is
 `n` and prints an object with the requested fields among `number,url,title,state,isDraft,
-reviewDecision,statusCheckRollup,mergedAt,updatedAt,additions,deletions,headRefName,comments,reviews` (`comments` and
+reviewDecision,statusCheckRollup,mergedAt,updatedAt,additions,deletions,baseRefName,headRefName,comments,reviews` (`comments` and
 `reviews` default to `[]`); an unknown number exits 1 with `gh: no pull request #<n> (fake)`.
 `gh api repos/<owner>/<repo>/pulls/<n>/comments` (literal `{owner}`/`{repo}`, `--paginate`,
 `-X GET` and `--method GET` are fine) prints that entry's `lineComments` (default `[]`).
