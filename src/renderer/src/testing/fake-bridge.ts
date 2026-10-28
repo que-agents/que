@@ -677,6 +677,11 @@ class FakeBridge {
 
           return seeded ? structuredClone(seeded) : null
         },
+        checkPrs: async ({ id }) => {
+          this.refuseIfQuiet('workspace.checkPrs')
+
+          return { ...this.workspace(id) }
+        },
         start: async ({ id, cols, rows }) => {
           this.refuseIfQuiet('workspace.start')
           const ws = this.workspace(id)

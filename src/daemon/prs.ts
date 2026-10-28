@@ -218,6 +218,13 @@ export class PrService {
     if (ws && !ws.archivedAt) await this.check(await this.sync(ws))
   }
 
+  /** Checks one workspace now and answers it as stored after the check. */
+  async checkNow(id: string): Promise<Workspace> {
+    await this.refresh(id)
+
+    return this.opts.workspaces.get(id)
+  }
+
   /**
    * The conversation of the workspace's pull request `number`. Cached until the tracker sees
    * that pull request change, or fetched now with `refresh`. Null when the workspace has no
