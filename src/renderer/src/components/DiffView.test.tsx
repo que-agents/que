@@ -220,7 +220,7 @@ describe('DiffView', () => {
 
       const view = await openFirstDiff(user)
 
-      expect(await within(view).findByTestId('diff-skipped')).toHaveTextContent('Binary file.')
+      expect(await within(view).findByTestId('diff-binary')).toHaveTextContent('Binary file.')
       expect(within(view).queryByTestId('diff-patch')).not.toBeInTheDocument()
 
       fakeBridge.seedDiffFile(
@@ -229,7 +229,7 @@ describe('DiffView', () => {
       fakeBridge.changeWorkspace(retry.id)
 
       await waitFor(() => {
-        expect(within(view).getByTestId('diff-skipped')).toHaveTextContent('Too large to show.')
+        expect(within(view).getByTestId('diff-too-large')).toHaveTextContent('Too large to show.')
       })
     })
 
@@ -410,6 +410,39 @@ describe('DiffView', () => {
       const target = patch.querySelector<HTMLElement>('[data-target]') as HTMLElement
       expect(within(target).getByTestId('diff-split-old')).toHaveTextContent('return run()')
       expect(within(target).getByTestId('diff-split-new')).toHaveTextContent('return await run()')
+    })
+  })
+
+  describe('status updates', () => {
+    it('fetches the lines of the diff tab on screen when the worktree changes, and a background one when it is selected', async () => {
+      const user = userEvent.setup()
+      seed()
+      await openFirstDiff(user)
+      await user.click(screen.getByTestId('changes-file-1'))
+      const pane = screen.getByTestId('pane-0')
+      await within(pane).findByTestId('diff-patch')
+
+      const calls = (path: string): number =>
+        fakeBridge.diffFileCalls().filter((c) => c.path === path).length
+
+      const retryBefore = calls('src/upload/retry.ts')
+      const readmeBefore = calls('README.md')
+
+      fakeBridge.changeWorkspace(retry.id)
+
+      await waitFor(() => {
+        expect(calls('README.md')).toBe(readmeBefore + 1)
+      })
+      expect(calls('src/upload/retry.ts')).toBe(retryBefore)
+
+      const tabs = within(pane).getAllByTestId('view-tab-diff')
+      const retryTab = tabs.find((t) => t.dataset.path === 'src/upload/retry.ts') as HTMLElement
+      await user.click(within(retryTab).getByTestId('view-tab-diff-select'))
+
+      await waitFor(() => {
+        expect(calls('src/upload/retry.ts')).toBe(retryBefore + 1)
+      })
+      expect(await within(pane).findByTestId('diff-patch')).toHaveTextContent('MAX_RETRIES')
     })
   })
 

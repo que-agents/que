@@ -212,11 +212,11 @@ export default function DiffView({
             against={pull && ws ? `#${pull.number} vs ${baseLabel(pull, ws.prs)}` : null}
           />
           {detail?.skipped ? (
-            <p className="changes-note" data-testid="diff-skipped">
+            <p className="changes-note" data-testid={`diff-${detail.skipped}`}>
               {SKIPPED[detail.skipped]}
             </p>
           ) : detail && detail.hunks.length === 0 ? (
-            <p className="changes-note" data-testid="diff-skipped">
+            <p className="changes-note" data-testid="diff-no-lines">
               {whitespace === 'ignore' ? 'Only whitespace changed.' : 'No lines changed.'}
             </p>
           ) : (

@@ -20,6 +20,10 @@ export class DiffPage {
   // A token of the code with exactly this text, wherever it is drawn.
   token: (text: string) => Locator
   empty: Locator
+  // Instead of lines: a binary file, one over the size cap, or no lines left to show.
+  binary: Locator
+  tooLarge: Locator
+  noLines: Locator
   error: Locator
   against: Locator
   tab: (path: string) => Locator
@@ -46,6 +50,9 @@ export class DiffPage {
     this.token = (text) =>
       this.patch.getByTestId('diff-line-code').locator('span').getByText(text, { exact: true })
     this.empty = page.getByTestId('diff-empty')
+    this.binary = page.getByTestId('diff-binary')
+    this.tooLarge = page.getByTestId('diff-too-large')
+    this.noLines = page.getByTestId('diff-no-lines')
     this.error = page.getByTestId('diff-error')
     this.against = page.getByTestId('diff-against')
     this.target = this.patch.locator('[data-target]')

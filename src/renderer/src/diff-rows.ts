@@ -2,6 +2,7 @@
 // of unchanged lines (whole-file context) or the gaps between hunks, and the same rows paired
 // side by side for the split view. Pure: the tab keeps the reveals and renders the rows.
 import type { DiffLine, WorkspaceDiffFile } from '../../preload/index.d'
+import { lineText } from '../../shared/protocol'
 
 /** A run of unchanged lines longer than this folds. */
 export const FOLD_MIN = 8
@@ -72,11 +73,6 @@ export interface PairRow {
 
 export type SplitRow = PairRow | FoldRow | GapRow
 
-/** A line's text: its tokens' texts joined. */
-export function lineText(line: DiffLine): string {
-  return line.tokens.map((t) => t.text).join('')
-}
-
 /** Every line of the file, all hunks in order. */
 export function fileLines(file: WorkspaceDiffFile): DiffLine[] {
   return file.hunks.flatMap((h) => h.lines)
@@ -115,7 +111,7 @@ function functionLabels(lines: readonly DiffLine[]): string[] {
 
   return lines.map((line) => {
     if (line.kind !== 'removed') {
-      const text = lineText(line)
+      const text = lineText(line.tokens)
 
       if (FUNCNAME.test(text)) label = text.trimEnd()
     }

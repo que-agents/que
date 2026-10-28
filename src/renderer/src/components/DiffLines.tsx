@@ -1,9 +1,9 @@
 // A diff tab's lines: numbered, signed, syntax coloured, with folded context, one column or
 // side by side, and a pull request's line comments under their lines.
-import { Fragment, memo } from 'react'
+import { Fragment, memo, useMemo } from 'react'
 import type { DiffLine, DiffToken, PrThreadEntry } from '../../../preload/index.d'
 import { formatAge } from '../../../shared/format'
-import type { DiffRow, FoldRow, GapRow, SplitRow } from '../diff-rows'
+import type { DiffRow, FoldRow, LineRow, PairRow, SplitRow } from '../diff-rows'
 import type { DiffMode } from '../store'
 import { useNow } from '../useNow'
 
@@ -43,71 +43,66 @@ function LineComment({ entry }: { entry: PrThreadEntry }): React.JSX.Element {
   )
 }
 
-function FoldBar({
-  row,
-  onReveal
+type Reveal = (fold: FoldRow, how: 'down' | 'up' | 'all') => void
+
+const unchanged = (n: number): string => `${n} unchanged ${n === 1 ? 'line' : 'lines'}`
+
+/** A row standing for unchanged lines, across both sides: its controls, then the label. */
+function FoldShell({
+  testid,
+  label,
+  children
 }: {
-  row: FoldRow
-  onReveal: (fold: FoldRow, how: 'down' | 'up' | 'all') => void
+  testid: string
+  label: string
+  children: React.ReactNode
 }): React.JSX.Element {
   return (
-    <div className="diff-fold" data-testid={`diff-fold-${row.id}`}>
+    <div className="diff-fold" data-testid={testid}>
       <span className="diff-fold-inner">
-        {row.up > 0 && (
-          <button
-            type="button"
-            className="diff-fold-step"
-            data-testid={`diff-fold-${row.id}-up`}
-            aria-label={`Show ${row.up} lines above`}
-            onClick={() => onReveal(row, 'up')}
-          >
-            ↑ {row.up}
-          </button>
-        )}
-        {row.down > 0 && (
-          <button
-            type="button"
-            className="diff-fold-step"
-            data-testid={`diff-fold-${row.id}-down`}
-            aria-label={`Show ${row.down} lines below`}
-            onClick={() => onReveal(row, 'down')}
-          >
-            ↓ {row.down}
-          </button>
-        )}
+        {children}
+        {label && <span className="diff-fold-label">{label}</span>}
+      </span>
+    </div>
+  )
+}
+
+/** Folded lines: ↑ and ↓ reveal twenty from that side, the count reveals them all. */
+function FoldBar({ row, onReveal }: { row: FoldRow; onReveal: Reveal }): React.JSX.Element {
+  return (
+    <FoldShell testid={`diff-fold-${row.id}`} label={row.label}>
+      {row.up > 0 && (
         <button
           type="button"
-          className="diff-fold-all"
-          data-testid={`diff-fold-${row.id}-all`}
-          onClick={() => onReveal(row, 'all')}
+          className="diff-fold-step"
+          data-testid={`diff-fold-${row.id}-up`}
+          aria-label={`Show ${row.up} lines above`}
+          onClick={() => onReveal(row, 'up')}
         >
-          {row.hidden} unchanged {row.hidden === 1 ? 'line' : 'lines'}
+          ↑ {row.up}
         </button>
-        {row.label && <span className="diff-fold-label">{row.label}</span>}
-      </span>
-    </div>
+      )}
+      {row.down > 0 && (
+        <button
+          type="button"
+          className="diff-fold-step"
+          data-testid={`diff-fold-${row.id}-down`}
+          aria-label={`Show ${row.down} lines below`}
+          onClick={() => onReveal(row, 'down')}
+        >
+          ↓ {row.down}
+        </button>
+      )}
+      <button
+        type="button"
+        className="diff-fold-all"
+        data-testid={`diff-fold-${row.id}-all`}
+        onClick={() => onReveal(row, 'all')}
+      >
+        {unchanged(row.hidden)}
+      </button>
+    </FoldShell>
   )
-}
-
-function GapBar({ row }: { row: GapRow }): React.JSX.Element {
-  return (
-    <div className="diff-fold" data-testid={`diff-${row.id.replace(':', '-')}`}>
-      <span className="diff-fold-inner">
-        <span>
-          {row.count} unchanged {row.count === 1 ? 'line' : 'lines'}
-        </span>
-        {row.label && <span className="diff-fold-label">{row.label}</span>}
-      </span>
-    </div>
-  )
-}
-
-/** The comments on a line of the new file. */
-function commentsOn(
-  n: number | null | undefined,
-  comments: readonly PrThreadEntry[]
-): PrThreadEntry[] {
-  return n == null ? [] : comments.filter((c) => c.line === n)
 }
 
 /** A row's line in the new file, and whether a line comment asked for it. */
@@ -121,49 +116,69 @@ const lineAttrs = (n: number | null | undefined, target: number | null): LineAtt
   'data-target': n != null && n === target ? true : undefined
 })
 
-function UnifiedRows({
+const NO_COMMENTS: readonly PrThreadEntry[] = []
+
+/**
+ * The rows of either layout: folds and gaps drawn the same way, each line row drawn by
+ * `renderLine` with the comments on its line of the new file under it.
+ */
+function Rows<L extends LineRow | PairRow>({
   rows,
-  comments,
+  byLine,
   target,
-  onReveal
+  onReveal,
+  newLine,
+  renderLine
 }: {
-  rows: readonly DiffRow[]
-  comments: readonly PrThreadEntry[]
+  rows: ReadonlyArray<L | Exclude<DiffRow, LineRow>>
+  byLine: ReadonlyMap<number, readonly PrThreadEntry[]>
   target: number | null
-  onReveal: (fold: FoldRow, how: 'down' | 'up' | 'all') => void
+  onReveal: Reveal
+  newLine: (row: L) => number | null | undefined
+  renderLine: (row: L, attrs: LineAttrs) => React.JSX.Element
 }): React.JSX.Element {
   return (
     <>
       {rows.map((row) => {
         if (row.kind === 'fold') return <FoldBar key={row.id} row={row} onReveal={onReveal} />
 
-        if (row.kind === 'gap') return <GapBar key={row.id} row={row} />
-        const { line } = row
+        if (row.kind === 'gap') {
+          return (
+            <FoldShell key={row.id} testid={`diff-${row.id.replace(':', '-')}`} label={row.label}>
+              <span>{unchanged(row.count)}</span>
+            </FoldShell>
+          )
+        }
+
+        const n = newLine(row)
 
         return (
           <Fragment key={row.index}>
-            <div
-              className="diff-row"
-              data-testid="diff-line"
-              data-kind={line.kind}
-              {...lineAttrs(line.new, target)}
-            >
-              <span className="diff-num" data-testid="diff-line-old">
-                {line.old ?? ''}
-              </span>
-              <span className="diff-num" data-testid="diff-line-new">
-                {line.new ?? ''}
-              </span>
-              <span className="diff-sign">{SIGN[line.kind]}</span>
-              <Code line={line} />
-            </div>
-            {commentsOn(line.new, comments).map((c) => (
+            {renderLine(row, lineAttrs(n, target))}
+            {(n == null ? NO_COMMENTS : (byLine.get(n) ?? NO_COMMENTS)).map((c) => (
               <LineComment key={c.id} entry={c} />
             ))}
           </Fragment>
         )
       })}
     </>
+  )
+}
+
+function unifiedLine(row: LineRow, attrs: LineAttrs): React.JSX.Element {
+  const { line } = row
+
+  return (
+    <div className="diff-row" data-testid="diff-line" data-kind={line.kind} {...attrs}>
+      <span className="diff-num" data-testid="diff-line-old">
+        {line.old ?? ''}
+      </span>
+      <span className="diff-num" data-testid="diff-line-new">
+        {line.new ?? ''}
+      </span>
+      <span className="diff-sign">{SIGN[line.kind]}</span>
+      <Code line={line} />
+    </div>
   )
 }
 
@@ -184,41 +199,12 @@ function Side({ line, side }: { line: DiffLine | null; side: 'old' | 'new' }): R
   )
 }
 
-function SplitRows({
-  rows,
-  comments,
-  target,
-  onReveal
-}: {
-  rows: readonly SplitRow[]
-  comments: readonly PrThreadEntry[]
-  target: number | null
-  onReveal: (fold: FoldRow, how: 'down' | 'up' | 'all') => void
-}): React.JSX.Element {
+function splitLine(row: PairRow, attrs: LineAttrs): React.JSX.Element {
   return (
-    <>
-      {rows.map((row) => {
-        if (row.kind === 'fold') return <FoldBar key={row.id} row={row} onReveal={onReveal} />
-
-        if (row.kind === 'gap') return <GapBar key={row.id} row={row} />
-
-        return (
-          <Fragment key={row.index}>
-            <div
-              className="diff-split-row"
-              data-testid="diff-split-row"
-              {...lineAttrs(row.right?.new, target)}
-            >
-              <Side line={row.left} side="old" />
-              <Side line={row.right} side="new" />
-            </div>
-            {commentsOn(row.right?.new, comments).map((c) => (
-              <LineComment key={c.id} entry={c} />
-            ))}
-          </Fragment>
-        )
-      })}
-    </>
+    <div className="diff-split-row" data-testid="diff-split-row" {...attrs}>
+      <Side line={row.left} side="old" />
+      <Side line={row.right} side="new" />
+    </div>
   )
 }
 
@@ -254,22 +240,48 @@ export const DiffLines = memo(function DiffLines({
   split: readonly SplitRow[] | null
   comments: readonly PrThreadEntry[]
   target: number | null
-  onReveal: (fold: FoldRow, how: 'down' | 'up' | 'all') => void
+  onReveal: Reveal
 }): React.JSX.Element {
+  // Each line comment under the line of the new file it is on, looked up once per row.
+  const byLine = useMemo(() => {
+    const map = new Map<number, PrThreadEntry[]>()
+
+    for (const c of comments) {
+      if (c.line === null) continue
+      map.set(c.line, [...(map.get(c.line) ?? []), c])
+    }
+
+    return map
+  }, [comments])
+
   if (mode === 'split' && split) {
     return (
       <div
         className="diff-lines split"
         style={{ '--code-ch': `${widest(split)}ch` } as React.CSSProperties}
       >
-        <SplitRows rows={split} comments={comments} target={target} onReveal={onReveal} />
+        <Rows
+          rows={split}
+          byLine={byLine}
+          target={target}
+          onReveal={onReveal}
+          newLine={(r: PairRow) => r.right?.new}
+          renderLine={splitLine}
+        />
       </div>
     )
   }
 
   return (
     <div className="diff-lines unified">
-      <UnifiedRows rows={rows} comments={comments} target={target} onReveal={onReveal} />
+      <Rows
+        rows={rows}
+        byLine={byLine}
+        target={target}
+        onReveal={onReveal}
+        newLine={(r: LineRow) => r.line.new}
+        renderLine={unifiedLine}
+      />
     </div>
   )
 })

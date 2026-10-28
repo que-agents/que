@@ -96,6 +96,22 @@ export function decodeLayout(v: unknown): PersistedLayout | null {
   }
 }
 
+/** How a diff tab lays its lines out: one column, or old and new side by side. */
+export type DiffMode = 'unified' | 'split'
+
+/** Whether a diff tab compares whitespace ('ignore': whitespace changes are not differences). */
+export type DiffWhitespace = 'show' | 'ignore'
+
+/** The diff layout `que.diffMode` holds: split only when it says so, else unified. */
+export function decodeDiffMode(raw: string): DiffMode {
+  return raw === 'split' ? 'split' : 'unified'
+}
+
+/** The whitespace option `que.diffWhitespace` holds: ignore only when it says so, else show. */
+export function decodeDiffWhitespace(raw: string): DiffWhitespace {
+  return raw === 'ignore' ? 'ignore' : 'show'
+}
+
 /**
  * What `key` holds, read through `decode`; the fallback when nothing (or an empty string) is
  * stored, when storage is unavailable, or when `decode` throws on what it finds.
