@@ -373,6 +373,27 @@ describe('workspace.checkPrs', () => {
       .toBe(true)
   }, 30_000)
 
+  it('shares one check between callers asking at the same time', async () => {
+    const headLists = () =>
+      readFakeLog(daemon.ghLog).filter((c) => c.argv[1] === 'list' && c.argv.includes('--head'))
+        .length
+
+    const ws = await workspace()
+    setFakePullRequest(daemon.ghPrs, ws.branch, { isDraft: false })
+    await client.request('workspace.checkPrs', { id: ws.id })
+
+    const before = headLists()
+
+    const [a, b] = await Promise.all([
+      client.request('workspace.checkPrs', { id: ws.id }),
+      client.request('workspace.checkPrs', { id: ws.id })
+    ])
+
+    expect(a.prs[0]?.number).toBe(1)
+    expect(b.prs[0]?.number).toBe(1)
+    expect(headLists() - before).toBe(1)
+  }, 30_000)
+
   describe('errors', () => {
     it('fails with the gh message and leaves the stored pull requests as they were', async () => {
       const ws = await workspace()

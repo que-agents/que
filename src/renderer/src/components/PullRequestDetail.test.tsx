@@ -515,11 +515,8 @@ describe('PullRequestDetail', () => {
 
       await user.click(screen.getByTestId('pr-refresh'))
 
-      expect(await screen.findByTestId('prs-check-error')).toHaveTextContent(
-        'gh: HTTP 502: Bad Gateway'
-      )
-      expect(screen.getByTestId('prs-check-error')).toHaveAttribute('role', 'alert')
-      expect(screen.queryByTestId('pr-error')).not.toBeInTheDocument()
+      expect(await screen.findByTestId('pr-error')).toHaveTextContent('gh: HTTP 502: Bad Gateway')
+      expect(screen.getByTestId('pr-error')).toHaveAttribute('role', 'alert')
     })
 
     it('says a refusal once when the check and the conversation are refused alike', async () => {
