@@ -16,6 +16,7 @@ export class PullRequestPage {
   row: (number: number) => Locator
   rowMeta: (number: number) => Locator
   rowComments: (number: number) => Locator
+  checkError: Locator
   root: Locator
   error: Locator
   title: Locator
@@ -49,6 +50,7 @@ export class PullRequestPage {
     this.row = (number) => page.getByTestId(`pr-row-${number}`)
     this.rowMeta = (number) => page.getByTestId(`pr-row-${number}-meta`)
     this.rowComments = (number) => page.getByTestId(`pr-row-${number}-comments`)
+    this.checkError = page.getByTestId('prs-check-error')
     this.root = page.getByTestId('pr-view')
     this.error = page.getByTestId('pr-error')
     this.title = page.getByTestId('pr-title')

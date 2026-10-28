@@ -931,6 +931,7 @@ export class DaemonServer {
 
       return this.prs.thread(ws.id, p.number, p.refresh === true)
     },
+    'workspace.checkPrs': (p) => this.prs.checkNow(this.workspaces.get(p.id).id),
     'workspace.files': (p) => workspaceFiles(this.workspaces.get(p.id), Date.now),
     'workspace.readFile': (p) => readWorkspaceFile(this.workspaces.get(p.id), p.path),
     'workspace.watch': (p, { conn }) => {

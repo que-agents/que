@@ -521,6 +521,11 @@ export interface Methods {
     params: { id: string; number: number; refresh?: boolean }
     result: PrThread | null
   }
+  /**
+   * Checks the workspace's pull requests with GitHub now, as the tracker's poll does; stores and
+   * announces what changed (workspace.updated) and resolves with the workspace.
+   */
+  'workspace.checkPrs': { params: { id: string }; result: Workspace }
   'workspace.files': { params: { id: string }; result: WorkspaceFiles }
   'workspace.readFile': { params: { id: string; path: string }; result: WorkspaceFile }
   /**
@@ -624,6 +629,7 @@ export const METHODS: {
     renderer: true,
     quiet: true
   },
+  'workspace.checkPrs': { renderer: true, quiet: true },
   'workspace.files': { renderer: true, quiet: true },
   'workspace.readFile': {
     renderer: true,

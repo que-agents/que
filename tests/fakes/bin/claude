@@ -244,7 +244,10 @@ function interactive() {
     if (titleText) out('\x1b]0;\x07')
   })
   setTitle()
-  out(`✻ Claude Code v${VERSION} (fake) · ${model} · ${cwd}\r\n`)
+  // The working directory as the real CLI shows it: under $HOME, as `~`.
+  const home = os.homedir()
+  const shownCwd = cwd === home || cwd.startsWith(`${home}/`) ? `~${cwd.slice(home.length)}` : cwd
+  out(`✻ Claude Code v${VERSION} (fake) · ${model} · ${shownCwd}\r\n`)
   runHooks('SessionStart', { source: resumed ? 'resume' : 'startup', model })
   out('> ')
 
@@ -304,6 +307,56 @@ function interactive() {
     submitPrompt(line)
     reply('The background work finished.', { background_tasks: [] })
   }
+
+  // QUE_FAKE_CLAUDE_STREAM=<ms>: a prompt's turn keeps working, printing a tool step every
+  // <ms>, until SIGUSR1 (the turn ends with a reply) or SIGUSR2 (it stops to ask permission).
+  const streamMs = Number(process.env.QUE_FAKE_CLAUDE_STREAM) || 0
+  let streaming = null
+  const STREAM_STEPS = [
+    ['Read', 'src/upload.ts', 'Read 142 lines'],
+    ['Grep', '"retry" in src/', 'Found 6 matches'],
+    ['Read', 'src/config.ts', 'Read 88 lines'],
+    ['Edit', 'src/upload.ts', 'Updated with 18 additions and 4 removals'],
+    ['Bash', 'npm test -- upload', '24 passed, 1 failed'],
+    ['Read', 'test/upload.test.ts', 'Read 203 lines'],
+    ['Edit', 'test/upload.test.ts', 'Updated with 7 additions and 2 removals'],
+    ['Bash', 'npm test -- upload', '25 passed']
+  ]
+
+  // Each prompt starts at its own step, so sessions side by side do not print the same lines.
+  const startStream = (line) => {
+    let i = line.length % STREAM_STEPS.length
+    const step = () => {
+      const [tool, arg, result] = STREAM_STEPS[i++ % STREAM_STEPS.length]
+      toolCall(tool, { description: arg })
+      out(`● ${tool}(${arg})\r\n  ⎿  ${result}\r\n`)
+    }
+    step()
+    streaming = setInterval(step, streamMs)
+  }
+
+  const stopStream = () => {
+    if (!streaming) return false
+    clearInterval(streaming)
+    streaming = null
+    return true
+  }
+
+  process.on('SIGUSR1', () => {
+    if (!stopStream()) return
+    reply('Done. The change is in and the tests pass.')
+    out('> ')
+  })
+  process.on('SIGUSR2', () => {
+    if (!stopStream()) return
+    awaitingPermission = true
+    runHooks('Notification', {
+      notification_type: 'permission_prompt',
+      message: 'Claude needs your permission to use Bash',
+      title: 'Permission needed'
+    })
+    out('Claude needs your permission to use Bash. Allow? (y/n) ')
+  })
 
   const toolCall = (name, input) => {
     const id = `toolu_${crypto.randomBytes(12).toString('hex')}`
@@ -382,7 +435,12 @@ function interactive() {
       out('Claude needs your permission to use Bash. Allow? (y/n) ')
       return
     }
+    if (streaming) return
     submitPrompt(line)
+    if (streamMs > 0) {
+      startStream(line)
+      return
+    }
     out('thinking…\r\n')
     toolCall('Read', { file_path: path.join(cwd, 'README.md') })
     reply(`Fake reply to: ${line}`)

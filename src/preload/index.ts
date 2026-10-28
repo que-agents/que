@@ -100,6 +100,7 @@ const api: QueApi = {
     diff: (p) => call('workspace.diff', p),
     diffFile: (p) => call('workspace.diffFile', p),
     prThread: (p) => call('workspace.prThread', p),
+    checkPrs: (p) => call('workspace.checkPrs', p),
     files: (p) => call('workspace.files', p),
     readFile: (p) => call('workspace.readFile', p),
     watch: (p) => call('workspace.watch', p),
