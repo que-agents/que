@@ -104,3 +104,7 @@ Review the pull request (the changelog section is the release notes) and merge
 it. The release workflow then builds que.app and drafts the GitHub release;
 check the notes and the DMG on the release page and publish the draft, which
 creates the tag.
+
+`npm run package` and `npm run dist` build unsigned. With a Developer ID
+Application certificate in your login keychain,
+`CSC_IDENTITY_AUTO_DISCOVERY=true npm run dist` builds a signed one.

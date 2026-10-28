@@ -12,15 +12,13 @@ name: Release
 # Run it from the Actions tab (workflow_dispatch) to rehearse: the same build,
 # no release, and the DMG, zip, manifest and notes uploaded as an artifact.
 #
-# Signed and notarized builds (later). Add these repository secrets, set
-# `mac.identity` and `mac.notarize: true` in electron-builder.yml, and drop
-# CSC_IDENTITY_AUTO_DISCOVERY below:
+# Signing and notarization switch on with these repository secrets and no code
+# change; without them the build is unsigned (see electron-builder.yml):
 #   CSC_LINK                      base64 of the Developer ID Application .p12
 #   CSC_KEY_PASSWORD              its password
 #   APPLE_ID                      the Apple ID used for notarization
 #   APPLE_APP_SPECIFIC_PASSWORD   an app-specific password for that Apple ID
 #   APPLE_TEAM_ID                 the developer team id
-# and pass them to the "Build" step's env.
 
 on:
   push:
@@ -101,10 +99,29 @@ jobs:
       # Kept although the release PR passed its checks: main may have moved since.
       - run: npm run verify
 
+      # An unset secret arrives as an empty string. electron-builder would try to import an
+      # empty CSC_LINK and to notarize with half the Apple variables, so empty ones are unset;
+      # with the certificate present, identity discovery is turned on to find it in the
+      # temporary keychain electron-builder imports it into.
       - name: Build
-        run: npm run dist
         env:
-          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          for name in CSC_LINK CSC_KEY_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; do
+            if [ -z "${!name}" ]; then
+              unset "$name"
+            fi
+          done
+          if [ -n "${CSC_LINK:-}" ]; then
+            export CSC_IDENTITY_AUTO_DISCOVERY=true
+          else
+            export CSC_IDENTITY_AUTO_DISCOVERY=false
+          fi
+          npm run dist
 
       # gh instead of a third-party release action: only GitHub-official actions are used here.
       # The version and the commit reach the shell as environment variables, never interpolated

@@ -81,10 +81,16 @@ mac:
     - dmg
     - zip
   hardenedRuntime: true
-  # Unsigned for now. To sign and notarize later:
-  #   1. set `identity` to the "Developer ID Application: …" certificate name (or
-  #      remove this line and provide CSC_LINK / CSC_KEY_PASSWORD in the env);
-  #   2. add `notarize: true` and provide APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD
-  #      and APPLE_TEAM_ID in the env (see .github/workflows/release.yml);
-  #   3. drop CSC_IDENTITY_AUTO_DISCOVERY=false from the package scripts.
-  identity: null
+  # Signs and notarizes when the credentials are in the environment, and stays
+  # unsigned when they are not. The package scripts default
+  # CSC_IDENTITY_AUTO_DISCOVERY to false, and with it false electron-builder finds
+  # no identity at all, so signing needs it set to true, plus either CSC_LINK and
+  # CSC_KEY_PASSWORD (a Developer ID Application .p12, imported into a temporary
+  # keychain; the release workflow does this) or the certificate in the login
+  # keychain. Notarization needs APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD and
+  # APPLE_TEAM_ID; without them electron-builder skips it with a warning.
+  notarize: true
+  # What Electron needs under the hardened runtime. node-pty's pty.node and
+  # spawn-helper are signed with the bundle's identity, so library validation stays on.
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
