@@ -1,63 +1,156 @@
 name: Release
 
-# Pushing a tag like v0.1.0 builds the DMG and zip and publishes a GitHub
-# release with generated notes. Make the tag with `npm run release -- <version>`.
+# Merging a release pull request (made by `npm run release`, see CONTRIBUTING.md)
+# is the release: on a push to main whose package.json version has no GitHub
+# release yet, this verifies, builds the DMG and zip, and drafts the release
+# v<version> with the version's CHANGELOG.md section as its notes and the DMG,
+# the zip and the update manifest (latest-mac.yml) as assets. A version with a
+# prerelease suffix (0.2.0-beta.1) is drafted as a prerelease. Publishing the
+# draft from the release page creates the tag. Any other push to main stops
+# after one API call.
 #
-# Signed and notarized builds (later). Add these repository secrets, set
-# `mac.identity` and `mac.notarize: true` in electron-builder.yml, and drop
-# CSC_IDENTITY_AUTO_DISCOVERY below:
+# Run it from the Actions tab (workflow_dispatch) to rehearse: the same build,
+# no release, and the DMG, zip, manifest and notes uploaded as an artifact.
+#
+# Signing and notarization switch on with these repository secrets and no code
+# change; without them the build is unsigned (see electron-builder.yml):
 #   CSC_LINK                      base64 of the Developer ID Application .p12
 #   CSC_KEY_PASSWORD              its password
 #   APPLE_ID                      the Apple ID used for notarization
 #   APPLE_APP_SPECIFIC_PASSWORD   an app-specific password for that Apple ID
 #   APPLE_TEAM_ID                 the developer team id
-# and pass them to the "Build" step's env.
 
 on:
   push:
-    tags: ['v*']
+    branches: [main]
+  workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
+
+# One release run at a time: a second merge waits, then finds the first one's
+# draft and stops.
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 jobs:
-  release:
-    runs-on: macos-15
-    timeout-minutes: 60
+  check:
+    name: Check for a release
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.check.outputs.version }}
+      build: ${{ steps.check.outputs.build }}
     steps:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
 
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 24
-          cache: npm
-
-      - name: Cache the Electron download
-        uses: actions/cache@v6
-        with:
-          path: ~/Library/Caches/electron
-          key: electron-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
-          restore-keys: electron-${{ runner.os }}-
-
-      - run: npm ci
-
-      # Since Electron 42 the npm package downloads its binary on first use, not in postinstall; fetch it before verify (see .github/actions/setup).
-      - name: Fetch the Electron binary
-        run: npx --no install-electron
-
-      - run: npm run verify
-
-      - name: Build
-        run: npm run dist
-        env:
-          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
-
-      # gh instead of a third-party release action: only GitHub-official actions are used here.
-      - name: Publish the release
-        # The tag reaches the shell as an environment variable, never interpolated into the script.
+      # `gh release view` finds drafts as well as published releases.
+      - name: Read the version and look for its release
+        id: check
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.ref_name }}
-        run: gh release create "$TAG" --generate-notes --verify-tag release/*.dmg release/*.zip
+          EVENT: ${{ github.event_name }}
+        run: |
+          version=$(jq -r .version package.json)
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::package.json version '$version' is not a semantic version"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            echo "Rehearsal of v$version: building without a release."
+            echo "build=true" >> "$GITHUB_OUTPUT"
+          elif out=$(gh release view "v$version" --json tagName 2>&1); then
+            echo "v$version already has a release; nothing to do."
+            echo "build=false" >> "$GITHUB_OUTPUT"
+          elif [[ "$out" == *"release not found"* ]]; then
+            echo "v$version has no release yet: building it."
+            echo "build=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "$out"
+            exit 1
+          fi
+
+  release:
+    name: Build and draft the release
+    needs: check
+    if: needs.check.outputs.build == 'true'
+    runs-on: macos-15
+    timeout-minutes: 60
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.check.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # Before the slow steps: a release PR whose changelog was not folded fails here.
+      - name: Notes from the changelog
+        run: node scripts/changelog-section.mjs "$VERSION" > release-notes.md
+
+      - uses: ./.github/actions/setup
+
+      # Kept although the release PR passed its checks: main may have moved since.
+      - run: npm run verify
+
+      # An unset secret arrives as an empty string. electron-builder would try to import an
+      # empty CSC_LINK and to notarize with half the Apple variables, so empty ones are unset;
+      # with the certificate present, identity discovery is turned on to find it in the
+      # temporary keychain electron-builder imports it into.
+      - name: Build
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          for name in CSC_LINK CSC_KEY_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; do
+            if [ -z "${!name}" ]; then
+              unset "$name"
+            fi
+          done
+          if [ -n "${CSC_LINK:-}" ]; then
+            export CSC_IDENTITY_AUTO_DISCOVERY=true
+          else
+            export CSC_IDENTITY_AUTO_DISCOVERY=false
+          fi
+          npm run dist
+
+      # gh instead of a third-party release action: only GitHub-official actions are used here.
+      # The version and the commit reach the shell as environment variables, never interpolated
+      # into the script.
+      - name: Draft the release
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET: ${{ github.sha }}
+        run: |
+          flags=(--draft)
+          if [[ "$VERSION" == *-* ]]; then
+            flags+=(--prerelease)
+          fi
+          gh release create "v$VERSION" "${flags[@]}" \
+            --target "$TARGET" \
+            --title "v$VERSION" \
+            --notes-file release-notes.md \
+            release/*.dmg release/*.zip release/latest-mac.yml
+
+      - name: Upload the rehearsal build
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v7
+        with:
+          name: que-${{ needs.check.outputs.version }}
+          path: |
+            release/*.dmg
+            release/*.zip
+            release/latest-mac.yml
+            release-notes.md
+          retention-days: 7
+          if-no-files-found: error

@@ -77,3 +77,36 @@ skips them.
 By contributing you agree that your contribution is licensed under the
 Apache License 2.0 (see `LICENSE`), and to follow the
 [code of conduct](CODE_OF_CONDUCT.md).
+
+## Releasing
+
+A release happens when `[Unreleased]` in `CHANGELOG.md` has earned one.
+
+```sh
+git switch main && git pull
+git switch -c release/0.2.0
+npm run release
+```
+
+`npm run release` (release-it, configured in `.release-it.json`) refuses any
+branch but `release/*` and a dirty tree, runs `npm run verify`, asks patch,
+minor or major, moves the `[Unreleased]` notes under `## [<version>] - <today>`
+with the compare links updated, bumps `package.json` and `package-lock.json`,
+commits `Release v<version>`, pushes the branch and opens the release pull
+request. `npm run release -- --dry-run` prints every step and writes nothing;
+`npm run release -- minor --ci` skips the questions. Nothing is tagged
+locally.
+
+A beta for testers goes the same way from `release/0.2.0-beta.1`:
+`npm run release -- minor --preRelease=beta` makes `0.2.0-beta.1` (run again,
+`--preRelease` alone makes `beta.2`), and the release is drafted as a GitHub
+prerelease, which the app's update check never offers.
+
+Review the pull request (the changelog section is the release notes) and merge
+it. The release workflow then builds que.app and drafts the GitHub release;
+check the notes and the DMG on the release page and publish the draft, which
+creates the tag.
+
+`npm run package` and `npm run dist` build unsigned. With a Developer ID
+Application certificate in your login keychain,
+`CSC_IDENTITY_AUTO_DISCOVERY=true npm run dist` builds a signed one.

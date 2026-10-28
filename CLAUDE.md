@@ -21,8 +21,7 @@ tests/e2e/          Playwright Electron specs, pages/ (page objects), utils/ (ap
 tests/fakes/bin/    fake claude, gh, code, acli (see tests/fakes/README.md)
 tools/oxlint/       the vendored anti-slop oxlint rules (see its README); config in .oxlintrc.json
 scripts/            build-node.mjs (daemon, CLI, client bundles), smoke.mjs, verify.mjs,
-                    smoke-packaged.mjs, install-local.mjs, flake-hunt.mjs, docs generators,
-                    release.mjs
+                    smoke-packaged.mjs, install-local.mjs, flake-hunt.mjs, docs generators
 build/              the app icon (scripts/make-icon.mjs); electron-builder.yml packages the app
 ```
 
