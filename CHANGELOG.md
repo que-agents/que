@@ -45,6 +45,7 @@ All notable changes to que are recorded here. The format follows
 
 ### Changed
 
+- `npm run release` prepares a release pull request from a `release/<version>` branch: it runs `npm run verify`, moves the `[Unreleased]` notes under the new version, bumps the version, commits, pushes and opens the pull request; `--dry-run` shows each step and writes nothing.
 - Removing a workspace answers at once and runs in the background, step by step: killing terminals, running teardown, removing the worktree (moved to a trash folder and deleted afterwards, so a large worktree no longer holds it up), deleting the branch. The workspace shows `removing` with the step it is on, a failed step no longer stops the rest, `workspace.removed` lists the steps that failed, and a removal cut short by a restart finishes when the daemon starts again.
 - `que ws remove` deletes the branch by default (`--keep-branch` keeps it; `--delete-branch` is gone), prints each step as it finishes, and exits 1 when one failed.
 - Removing a workspace no longer waits on its teardown: the dialog closes at once (deleting the branch is now the default), the view moves off it, and its row stays with a grey moving mark and the step it is on, `running teardown 12s`, until it is gone. A step that fails is named on the error line, `Removing breezy-trusty-mole: running teardown failed, timed out after 60s`.

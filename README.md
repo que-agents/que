@@ -229,7 +229,7 @@ place: the Update control beside Settings, or `que daemon upgrade` (see below).
 | `src/cli/`                                   | the `que` CLI                                                         |
 | `src/main/`, `src/preload/`, `src/renderer/` | the Electron app                                                      |
 | `tests/`                                     | daemon integration tests, Playwright specs, subprocess fakes          |
-| `scripts/`                                   | build, smoke, packaged smoke, flake hunt, docs, release               |
+| `scripts/`                                   | build, smoke, packaged smoke, flake hunt, docs                        |
 
 The terminals live in the background service (the daemon), which keeps running the build it
 started with. When a rebuild or an update changes it, an Update control appears beside Settings

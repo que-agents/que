@@ -1,7 +1,8 @@
 name: Release
 
-# Pushing a tag like v0.1.0 builds the DMG and zip and publishes a GitHub
-# release with generated notes. Make the tag with `npm run release -- <version>`.
+# Pushing a tag like v0.2.0 builds the DMG and zip and publishes a GitHub
+# release with generated notes. `npm run release` (release-it, see
+# CONTRIBUTING.md) prepares the release pull request; it never tags.
 #
 # Signed and notarized builds (later). Add these repository secrets, set
 # `mac.identity` and `mac.notarize: true` in electron-builder.yml, and drop
