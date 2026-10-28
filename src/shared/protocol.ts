@@ -202,6 +202,17 @@ export interface DiffFile {
   dirty: boolean
   /** The unified patch against the base, or null when binary or too large. */
   patch: string | null
+  /**
+   * True when the file changed lines and every changed line is a comment line (see DiffLine's
+   * `comment`); false for a file that was not classified.
+   */
+  commentOnly: boolean
+  /** additions split into code and comment lines; a file not classified counts as all code. */
+  codeAdditions: number
+  commentAdditions: number
+  /** deletions split the same way. */
+  codeDeletions: number
+  commentDeletions: number
 }
 
 /** What a piece of source text is, for colouring; the daemon maps the highlighter's scopes to these. */
@@ -236,6 +247,11 @@ export interface DiffLine {
   /** Line number in the new file, null on a removed line. */
   new: number | null
   tokens: DiffToken[]
+  /**
+   * On an added or removed line whose visible tokens are all comments (a blank one inside a run of
+   * comment lines too); absent on code, on context lines, and on files tokenized plain.
+   */
+  comment?: true
 }
 
 export interface DiffHunk {

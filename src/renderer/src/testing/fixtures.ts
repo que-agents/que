@@ -83,9 +83,20 @@ export function makeUserConfig(overrides: Partial<UserConfig> = {}): UserConfig 
   return { ...configDefaults('/Users/dev/.que/worktrees'), ...overrides }
 }
 
-/** One changed file, as workspace.diff reports it. */
+/**
+ * One changed file, as workspace.diff reports it. Its lines are all code unless the overrides
+ * split them: codeAdditions and codeDeletions follow overridden additions and deletions.
+ */
 export function makeDiffFile(overrides: Partial<DiffFile> = {}): DiffFile {
+  const additions = overrides.additions ?? 12
+  const deletions = overrides.deletions ?? 3
+
   return {
+    commentOnly: false,
+    codeAdditions: additions - (overrides.commentAdditions ?? 0),
+    commentAdditions: 0,
+    codeDeletions: deletions - (overrides.commentDeletions ?? 0),
+    commentDeletions: 0,
     path: 'src/upload/put.ts',
     from: null,
     status: 'modified',
