@@ -13,9 +13,9 @@ import type { Project, Workspace } from '../../src/shared/types'
 import { makeTempRepo } from '../../src/testing/temp-repo'
 import { AppShellPage } from './pages/AppShellPage'
 import { ChangesPage } from './pages/ChangesPage'
+import { ReviewPage } from './pages/ReviewPage'
 import { SidebarPage } from './pages/SidebarPage'
 import { TerminalPage } from './pages/TerminalPage'
-import { TabRowPage } from './pages/TabRowPage'
 import { type LaunchedApp, launchApp, newQueHome, tempDir } from './utils/app'
 import { queJson } from './utils/que'
 
@@ -33,7 +33,7 @@ test('a workspace made in the sidebar runs claude, shows needs input, opens in t
   let termId = ''
   let sidebar: SidebarPage
   let terminal: TerminalPage
-  let tabRow: TabRowPage
+  let review: ReviewPage
   let changes: ChangesPage
   let shell: AppShellPage
 
@@ -49,7 +49,7 @@ test('a workspace made in the sidebar runs claude, shows needs input, opens in t
     launched = await launchApp({ queHome })
     sidebar = new SidebarPage(launched.window)
     terminal = new TerminalPage(launched.window)
-    tabRow = new TabRowPage(launched.window)
+    review = new ReviewPage(launched.window)
     changes = new ChangesPage(launched.window)
     shell = new AppShellPage(launched.window)
     await sidebar.waitForLoad()
@@ -176,7 +176,7 @@ test('a workspace made in the sidebar runs claude, shows needs input, opens in t
   })
 
   await test.step("Open in editor, in the review pane's Changes, launches the editor on the worktree", async () => {
-    await tabRow.reviewToggle.click()
+    await review.show.click()
     await changes.openEditor.click()
     await expect.poll(() => launched.codeCalls()).toContainEqual(['-n', workspace.path])
     await launched.window.screenshot({ path: 'test-results/wp4-work-mode.png' })

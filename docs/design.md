@@ -112,9 +112,15 @@ Each token is a span with a class per kind (`tok-decl`, `tok-str`, …), a brack
   mirror: it runs from the window's top edge to the bottom on `--bg-side` behind a 1px
   hairline, and the tab row spans only the middle column. It is 320px wide, dragged
   between 240 and 520px on a 7px track like the sidebar's (double-click resets, arrow
-  keys move it), and remembered. One icon button at the right end of the tab row (a
-  frame with a divider toward its right edge, filled while open) toggles the pane, and
-  so does ⌘B; the pane has no close button of its own.
+  keys move it), and remembered. Two chevrons are its toggle, both `button.ghost.icon`
+  line icons: open, a double chevron pointing right (»), at the right end of the pane's
+  strip, hides it ("Hide review (⌘B)"); ⌘B toggles it too.
+- Hidden, the pane folds to a 40px rail for a workspace (the Sessions view has none):
+  the same `--bg-side` column behind its hairline, full height. Its top, in the 40px
+  strip row above a solid hairline, holds a double chevron pointing left («, "Show
+  review (⌘B)") and drags the window from its empty space; under it the three view icons
+  stack, each with its count under it in mono 11px `--fg-faint`. A view icon opens the
+  pane on that view. The resize track exists only while the pane is open.
 - The pane's strip is 40px tall, lined up with the tab row above a solid hairline. At
   its left, lined up with the session tabs, three `button.ghost.icon`s pick the view:
   pull requests (a branch-merge line icon), changes (a page with ±) and files (a
@@ -123,7 +129,7 @@ Each token is a span with a class per kind (`tok-decl`, `tok-str`, …), a brack
   failure shows inside the pane and in the workspace popout. Each icon's name is its
   tooltip and accessible name. The current one reads `--fg` with a 1px `--fg` line under
   it, the others `--fg-faint`. The view's own buttons (refresh, open in editor) sit at
-  the strip's right end. The pane remembers its view per workspace. Each view opens with
+  the strip's right end, then the hide chevron. The pane remembers its view per workspace. Each view opens with
   a head: its `[ LABEL ]` at the left, its counts in mono `--fg-faint` at the right.
 - Pull requests lists every pull request the session opened (#192): `[ PULL REQUESTS ]`
   with `n open · k failing` (only `k failing` in `--tone-bad`), then one two-line row
@@ -241,7 +247,8 @@ Each token is a span with a class per kind (`tok-decl`, `tok-str`, …), a brack
 - Row actions (the ⋯ button) show on hover, focus, or while their menu is open.
 - The window has no native title bar. The traffic lights sit in the 40px strip
   above the sidebar's content; that strip, the tab row's empty space and the review
-  pane strip's empty space drag the window (every button in them is excluded).
+  pane strip's empty space (or the rail's top) drag the window (every button in them is
+  excluded).
 - The sidebar's divider drags between 180 and 520px, double-click resets it, and
   the arrow keys move it when it has focus; the width is remembered.
 - Search is an icon in the title strip (`button.ghost.icon`, a magnifier), in line
@@ -256,9 +263,8 @@ Each token is a span with a class per kind (`tok-decl`, `tok-str`, …), a brack
   window, with the dashed guide under it. With two panes beside each other each pane
   has its strip in that row; split below, the second pane's strip sits under the first
   pane. At the right end of the top-right strip (the second pane's beside, the first's
-  below) sit split beside and split below, or join while split, then the review pane
-  toggle for a workspace, all `button.ghost.icon`; the Sessions view has the same row
-  without the toggle. The `+` after the last tab is always visible; a tab's × waits at
+  below) sit split beside and split below, or join while split, both `button.ghost.icon`;
+  the Sessions view has the same row. The review pane's toggle is its own chevrons. The `+` after the last tab is always visible; a tab's × waits at
   opacity 0 until the tab is under the pointer, holds the keyboard focus, or is the
   active one, so the tab keeps its width. A tab reads the program running in it (`claude`,
   `zsh`, `node`), the terminal's name standing in until the daemon knows; an exited

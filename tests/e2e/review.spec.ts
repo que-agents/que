@@ -41,7 +41,6 @@ import { PullRequestPage } from './pages/PullRequestPage'
 import { ReviewPage } from './pages/ReviewPage'
 import { SidebarPage } from './pages/SidebarPage'
 import { TerminalPage } from './pages/TerminalPage'
-import { TabRowPage } from './pages/TabRowPage'
 import { type LaunchedApp, launchApp, newQueHome, tempDir } from './utils/app'
 import { queJson } from './utils/que'
 
@@ -61,7 +60,6 @@ test('The review pane lists the changes beside the terminals, opens diffs as tab
   let workspace: Workspace
   let shell: AppShellPage
   let sidebar: SidebarPage
-  let tabRow: TabRowPage
   let terminal: TerminalPage
   let review: ReviewPage
   let changes: ChangesPage
@@ -78,7 +76,6 @@ test('The review pane lists the changes beside the terminals, opens diffs as tab
   const pages = (): void => {
     shell = new AppShellPage(launched.window)
     sidebar = new SidebarPage(launched.window)
-    tabRow = new TabRowPage(launched.window)
     terminal = new TerminalPage(launched.window)
     review = new ReviewPage(launched.window)
     changes = new ChangesPage(launched.window)
@@ -112,14 +109,15 @@ test('The review pane lists the changes beside the terminals, opens diffs as tab
     termId = await terminal.waitForActiveTerminal()
   })
 
-  await test.step('Edit a file; the toggle opens the review pane on Changes beside the terminal', async () => {
+  await test.step("Edit a file; the rail's Changes icon opens the review pane on Changes beside the terminal", async () => {
     writeFileSync(join(workspace.path, 'README.md'), '# uploader\n\nRetries with backoff.\n')
-    await expect(tabRow.reviewToggle).toHaveAttribute('aria-pressed', 'false')
-    await tabRow.reviewToggle.click()
+    await expect(review.root).toHaveCount(0)
+    await expect(review.rail).toBeVisible()
+    await review.railChanges.click()
     await expect(review.root).toBeVisible()
     await expect(review.root).toHaveAttribute('data-view', 'changes')
     await expect(review.viewChanges).toHaveAttribute('aria-selected', 'true')
-    await expect(tabRow.reviewToggle).toHaveAttribute('aria-pressed', 'true')
+    await expect(review.rail).toHaveCount(0)
     expect(await review.state()).toMatchObject({ open: true, view: 'changes', pr: null })
     await expect(terminal.tab(termId)).toBeVisible()
     await expect(terminal.viewport).toBeVisible()
@@ -162,9 +160,10 @@ test('The review pane lists the changes beside the terminals, opens diffs as tab
     expect(rowBox?.height).toBe(40)
     expect(barBox?.y).toBe(rowBox?.y)
     expect(barBox?.height).toBe(rowBox?.height)
-    // The split and review buttons sit at the row's right end, the main column's top-right corner.
+    // The split buttons sit at the row's right end, the main column's top-right corner; the
+    // review pane's hide chevron ends its own strip.
     await expect(terminal.pane(0).controls).toBeVisible()
-    await expect(tabRow.reviewToggle).toBeVisible()
+    await expect(review.hide).toBeVisible()
     expect((controlsBox?.x ?? 0) + (controlsBox?.width ?? 0)).toBeGreaterThan(
       (rowBox?.x ?? 0) + (rowBox?.width ?? 0) - 16
     )
@@ -402,7 +401,7 @@ test('The review pane lists the changes beside the terminals, opens diffs as tab
     await expect(review.root).toHaveAttribute('data-view', 'prs')
     await expect(review.viewPrs).toHaveAttribute('aria-selected', 'true')
     await expect(review.viewFiles).toHaveAttribute('aria-selected', 'false')
-    await expect(tabRow.reviewToggle).toHaveAttribute('aria-pressed', 'true')
+    await expect(review.hide).toBeVisible()
     await expect(pr.empty).toHaveText('No pull requests from this session yet.')
     await expect(review.prsCount).toHaveText('0')
     expect(await review.state()).toMatchObject({ open: true, view: 'prs', pr: null })
@@ -644,21 +643,34 @@ test('The review pane lists the changes beside the terminals, opens diffs as tab
     await expect(terminal.viewport).toBeVisible()
   })
 
-  await test.step('The toggle closes the pane and opens it again on the view it was left on', async () => {
-    await tabRow.reviewToggle.click()
+  await test.step('The hide chevron folds the pane to a full-height 40px rail; show opens it again on the view it was left on', async () => {
+    await review.hide.click()
     await expect(review.root).toHaveCount(0)
-    await expect(tabRow.reviewToggle).toHaveAttribute('aria-pressed', 'false')
-    await tabRow.reviewToggle.click()
+    await expect(review.resizer).toHaveCount(0)
+    await expect(review.rail).toBeVisible()
+    const shellBox = await shell.root.boundingBox()
+    const railBox = await review.rail.boundingBox()
+    const showBox = await review.show.boundingBox()
+    expect(railBox?.y).toBe(0)
+    expect(railBox?.width).toBe(40)
+    expect(railBox?.height).toBe(shellBox?.height)
+    expect((railBox?.x ?? 0) + (railBox?.width ?? 0)).toBe(
+      (shellBox?.x ?? 0) + (shellBox?.width ?? 0)
+    )
+    // The show chevron sits in the strip row, in line with the tab row.
+    expect(showBox?.y ?? 40).toBeLessThan(40)
+    await launched.window.screenshot({ path: 'test-results/review-rail.png' })
+    await review.show.click()
     await expect(review.root).toHaveAttribute('data-view', 'prs')
-    await expect(tabRow.reviewToggle).toHaveAttribute('aria-pressed', 'true')
+    await expect(review.rail).toHaveCount(0)
   })
 
-  await test.step('⌘B closes the pane (it has no close button); the toggle opens it again, then Changes', async () => {
+  await test.step('⌘B folds the pane to the rail; the show chevron opens it again, then Changes', async () => {
     await launched.window.keyboard.press('Meta+b')
     await expect(review.root).toHaveCount(0)
     expect((await review.state()).open).toBe(false)
-    await expect(tabRow.reviewToggle).toHaveAttribute('aria-pressed', 'false')
-    await tabRow.reviewToggle.click()
+    await expect(review.rail).toBeVisible()
+    await review.show.click()
     await review.viewChanges.click()
     await expect(review.root).toHaveAttribute('data-view', 'changes')
     await expect(changes.file(1)).toContainText('README.md')

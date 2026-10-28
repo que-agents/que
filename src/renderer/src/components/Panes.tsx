@@ -8,7 +8,6 @@ import {
   RATIO_DEFAULT,
   RATIO_MAX,
   RATIO_MIN,
-  SCRATCH,
   usePanes,
   useQueSelector,
   useStore
@@ -21,7 +20,6 @@ import {
   DiffIcon,
   FileIcon,
   JoinPanesIcon,
-  PanelRightIcon,
   PlusIcon,
   SplitBelowIcon,
   SplitBesideIcon
@@ -136,14 +134,12 @@ export function PaneDivider({
 }
 
 /**
- * Split or join, then the review pane toggle (workspaces only): the main column's
- * top-right corner, at the right end of the top-right pane's tab strip.
+ * Split or join: the main column's top-right corner, at the right end of the top-right
+ * pane's tab strip.
  */
 function PaneControls({ termKey }: { termKey: string }): React.JSX.Element {
   const store = usePanes(termKey)
   const connected = useQueSelector((s) => s.connected)
-  const review = useQueSelector((s) => s.review)
-  const workspace = useQueSelector((s) => termKey !== SCRATCH && termKey in s.workspaces)
   const split = Boolean(store.layout(termKey).split)
 
   return (
@@ -186,20 +182,6 @@ function PaneControls({ termKey }: { termKey: string }): React.JSX.Element {
           </button>
         </>
       )}
-      {workspace && (
-        <button
-          type="button"
-          className="ghost icon"
-          aria-label="Review pane"
-          aria-pressed={review.open}
-          title="Review pane: pull requests, changes and files (⌘B)"
-          data-testid="topbar-review"
-          disabled={!connected}
-          onClick={() => store.toggleReview()}
-        >
-          <PanelRightIcon filled={review.open} />
-        </button>
-      )}
     </div>
   )
 }
@@ -211,7 +193,7 @@ function Pane({
 }: {
   termKey: string
   index: 0 | 1
-  /** This pane's strip is the main column's top-right corner, so the split and review buttons go here. */
+  /** This pane's strip is the main column's top-right corner, so the split buttons go here. */
   controls: boolean
 }): React.JSX.Element {
   const store = usePanes(termKey)

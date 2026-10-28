@@ -49,7 +49,7 @@ function seedWorkspace(): void {
 
 /** Opens the review pane on Changes. */
 async function openChanges(user: ReturnType<typeof userEvent.setup>): Promise<void> {
-  await user.click(screen.getByTestId('topbar-review'))
+  await user.click(screen.getByRole('button', { name: 'Show review' }))
   await screen.findByTestId('changes-list')
 }
 
@@ -306,97 +306,23 @@ describe('Panes', () => {
     })
   })
 
-  describe('the review toggle', () => {
-    async function openRetry(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+  describe('the tab row controls', () => {
+    it('end in the split buttons for a workspace: the review pane has its own chevrons', async () => {
+      const user = userEvent.setup()
       fakeBridge.seedProject(makeProject())
       fakeBridge.seedWorkspace(retry)
       render(<App />)
       await openWorkspace(user, retry.id)
-      await screen.findByTestId('topbar-review')
-    }
 
-    it('opens the review pane and closes it again, pressed while it is open', async () => {
-      const user = userEvent.setup()
-      await openRetry(user)
-      const toggle = screen.getByRole('button', { name: 'Review pane' })
-      expect(toggle).toHaveAttribute('data-testid', 'topbar-review')
-      expect(toggle).toHaveAttribute('title', 'Review pane: pull requests, changes and files (⌘B)')
-      expect(toggle).toHaveAttribute('aria-pressed', 'false')
+      const controls = screen.getByTestId('pane-controls')
       expect(
-        within(screen.getByTestId('pane-controls')).getByRole('button', { name: 'Review pane' })
-      ).toBe(toggle)
-
-      await user.click(toggle)
-
-      expect(toggle).toHaveAttribute('aria-pressed', 'true')
-      expect(screen.getByTestId('review-pane')).toHaveAttribute('data-view', 'changes')
-
-      await user.click(toggle)
-
-      expect(toggle).toHaveAttribute('aria-pressed', 'false')
-      expect(screen.queryByTestId('review-pane')).not.toBeInTheDocument()
-    })
-
-    it('Cmd+B toggles the review pane too', async () => {
-      const user = userEvent.setup()
-      await openRetry(user)
-
-      await user.keyboard('{Meta>}b{/Meta}')
-
-      expect(await screen.findByTestId('review-pane')).toBeInTheDocument()
-      expect(screen.getByTestId('topbar-review')).toHaveAttribute('aria-pressed', 'true')
-    })
-
-    it('opens on the view the pane was last left on for the workspace', async () => {
-      const user = userEvent.setup()
-      localStorage.setItem(
-        'que.review',
-        JSON.stringify({
-          open: false,
-          width: 320,
-          places: { [retry.id]: { view: 'prs', pr: null } }
-        })
-      )
-      await openRetry(user)
-
-      await user.click(screen.getByRole('button', { name: 'Review pane' }))
-
-      expect(screen.getByTestId('review-pane')).toHaveAttribute('data-view', 'prs')
-      expect(screen.getByTestId('review-view-prs')).toHaveAttribute('aria-selected', 'true')
-    })
-
-    it('stays pressed while switching views, and ⌘B is the way to close it: the pane has no close button', async () => {
-      const user = userEvent.setup()
-      await openRetry(user)
-      const toggle = screen.getByRole('button', { name: 'Review pane' })
-      await user.click(toggle)
-
-      await user.click(screen.getByRole('tab', { name: 'Pull requests' }))
-      expect(toggle).toHaveAttribute('aria-pressed', 'true')
-      expect(screen.queryByRole('button', { name: 'Close review' })).not.toBeInTheDocument()
-
-      await user.keyboard('{Meta>}b{/Meta}')
-      expect(toggle).toHaveAttribute('aria-pressed', 'false')
-    })
-
-    it('is disabled while the daemon is disconnected', async () => {
-      const user = userEvent.setup()
-      await openRetry(user)
-      expect(screen.getByRole('button', { name: 'Review pane' })).toBeEnabled()
-
-      fakeBridge.disconnect()
-
-      await waitFor(() => {
-        expect(screen.getByRole('button', { name: 'Review pane' })).toBeDisabled()
-      })
-    })
-
-    it('is not offered for the loose sessions, which keep the split buttons', async () => {
-      render(<App />)
-
-      expect(await screen.findByTestId('pane-0')).toBeInTheDocument()
-      expect(screen.queryByTestId('topbar-review')).not.toBeInTheDocument()
-      expect(screen.getByTestId('topbar-split-beside')).toBeInTheDocument()
+        within(controls)
+          .getAllByRole('button')
+          .map((b) => b.getAttribute('aria-label'))
+      ).toEqual(['Split beside', 'Split below'])
+      expect(
+        within(controls).queryByRole('button', { name: 'Show review' })
+      ).not.toBeInTheDocument()
     })
   })
 

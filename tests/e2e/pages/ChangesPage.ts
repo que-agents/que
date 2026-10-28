@@ -2,7 +2,7 @@
 // line under it (`commits n ▾ · vs base ▾ · k uncommitted`, its first two parts each opening a
 // menu: the commits to narrow to, keyed by sha, and the refs to compare against, by index with
 // the ref in data-ref), Refresh and Open in editor in the pane's strip, and the file rows (an
-// uncommitted one with its dot). The pane's toggle is TabRowPage.reviewToggle; a file's diff tab
+// uncommitted one with its dot). The pane's chevrons are ReviewPage.hide and .show; a file's diff tab
 // is DiffPage.
 import type { Locator, Page } from '@playwright/test'
 

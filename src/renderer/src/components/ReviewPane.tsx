@@ -3,7 +3,15 @@ import { prCounts } from '../pr-list'
 import { type ReviewView, SCRATCH, useQueSelector, useStore } from '../store'
 import ChangesList from './ChangesList'
 import FilesTree from './FilesTree'
-import { ChangesIcon, EditorIcon, FolderIcon, PullRequestIcon, RefreshIcon } from './icons'
+import {
+  ChangesIcon,
+  ChevronsLeftIcon,
+  ChevronsRightIcon,
+  EditorIcon,
+  FolderIcon,
+  PullRequestIcon,
+  RefreshIcon
+} from './icons'
 import PullRequestDetail from './PullRequestDetail'
 import PullRequestList from './PullRequestList'
 
@@ -13,17 +21,77 @@ const VIEWS: ReadonlyArray<{ view: ReviewView; name: string; Icon: () => React.J
   { view: 'files', name: 'Files', Icon: FolderIcon }
 ]
 
+/** Each view's count beside (or, on the rail, under) its icon: the open pull requests, the changed files. */
+function useViewCounts(termKey: string): Record<ReviewView, number | undefined> {
+  const ws = useQueSelector((s) => s.workspaces[termKey])
+  const changed = useQueSelector((s) => s.diffs[termKey]?.data?.files.length)
+
+  return { prs: ws ? prCounts(ws.prs).open : undefined, changes: changed, files: undefined }
+}
+
+/**
+ * The review pane folded: a 40px column in its place with the show chevron in the strip row,
+ * then the view icons stacked, each with its count under it. A view icon opens the pane on it.
+ */
+export function ReviewRail({ termKey }: { termKey: string }): React.JSX.Element {
+  const store = useStore()
+  const connected = useQueSelector((s) => s.connected)
+  const counts = useViewCounts(termKey)
+
+  const open = (view: ReviewView): void => {
+    if (store.reviewPlace(termKey).view !== view) store.setReviewView(termKey, view)
+    store.openReview()
+  }
+
+  return (
+    <aside className="review-rail" data-testid="review-rail" aria-label="Review">
+      <div className="review-rail-top">
+        <button
+          type="button"
+          className="ghost icon"
+          aria-label="Show review"
+          title="Show review (⌘B)"
+          data-testid="review-show"
+          disabled={!connected}
+          onClick={() => store.openReview()}
+        >
+          <ChevronsLeftIcon />
+        </button>
+      </div>
+      {VIEWS.map(({ view, name, Icon }) => (
+        <button
+          key={view}
+          type="button"
+          className="ghost icon review-rail-view"
+          aria-label={name}
+          title={name}
+          data-testid={`review-rail-${view}`}
+          disabled={!connected}
+          onClick={() => open(view)}
+        >
+          <Icon />
+          {counts[view] !== undefined && (
+            <span className="review-view-count" data-testid={`review-rail-${view}-count`}>
+              {counts[view]}
+            </span>
+          )}
+        </button>
+      ))}
+    </aside>
+  )
+}
+
 /**
  * The review pane at the right of the main area. Three icons in its strip pick the view: the
  * session's pull requests, the worktree's changes, or the project's files; a pull request opens
  * in place, and the strip's left end becomes its back link. The view's own buttons sit at the
- * strip's right end. The pane remembers its view per workspace.
+ * strip's right end, then the hide chevron. The pane remembers its view per workspace.
  */
 export default function ReviewPane({ termKey }: { termKey: string }): React.JSX.Element {
   const store = useStore()
   const connected = useQueSelector((s) => s.connected)
   const ws = useQueSelector((s) => s.workspaces[termKey])
-  const changed = useQueSelector((s) => s.diffs[termKey]?.data?.files.length)
+  const counts = useViewCounts(termKey)
   // Read for the re-render; the place itself comes from the store's rule.
   useQueSelector((s) => s.review)
   const place = store.reviewPlace(termKey)
@@ -41,12 +109,6 @@ export default function ReviewPane({ termKey }: { termKey: string }): React.JSX.
   useEffect(() => {
     store.ensureReview(termKey)
   }, [store, termKey, place.view, place.pr, numbers])
-
-  const counts: Record<ReviewView, number | undefined> = {
-    prs: ws ? prCounts(ws.prs).open : undefined,
-    changes: changed,
-    files: undefined
-  }
 
   const refresh = (): void => {
     if (place.view === 'changes') void store.fetchDiff(termKey)
@@ -116,37 +178,45 @@ export default function ReviewPane({ termKey }: { termKey: string }): React.JSX.
             })}
           </div>
         )}
-        {workspace && (
-          <div className="review-actions">
-            {/* The list has nothing of its own to fetch: the daemon keeps it fresh. */}
-            {!(place.view === 'prs' && !pr) && (
-              <button
-                type="button"
-                className="ghost icon"
-                aria-label="Refresh"
-                title="Refresh"
-                data-testid={`${testId}-refresh`}
-                disabled={!connected}
-                onClick={refresh}
-              >
-                <RefreshIcon />
-              </button>
-            )}
-            {ws && (
-              <button
-                type="button"
-                className="ghost icon"
-                aria-label="Open in editor"
-                title="Open in editor"
-                data-testid={`${testId}-open-editor`}
-                disabled={!connected}
-                onClick={() => void store.openInEditor(ws.path)}
-              >
-                <EditorIcon />
-              </button>
-            )}
-          </div>
-        )}
+        <div className="review-actions">
+          {/* The list has nothing of its own to fetch: the daemon keeps it fresh. */}
+          {workspace && !(place.view === 'prs' && !pr) && (
+            <button
+              type="button"
+              className="ghost icon"
+              aria-label="Refresh"
+              title="Refresh"
+              data-testid={`${testId}-refresh`}
+              disabled={!connected}
+              onClick={refresh}
+            >
+              <RefreshIcon />
+            </button>
+          )}
+          {workspace && ws && (
+            <button
+              type="button"
+              className="ghost icon"
+              aria-label="Open in editor"
+              title="Open in editor"
+              data-testid={`${testId}-open-editor`}
+              disabled={!connected}
+              onClick={() => void store.openInEditor(ws.path)}
+            >
+              <EditorIcon />
+            </button>
+          )}
+          <button
+            type="button"
+            className="ghost icon"
+            aria-label="Hide review"
+            title="Hide review (⌘B)"
+            data-testid="review-hide"
+            onClick={() => store.closeReview()}
+          >
+            <ChevronsRightIcon />
+          </button>
+        </div>
       </div>
       {!workspace ? (
         <p className="changes-note" data-testid="review-empty">

@@ -14,7 +14,7 @@ import TicketsView from './components/TicketsView'
 import Sidebar from './components/Sidebar'
 import SidebarResizer, { useSidebarWidth } from './components/SidebarResizer'
 import Panes from './components/Panes'
-import ReviewPane from './components/ReviewPane'
+import ReviewPane, { ReviewRail } from './components/ReviewPane'
 import ReviewResizer from './components/ReviewResizer'
 import UpdateBanner from './components/UpdateBanner'
 import { QueStore, SCRATCH, StoreContext, useQue, useQueSelector, useStore } from './store'
@@ -82,6 +82,11 @@ function Shell(): React.JSX.Element {
   const [sidebarWidth, setSidebarWidth] = useSidebarWidth()
   const locked = quiet?.locked ?? false
   const termKey = view.kind === 'terminals' && !locked ? view.key : null
+
+  // Folded, the pane leaves a rail for a workspace; the loose sessions get nothing.
+  const rail = useQueSelector(
+    (s) => termKey !== null && termKey !== SCRATCH && termKey in s.workspaces
+  )
 
   // Cmd+T / Cmd+W manage the tabs (⌘W closes a view tab too), Cmd+D / Cmd+Shift+D split the panes and
   // Cmd+Option+arrows move between them; captured before xterm sees them.
@@ -204,11 +209,13 @@ function Shell(): React.JSX.Element {
           <ReportView />
         )}
       </main>
-      {termKey !== null && review.open && (
+      {termKey !== null && review.open ? (
         <>
           <ReviewResizer width={review.width} onChange={(w) => store.setReviewWidth(w)} />
           <ReviewPane termKey={termKey} />
         </>
+      ) : (
+        termKey !== null && rail && <ReviewRail termKey={termKey} />
       )}
       <Dialogs />
     </div>

@@ -127,7 +127,7 @@ describe('FileView', () => {
         expect(pane.dataset.activeTerm).not.toBe('')
       })
       const term = pane.dataset.activeTerm as string
-      await user.click(screen.getByTestId('topbar-review'))
+      await user.click(screen.getByRole('button', { name: 'Show review' }))
       await user.click(screen.getByTestId('review-view-files'))
       const row = await screen.findByTestId('files-row-2')
       expect(row).toHaveAttribute('data-path', 'package.json')

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { render, screen, within } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { fakeBridge } from '@renderer/testing/fake-bridge'
 import { openWorkspace } from '@renderer/testing/helpers'
@@ -42,21 +42,21 @@ function seed(): void {
 
 async function openPane(user: ReturnType<typeof userEvent.setup>): Promise<string> {
   const term = await openWorkspace(user, retry.id)
-  await user.click(screen.getByRole('button', { name: 'Review pane' }))
+  await user.click(screen.getByRole('button', { name: 'Show review' }))
 
   return term
 }
 
 describe('ReviewPane', () => {
   describe('opening', () => {
-    it('opens on Changes from the top bar, beside the terminal, which stays selected', async () => {
+    it('opens on Changes from the show chevron, beside the terminal, which stays selected', async () => {
       const user = userEvent.setup()
       seed()
       render(<App />)
       const term = await openWorkspace(user, retry.id)
       expect(screen.queryByTestId('review-pane')).not.toBeInTheDocument()
 
-      await user.click(screen.getByTestId('topbar-review'))
+      await user.click(screen.getByRole('button', { name: 'Show review' }))
 
       const pane = screen.getByTestId('review-pane')
       expect(pane).toHaveAttribute('data-view', 'changes')
@@ -81,6 +81,95 @@ describe('ReviewPane', () => {
       expect(pane.parentElement).toBe(screen.getByTestId('app-shell'))
       expect(within(pane).queryByTestId('pane-controls')).not.toBeInTheDocument()
       expect(screen.getByTestId('app-shell')).toHaveStyle({ '--review-width': '320px' })
+    })
+  })
+
+  describe('folding', () => {
+    it('folds to a rail holding the show chevron and the view icons with their counts under them', async () => {
+      const user = userEvent.setup()
+      seed()
+      render(<App />)
+      await openWorkspace(user, retry.id)
+
+      const rail = screen.getByTestId('review-rail')
+      expect(rail.parentElement).toBe(screen.getByTestId('app-shell'))
+      expect(screen.queryByTestId('review-pane')).not.toBeInTheDocument()
+      expect(screen.queryByTestId('review-resizer')).not.toBeInTheDocument()
+      const show = within(rail).getByRole('button', { name: 'Show review' })
+      expect(show).toHaveAttribute('title', 'Show review (⌘B)')
+      expect(
+        within(rail)
+          .getAllByRole('button')
+          .map((b) => b.getAttribute('aria-label'))
+      ).toEqual(['Show review', 'Pull requests', 'Changes', 'Files'])
+      // The open and draft pull requests; Files has no count.
+      expect(screen.getByTestId('review-rail-prs-count')).toHaveTextContent('2')
+      expect(screen.queryByTestId('review-rail-files-count')).not.toBeInTheDocument()
+    })
+
+    it('opens from a view icon on the rail on that view', async () => {
+      const user = userEvent.setup()
+      seed()
+      render(<App />)
+      await openWorkspace(user, retry.id)
+
+      await user.click(
+        within(screen.getByTestId('review-rail')).getByRole('button', { name: 'Files' })
+      )
+
+      expect(screen.getByTestId('review-pane')).toHaveAttribute('data-view', 'files')
+      expect(screen.getByRole('tab', { name: 'Files' })).toHaveAttribute('aria-selected', 'true')
+      expect(await screen.findByTestId('files-tree')).toBeInTheDocument()
+      expect(screen.queryByTestId('review-rail')).not.toBeInTheDocument()
+    })
+
+    it("hides from the chevron at the strip's right end, back to the rail, and shows again on the same view", async () => {
+      const user = userEvent.setup()
+      seed()
+      render(<App />)
+      await openPane(user)
+      await user.click(screen.getByRole('tab', { name: 'Pull requests' }))
+
+      const hide = within(screen.getByTestId('review-bar')).getByRole('button', {
+        name: 'Hide review'
+      })
+
+      expect(hide).toHaveAttribute('title', 'Hide review (⌘B)')
+
+      await user.click(hide)
+
+      expect(screen.queryByTestId('review-pane')).not.toBeInTheDocument()
+      expect(screen.queryByTestId('review-resizer')).not.toBeInTheDocument()
+      expect(screen.getByTestId('review-rail')).toBeInTheDocument()
+
+      await user.click(screen.getByRole('button', { name: 'Show review' }))
+
+      expect(screen.getByTestId('review-pane')).toHaveAttribute('data-view', 'prs')
+    })
+
+    it("can't be shown while the daemon is disconnected, but can still be hidden", async () => {
+      const user = userEvent.setup()
+      seed()
+      render(<App />)
+      await openPane(user)
+
+      fakeBridge.disconnect()
+      await user.click(await screen.findByRole('button', { name: 'Hide review' }))
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: 'Show review' })).toBeDisabled()
+      })
+      expect(
+        within(screen.getByTestId('review-rail')).getByRole('button', { name: 'Changes' })
+      ).toBeDisabled()
+    })
+
+    it('leaves no rail in the loose sessions', async () => {
+      render(<App />)
+
+      expect(await screen.findByTestId('pane-0')).toBeInTheDocument()
+      expect(screen.queryByTestId('review-rail')).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Show review' })).not.toBeInTheDocument()
     })
   })
 
