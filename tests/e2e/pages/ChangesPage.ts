@@ -21,6 +21,10 @@ export class ChangesPage {
   openEditor: Locator
   file: (index: number) => Locator
   fileDirty: (index: number) => Locator
+  // A file's row by its path, wherever it sits in the list.
+  fileByPath: (path: string) => Locator
+  // The faint line over the files where only comments changed, after the others.
+  commentOnly: Locator
   commitsMenu: Locator
   commitAll: Locator
   commit: (sha: string) => Locator
@@ -57,5 +61,8 @@ export class ChangesPage {
     this.openEditor = page.getByTestId('changes-open-editor')
     this.file = (index) => page.getByTestId(`changes-file-${index}`)
     this.fileDirty = (index) => page.getByTestId(`changes-file-${index}-dirty`)
+    this.fileByPath = (path) =>
+      this.files.locator(`[data-testid^="changes-file-"][data-path="${path}"]`)
+    this.commentOnly = page.getByTestId('changes-comment-only')
   }
 }

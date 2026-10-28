@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import {
   decodeDiffBases,
+  decodeDiffComments,
   decodeLayout,
   decodeReview,
   readStored,
@@ -64,6 +65,26 @@ describe('decodeDiffBases', () => {
     ).toEqual({ ws_01hzx3k9c2qf: 'origin/main' })
     expect(decodeDiffBases(['origin/main'])).toEqual({})
     expect(decodeDiffBases(null)).toEqual({})
+  })
+})
+
+describe('decodeDiffComments', () => {
+  it('reads back the per-project choices the store writes', () => {
+    const stored = JSON.parse(
+      '{"prj_01hzx2a7k4mn":{"mode":"fold","keepRemoved":false},"prj_01hzx2b8q5rs":{"mode":"show","keepRemoved":true}}'
+    )
+
+    expect(decodeDiffComments(stored)).toEqual({
+      prj_01hzx2a7k4mn: { mode: 'fold', keepRemoved: false },
+      prj_01hzx2b8q5rs: { mode: 'show', keepRemoved: true }
+    })
+  })
+
+  it('drops unknown modes, keeps removed comments unless told not to, and ignores non-objects', () => {
+    expect(
+      decodeDiffComments({ a: { mode: 'hide' }, b: { mode: 'fold', keepRemoved: 'no' }, c: 'dim' })
+    ).toEqual({ b: { mode: 'fold', keepRemoved: true } })
+    expect(decodeDiffComments(['fold'])).toEqual({})
   })
 })
 

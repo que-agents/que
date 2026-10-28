@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { fakeBridge } from '@renderer/testing/fake-bridge'
 import { openWorkspace } from '@renderer/testing/helpers'
 import {
+  makeCommentDiffFile,
   makeDiffFile,
   makeProject,
   makeRetryDiffFile,
@@ -410,6 +411,226 @@ describe('DiffView', () => {
       const target = patch.querySelector<HTMLElement>('[data-target]') as HTMLElement
       expect(within(target).getByTestId('diff-split-old')).toHaveTextContent('return run()')
       expect(within(target).getByTestId('diff-split-new')).toHaveTextContent('return await run()')
+    })
+  })
+
+  describe('comment lines', () => {
+    const PROJECT = 'prj_01hzw7q2m4nb'
+    const upload = makeDiffFile({ path: 'src/upload/upload.ts', additions: 6, deletions: 4 })
+
+    /** The listing with upload.ts, whose lines rewrite comments around two code changes. */
+    function seedComments(ws = retry): void {
+      fakeBridge.seedWorkspace(ws)
+      fakeBridge.seedDiff(makeWorkspaceDiff({ workspaceId: ws.id, files: [upload] }))
+      fakeBridge.seedDiffFile(makeCommentDiffFile({ workspaceId: ws.id }))
+    }
+
+    /** Remembers a comment mode for the fixtures' project, as an earlier session would have. */
+    function remember(mode: 'dim' | 'show' | 'fold', keepRemoved = true): void {
+      localStorage.setItem('que.diffComments', JSON.stringify({ [PROJECT]: { mode, keepRemoved } }))
+    }
+
+    /** The unified row of a removed line, by its old line number. */
+    const removed = (patch: HTMLElement, old: number): HTMLElement | null =>
+      within(patch)
+        .queryAllByTestId('diff-line')
+        .find(
+          (r) =>
+            r.dataset.kind === 'removed' &&
+            within(r).getByTestId('diff-line-old').textContent === String(old)
+        ) ?? null
+
+    it('dims changed comment lines, keeps code changes as they are, and counts them apart', async () => {
+      const user = userEvent.setup()
+      fakeBridge.seedProject(makeProject())
+      seedComments()
+
+      const patch = await openPatch(user)
+
+      expect(shown(patch, 4)).toHaveAttribute('data-comment')
+      expect(shown(patch, 5)).toHaveAttribute('data-comment')
+      expect(removed(patch, 4)).toHaveAttribute('data-comment')
+      expect(shown(patch, 6)).not.toHaveAttribute('data-comment')
+      expect(removed(patch, 5)).not.toHaveAttribute('data-comment')
+      expect(within(patch).queryByTestId('diff-comment-removed')).not.toBeInTheDocument()
+      const header = screen.getByTestId('diff-header')
+      expect(within(header).getByTestId('diff-additions')).toHaveTextContent('+2')
+      expect(within(header).getByTestId('diff-deletions')).toHaveTextContent('−2')
+      expect(within(header).getByTestId('diff-comment-counts')).toHaveTextContent(
+        'code · +4 −2 comments'
+      )
+      expect(within(header).getByTestId('diff-comments-button')).toHaveTextContent(
+        'Comments dimmed ▾'
+      )
+    })
+
+    it('offers no Comments menu and plain counts for a file without comment lines', async () => {
+      const user = userEvent.setup()
+      seed()
+
+      await openPatch(user)
+
+      const header = screen.getByTestId('diff-header')
+      expect(within(header).queryByTestId('diff-comments-button')).not.toBeInTheDocument()
+      expect(within(header).queryByTestId('diff-comment-counts')).not.toBeInTheDocument()
+    })
+
+    it('shows them as code from the Comments menu, remembered for the project and not another', async () => {
+      const user = userEvent.setup()
+      fakeBridge.seedProject(makeProject())
+      fakeBridge.seedProject(makeProject({ id: 'prj_01hzw9r5t7vc', name: 'billing' }))
+
+      const invoices = makeWorkspace({
+        id: 'ws_01hzx9d4f6gh',
+        name: 'app-1510-invoice-retry',
+        projectId: 'prj_01hzw9r5t7vc'
+      })
+
+      seedComments()
+      seedComments(invoices)
+      const first = render(<App />)
+      await openWorkspace(user, retry.id)
+      await user.click(screen.getByTestId('topbar-review'))
+      await user.click(await screen.findByTestId('changes-file-0'))
+      const patch = await screen.findByTestId('diff-patch')
+
+      await user.click(screen.getByRole('button', { name: 'Comments dimmed ▾' }))
+
+      const menu = screen.getByRole('menu', { name: 'Comment changes' })
+      expect(menu).toHaveTextContent('[ Comment changes · 6 lines ]')
+      expect(within(menu).getByRole('menuitemradio', { name: 'Dim default' })).toHaveAttribute(
+        'aria-checked',
+        'true'
+      )
+      expect(
+        within(menu).getByRole('menuitemcheckbox', { name: /Always show removed comments/ })
+      ).toHaveAttribute('aria-checked', 'true')
+
+      await user.click(within(menu).getByRole('menuitemradio', { name: 'Show as code' }))
+
+      expect(screen.queryByRole('menu', { name: 'Comment changes' })).not.toBeInTheDocument()
+      expect(shown(patch, 4)).not.toHaveAttribute('data-comment')
+      expect(screen.getByTestId('diff-comments-button')).toHaveTextContent('Comments shown ▾')
+
+      await openWorkspace(user, invoices.id)
+      await user.click(await screen.findByTestId('changes-file-0'))
+      expect(await screen.findByTestId('diff-comments-button')).toHaveTextContent(
+        'Comments dimmed ▾'
+      )
+
+      const view = await reopen(user, first)
+
+      expect(within(view).getByTestId('diff-comments-button')).toHaveTextContent('Comments shown ▾')
+    })
+
+    it('folds each run of comment lines to a row that opens in place, removed comments kept and tagged', async () => {
+      const user = userEvent.setup()
+      fakeBridge.seedProject(makeProject())
+      seedComments()
+      remember('fold')
+
+      const patch = await openPatch(user)
+
+      const run = within(patch).getByTestId('diff-comments-c:4:6')
+      expect(run).toHaveTextContent('4–5▸ 2 comment lines added')
+      expect(row(patch, 4)).toBeNull()
+      expect(row(patch, 5)).toBeNull()
+      const kept = removed(patch, 4)
+      expect(kept).toHaveAttribute('data-comment')
+      expect(within(kept as HTMLElement).getByTestId('diff-comment-removed')).toHaveTextContent(
+        'comment removed'
+      )
+      expect(within(patch).getByTestId('diff-comments-c:21:23')).toHaveTextContent(
+        '19–20▸ 2 comment lines added'
+      )
+
+      await user.click(within(run).getByRole('button', { name: '▸ 2 comment lines added' }))
+
+      expect(within(run).getByRole('button', { name: '▾ 2 comment lines added' })).toHaveAttribute(
+        'aria-expanded',
+        'true'
+      )
+      expect(shown(patch, 4)).toHaveAttribute('data-comment')
+      expect(shown(patch, 5)).toBeInTheDocument()
+    })
+
+    it('folds a change of comments alone into the unchanged lines once removed comments fold too', async () => {
+      const user = userEvent.setup()
+      fakeBridge.seedProject(makeProject())
+      seedComments()
+      const patch = await openPatch(user)
+
+      await user.click(screen.getByRole('button', { name: 'Comments dimmed ▾' }))
+      await user.click(screen.getByRole('menuitemradio', { name: 'Fold one row each' }))
+      await user.click(screen.getByRole('button', { name: 'Comments folded ▾' }))
+      await user.click(
+        screen.getByRole('menuitemcheckbox', { name: /Always show removed comments/ })
+      )
+
+      expect(within(patch).getByTestId('diff-comments-c:3:6')).toHaveTextContent(
+        '4–5▸ 3 comment lines changed'
+      )
+      expect(within(patch).queryByTestId('diff-comment-removed')).not.toBeInTheDocument()
+      const fold = within(patch).getByTestId('diff-fold-8:35')
+      expect(fold).toHaveTextContent(
+        /18 unchanged lines\s*·\s*▸ comment-only change: 1 removed, 2 added/
+      )
+
+      await user.click(
+        within(fold).getByRole('button', { name: '▸ comment-only change: 1 removed, 2 added' })
+      )
+
+      expect(within(patch).getByTestId('diff-fold-8:20')).toHaveTextContent('6 unchanged lines')
+      expect(within(patch).getByTestId('diff-fold-23:35')).toHaveTextContent('6 unchanged lines')
+      expect(within(patch).getByTestId('diff-comments-c:20:23')).toHaveAttribute(
+        'data-open',
+        'true'
+      )
+      expect(shown(patch, 19)).toHaveTextContent('// Retried by withRetry,')
+    })
+
+    it('keeps a folded run as one row across both sides of the split view', async () => {
+      const user = userEvent.setup()
+      fakeBridge.seedProject(makeProject())
+      seedComments()
+      remember('fold')
+      localStorage.setItem('que.diffMode', 'split')
+
+      const patch = await openPatch(user)
+
+      const run = within(patch).getByTestId('diff-comments-c:4:6')
+      expect(run.parentElement).toHaveClass('diff-lines', 'split')
+
+      const kept = within(patch)
+        .getAllByTestId('diff-split-old')
+        .find((s) => s.textContent?.includes('// Three tries.'))
+
+      expect(kept).toHaveAttribute('data-comment')
+      expect(within(kept as HTMLElement).getByText('comment removed')).toBeInTheDocument()
+    })
+
+    it('opens the folded run that holds the line a link asks for, saying why', async () => {
+      fakeBridge.seedProject(makeProject())
+      seedComments()
+      remember('fold', false)
+      const store = new QueStore(window.que)
+      store.start()
+      store.openDiff(retry.id, 'src/upload/upload.ts', { line: 19 })
+      render(
+        <StoreContext.Provider value={store}>
+          <DiffView termKey={retry.id} path="src/upload/upload.ts" />
+        </StoreContext.Provider>
+      )
+
+      const patch = await screen.findByTestId('diff-patch')
+
+      await waitFor(() => {
+        expect(patch.querySelector('[data-target]')).toHaveAttribute('data-line', '19')
+      })
+      expect(within(patch).getByTestId('diff-comments-c:20:23')).toHaveTextContent(
+        '▾ comment lines · opened for a review comment'
+      )
+      expect(within(patch).queryByTestId('diff-fold-8:35')).not.toBeInTheDocument()
     })
   })
 

@@ -122,6 +122,57 @@ function seed(prs: PullRequest[] = [app, base]): void {
   })
 }
 
+/** A file of the pull request where only a comment changed: one line removed, two added (new 11 and 12). */
+const notes = makeDiffFile({
+  path: 'src/renderer/src/removal-notes.ts',
+  additions: 2,
+  deletions: 1,
+  commentOnly: true,
+  commentAdditions: 2,
+  commentDeletions: 1,
+  patch: [
+    'diff --git a/src/renderer/src/removal-notes.ts b/src/renderer/src/removal-notes.ts',
+    '--- a/src/renderer/src/removal-notes.ts',
+    '+++ b/src/renderer/src/removal-notes.ts',
+    '@@ -10,3 +10,4 @@ export function removalNote() {',
+    '   const removal = ws.removal',
+    '-  // Reads the phase.',
+    '+  // Reads the step from what is done,',
+    '+  // so a partial removal still reads right.',
+    '   return removal',
+    ''
+  ].join('\n')
+})
+
+const notesComment = makePrThreadEntry({
+  kind: 'line',
+  author: 'rquellh',
+  body: 'Say which step reads first.',
+  path: notes.path,
+  line: 12,
+  hunk: '@@ -10,3 +10,4 @@',
+  at: '2026-10-14T02:30:00.000Z'
+})
+
+/** The pull request with the comments-only file too, and a line comment on one of its lines. */
+function seedNotes(): void {
+  seed()
+  fakeBridge.seedBranchDiff(
+    makeWorkspaceDiff({
+      workspaceId: ID,
+      base: 'removal-daemon',
+      head: 'removal-app',
+      files: [notes, card, step]
+    }),
+    { base: 'removal-daemon', head: 'removal-app' }
+  )
+  fakeBridge.seedPrThread(ID, {
+    number: 188,
+    entries: [lineComment, notesComment],
+    fetchedAt: '2026-10-14T03:10:00.000Z'
+  })
+}
+
 async function openDetail(user: ReturnType<typeof userEvent.setup>): Promise<HTMLElement> {
   render(<App now={() => NOW} />)
   await openWorkspace(user, ID)
@@ -184,6 +235,21 @@ describe('PullRequestDetail', () => {
         commit: null,
         head: 'removal-app'
       })
+    })
+
+    it('lists the files where only comments changed last, under one faint line of their totals', async () => {
+      const user = userEvent.setup()
+      seedNotes()
+
+      await openDetail(user)
+
+      expect(await screen.findByTestId('pr-file-2')).toHaveAttribute('data-path', notes.path)
+      expect(screen.getByTestId('pr-file-0')).toHaveAttribute('data-path', card.path)
+      expect(screen.getByTestId('pr-file-1')).toHaveAttribute('data-path', step.path)
+      const line = screen.getByTestId('pr-files-comment-only')
+      expect(line).toHaveTextContent('comments only · 1 file · +2 −1')
+      expect(line.nextElementSibling).toBe(screen.getByTestId('pr-file-2'))
+      expect(screen.getByTestId('pr-files-summary')).toHaveTextContent('+56 −2 · 3 · vs #187')
     })
 
     it('lists the failing checks first and folds the passing ones into a line that opens', async () => {
@@ -329,6 +395,30 @@ describe('PullRequestDetail', () => {
         'filler'
       )
       expect(target?.nextElementSibling).toBe(screen.getByTestId(`diff-comment-${lineComment.id}`))
+    })
+
+    it('under Fold, opens the run of comment lines a review comment points into and says why', async () => {
+      const user = userEvent.setup()
+      seedNotes()
+      localStorage.setItem(
+        'que.diffComments',
+        JSON.stringify({ [makeProject().id]: { mode: 'fold', keepRemoved: true } })
+      )
+      await openDetail(user)
+
+      await user.click(await screen.findByTestId('pr-file-2'))
+
+      const patch = await screen.findByTestId('diff-patch')
+      const run = await within(patch).findByTestId('diff-comments-c:2:4')
+      expect(run).toHaveAttribute('data-open', 'true')
+      expect(run).toHaveTextContent('11–12▾ comment lines · opened for a review comment')
+      expect(within(run).queryByRole('button')).not.toBeInTheDocument()
+      const commented = patch.querySelector<HTMLElement>('[data-line="12"]')
+      expect(commented).toHaveAttribute('data-comment')
+      expect(commented?.nextElementSibling).toBe(
+        screen.getByTestId(`diff-comment-${notesComment.id}`)
+      )
+      expect(within(patch).getByTestId('diff-comment-removed')).toBeInTheDocument()
     })
 
     it('Refresh fetches its conversation again', async () => {

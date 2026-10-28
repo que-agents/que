@@ -29,6 +29,11 @@ export class DiffPage {
   prTabClose: (number: number, path: string) => Locator
   // The patch line a line comment asked for.
   target: Locator
+  // The Comments ▾ button (only when the file has comment lines) and the comment counts.
+  commentsButton: Locator
+  commentCounts: Locator
+  // The drawn lines that are dimmed changed comment lines.
+  commentLines: Locator
   // Every diff tab, in any pane.
   tabs: Locator
 
@@ -49,6 +54,9 @@ export class DiffPage {
     this.error = page.getByTestId('diff-error')
     this.against = page.getByTestId('diff-against')
     this.target = this.patch.locator('[data-target]')
+    this.commentsButton = page.getByTestId('diff-comments-button')
+    this.commentCounts = page.getByTestId('diff-comment-counts')
+    this.commentLines = this.patch.locator('[data-testid="diff-line"][data-comment]')
     this.tabs = page.getByTestId('view-tab-diff')
     this.tab = (path) =>
       page.locator(`[data-testid="view-tab-diff"][data-path="${path}"]:not([data-pr])`)

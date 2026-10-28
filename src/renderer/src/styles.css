@@ -2263,6 +2263,69 @@ button.diff-tool[aria-pressed='true'] {
   background: var(--bg-raised);
 }
 
+/* The comment counts after the code's, faint. */
+.diff-comment-counts {
+  flex: none;
+}
+
+/* The Comments ▾ menu, under its button at the toolbar's right. */
+.diff-comments-pick {
+  position: relative;
+  display: flex;
+}
+
+.diff-comments-menu {
+  top: calc(100% + 4px);
+  min-width: 260px;
+  font: 12px var(--mono);
+}
+
+.diff-comments-menu [role^='menuitem'] {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font: inherit;
+  white-space: nowrap;
+}
+
+.diff-comments-menu-head {
+  margin: 0;
+  padding: 4px 10px 6px;
+  font: 500 10px / 16px var(--mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--fg-faint);
+}
+
+.diff-comments-hint {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--fg-faint);
+}
+
+.diff-comments-menu-rule {
+  margin: 4px 0;
+  border: none;
+  border-top: 1px solid var(--border);
+}
+
+/* A checkbox item: its mark says it is on, so it takes no active fill. */
+.diff-comments-menu [role='menuitemcheckbox'][aria-checked='true'] {
+  background: none;
+  color: var(--fg-secondary);
+}
+
+.diff-comments-menu [role='menuitemcheckbox']:is(:hover, :focus-visible):not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--fg);
+}
+
+.diff-comments-check {
+  flex: none;
+  width: 12px;
+  color: var(--fg);
+}
+
 /* The lines: the whole area scrolls both ways, every row as wide as the widest. */
 .diff-patch {
   flex: 1;
@@ -2332,6 +2395,93 @@ button.diff-tool[aria-pressed='true'] {
 [data-kind='removed'] .tok-mark {
   background: color-mix(in srgb, var(--tone-bad) 30%, transparent);
   border-radius: 2px;
+}
+
+/* A changed comment line, dimmed (Dim, and what Fold leaves in view): no tint, its code at half
+   strength with a faint edge at its left, its sign and numbers only leaning toward the tone, no
+   word marks; a removed one struck through. */
+.diff-row[data-comment],
+.diff-side[data-comment] {
+  background: none;
+  box-shadow: inset 2px 0 0 var(--border-strong);
+}
+
+[data-comment] > .diff-code {
+  opacity: 0.5;
+}
+
+[data-comment][data-kind='removed'] > .diff-code {
+  text-decoration: line-through;
+}
+
+[data-comment][data-kind='added'] > :is(.diff-num, .diff-sign) {
+  color: color-mix(in srgb, var(--tone-good) 35%, var(--fg-faint));
+}
+
+[data-comment][data-kind='removed'] > :is(.diff-num, .diff-sign) {
+  color: color-mix(in srgb, var(--tone-bad) 35%, var(--fg-faint));
+}
+
+[data-comment] .tok-mark {
+  background: none;
+}
+
+/* A removed comment Fold keeps in view, tagged at its right end. */
+.diff-row[data-kept] {
+  grid-template-columns: 44px 44px 18px 1fr auto;
+}
+
+.diff-side[data-kept] {
+  grid-template-columns: 44px 16px minmax(var(--code-ch, 0), 1fr) auto;
+}
+
+.diff-comment-tag {
+  padding: 0 12px;
+  font: 10px / 18px var(--mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--tone-attention);
+  user-select: none;
+}
+
+/* Under Fold, a run of comment lines as one slim row: its line range where the numbers go, then
+   the button that opens it, lined up with the code. */
+.diff-comment-run {
+  display: flex;
+  align-items: center;
+  height: 20px;
+  font: 11px var(--mono);
+  color: var(--fg-faint);
+  box-shadow: inset 2px 0 0 var(--border-strong);
+}
+
+.diff-comment-range {
+  flex: none;
+  box-sizing: border-box;
+  width: 106px;
+  padding-right: 26px;
+  text-align: right;
+  user-select: none;
+}
+
+.diff-lines.split .diff-comment-range {
+  width: 60px;
+  padding-right: 24px;
+}
+
+button.diff-comment-toggle,
+.diff-comment-toggle {
+  padding: 0;
+  font: inherit;
+  white-space: nowrap;
+  color: var(--fg-faint);
+  background: none;
+  border: none;
+}
+
+button.diff-comment-toggle:hover:not(:disabled) {
+  color: var(--fg);
+  background: none;
 }
 
 /* Side by side: old at the left, new at the right, as wide as each other. */
@@ -2478,6 +2628,13 @@ button.diff-fold-all:hover:not(:disabled) {
   height: 5px;
   border-radius: 50%;
   background: var(--tone-attention);
+}
+
+/* The line over the files where only comments changed, its words lined up with the paths. */
+.changes-comment-only {
+  padding: 8px 8px 2px 30px;
+  font: 11px var(--mono);
+  color: var(--fg-faint);
 }
 
 .changes-file .path {

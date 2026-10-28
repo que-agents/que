@@ -74,6 +74,27 @@ export function decodeDiffBases(v: unknown): Record<string, string> {
   return entriesOf(v, nonEmpty)
 }
 
+/** How diff tabs treat changed comment lines in one project, as stored. */
+export interface PersistedDiffComments {
+  mode: 'dim' | 'show' | 'fold'
+  keepRemoved: boolean
+}
+
+const COMMENT_MODES = ['dim', 'show', 'fold'] as const
+
+/**
+ * The per-project comment choices `que.diffComments` holds; an entry without a known mode is
+ * dropped, and `keepRemoved` is on unless it is stored as false.
+ */
+export function decodeDiffComments(v: unknown): Record<string, PersistedDiffComments> {
+  return entriesOf(v, (_, entry) => {
+    if (!isObj(entry)) return null
+    const mode = COMMENT_MODES.find((m) => m === entry.mode)
+
+    return mode ? { mode, keepRemoved: entry.keepRemoved !== false } : null
+  })
+}
+
 /** A layout `que.layout.<key>` holds, or null when it is not an object. */
 export function decodeLayout(v: unknown): PersistedLayout | null {
   if (!isObj(v)) return null

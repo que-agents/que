@@ -158,7 +158,11 @@ Each token is a span with a class per kind (`tok-decl`, `tok-str`, …), a brack
   `commit <sha>`, its subject in the tooltip), and `vs base` picks the ref to compare
   against, remembered per workspace; the current choice is marked with the active fill.
   A row is the glyph, the path, `+a −d` in the diff tones; an uncommitted file carries
-  a 5px `--tone-attention` dot after its name.
+  a 5px `--tone-attention` dot after its name. Files where only comments changed come
+  after the others, under one line in mono 11px `--fg-faint` lined up with the paths:
+  `comments only · 2 files · +10 −3` (their totals). It has no bracketed head, no dashed
+  rule and no hint, the head's totals stay whole, and the rows under it look like any
+  other; a pull request's files group the same way. Their diffs open dimmed.
 - Clicking a file in Changes opens that file's diff as a tab in the middle, in the
   focused pane's strip beside the session tabs: a line icon and the file's name, never a
   status dot, closed with ⌘W like a terminal tab. A file inside a pull request opens the
@@ -188,6 +192,32 @@ Each token is a span with a class per kind (`tok-decl`, `tok-str`, …), a brack
   the added line it became, a hatch of `--bg-raised` where a side has nothing, context on
   both; folds and comments span both. A binary file reads `Binary file.`, one over the
   size cap `Too large to show.`
+- A changed line that is only a comment (the daemon marks it) is drawn dimmed by default,
+  so the code changes are what the eye lands on: no green or red behind it, its code in
+  its own syntax colours at 50% opacity, a 2px `--border-strong` edge at its left, its sign
+  and numbers leaning only 35% toward the tone, no word marks, and a removed one struck
+  through. When a file has comment lines, the toolbar splits its counts, `+2 −1 code · +7
+  −2 comments` (the code counts in the diff tones, the comment ones `--fg-faint`), and a
+  `Comments dimmed ▾` button (`shown`, `folded`) joins the tools, drawn like them and
+  pressed while its menu is open. The menu is the app's menu (`--bg-raised`, a 1px
+  `--border-strong`, the shadow, `--radius`) in mono 12px: a bracketed head, `[ COMMENT
+  CHANGES · 8 LINES ]`, then Dim (`default`), Show (`as code`) and Fold (`one row each`),
+  each hint in `--fg-faint` at the right and the current one on the active fill; a
+  hairline; and a checkbox item, **Always show removed comments** (a ✓ while on, which it
+  is by default). The choice is remembered per project. Show draws comment lines like
+  code. Fold turns each run of consecutive comment lines in a change into one 20px row with
+  the same faint left edge: its line range where the numbers go (the new file's, or the
+  old one's for removed lines) and, mono 11px `--fg-faint` lined up with the code, `▸ 3
+  comment lines added` (`removed`, or `changed` for a mix), which opens the run in place
+  (`▾`) and folds it again. A change made only of comment lines, between two unchanged
+  runs, folds into the unchanged-lines row around it, which then reads `18 unchanged lines
+  · ▸ comment-only change: 1 removed, 4 added`; the second part shows the change. While
+  Always show removed comments is on, removed comment lines never fold: they stay dimmed
+  and struck, tagged at their right end with `COMMENT REMOVED` in mono 10px
+  `--tone-attention`. In a pull request's diff a run holding a line a review comment points
+  at stays open, its row reading `▾ comment lines · opened for a review comment`, and a
+  `path:line →` link into a folded run opens it the same way. In Split a run's row spans
+  both sides.
 - Files is `[ FILES ]` with `n · m changed`, then a filter field: mono 12px on
   `--bg-input` behind a 1px `--border`, `--accent` on focus, ⌘F while the pane has focus.
   It narrows the tree to the matching paths with their folders open, `n matches · ⏎

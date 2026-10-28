@@ -1,6 +1,8 @@
 // What a diff tab draws, row by row, from workspace.diffFile's hunks: the lines, the folded runs
 // of unchanged lines (whole-file context) or the gaps between hunks, and the same rows paired
-// side by side for the split view. Pure: the tab keeps the reveals and renders the rows.
+// side by side for the split view. Under the Fold comment mode, each run of comment lines in a
+// change is one row too, and a change of comment lines alone joins the unchanged fold around it.
+// Pure: the tab keeps the reveals and renders the rows.
 import type { DiffLine, WorkspaceDiffFile } from '../../preload/index.d'
 
 /** A run of unchanged lines longer than this folds. */
@@ -21,7 +23,10 @@ export interface Reveal {
   up: number
 }
 
-/** Per fold id, what has been revealed of it. A fold id outlives nothing but its own run. */
+/**
+ * Per fold id, what has been revealed of it. A fold id outlives nothing but its own run. A run
+ * of comment lines (`c:start:end`) is open while it has an entry.
+ */
 export interface Reveals {
   readonly [foldId: string]: Reveal
 }
@@ -29,6 +34,20 @@ export interface Reveals {
 export const NO_REVEALS: Reveals = {}
 
 export const REVEAL_ALL: Reveal = { down: Infinity, up: Infinity }
+
+/** How a diff tab draws changed comment lines: dimmed (the default), as code, or folded away. */
+export type CommentMode = 'dim' | 'show' | 'fold'
+
+/** What the rows need to know about comment lines. */
+export interface CommentView {
+  mode: CommentMode
+  /** Under Fold: removed comment lines stay drawn rather than folding. */
+  keepRemoved: boolean
+  /** Lines of the new file a review comment points at (or a link asked for): their runs stay open. */
+  targets: ReadonlySet<number>
+}
+
+export const DIM_COMMENTS: CommentView = { mode: 'dim', keepRemoved: true, targets: new Set() }
 
 export interface LineRow {
   kind: 'line'
@@ -42,13 +61,19 @@ export interface FoldRow {
   kind: 'fold'
   /** The whole run's `start:end` in the file's lines: the same while the file keeps its shape. */
   id: string
+  /** Every line the fold hides, the comment-only changes it took in included. */
   hidden: number
   /** Lines ↓ reveals from the top edge, 0 when the run starts the file (no ↓). */
   down: number
   /** Lines ↑ reveals from the bottom edge, 0 when the run ends the file (no ↑). */
   up: number
-  /** The line git would name as the enclosing function, '' when none. */
+  /** The line the diff would name as the enclosing function, '' when none. */
   label: string
+  /**
+   * Under Fold, the comment-only changes the fold took in: their hidden added and removed lines,
+   * and the ids of their runs (opening those shows them). Absent when it took in none.
+   */
+  comments?: { added: number; removed: number; ids: string[] }
 }
 
 /** Unchanged lines between hunks the diff does not carry: a count, never expandable. */
@@ -59,7 +84,24 @@ export interface GapRow {
   label: string
 }
 
-export type DiffRow = LineRow | FoldRow | GapRow
+/**
+ * Under Fold, a run of consecutive comment lines inside a change: one slim row, then its lines
+ * while open. `pinned`: open because a review comment points at one of its lines.
+ */
+export interface CommentRunRow {
+  kind: 'comments'
+  /** `c:start:end` in the file's lines. */
+  id: string
+  open: boolean
+  pinned: boolean
+  added: number
+  removed: number
+  /** The run's first and last line numbers: the new file's when it adds lines, else the old's. */
+  first: number
+  last: number
+}
+
+export type DiffRow = LineRow | FoldRow | GapRow | CommentRunRow
 
 /** A split row: the old line at the left, the new at the right; a context line on both. */
 export interface PairRow {
@@ -70,7 +112,7 @@ export interface PairRow {
   right: DiffLine | null
 }
 
-export type SplitRow = PairRow | FoldRow | GapRow
+export type SplitRow = PairRow | FoldRow | GapRow | CommentRunRow
 
 /** A line's text: its tokens' texts joined. */
 export function lineText(line: DiffLine): string {
@@ -82,23 +124,52 @@ export function fileLines(file: WorkspaceDiffFile): DiffLine[] {
   return file.hunks.flatMap((h) => h.lines)
 }
 
+/** A changed line that is a comment line. */
+export const isCommentLine = (l: DiffLine): boolean => l.kind !== 'context' && l.comment === true
+
+/** The code and comment lines a file adds and removes. */
+export interface LineSplit {
+  codeAdditions: number
+  codeDeletions: number
+  commentAdditions: number
+  commentDeletions: number
+}
+
+/** Counts a file's changed lines, code apart from comments. */
+export function splitCounts(lines: readonly DiffLine[]): LineSplit {
+  const split = { codeAdditions: 0, codeDeletions: 0, commentAdditions: 0, commentDeletions: 0 }
+
+  for (const l of lines) {
+    if (l.kind === 'context') continue
+    const added = l.kind === 'added'
+
+    if (l.comment) split[added ? 'commentAdditions' : 'commentDeletions']++
+    else split[added ? 'codeAdditions' : 'codeDeletions']++
+  }
+
+  return split
+}
+
 interface Run {
   start: number
   end: number
 }
 
-/** The maximal runs of unchanged lines longer than FOLD_MIN. */
-function longRuns(lines: readonly DiffLine[]): Run[] {
+const runId = (r: Run): string => `${r.start}:${r.end}`
+const commentId = (r: Run): string => `c:${r.start}:${r.end}`
+
+/** The maximal runs of lines `pick` takes. */
+function runsOf(count: number, pick: (i: number) => boolean): Run[] {
   const runs: Run[] = []
   let start = -1
 
-  for (let i = 0; i <= lines.length; i++) {
-    const context = i < lines.length && lines[i].kind === 'context'
+  for (let i = 0; i <= count; i++) {
+    const taken = i < count && pick(i)
 
-    if (context && start < 0) start = i
+    if (taken && start < 0) start = i
 
-    if (!context && start >= 0) {
-      if (i - start > FOLD_MIN) runs.push({ start, end: i })
+    if (!taken && start >= 0) {
+      runs.push({ start, end: i })
       start = -1
     }
   }
@@ -106,7 +177,12 @@ function longRuns(lines: readonly DiffLine[]): Run[] {
   return runs
 }
 
-/** git's default function line: one that starts with a letter, `_` or `$`. */
+/** The maximal runs `context` takes that are longer than FOLD_MIN. */
+function longRuns(count: number, context: (i: number) => boolean): Run[] {
+  return runsOf(count, context).filter((r) => r.end - r.start > FOLD_MIN)
+}
+
+/** The diff's default function line: one that starts with a letter, `_` or `$`. */
 const FUNCNAME = /^[A-Za-z_$]/
 
 /** Per line, the nearest function line at or above it in the new file ('' when none). */
@@ -147,37 +223,176 @@ function linesBefore(h: WorkspaceDiffFile['hunks'][number]): number {
   return h.newLines > 0 ? h.newStart - 1 : h.newStart
 }
 
+/** Whether a review comment (or a link) points at a line of the run. */
+function pinnedRun(lines: readonly DiffLine[], r: Run, view: CommentView): boolean {
+  for (let i = r.start; i < r.end; i++) {
+    const n = lines[i].new
+
+    if (n !== null && view.targets.has(n)) return true
+  }
+
+  return false
+}
+
+/** How a file's lines fold: the unchanged runs, and under Fold the comment runs. */
+interface Plan {
+  lines: DiffLine[]
+  /** The unchanged runs that fold, comment-only changes they took in counted as unchanged. */
+  folds: Run[]
+  /** The comment-only changes the folds took in. */
+  absorbed: Run[]
+  /** The runs of comment lines that fold to one row, by their first line. */
+  comments: Map<number, Run>
+}
+
+/**
+ * Under Fold: the changes made of comment lines alone that sit wholly inside an unchanged fold
+ * (with its context lines, before any reveal) are taken into it; each other run of comment lines
+ * (removed ones left out when they are kept) folds to a row of its own.
+ */
+function plan(file: WorkspaceDiffFile, reveals: Reveals, view: CommentView): Plan {
+  const lines = fileLines(file)
+  const n = lines.length
+  const folding = view.mode === 'fold'
+
+  const foldable = (l: DiffLine): boolean =>
+    folding && isCommentLine(l) && !(view.keepRemoved && l.kind === 'removed')
+
+  const isOpen = (r: Run): boolean => commentId(r) in reveals || pinnedRun(lines, r, view)
+
+  let absorbed =
+    folding && file.fullContext
+      ? runsOf(n, (i) => lines[i].kind !== 'context').filter((r) => {
+          for (let i = r.start; i < r.end; i++) if (!foldable(lines[i])) return false
+
+          return !isOpen(r)
+        })
+      : []
+
+  let folds: Run[] = []
+
+  for (;;) {
+    const taken = new Set(absorbed.flatMap((r) => range(r)))
+    folds = file.fullContext ? longRuns(n, (i) => lines[i].kind === 'context' || taken.has(i)) : []
+
+    const inside = absorbed.filter((b) =>
+      folds.some((f) => {
+        const { from, to } = hiddenRange(f, n, undefined)
+
+        return b.start >= from && b.end <= to
+      })
+    )
+
+    if (inside.length === absorbed.length) break
+    absorbed = inside
+  }
+
+  const taken = new Set(absorbed.flatMap((r) => range(r)))
+  const comments = new Map<number, Run>()
+
+  for (const r of runsOf(n, (i) => !taken.has(i) && foldable(lines[i]))) comments.set(r.start, r)
+
+  return { lines, folds, absorbed, comments }
+}
+
+function range(r: Run): number[] {
+  return Array.from({ length: r.end - r.start }, (_, k) => r.start + k)
+}
+
+/** The slim row of a run of comment lines. */
+function commentRow(
+  lines: readonly DiffLine[],
+  r: Run,
+  open: boolean,
+  pinned: boolean
+): CommentRunRow {
+  const run = lines.slice(r.start, r.end)
+  const added = run.filter((l) => l.kind === 'added')
+
+  const numbers = (added.length > 0 ? added.map((l) => l.new) : run.map((l) => l.old)).filter(
+    (x): x is number => x !== null
+  )
+
+  return {
+    kind: 'comments',
+    id: commentId(r),
+    open,
+    pinned,
+    added: added.length,
+    removed: run.length - added.length,
+    first: numbers[0] ?? 0,
+    last: numbers.at(-1) ?? 0
+  }
+}
+
 /**
  * The rows of the unified view. With whole-file context, each run of unchanged lines longer
  * than FOLD_MIN folds, leaving FOLD_CONTEXT lines on each side that touches a change, less
- * whatever `reveals` uncovered; without it, each gap before or between hunks is a count.
+ * whatever `reveals` uncovered; without it, each gap before or between hunks is a count. Under
+ * the Fold comment mode, runs of comment lines fold too (see `plan`).
  */
-export function diffRows(file: WorkspaceDiffFile, reveals: Reveals = NO_REVEALS): DiffRow[] {
-  if (!file.fullContext) return gappedRows(file)
-  const lines = fileLines(file)
-  const labels = functionLabels(lines)
+export function diffRows(
+  file: WorkspaceDiffFile,
+  reveals: Reveals = NO_REVEALS,
+  view: CommentView = DIM_COMMENTS
+): DiffRow[] {
+  const p = plan(file, reveals, view)
+  const { lines } = p
   const rows: DiffRow[] = []
   let next = 0
 
-  const push = (to: number): void => {
-    for (; next < to; next++) rows.push({ kind: 'line', index: next, line: lines[next] })
+  const line = (i: number): void => {
+    rows.push({ kind: 'line', index: i, line: lines[i] })
   }
 
-  for (const run of longRuns(lines)) {
-    const id = `${run.start}:${run.end}`
+  // Lines up to `to`, each comment run (whole, since unchanged folds never cut one) as its row.
+  const push = (to: number): void => {
+    while (next < to) {
+      const run = p.comments.get(next)
+
+      if (!run) {
+        line(next++)
+        continue
+      }
+
+      const pinned = pinnedRun(lines, run, view)
+      const open = pinned || commentId(run) in reveals
+      rows.push(commentRow(lines, run, open, pinned))
+
+      if (open) for (let i = run.start; i < run.end; i++) line(i)
+      next = run.end
+    }
+  }
+
+  if (!file.fullContext) return gappedRows(file, rows, push)
+  const labels = functionLabels(lines)
+
+  for (const run of p.folds) {
+    const id = runId(run)
     const { from, to, above, below } = hiddenRange(run, lines.length, reveals[id])
 
     if (to - from <= 0) continue
     push(from)
     const hidden = to - from
-    rows.push({
+
+    const fold: FoldRow = {
       kind: 'fold',
       id,
       hidden,
       down: above ? Math.min(REVEAL_STEP, hidden) : 0,
       up: below ? Math.min(REVEAL_STEP, hidden) : 0,
       label: labels[to - 1]
-    })
+    }
+
+    const within = p.absorbed.filter((b) => b.start < to && b.end > from)
+
+    if (within.length > 0) {
+      const hid = lines.slice(from, to).filter(isCommentLine)
+      const added = hid.filter((l) => l.kind === 'added').length
+      fold.comments = { added, removed: hid.length - added, ids: within.map(commentId) }
+    }
+
+    rows.push(fold)
     next = to
   }
 
@@ -186,8 +401,11 @@ export function diffRows(file: WorkspaceDiffFile, reveals: Reveals = NO_REVEALS)
   return rows
 }
 
-function gappedRows(file: WorkspaceDiffFile): DiffRow[] {
-  const rows: DiffRow[] = []
+function gappedRows(
+  file: WorkspaceDiffFile,
+  rows: DiffRow[],
+  push: (to: number) => void
+): DiffRow[] {
   let index = 0
   let end = 0
 
@@ -195,8 +413,8 @@ function gappedRows(file: WorkspaceDiffFile): DiffRow[] {
     const count = linesBefore(h) - end
 
     if (count > 0) rows.push({ kind: 'gap', id: `gap:${i}`, count, label: h.label })
-
-    for (const line of h.lines) rows.push({ kind: 'line', index: index++, line })
+    index += h.lines.length
+    push(index)
     end = linesBefore(h) + h.newLines
   })
 
@@ -205,7 +423,8 @@ function gappedRows(file: WorkspaceDiffFile): DiffRow[] {
 
 /**
  * The unified rows side by side: a context line on both sides; within a change, the i-th
- * removed line beside the i-th added one, and nothing beside the rest. Folds and gaps stay.
+ * removed line beside the i-th added one, and nothing beside the rest. Folds, gaps and comment
+ * runs' rows stay, across both sides.
  */
 export function splitRows(rows: readonly DiffRow[]): SplitRow[] {
   const out: SplitRow[] = []
@@ -256,20 +475,42 @@ export function revealMore(reveals: Reveals, fold: FoldRow, how: 'down' | 'up' |
   return { ...reveals, [fold.id]: next }
 }
 
+/** Opens the comment-only changes a fold took in, so they show as changes of their own. */
+export function revealComments(reveals: Reveals, fold: FoldRow): Reveals {
+  const ids = fold.comments?.ids ?? []
+
+  return { ...reveals, ...Object.fromEntries(ids.map((id) => [id, REVEAL_ALL])) }
+}
+
+/** Opens a folded run of comment lines, or folds an open one again. */
+export function toggleCommentRun(reveals: Reveals, row: CommentRunRow): Reveals {
+  if (!(row.id in reveals)) return { ...reveals, [row.id]: REVEAL_ALL }
+  const next = { ...reveals }
+  delete next[row.id]
+
+  return next
+}
+
 /**
  * Reveals with the fold that hides line `n` of the new file opened whole, so a line comment's
- * line can be shown; the same object when no fold hides it.
+ * line can be shown; the same object when no fold hides it. A run of comment lines that holds
+ * it opens by itself once `n` is among the view's targets.
  */
-export function revealLine(file: WorkspaceDiffFile, reveals: Reveals, n: number): Reveals {
+export function revealLine(
+  file: WorkspaceDiffFile,
+  reveals: Reveals,
+  n: number,
+  view: CommentView = DIM_COMMENTS
+): Reveals {
   if (!file.fullContext) return reveals
-  const lines = fileLines(file)
-  const at = lines.findIndex((l) => l.new === n)
+  const p = plan(file, reveals, view)
+  const at = p.lines.findIndex((l) => l.new === n)
 
   if (at < 0) return reveals
 
-  for (const run of longRuns(lines)) {
-    const id = `${run.start}:${run.end}`
-    const { from, to } = hiddenRange(run, lines.length, reveals[id])
+  for (const run of p.folds) {
+    const id = runId(run)
+    const { from, to } = hiddenRange(run, p.lines.length, reveals[id])
 
     if (at >= from && at < to) return { ...reveals, [id]: REVEAL_ALL }
   }

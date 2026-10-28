@@ -313,8 +313,89 @@ export function makeRetryDiffFile(overrides: Partial<WorkspaceDiffFile> = {}): W
 }
 
 /**
+ * The uploader's diff with comment lines in it, whole-file context: a comment rewritten (one
+ * removed, two added) just above a changed constant, a 12-line unchanged run, a TODO replaced by
+ * two comment lines on its own (new lines 19 and 20), another 12-line run, and a last code change.
+ * Code +2 −2, comments +4 −2.
+ */
+export function makeCommentDiffFile(overrides: Partial<WorkspaceDiffFile> = {}): WorkspaceDiffFile {
+  const lines: DiffLine[] = []
+  let o = 1
+  let n = 1
+
+  const ctx = (tokens: DiffToken[]): void => {
+    lines.push({ kind: 'context', old: o++, new: n++, tokens })
+  }
+
+  const del = (tokens: DiffToken[], comment = false): void => {
+    lines.push({ kind: 'removed', old: o++, new: null, tokens, ...(comment && { comment }) })
+  }
+
+  const add = (tokens: DiffToken[], comment = false): void => {
+    lines.push({ kind: 'added', old: null, new: n++, tokens, ...(comment && { comment }) })
+  }
+
+  const note = (text: string): DiffToken[] => [tok(text, 'comment')]
+
+  const max = (value: string): DiffToken[] => [
+    tok('const', 'decl'),
+    tok(' ', 'plain'),
+    tok('MAX_RETRIES', 'var'),
+    tok(' = ', 'punct'),
+    tok(value, 'num', { mark: true })
+  ]
+
+  const step = (i: number): DiffToken[] => [
+    tok('  ', 'plain'),
+    tok('await', 'ctrl'),
+    tok(' ', 'plain'),
+    tok('step', 'fn'),
+    tok('(', 'punct', { depth: 1 }),
+    tok(String(i), 'num'),
+    tok(')', 'punct', { depth: 1 })
+  ]
+
+  ctx(note('// Uploads a file in parts.'))
+  ctx([tok('import', 'ctrl'), tok(' { put } ', 'var'), tok('from', 'ctrl'), tok(" './put'", 'str')])
+  ctx([])
+  del(note('// Three tries.'), true)
+  add(note('// Retries with backoff:'), true)
+  add([tok('// 250ms, then ', 'comment'), tok('doubling.', 'comment', { mark: true })], true)
+  del(max('1'))
+  add(max('3'))
+  ctx([])
+  ctx([
+    tok('export', 'ctrl'),
+    tok(' ', 'plain'),
+    tok('async', 'decl'),
+    tok(' function ', 'decl'),
+    tok('upload', 'fn'),
+    tok('() {', 'punct')
+  ])
+
+  for (let i = 1; i <= 10; i++) ctx(step(i))
+  del(note('  // TODO: retry'), true)
+  add(note('  // Retried by withRetry,'), true)
+  add(note('  // see retry.ts.'), true)
+
+  for (let i = 11; i <= 22; i++) ctx(step(i))
+  del([tok('  return', 'ctrl'), tok(' run()', 'fn')])
+  add([tok('  return', 'ctrl'), tok(' await', 'ctrl', { mark: true }), tok(' run()', 'fn')])
+  ctx([tok('}', 'punct', { depth: 0 })])
+
+  return makeWorkspaceDiffFile({
+    path: 'src/upload/upload.ts',
+    additions: 6,
+    deletions: 4,
+    hunks: [{ oldStart: 1, oldLines: o - 1, newStart: 1, newLines: n - 1, label: '', lines }],
+    ...overrides
+  })
+}
+
+/**
  * What workspace.diffFile would say of a file workspace.diff lists, read off its patch: its
- * hunks with their labels, each line one plain token; binary when it has no patch.
+ * hunks with their labels, each line one plain token (a changed `//` line one comment token,
+ * flagged as a comment line); binary when it has no patch.
  */
 export function diffFileFromPatch(
   file: DiffFile,
@@ -344,10 +425,15 @@ export function diffFileFromPatch(
     const hunk = hunks.at(-1)
 
     if (!hunk || /^(diff --git|--- |\+\+\+ |\\)/.test(text)) continue
-    const tokens = [tok(text.slice(1), 'plain')]
+    // A changed line that is a `//` comment is one token of that kind, flagged as the daemon would.
+    const note = /^[+-]\s*\/\//.test(text)
+    const tokens = [tok(text.slice(1), note ? 'comment' : 'plain')]
+    const flag = note ? { comment: true as const } : {}
 
-    if (text.startsWith('+')) hunk.lines.push({ kind: 'added', old: null, new: n++, tokens })
-    else if (text.startsWith('-')) hunk.lines.push({ kind: 'removed', old: o++, new: null, tokens })
+    if (text.startsWith('+'))
+      hunk.lines.push({ kind: 'added', old: null, new: n++, tokens, ...flag })
+    else if (text.startsWith('-'))
+      hunk.lines.push({ kind: 'removed', old: o++, new: null, tokens, ...flag })
     else hunk.lines.push({ kind: 'context', old: o++, new: n++, tokens })
   }
 

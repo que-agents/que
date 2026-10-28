@@ -49,9 +49,15 @@ import { chime, shouldChime } from './sound'
 import { errorCode, errorMessage } from '../../shared/errors.decode'
 import { removalStepLabel } from '../../shared/format'
 import type { RemovalFailure } from '../../shared/types'
-import { decodeDiffBases, decodeReview, readStored, writeStored } from './persisted.decode'
+import {
+  decodeDiffBases,
+  decodeDiffComments,
+  decodeReview,
+  readStored,
+  writeStored
+} from './persisted.decode'
 import { newestAt } from './pr-list'
-import type { Reveals } from './diff-rows'
+import type { CommentMode, Reveals } from './diff-rows'
 
 const DEFAULT_COLS = 80
 const DEFAULT_ROWS = 24
@@ -222,6 +228,20 @@ function loadDiffWhitespace(): DiffWhitespace {
   return readStored(DIFF_WHITESPACE_KEY, (raw) => (raw === 'ignore' ? 'ignore' : 'show'), 'show')
 }
 
+/** How a project's diff tabs treat changed comment lines: the mode, and under Fold whether removed ones stay. */
+export interface DiffComments {
+  mode: CommentMode
+  keepRemoved: boolean
+}
+
+export const DEFAULT_DIFF_COMMENTS: DiffComments = { mode: 'dim', keepRemoved: true }
+
+const DIFF_COMMENTS_KEY = 'que.diffComments'
+
+function loadDiffComments(): Record<string, DiffComments> {
+  return readStored(DIFF_COMMENTS_KEY, (raw) => decodeDiffComments(JSON.parse(raw)), {})
+}
+
 /** The diffFiles key of a diff tab's file: the workspace, the tab, and the whitespace option. */
 export function diffFileKey(
   key: string,
@@ -320,6 +340,8 @@ export interface QueState extends ResourceTables {
   diffMode: DiffMode
   /** Whether diff tabs ignore whitespace; remembered. */
   diffWhitespace: DiffWhitespace
+  /** Per project id: how its diff tabs treat changed comment lines (none: the default); remembered. */
+  diffComments: Record<string, DiffComments>
   dialog: DialogState | null
   /** The daemon's quiet-hours state; null until loaded. */
   quiet: QuietState | null
@@ -422,6 +444,7 @@ export class QueStore {
     diffReveals: {},
     diffMode: loadDiffMode(),
     diffWhitespace: loadDiffWhitespace(),
+    diffComments: loadDiffComments(),
     diffFiles: {},
     dialog: null,
     quiet: null,
@@ -1342,6 +1365,14 @@ export class QueStore {
     const key = this.currentKey()
 
     if (key !== null && key !== SCRATCH) void this.fetchDiffTabs(key, 'every')
+  }
+
+  /** Has a project's diff tabs dim, show or fold changed comment lines; remembered per project. */
+  setDiffComments(projectId: string, change: Partial<DiffComments>): void {
+    const was = this.state.diffComments[projectId] ?? DEFAULT_DIFF_COMMENTS
+    const next = { ...this.state.diffComments, [projectId]: { ...was, ...change } }
+    writeStored(DIFF_COMMENTS_KEY, JSON.stringify(next))
+    this.set({ diffComments: next })
   }
 
   /** Keeps the folds opened in a diff tab while it is open. */

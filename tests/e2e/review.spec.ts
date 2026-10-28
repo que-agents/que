@@ -17,7 +17,8 @@
 // quits and relaunches on the same home and the pane, its view, its width, the
 // chosen base, the diff tab and the file tab come back; ⌘W closes the diff tab and
 // the file tab, the pane closes and opens again on the view it was left on, and the
-// list follows a pull request to merged.
+// list follows a pull request to merged; last, a file of comments alone lists under
+// `comments only` after the others and its diff opens with its lines dimmed.
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { expect, test } from '@playwright/test'
@@ -678,5 +679,25 @@ test('The review pane lists the changes beside the terminals, opens diffs as tab
     await expect(pr.settledRows).toHaveCount(1)
     await expect(pr.activeRows).toHaveCount(1)
     await expect(pr.listSummary).toHaveText('1 open')
+  })
+
+  await test.step('A file of comments alone lists last under comments only, and its diff opens dimmed', async () => {
+    writeFileSync(
+      join(workspace.path, 'backoff.ts'),
+      '// Backoff doubles from 250ms.\n// It caps at thirty seconds.\n'
+    )
+    await review.viewChanges.click()
+    // The daemon lists the file as code first, then again once it has read its comments.
+    await expect(changes.commentOnly).toHaveText('comments only · 1 file · +2 −0')
+    await expect(changes.commentOnly.locator('+ [data-testid^="changes-file-"]')).toHaveAttribute(
+      'data-path',
+      'backoff.ts'
+    )
+    await changes.fileByPath('backoff.ts').click()
+    await expect(diff.tab('backoff.ts')).toHaveAttribute('data-active', 'true')
+    await expect(diff.commentsButton).toHaveText('Comments dimmed ▾')
+    await expect(diff.commentCounts).toHaveText('code · +2 −0 comments')
+    await expect(diff.commentLines).toHaveCount(2)
+    await launched.window.screenshot({ path: 'test-results/diff-comments-dimmed.png' })
   })
 })

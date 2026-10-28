@@ -29,6 +29,27 @@ export function LineCounts({ adds, dels }: { adds: number; dels: number }): Reac
   )
 }
 
+/**
+ * The line over the files where only comments changed, after the rest of a list:
+ * `comments only · 2 files · +10 −3`, all faint.
+ */
+export function CommentOnlyLine({
+  files,
+  testId
+}: {
+  files: readonly DiffFile[]
+  testId: string
+}): React.JSX.Element {
+  const adds = files.reduce((n, f) => n + f.additions, 0)
+  const dels = files.reduce((n, f) => n + f.deletions, 0)
+
+  return (
+    <div className="changes-comment-only" role="presentation" data-testid={testId}>
+      comments only · {files.length} {files.length === 1 ? 'file' : 'files'} · +{adds} −{dels}
+    </div>
+  )
+}
+
 /** A diff's totals for a head: `+a −d · n`, with `files` after the count when asked. */
 export function DiffTotals({
   files,
