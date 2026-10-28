@@ -2192,25 +2192,59 @@ button.changes-pick {
 
 /* The toolbar under the tab strip: the path and its counts at the left, the layout and
    whitespace choices at the right. */
+/* Narrow, the controls drop to a second line rather than clip: the path comes first. */
 .diff-header {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
-  height: 36px;
+  gap: 4px 8px;
+  min-height: 36px;
   box-sizing: border-box;
-  padding: 0 12px 0 16px;
+  padding: 5px 12px 5px 16px;
   border-bottom: 1px solid var(--border);
   flex: none;
   font: 11px var(--mono);
   color: var(--fg-faint);
 }
 
+.diff-head-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* The path: at least 120px, its folders cut from their start so the name stays whole. */
 .diff-path {
+  display: flex;
+  flex: 0 1 auto;
+  min-width: 120px;
+  overflow: hidden;
+  white-space: nowrap;
+  color: var(--fg);
+}
+
+.diff-path-dir {
+  flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--fg);
+  direction: rtl;
+}
+
+.diff-path-name {
+  flex: none;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.diff-code-counts,
+.diff-comment-counts {
+  display: flex;
+  gap: 6px;
+  flex: none;
 }
 
 .diff-count {
@@ -2225,8 +2259,10 @@ button.changes-pick {
 .diff-tools {
   display: flex;
   align-items: center;
-  gap: 8px;
+  flex-wrap: wrap;
+  gap: 4px 8px;
   flex: none;
+  max-width: 100%;
   margin-left: auto;
 }
 
@@ -2261,11 +2297,6 @@ button.diff-tool:hover:not(:disabled) {
 button.diff-tool[aria-pressed='true'] {
   color: var(--fg);
   background: var(--bg-raised);
-}
-
-/* The comment counts after the code's, faint. */
-.diff-comment-counts {
-  flex: none;
 }
 
 /* The Comments ▾ menu, under its button at the toolbar's right. */

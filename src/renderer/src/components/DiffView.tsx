@@ -118,6 +118,72 @@ function CommentsMenu({
 }
 
 /**
+ * The toolbar's path: its folders truncate from their start, so the file's name stays in view;
+ * the whole of it is the tooltip.
+ */
+function DiffPath({ text }: { text: string }): React.JSX.Element {
+  const cut = text.lastIndexOf('/') + 1
+
+  return (
+    <span className="diff-path" title={text} data-testid="diff-path">
+      {cut > 0 && (
+        <span className="diff-path-dir" data-truncate="start">
+          <span dir="ltr">{text.slice(0, cut)}</span>
+        </span>
+      )}
+      <span className="diff-path-name">{text.slice(cut)}</span>
+    </span>
+  )
+}
+
+/** One side of a count, left out when it is zero. */
+function Side({
+  sign,
+  n,
+  tone,
+  testId
+}: {
+  sign: string
+  n: number
+  tone?: string
+  testId?: string
+}): React.JSX.Element | null {
+  if (n === 0) return null
+
+  return (
+    <span className={tone ? `diff-count tone-${tone}` : undefined} data-testid={testId}>
+      {sign}
+      {n}
+    </span>
+  )
+}
+
+/**
+ * The counts of a file with comment lines, each part and each side only when it is not zero:
+ * `+2 −1 code · +7 −2 comments`, or just `+2 comments`.
+ */
+function SplitCounts({ split }: { split: LineSplit }): React.JSX.Element {
+  const code = split.codeAdditions + split.codeDeletions > 0
+
+  return (
+    <>
+      {code && (
+        <span className="diff-code-counts" data-testid="diff-code-counts">
+          <Side sign="+" n={split.codeAdditions} tone="good" testId="diff-additions" />
+          <Side sign="−" n={split.codeDeletions} tone="bad" testId="diff-deletions" />
+          <span>code ·</span>
+        </span>
+      )}
+      <span className="diff-comment-counts" data-testid="diff-comment-counts">
+        <Side sign="+" n={split.commentAdditions} />
+        <Side sign="−" n={split.commentDeletions} />
+        <span>comments</span>
+      </span>
+    </>
+  )
+}
+
+/**
  * The toolbar under the tab strip: the path and its counts (code apart from comments when the
  * file changed any; for a pull request's diff, what it is against) at the left; the Comments
  * menu (only when there are comment lines), Unified | Split and Whitespace at the right.
@@ -152,25 +218,26 @@ function DiffToolbar({
 
   return (
     <header className="diff-header" data-testid="diff-header">
-      <span className="diff-path" title={from ? `${from} → ${path}` : path}>
-        {from ? `${from} → ${path}` : path}
+      <span className="diff-head-main">
+        <DiffPath text={from ? `${from} → ${path}` : path} />
+        {split && commentLines > 0 ? (
+          <SplitCounts split={split} />
+        ) : (
+          <>
+            <span className="diff-count tone-good" data-testid="diff-additions">
+              +{additions}
+            </span>
+            <span className="diff-count tone-bad" data-testid="diff-deletions">
+              −{deletions}
+            </span>
+          </>
+        )}
+        {against && (
+          <span className="diff-against" data-testid="diff-against">
+            {against}
+          </span>
+        )}
       </span>
-      <span className="diff-count tone-good" data-testid="diff-additions">
-        +{split && commentLines > 0 ? split.codeAdditions : additions}
-      </span>
-      <span className="diff-count tone-bad" data-testid="diff-deletions">
-        −{split && commentLines > 0 ? split.codeDeletions : deletions}
-      </span>
-      {split && commentLines > 0 && (
-        <span className="diff-comment-counts" data-testid="diff-comment-counts">
-          code · +{split.commentAdditions} −{split.commentDeletions} comments
-        </span>
-      )}
-      {against && (
-        <span className="diff-against" data-testid="diff-against">
-          {against}
-        </span>
-      )}
       <span className="diff-tools">
         {commentLines > 0 && (
           <span className="diff-comments-pick">

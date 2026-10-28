@@ -456,12 +456,66 @@ describe('DiffView', () => {
       const header = screen.getByTestId('diff-header')
       expect(within(header).getByTestId('diff-additions')).toHaveTextContent('+2')
       expect(within(header).getByTestId('diff-deletions')).toHaveTextContent('−2')
+      expect(within(header).getByTestId('diff-code-counts')).toHaveTextContent(
+        /^\+2\s*−2\s*code ·$/
+      )
       expect(within(header).getByTestId('diff-comment-counts')).toHaveTextContent(
-        'code · +4 −2 comments'
+        /^\+4\s*−2\s*comments$/
       )
       expect(within(header).getByTestId('diff-comments-button')).toHaveTextContent(
         'Comments dimmed ▾'
       )
+    })
+
+    it('counts a file of comments alone without a code part or a zero side', async () => {
+      const user = userEvent.setup()
+
+      const docs = makeDiffFile({
+        path: 'src/upload/docs.ts',
+        additions: 2,
+        deletions: 0,
+        commentOnly: true,
+        commentAdditions: 2,
+        patch: [
+          'diff --git a/src/upload/docs.ts b/src/upload/docs.ts',
+          '--- a/src/upload/docs.ts',
+          '+++ b/src/upload/docs.ts',
+          '@@ -1,1 +1,3 @@',
+          '+// Backoff doubles from 250ms.',
+          '+// It caps at thirty seconds.',
+          ' export {}',
+          ''
+        ].join('\n')
+      })
+
+      fakeBridge.seedProject(makeProject())
+      fakeBridge.seedWorkspace(retry)
+      fakeBridge.seedDiff(makeWorkspaceDiff({ workspaceId: retry.id, files: [docs] }))
+
+      await openPatch(user)
+
+      const header = screen.getByTestId('diff-header')
+      expect(within(header).getByTestId('diff-comment-counts')).toHaveTextContent(
+        /^\+2\s*comments$/
+      )
+      expect(within(header).queryByTestId('diff-code-counts')).not.toBeInTheDocument()
+      expect(within(header).queryByTestId('diff-additions')).not.toBeInTheDocument()
+    })
+
+    it('keeps the file name whole, cutting the folders from their start, the full path its tooltip', async () => {
+      const user = userEvent.setup()
+      fakeBridge.seedProject(makeProject())
+      seedComments()
+
+      await openPatch(user)
+
+      const path = screen.getByTestId('diff-path')
+      expect(path).toHaveAttribute('title', 'src/upload/upload.ts')
+      expect(path.querySelector('[data-truncate="start"]')).toHaveTextContent(/^src\/upload\/$/)
+      expect(path.lastElementChild).toHaveTextContent(/^upload\.ts$/)
+      // The path and counts are one group, the controls another, so the controls can wrap.
+      expect(path.parentElement).toHaveClass('diff-head-main')
+      expect(screen.getByTestId('diff-comments-button').closest('.diff-tools')).not.toBeNull()
     })
 
     it('offers no Comments menu and plain counts for a file without comment lines', async () => {

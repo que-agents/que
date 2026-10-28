@@ -171,11 +171,15 @@ Each token is a span with a class per kind (`tok-decl`, `tok-str`, …), a brack
   under their lines on `--bg-side` behind a `--border-strong` hairline; the line a
   comment asked for carries a 2px `--accent` edge, and a fold that hid it opens.
 - A diff tab opens with a 36px toolbar above a `--border` hairline, mono 11px
-  `--fg-faint`: the path in `--fg` (`from → path` for a rename), `+a` in `--tone-good`,
+  `--fg-faint`: the path in `--fg` (`from → path` for a rename; at least 120px, its folders
+  cut from their start with an ellipsis so the file's name stays whole, the full path its
+  tooltip), `+a` in `--tone-good`,
   `−d` in `--tone-bad`, and for a pull request's diff `#188 vs <base>`; at its right a
   segmented `Unified | Split` and a `Whitespace` toggle (on: whitespace is ignored).
   These are mono 11px buttons behind a 1px `--border` at a 2px radius, the chosen one
-  `--fg` on `--bg-raised`; both choices are remembered for every tab. The lines are mono
+  `--fg` on `--bg-raised`; both choices are remembered for every tab. When the pane is too
+  narrow for both, the controls drop to a second line of the toolbar rather than clip
+  the path. The lines are mono
   12px/18px on `--bg-input`, never a raw diff header: the old line number and the new
   one (44px each, right-aligned, `--fg-faint`), the sign (18px, `+` or `−`), then the
   code in its syntax colours, and the whole area scrolls both ways. An added line takes
@@ -197,7 +201,8 @@ Each token is a span with a class per kind (`tok-decl`, `tok-str`, …), a brack
   its own syntax colours at 50% opacity, a 2px `--border-strong` edge at its left, its sign
   and numbers leaning only 35% toward the tone, no word marks, and a removed one struck
   through. When a file has comment lines, the toolbar splits its counts, `+2 −1 code · +7
-  −2 comments` (the code counts in the diff tones, the comment ones `--fg-faint`), and a
+  −2 comments` (the code counts in the diff tones, the comment ones `--fg-faint`), leaving
+  out a part or a side that is zero (a file of comments alone reads `+2 comments`), and a
   `Comments dimmed ▾` button (`shown`, `folded`) joins the tools, drawn like them and
   pressed while its menu is open. The menu is the app's menu (`--bg-raised`, a 1px
   `--border-strong`, the shadow, `--radius`) in mono 12px: a bracketed head, `[ COMMENT
