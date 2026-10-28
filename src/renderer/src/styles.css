@@ -2387,7 +2387,7 @@ button.diff-tool[aria-pressed='true'] {
 
 .diff-row {
   display: grid;
-  grid-template-columns: 44px 44px 18px 1fr;
+  grid-template-columns: 44px 44px 18px var(--code-col, 1fr);
   min-height: 18px;
 }
 
@@ -2469,11 +2469,11 @@ button.diff-tool[aria-pressed='true'] {
 
 /* A removed comment Fold keeps in view, tagged at its right end. */
 .diff-row[data-kept] {
-  grid-template-columns: 44px 44px 18px 1fr auto;
+  grid-template-columns: 44px 44px 18px var(--code-col, 1fr) auto;
 }
 
 .diff-side[data-kept] {
-  grid-template-columns: 44px 16px minmax(var(--code-ch, 0), 1fr) auto;
+  grid-template-columns: 44px 16px var(--code-col, minmax(var(--code-ch, 0), 1fr)) auto;
 }
 
 .diff-comment-tag {
@@ -2534,7 +2534,7 @@ button.diff-comment-toggle:hover:not(:disabled) {
 
 .diff-side {
   display: grid;
-  grid-template-columns: 44px 16px minmax(var(--code-ch, 0), 1fr);
+  grid-template-columns: 44px 16px var(--code-col, minmax(var(--code-ch, 0), 1fr));
 }
 
 .diff-side + .diff-side {
@@ -2554,25 +2554,13 @@ button.diff-comment-toggle:hover:not(:disabled) {
 
 /* Wrap: a line's text wraps inside its own column, continuing under its code with the number
    and sign on its first line; rows are as wide as the area, so nothing scrolls sideways, and a
-   split row is as tall as its taller side. */
+   split row is as tall as its taller side. Each row's code column is --code-col, unset unless Wrap. */
+.diff-patch[data-wrap] {
+  --code-col: minmax(0, 1fr);
+}
+
 .diff-patch[data-wrap] .diff-lines {
   width: auto;
-}
-
-.diff-patch[data-wrap] .diff-row {
-  grid-template-columns: 44px 44px 18px minmax(0, 1fr);
-}
-
-.diff-patch[data-wrap] .diff-row[data-kept] {
-  grid-template-columns: 44px 44px 18px minmax(0, 1fr) auto;
-}
-
-.diff-patch[data-wrap] .diff-side {
-  grid-template-columns: 44px 16px minmax(0, 1fr);
-}
-
-.diff-patch[data-wrap] .diff-side[data-kept] {
-  grid-template-columns: 44px 16px minmax(0, 1fr) auto;
 }
 
 .diff-patch[data-wrap] .diff-code {
