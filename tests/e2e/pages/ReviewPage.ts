@@ -28,10 +28,7 @@ export class ReviewPage {
   hide: Locator
   rail: Locator
   show: Locator
-  railPrs: Locator
   railChanges: Locator
-  railFiles: Locator
-  railChangesCount: Locator
 
   constructor(page: Page) {
     this.page = page
@@ -48,10 +45,7 @@ export class ReviewPage {
     this.hide = page.getByTestId('review-hide')
     this.rail = page.getByTestId('review-rail')
     this.show = page.getByTestId('review-show')
-    this.railPrs = page.getByTestId('review-rail-prs')
     this.railChanges = page.getByTestId('review-rail-changes')
-    this.railFiles = page.getByTestId('review-rail-files')
-    this.railChangesCount = page.getByTestId('review-rail-changes-count')
   }
 
   // The pane as the renderer's test hook reports it.

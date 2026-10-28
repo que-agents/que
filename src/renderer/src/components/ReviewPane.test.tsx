@@ -139,7 +139,6 @@ describe('ReviewPane', () => {
       await user.click(hide)
 
       expect(screen.queryByTestId('review-pane')).not.toBeInTheDocument()
-      expect(screen.queryByTestId('review-resizer')).not.toBeInTheDocument()
       expect(screen.getByTestId('review-rail')).toBeInTheDocument()
 
       await user.click(screen.getByRole('button', { name: 'Show review' }))

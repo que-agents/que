@@ -2018,23 +2018,29 @@ body.resizing .pane-divider::after {
   border-left: 1px solid var(--border);
 }
 
-/* Its 40px strip: the view icons at the left (or a pull request's back link), the view's own
- * buttons at the right. It lines up with the tab row and, like it, drags the window from its
- * empty space. */
-.review-bar {
+/* Its 40px strip (and the rail's top): it lines up with the tab row and, like it, drags the
+ * window from its empty space. */
+.review-bar,
+.review-rail-top {
   box-sizing: border-box;
-  display: flex;
-  align-items: stretch;
-  gap: 2px;
   height: 40px;
-  padding: 0 6px 0 4px;
   border-bottom: 1px solid var(--border);
   flex: none;
   -webkit-app-region: drag;
 }
 
-.review-bar button {
+.review-bar button,
+.review-rail-top button {
   -webkit-app-region: no-drag;
+}
+
+/* The pane's strip: the view icons at the left (or a pull request's back link), the view's own
+ * buttons at the right. */
+.review-bar {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  padding: 0 6px 0 4px;
 }
 
 .review-views {
@@ -2137,8 +2143,7 @@ hr.review-rule {
 }
 
 /* The pane folded: a 40px column on the same surface and hairline. Its top is the strip row,
- * holding the show chevron and dragging the window from its empty space; the view icons stack
- * under it, each count under its icon. */
+ * holding the show chevron; the view icons stack under it, each count under its icon. */
 .review-rail {
   box-sizing: border-box;
   width: 40px;
@@ -2153,19 +2158,10 @@ hr.review-rule {
 }
 
 .review-rail-top {
-  box-sizing: border-box;
   display: flex;
   align-items: center;
   justify-content: center;
   align-self: stretch;
-  height: 40px;
-  border-bottom: 1px solid var(--border);
-  flex: none;
-  -webkit-app-region: drag;
-}
-
-.review-rail-top button {
-  -webkit-app-region: no-drag;
 }
 
 button.ghost.icon.review-rail-view {

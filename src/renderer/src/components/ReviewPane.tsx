@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { prCounts } from '../pr-list'
-import { type ReviewView, SCRATCH, useQueSelector, useStore } from '../store'
+import { isWorkspace, type ReviewView, useQueSelector, useStore } from '../store'
 import ChangesList from './ChangesList'
 import FilesTree from './FilesTree'
 import {
@@ -23,10 +23,48 @@ const VIEWS: ReadonlyArray<{ view: ReviewView; name: string; Icon: () => React.J
 
 /** Each view's count beside (or, on the rail, under) its icon: the open pull requests, the changed files. */
 function useViewCounts(termKey: string): Record<ReviewView, number | undefined> {
-  const ws = useQueSelector((s) => s.workspaces[termKey])
-  const changed = useQueSelector((s) => s.diffs[termKey]?.data?.files.length)
+  const prs = useQueSelector((s) => {
+    const ws = s.workspaces[termKey]
 
-  return { prs: ws ? prCounts(ws.prs).open : undefined, changes: changed, files: undefined }
+    return ws ? prCounts(ws.prs).open : undefined
+  })
+
+  const changes = useQueSelector((s) => s.diffs[termKey]?.data?.files.length)
+
+  return { prs, changes, files: undefined }
+}
+
+/** A view's icon with its count, in the pane's strip or on the rail; each lays it out. */
+function ViewButton({
+  name,
+  Icon,
+  count,
+  testId,
+  className,
+  ...button
+}: {
+  name: string
+  Icon: () => React.JSX.Element
+  count: number | undefined
+  testId: string
+} & React.ButtonHTMLAttributes<HTMLButtonElement>): React.JSX.Element {
+  return (
+    <button
+      type="button"
+      className={`ghost icon ${className}`}
+      aria-label={name}
+      title={name}
+      data-testid={testId}
+      {...button}
+    >
+      <Icon />
+      {count !== undefined && (
+        <span className="review-view-count" data-testid={`${testId}-count`}>
+          {count}
+        </span>
+      )}
+    </button>
+  )
 }
 
 /**
@@ -37,11 +75,6 @@ export function ReviewRail({ termKey }: { termKey: string }): React.JSX.Element 
   const store = useStore()
   const connected = useQueSelector((s) => s.connected)
   const counts = useViewCounts(termKey)
-
-  const open = (view: ReviewView): void => {
-    if (store.reviewPlace(termKey).view !== view) store.setReviewView(termKey, view)
-    store.openReview()
-  }
 
   return (
     <aside className="review-rail" data-testid="review-rail" aria-label="Review">
@@ -59,23 +92,16 @@ export function ReviewRail({ termKey }: { termKey: string }): React.JSX.Element 
         </button>
       </div>
       {VIEWS.map(({ view, name, Icon }) => (
-        <button
+        <ViewButton
           key={view}
-          type="button"
-          className="ghost icon review-rail-view"
-          aria-label={name}
-          title={name}
-          data-testid={`review-rail-${view}`}
+          name={name}
+          Icon={Icon}
+          count={counts[view]}
+          testId={`review-rail-${view}`}
+          className="review-rail-view"
           disabled={!connected}
-          onClick={() => open(view)}
-        >
-          <Icon />
-          {counts[view] !== undefined && (
-            <span className="review-view-count" data-testid={`review-rail-${view}-count`}>
-              {counts[view]}
-            </span>
-          )}
-        </button>
+          onClick={() => store.showReview(termKey, view)}
+        />
       ))}
     </aside>
   )
@@ -96,7 +122,7 @@ export default function ReviewPane({ termKey }: { termKey: string }): React.JSX.
   useQueSelector((s) => s.review)
   const place = store.reviewPlace(termKey)
   const [filterFocus, setFilterFocus] = useState(0)
-  const workspace = termKey !== SCRATCH
+  const workspace = useQueSelector((s) => isWorkspace(s, termKey))
 
   const pr =
     place.view === 'prs' && place.pr !== null
@@ -152,59 +178,50 @@ export default function ReviewPane({ termKey }: { termKey: string }): React.JSX.
           </button>
         ) : (
           <div className="review-views" role="tablist" aria-label="Review">
-            {VIEWS.map(({ view, name, Icon }) => {
-              const current = place.view === view
-
-              return (
-                <button
-                  key={view}
-                  type="button"
-                  role="tab"
-                  className="ghost icon strip-view review-view"
-                  aria-label={name}
-                  title={name}
-                  aria-selected={current}
-                  data-testid={`review-view-${view}`}
-                  onClick={() => store.setReviewView(termKey, view)}
-                >
-                  <Icon />
-                  {workspace && counts[view] !== undefined && (
-                    <span className="review-view-count" data-testid={`review-view-${view}-count`}>
-                      {counts[view]}
-                    </span>
-                  )}
-                </button>
-              )
-            })}
+            {VIEWS.map(({ view, name, Icon }) => (
+              <ViewButton
+                key={view}
+                name={name}
+                Icon={Icon}
+                count={workspace ? counts[view] : undefined}
+                testId={`review-view-${view}`}
+                className="strip-view review-view"
+                role="tab"
+                aria-selected={place.view === view}
+                onClick={() => store.setReviewView(termKey, view)}
+              />
+            ))}
           </div>
         )}
         <div className="review-actions">
-          {/* The list has nothing of its own to fetch: the daemon keeps it fresh. */}
-          {workspace && !(place.view === 'prs' && !pr) && (
-            <button
-              type="button"
-              className="ghost icon"
-              aria-label="Refresh"
-              title="Refresh"
-              data-testid={`${testId}-refresh`}
-              disabled={!connected}
-              onClick={refresh}
-            >
-              <RefreshIcon />
-            </button>
-          )}
-          {workspace && ws && (
-            <button
-              type="button"
-              className="ghost icon"
-              aria-label="Open in editor"
-              title="Open in editor"
-              data-testid={`${testId}-open-editor`}
-              disabled={!connected}
-              onClick={() => void store.openInEditor(ws.path)}
-            >
-              <EditorIcon />
-            </button>
+          {ws && (
+            <>
+              {/* The list has nothing of its own to fetch: the daemon keeps it fresh. */}
+              {!(place.view === 'prs' && !pr) && (
+                <button
+                  type="button"
+                  className="ghost icon"
+                  aria-label="Refresh"
+                  title="Refresh"
+                  data-testid={`${testId}-refresh`}
+                  disabled={!connected}
+                  onClick={refresh}
+                >
+                  <RefreshIcon />
+                </button>
+              )}
+              <button
+                type="button"
+                className="ghost icon"
+                aria-label="Open in editor"
+                title="Open in editor"
+                data-testid={`${testId}-open-editor`}
+                disabled={!connected}
+                onClick={() => void store.openInEditor(ws.path)}
+              >
+                <EditorIcon />
+              </button>
+            </>
           )}
           <button
             type="button"
