@@ -8,6 +8,7 @@ All notable changes to que are recorded here. The format follows
 
 ### Added
 
+- Refresh on the review pane's Pull requests list checks each pull request with GitHub at once instead of waiting for the next poll; inside a pull request it also fetches the conversation and files again. The icon turns while it works, a failed check shows gh's message under the list's head, and refreshes started together from the app and the CLI share one check. `que ws pr <workspace> --refresh` checks with GitHub too.
 - `teardown_timeout_seconds` (default 60): how long a repo's teardown hook may run when a workspace is removed before it is killed and recorded as timed out.
 - While a workspace is being removed, its card lists the removal's steps under `[ REMOVING ]`: each finished step with how long it took or why it failed, the one running now with a clock that ticks each second, and those still to come.
 - The daemon watches the worktree of every workspace a window shows (`workspace.watch`, `workspace.unwatch`) or has an attached terminal in, and sends `workspace.changed` when its files, index or commits change, at most once per 300 ms.
@@ -92,6 +93,7 @@ All notable changes to que are recorded here. The format follows
 
 ### Fixed
 
+- A pull request whose cancelled checks were run again no longer reads failing once the new run passes: que keeps only the newest run of each check, as GitHub does.
 - Shift+Enter in a terminal sent the same carriage return as Enter, so Claude Code submitted the prompt instead of inserting a newline. It now sends a line feed, the Ctrl+J newline Claude Code accepts in any terminal; a shell takes it as Enter.
 - The completion chime only played for queued tasks; it now also plays when a session in a workspace finishes a turn (work hours only), and a task's workspace chimes once, when the task finishes.
 - Ticket links pointed at the tracker's API host; they now use the site from the CLI's auth status or `[jira] site`.
