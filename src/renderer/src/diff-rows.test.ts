@@ -57,12 +57,15 @@ const folds = (rows: DiffRow[]): FoldRow[] => rows.filter((r): r is FoldRow => r
 
 const ctx = (n: number): string => ' '.repeat(n)
 
+/** The default comment mode, with no review comments. */
+const DIM: CommentView = { mode: 'dim', keepRemoved: true, targets: new Set() }
+
 describe('diffRows', () => {
   describe('whole-file context', () => {
     it('folds a long unchanged run between changes, leaving three lines each side', () => {
       const file = makeWorkspaceDiffFile({ hunks: [hunk(linesOf(`-${ctx(30)}+`))] })
 
-      const rows = diffRows(file)
+      const rows = diffRows(file, {}, DIM)
 
       expect(kinds(rows)).toEqual(['r0', 'c1', 'c2', 'c3', 'fold', 'c28', 'c29', 'c30', 'a31'])
       expect(folds(rows)[0]).toMatchObject({ id: '1:31', hidden: 24, down: 20, up: 20 })
@@ -72,14 +75,14 @@ describe('diffRows', () => {
       const eight = makeWorkspaceDiffFile({ hunks: [hunk(linesOf(`-${ctx(8)}+`))] })
       const nine = makeWorkspaceDiffFile({ hunks: [hunk(linesOf(`-${ctx(9)}+`))] })
 
-      expect(folds(diffRows(eight))).toEqual([])
-      expect(folds(diffRows(nine))[0]).toMatchObject({ hidden: 3, down: 3, up: 3 })
+      expect(folds(diffRows(eight, {}, DIM))).toEqual([])
+      expect(folds(diffRows(nine, {}, DIM))[0]).toMatchObject({ hidden: 3, down: 3, up: 3 })
     })
 
     it('keeps context only on the side that touches a change at the start and end of the file', () => {
       const file = makeWorkspaceDiffFile({ hunks: [hunk(linesOf(`${ctx(12)}-+${ctx(12)}`))] })
 
-      const rows = diffRows(file)
+      const rows = diffRows(file, {}, DIM)
 
       expect(kinds(rows)).toEqual([
         'fold',
@@ -105,30 +108,30 @@ describe('diffRows', () => {
       lines[6].tokens = [{ text: '  const max = 40', kind: 'plain' }]
       const file = makeWorkspaceDiffFile({ hunks: [hunk(lines)] })
 
-      expect(folds(diffRows(file))[0].label).toBe('function capPatch(patch: string) {')
+      expect(folds(diffRows(file, {}, DIM))[0].label).toBe('function capPatch(patch: string) {')
     })
 
     it('reveals twenty lines from either edge, then the rest, without changing the fold id', () => {
       const file = makeWorkspaceDiffFile({ hunks: [hunk(linesOf(`-${ctx(60)}+`))] })
-      const fold = folds(diffRows(file))[0]
+      const fold = folds(diffRows(file, {}, DIM))[0]
 
       const down = revealMore({}, fold, 'down')
-      const afterDown = folds(diffRows(file, down))[0]
+      const afterDown = folds(diffRows(file, down, DIM))[0]
       expect(afterDown).toMatchObject({ id: fold.id, hidden: 34 })
-      expect(diffRows(file, down)[4]).toMatchObject({ kind: 'line', index: 4 })
+      expect(diffRows(file, down, DIM)[4]).toMatchObject({ kind: 'line', index: 4 })
 
       const up = revealMore(down, afterDown, 'up')
-      expect(folds(diffRows(file, up))[0]).toMatchObject({ hidden: 14, down: 14, up: 14 })
+      expect(folds(diffRows(file, up, DIM))[0]).toMatchObject({ hidden: 14, down: 14, up: 14 })
 
-      const all = revealMore(up, folds(diffRows(file, up))[0], 'all')
-      expect(folds(diffRows(file, all))).toEqual([])
-      expect(diffRows(file, all)).toHaveLength(62)
+      const all = revealMore(up, folds(diffRows(file, up, DIM))[0], 'all')
+      expect(folds(diffRows(file, all, DIM))).toEqual([])
+      expect(diffRows(file, all, DIM)).toHaveLength(62)
     })
 
     it('renders only the rows left after folding a long file', () => {
       const file = makeWorkspaceDiffFile({ hunks: [hunk(linesOf(`${ctx(2500)}-+${ctx(2500)}`))] })
 
-      expect(diffRows(file)).toHaveLength(10)
+      expect(diffRows(file, {}, DIM)).toHaveLength(10)
     })
   })
 
@@ -148,7 +151,7 @@ describe('diffRows', () => {
         ]
       })
 
-      const rows = diffRows(file)
+      const rows = diffRows(file, {}, DIM)
 
       expect(kinds(rows)).toEqual(['gap', 'c0', 'r1', 'c2', 'gap', 'c3', 'a4', 'c5'])
       expect(rows[0]).toMatchObject({ kind: 'gap', count: 9, label: '' })
@@ -165,7 +168,7 @@ describe('diffRows', () => {
         hunks: [hunk(linesOf(`-${ctx(20)}+`), { newLines: 21 })]
       })
 
-      expect(folds(diffRows(file))).toEqual([])
+      expect(folds(diffRows(file, {}, DIM))).toEqual([])
     })
   })
 })
@@ -174,7 +177,7 @@ describe('splitRows', () => {
   it('pairs the i-th removed line with the i-th added one and leaves the rest alone', () => {
     const file = makeWorkspaceDiffFile({ hunks: [hunk(linesOf(' ---++ +'))] })
 
-    const pairs = splitRows(diffRows(file)).map((r) =>
+    const pairs = splitRows(diffRows(file, {}, DIM)).map((r) =>
       r.kind === 'pair' ? [r.left?.kind ?? null, r.right?.kind ?? null] : r.kind
     )
 
@@ -191,7 +194,7 @@ describe('splitRows', () => {
   it('keeps folds as rows of their own', () => {
     const file = makeWorkspaceDiffFile({ hunks: [hunk(linesOf(`-${ctx(30)}+`))] })
 
-    expect(splitRows(diffRows(file)).map((r) => r.kind)).toEqual([
+    expect(splitRows(diffRows(file, {}, DIM)).map((r) => r.kind)).toEqual([
       'pair',
       'pair',
       'pair',
@@ -209,16 +212,16 @@ describe('revealLine', () => {
   it('opens the fold that hides a line of the new file', () => {
     const file = makeWorkspaceDiffFile({ hunks: [hunk(linesOf(`-${ctx(30)}+`))] })
 
-    const reveals = revealLine(file, {}, 15)
+    const reveals = revealLine(file, {}, 15, DIM)
 
-    expect(folds(diffRows(file, reveals))).toEqual([])
+    expect(folds(diffRows(file, reveals, DIM))).toEqual([])
   })
 
   it('returns the same reveals when the line is already shown', () => {
     const file = makeWorkspaceDiffFile({ hunks: [hunk(linesOf(`-${ctx(30)}+`))] })
     const reveals = {}
 
-    expect(revealLine(file, reveals, 2)).toBe(reveals)
+    expect(revealLine(file, reveals, 2, DIM)).toBe(reveals)
   })
 })
 

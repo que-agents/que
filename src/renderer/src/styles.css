@@ -1041,6 +1041,62 @@ button.usage-button[aria-expanded='true'] {
   color: var(--fg);
 }
 
+/* A bracketed mono label over a menu's items. */
+.menu-head {
+  margin: 0;
+  padding: 4px 10px 6px;
+  font: 500 10px / 16px var(--mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--fg-faint);
+}
+
+.menu-head::before {
+  content: '[ ';
+}
+
+.menu-head::after {
+  content: ' ]';
+}
+
+/* An item with a hint at its right end or a check mark at its left. */
+.menu [role^='menuitem']:has(.menu-hint, .menu-check) {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font: inherit;
+  white-space: nowrap;
+}
+
+.menu-hint {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--fg-faint);
+}
+
+.menu-rule {
+  margin: 4px 0;
+  border: none;
+  border-top: 1px solid var(--border);
+}
+
+/* An option on or off: its mark says it is on, so it takes no active fill. */
+.menu [role='menuitemcheckbox'][aria-checked='true'] {
+  background: none;
+  color: var(--fg-secondary);
+}
+
+.menu [role='menuitemcheckbox']:is(:hover, :focus-visible):not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--fg);
+}
+
+.menu-check {
+  flex: none;
+  width: 12px;
+  color: var(--fg);
+}
+
 .empty-note {
   margin: 4px 8px;
   font-size: 12px;
@@ -2309,52 +2365,6 @@ button.diff-tool[aria-pressed='true'] {
   top: calc(100% + 4px);
   min-width: 260px;
   font: 12px var(--mono);
-}
-
-.diff-comments-menu [role^='menuitem'] {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font: inherit;
-  white-space: nowrap;
-}
-
-.diff-comments-menu-head {
-  margin: 0;
-  padding: 4px 10px 6px;
-  font: 500 10px / 16px var(--mono);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--fg-faint);
-}
-
-.diff-comments-hint {
-  margin-left: auto;
-  font-size: 11px;
-  color: var(--fg-faint);
-}
-
-.diff-comments-menu-rule {
-  margin: 4px 0;
-  border: none;
-  border-top: 1px solid var(--border);
-}
-
-/* A checkbox item: its mark says it is on, so it takes no active fill. */
-.diff-comments-menu [role='menuitemcheckbox'][aria-checked='true'] {
-  background: none;
-  color: var(--fg-secondary);
-}
-
-.diff-comments-menu [role='menuitemcheckbox']:is(:hover, :focus-visible):not(:disabled) {
-  background: var(--bg-hover);
-  color: var(--fg);
-}
-
-.diff-comments-check {
-  flex: none;
-  width: 12px;
-  color: var(--fg);
 }
 
 /* The lines: the whole area scrolls both ways, every row as wide as the widest. */

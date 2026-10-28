@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { PrThreadEntry, WorkspaceDiffFile } from '../../../preload/index.d'
+import { plural } from '../../../shared/format'
 import {
   type CommentMode,
   type CommentRunRow,
   type CommentView,
+  type DiffComments,
   type FoldRow,
   type LineSplit,
   NO_REVEALS,
@@ -20,18 +22,16 @@ import { baseLabel } from '../pr-list'
 import {
   DEFAULT_DIFF_COMMENTS,
   type DiffAgainst,
-  type DiffComments,
   diffFileKey,
   diffId,
   diffKey,
   keyOf,
   prOfDiff,
-  useQue,
   useQueSelector,
   useStore
 } from '../store'
-import { useDismiss } from '../useDismiss'
-import { type CommentDraw, DiffLines, type RowActions } from './DiffLines'
+import { DiffLines, type RowActions } from './DiffLines'
+import Menu, { type MenuItem } from './Menu'
 
 const SKIPPED: Record<NonNullable<WorkspaceDiffFile['skipped']>, string> = {
   binary: 'Binary file.',
@@ -46,76 +46,6 @@ const MODES: ReadonlyArray<{ mode: CommentMode; label: string; hint: string }> =
   { mode: 'show', label: 'Show', hint: 'as code' },
   { mode: 'fold', label: 'Fold', hint: 'one row each' }
 ]
-
-/**
- * The Comments ▾ menu: how this project's diff tabs draw changed comment lines, and whether
- * Fold keeps removed ones in view.
- */
-function CommentsMenu({
-  prefs,
-  lines,
-  anchor,
-  onChange,
-  onClose
-}: {
-  prefs: DiffComments
-  lines: number
-  anchor: React.RefObject<HTMLElement | null>
-  onChange: (change: Partial<DiffComments>) => void
-  onClose: () => void
-}): React.JSX.Element {
-  const { connected } = useQue()
-  const ref = useRef<HTMLDivElement>(null)
-  useDismiss(onClose, ref, anchor)
-
-  useEffect(() => {
-    ref.current?.querySelector<HTMLElement>('[aria-checked=true]')?.focus()
-  }, [])
-
-  return (
-    <div
-      className="menu diff-comments-menu"
-      role="menu"
-      aria-label="Comment changes"
-      data-testid="diff-comments-menu"
-      ref={ref}
-    >
-      <p className="diff-comments-menu-head" aria-hidden="true">
-        [ Comment changes · {lines} {lines === 1 ? 'line' : 'lines'} ]
-      </p>
-      {MODES.map((m) => (
-        <button
-          key={m.mode}
-          type="button"
-          role="menuitemradio"
-          aria-checked={prefs.mode === m.mode}
-          data-testid={`diff-comments-${m.mode}`}
-          disabled={!connected}
-          onClick={() => {
-            onClose()
-            onChange({ mode: m.mode })
-          }}
-        >
-          <span>{m.label}</span> <span className="diff-comments-hint">{m.hint}</span>
-        </button>
-      ))}
-      <hr className="diff-comments-menu-rule" />
-      <button
-        type="button"
-        role="menuitemcheckbox"
-        aria-checked={prefs.keepRemoved}
-        data-testid="diff-comments-keep-removed"
-        disabled={!connected}
-        onClick={() => onChange({ keepRemoved: !prefs.keepRemoved })}
-      >
-        <span className="diff-comments-check" aria-hidden="true">
-          {prefs.keepRemoved ? '✓' : ''}
-        </span>
-        Always show removed comments
-      </button>
-    </div>
-  )
-}
 
 /**
  * The toolbar's path: its folders truncate from their start, so the file's name stays in view;
@@ -136,19 +66,21 @@ function DiffPath({ text }: { text: string }): React.JSX.Element {
   )
 }
 
-/** One side of a count, left out when it is zero. */
-function Side({
+/** One side of a count (`+2`, `−1`), left out when it is zero and `optional`. */
+function Count({
   sign,
   n,
   tone,
-  testId
+  testId,
+  optional
 }: {
   sign: string
   n: number
   tone?: string
   testId?: string
+  optional: boolean
 }): React.JSX.Element | null {
-  if (n === 0) return null
+  if (optional && n === 0) return null
 
   return (
     <span className={tone ? `diff-count tone-${tone}` : undefined} data-testid={testId}>
@@ -159,34 +91,48 @@ function Side({
 }
 
 /**
- * The counts of a file with comment lines, each part and each side only when it is not zero:
- * `+2 −1 code · +7 −2 comments`, or just `+2 comments`.
+ * The toolbar's counts: `+a −d` for a file without comment lines (the details' split, else the
+ * listing's totals); with them, `+2 −1 code · +7 −2 comments`, a part or a side left out when it
+ * is zero (a file of comments alone reads `+2 comments`).
  */
-function SplitCounts({ split }: { split: LineSplit }): React.JSX.Element {
-  const code = split.codeAdditions + split.codeDeletions > 0
+function Counts({
+  additions,
+  deletions,
+  split
+}: {
+  additions: number
+  deletions: number
+  split: LineSplit | null
+}): React.JSX.Element {
+  const comments = split ? split.commentAdditions + split.commentDeletions : 0
+  const adds = split && comments > 0 ? split.codeAdditions : additions
+  const dels = split && comments > 0 ? split.codeDeletions : deletions
+  const code = comments === 0 || adds + dels > 0
 
   return (
     <>
       {code && (
         <span className="diff-code-counts" data-testid="diff-code-counts">
-          <Side sign="+" n={split.codeAdditions} tone="good" testId="diff-additions" />
-          <Side sign="−" n={split.codeDeletions} tone="bad" testId="diff-deletions" />
-          <span>code ·</span>
+          <Count sign="+" n={adds} tone="good" testId="diff-additions" optional={comments > 0} />
+          <Count sign="−" n={dels} tone="bad" testId="diff-deletions" optional={comments > 0} />
+          {comments > 0 && <span>code ·</span>}
         </span>
       )}
-      <span className="diff-comment-counts" data-testid="diff-comment-counts">
-        <Side sign="+" n={split.commentAdditions} />
-        <Side sign="−" n={split.commentDeletions} />
-        <span>comments</span>
-      </span>
+      {split && comments > 0 && (
+        <span className="diff-comment-counts" data-testid="diff-comment-counts">
+          <Count sign="+" n={split.commentAdditions} optional />
+          <Count sign="−" n={split.commentDeletions} optional />
+          <span>comments</span>
+        </span>
+      )}
     </>
   )
 }
 
 /**
- * The toolbar under the tab strip: the path and its counts (code apart from comments when the
- * file changed any; for a pull request's diff, what it is against) at the left; the Comments
- * menu (only when there are comment lines), Unified | Split and Whitespace at the right.
+ * The toolbar under the tab strip: the path and its counts (for a pull request's diff, what it
+ * is against) at the left; the Comments menu (only when there are comment lines), Unified |
+ * Split and Whitespace at the right, dropping under the path when they do not fit beside it.
  */
 function DiffToolbar({
   path,
@@ -216,22 +162,28 @@ function DiffToolbar({
   const button = useRef<HTMLButtonElement>(null)
   const commentLines = split ? split.commentAdditions + split.commentDeletions : 0
 
+  const items: MenuItem[] = [
+    ...MODES.map((m) => ({
+      label: m.label,
+      hint: m.hint,
+      testId: m.mode,
+      selected: prefs.mode === m.mode,
+      action: () => onComments({ mode: m.mode })
+    })),
+    {
+      label: 'Always show removed comments',
+      testId: 'keep-removed',
+      checked: prefs.keepRemoved,
+      separated: true,
+      action: () => onComments({ keepRemoved: !prefs.keepRemoved })
+    }
+  ]
+
   return (
     <header className="diff-header" data-testid="diff-header">
       <span className="diff-head-main">
         <DiffPath text={from ? `${from} → ${path}` : path} />
-        {split && commentLines > 0 ? (
-          <SplitCounts split={split} />
-        ) : (
-          <>
-            <span className="diff-count tone-good" data-testid="diff-additions">
-              +{additions}
-            </span>
-            <span className="diff-count tone-bad" data-testid="diff-deletions">
-              −{deletions}
-            </span>
-          </>
-        )}
+        <Counts additions={additions} deletions={deletions} split={split} />
         {against && (
           <span className="diff-against" data-testid="diff-against">
             {against}
@@ -254,11 +206,13 @@ function DiffToolbar({
               Comments {MODE_WORD[prefs.mode]} ▾
             </button>
             {menu && (
-              <CommentsMenu
-                prefs={prefs}
-                lines={commentLines}
+              <Menu
+                label="Comment changes"
+                testId="diff-comments"
+                head={`Comment changes · ${plural(commentLines, 'line')}`}
+                className="diff-comments-menu"
+                items={items}
                 anchor={button}
-                onChange={onComments}
                 onClose={closeMenu}
               />
             )}
@@ -379,13 +333,8 @@ export default function DiffView({
 
     if (targetLine !== null) targets.add(targetLine)
 
-    return { mode: prefs.mode, keepRemoved: prefs.keepRemoved, targets }
-  }, [comments, targetLine, prefs.mode, prefs.keepRemoved])
-
-  const draw = useMemo<CommentDraw>(
-    () => ({ mode: view.mode, keepRemoved: view.keepRemoved }),
-    [view.mode, view.keepRemoved]
-  )
+    return { ...prefs, targets }
+  }, [comments, targetLine, prefs])
 
   const rows = useMemo(
     () => (detail ? diffRows(detail, reveals, view) : []),
@@ -461,11 +410,11 @@ export default function DiffView({
             onComments={onComments}
           />
           {detail?.skipped ? (
-            <p className="changes-note" data-testid="diff-skipped">
+            <p className="changes-note" data-testid={`diff-${detail.skipped}`}>
               {SKIPPED[detail.skipped]}
             </p>
           ) : detail && detail.hunks.length === 0 ? (
-            <p className="changes-note" data-testid="diff-skipped">
+            <p className="changes-note" data-testid="diff-no-lines">
               {whitespace === 'ignore' ? 'Only whitespace changed.' : 'No lines changed.'}
             </p>
           ) : (
@@ -484,7 +433,7 @@ export default function DiffView({
                   split={split}
                   comments={comments}
                   target={targetLine}
-                  draw={draw}
+                  prefs={prefs}
                   actions={actions}
                 />
               </div>

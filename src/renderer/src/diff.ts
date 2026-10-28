@@ -11,6 +11,20 @@ export const GLYPH: Record<DiffFile['status'], { glyph: string; tone: string; la
   untracked: { glyph: '?', tone: 'attention', label: 'untracked' }
 }
 
+/** The lines a set of files adds and removes. */
+export interface LineTotals {
+  adds: number
+  dels: number
+}
+
+/** Sums the files' added and removed lines. */
+export function sumLines(files: readonly DiffFile[]): LineTotals {
+  return files.reduce(
+    (t, f) => ({ adds: t.adds + f.additions, dels: t.dels + f.deletions }),
+    { adds: 0, dels: 0 }
+  )
+}
+
 /** A list's files split in two: those that changed code, and those where only comments changed. */
 export interface FileGroups {
   code: DiffFile[]

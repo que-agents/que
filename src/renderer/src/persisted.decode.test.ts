@@ -2,6 +2,8 @@ import { afterEach, describe, expect, it } from 'vitest'
 import {
   decodeDiffBases,
   decodeDiffComments,
+  decodeDiffMode,
+  decodeDiffWhitespace,
   decodeLayout,
   decodeReview,
   readStored,
@@ -85,6 +87,22 @@ describe('decodeDiffComments', () => {
       decodeDiffComments({ a: { mode: 'hide' }, b: { mode: 'fold', keepRemoved: 'no' }, c: 'dim' })
     ).toEqual({ b: { mode: 'fold', keepRemoved: true } })
     expect(decodeDiffComments(['fold'])).toEqual({})
+  })
+})
+
+describe('decodeDiffMode', () => {
+  it('reads split, and unified for anything else', () => {
+    expect(decodeDiffMode('split')).toBe('split')
+    expect(decodeDiffMode('unified')).toBe('unified')
+    expect(decodeDiffMode('side-by-side')).toBe('unified')
+  })
+})
+
+describe('decodeDiffWhitespace', () => {
+  it('reads ignore, and show for anything else', () => {
+    expect(decodeDiffWhitespace('ignore')).toBe('ignore')
+    expect(decodeDiffWhitespace('show')).toBe('show')
+    expect(decodeDiffWhitespace('true')).toBe('show')
   })
 })
 

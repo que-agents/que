@@ -42,7 +42,7 @@ import typescript from 'shiki/langs/typescript.mjs'
 import vue from 'shiki/langs/vue.mjs'
 import yaml from 'shiki/langs/yaml.mjs'
 import type { DiffToken } from '../shared/protocol'
-import { splitLines } from './diff-parse'
+import { splitLines } from '../shared/diff-parse'
 import {
   isTextual,
   kindOf,

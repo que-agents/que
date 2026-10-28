@@ -4,6 +4,7 @@
 // change is one row too, and a change of comment lines alone joins the unchanged fold around it.
 // Pure: the tab keeps the reveals and renders the rows.
 import type { DiffLine, WorkspaceDiffFile } from '../../preload/index.d'
+import { lineText } from '../../shared/protocol'
 
 /** A run of unchanged lines longer than this folds. */
 export const FOLD_MIN = 8
@@ -36,18 +37,22 @@ export const NO_REVEALS: Reveals = {}
 export const REVEAL_ALL: Reveal = { down: Infinity, up: Infinity }
 
 /** How a diff tab draws changed comment lines: dimmed (the default), as code, or folded away. */
-export type CommentMode = 'dim' | 'show' | 'fold'
+export const COMMENT_MODES = ['dim', 'show', 'fold'] as const
 
-/** What the rows need to know about comment lines. */
-export interface CommentView {
+export type CommentMode = (typeof COMMENT_MODES)[number]
+
+/** How a project's diff tabs treat changed comment lines; remembered per project. */
+export interface DiffComments {
   mode: CommentMode
   /** Under Fold: removed comment lines stay drawn rather than folding. */
   keepRemoved: boolean
+}
+
+/** What the rows need to know about comment lines. */
+export interface CommentView extends DiffComments {
   /** Lines of the new file a review comment points at (or a link asked for): their runs stay open. */
   targets: ReadonlySet<number>
 }
-
-export const DIM_COMMENTS: CommentView = { mode: 'dim', keepRemoved: true, targets: new Set() }
 
 export interface LineRow {
   kind: 'line'
@@ -113,11 +118,6 @@ export interface PairRow {
 }
 
 export type SplitRow = PairRow | FoldRow | GapRow | CommentRunRow
-
-/** A line's text: its tokens' texts joined. */
-export function lineText(line: DiffLine): string {
-  return line.tokens.map((t) => t.text).join('')
-}
 
 /** Every line of the file, all hunks in order. */
 export function fileLines(file: WorkspaceDiffFile): DiffLine[] {
@@ -191,7 +191,7 @@ function functionLabels(lines: readonly DiffLine[]): string[] {
 
   return lines.map((line) => {
     if (line.kind !== 'removed') {
-      const text = lineText(line)
+      const text = lineText(line.tokens)
 
       if (FUNCNAME.test(text)) label = text.trimEnd()
     }
@@ -225,13 +225,28 @@ function linesBefore(h: WorkspaceDiffFile['hunks'][number]): number {
 
 /** Whether a review comment (or a link) points at a line of the run. */
 function pinnedRun(lines: readonly DiffLine[], r: Run, view: CommentView): boolean {
-  for (let i = r.start; i < r.end; i++) {
-    const n = lines[i].new
+  return lines.slice(r.start, r.end).some((l) => l.new !== null && view.targets.has(l.new))
+}
 
-    if (n !== null && view.targets.has(n)) return true
+/**
+ * A test for whether a line falls in one of `runs` (sorted, apart), for lines asked about in
+ * order: it walks the runs once.
+ */
+function inRuns(runs: readonly Run[]): (i: number) => boolean {
+  let k = 0
+
+  return (i) => {
+    while (k < runs.length && runs[k].end <= i) k++
+
+    return k < runs.length && runs[k].start <= i
   }
+}
 
-  return false
+/** A run of comment lines that folds to one row, and whether it is open (and why). */
+interface CommentRun {
+  run: Run
+  open: boolean
+  pinned: boolean
 }
 
 /** How a file's lines fold: the unchanged runs, and under Fold the comment runs. */
@@ -242,7 +257,7 @@ interface Plan {
   /** The comment-only changes the folds took in. */
   absorbed: Run[]
   /** The runs of comment lines that fold to one row, by their first line. */
-  comments: Map<number, Run>
+  comments: Map<number, CommentRun>
 }
 
 /**
@@ -258,22 +273,25 @@ function plan(file: WorkspaceDiffFile, reveals: Reveals, view: CommentView): Pla
   const foldable = (l: DiffLine): boolean =>
     folding && isCommentLine(l) && !(view.keepRemoved && l.kind === 'removed')
 
-  const isOpen = (r: Run): boolean => commentId(r) in reveals || pinnedRun(lines, r, view)
+  const look = (run: Run): CommentRun => {
+    const pinned = pinnedRun(lines, run, view)
+
+    return { run, pinned, open: pinned || commentId(run) in reveals }
+  }
 
   let absorbed =
     folding && file.fullContext
-      ? runsOf(n, (i) => lines[i].kind !== 'context').filter((r) => {
-          for (let i = r.start; i < r.end; i++) if (!foldable(lines[i])) return false
-
-          return !isOpen(r)
-        })
+      ? runsOf(n, (i) => lines[i].kind !== 'context').filter(
+          (r) => lines.slice(r.start, r.end).every(foldable) && !look(r).open
+        )
       : []
 
   let folds: Run[] = []
 
+  // Taking a change in can only make a fold longer, so drop the ones no fold holds until none is left.
   for (;;) {
-    const taken = new Set(absorbed.flatMap((r) => range(r)))
-    folds = file.fullContext ? longRuns(n, (i) => lines[i].kind === 'context' || taken.has(i)) : []
+    const taken = inRuns(absorbed)
+    folds = file.fullContext ? longRuns(n, (i) => lines[i].kind === 'context' || taken(i)) : []
 
     const inside = absorbed.filter((b) =>
       folds.some((f) => {
@@ -287,16 +305,10 @@ function plan(file: WorkspaceDiffFile, reveals: Reveals, view: CommentView): Pla
     absorbed = inside
   }
 
-  const taken = new Set(absorbed.flatMap((r) => range(r)))
-  const comments = new Map<number, Run>()
+  const taken = inRuns(absorbed)
+  const runs = runsOf(n, (i) => !taken(i) && foldable(lines[i]))
 
-  for (const r of runsOf(n, (i) => !taken.has(i) && foldable(lines[i]))) comments.set(r.start, r)
-
-  return { lines, folds, absorbed, comments }
-}
-
-function range(r: Run): number[] {
-  return Array.from({ length: r.end - r.start }, (_, k) => r.start + k)
+  return { lines, folds, absorbed, comments: new Map(runs.map((r) => [r.start, look(r)])) }
 }
 
 /** The slim row of a run of comment lines. */
@@ -333,8 +345,8 @@ function commentRow(
  */
 export function diffRows(
   file: WorkspaceDiffFile,
-  reveals: Reveals = NO_REVEALS,
-  view: CommentView = DIM_COMMENTS
+  reveals: Reveals,
+  view: CommentView
 ): DiffRow[] {
   const p = plan(file, reveals, view)
   const { lines } = p
@@ -348,15 +360,14 @@ export function diffRows(
   // Lines up to `to`, each comment run (whole, since unchanged folds never cut one) as its row.
   const push = (to: number): void => {
     while (next < to) {
-      const run = p.comments.get(next)
+      const found = p.comments.get(next)
 
-      if (!run) {
+      if (!found) {
         line(next++)
         continue
       }
 
-      const pinned = pinnedRun(lines, run, view)
-      const open = pinned || commentId(run) in reveals
+      const { run, open, pinned } = found
       rows.push(commentRow(lines, run, open, pinned))
 
       if (open) for (let i = run.start; i < run.end; i++) line(i)
@@ -500,7 +511,7 @@ export function revealLine(
   file: WorkspaceDiffFile,
   reveals: Reveals,
   n: number,
-  view: CommentView = DIM_COMMENTS
+  view: CommentView
 ): Reveals {
   if (!file.fullContext) return reveals
   const p = plan(file, reveals, view)

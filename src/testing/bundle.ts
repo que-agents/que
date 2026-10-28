@@ -13,7 +13,11 @@ const built = new Map<string, string>()
 
 /** Returns the path of a fresh CommonJS bundle of `entry`, built once per worker. */
 export function bundleEntry(
-  entry: 'src/cli/index.ts' | 'src/daemon/index.ts' | 'src/daemon/highlight-worker.ts'
+  entry:
+    | 'src/cli/index.ts'
+    | 'src/daemon/index.ts'
+    | 'src/daemon/highlight-worker.ts'
+    | 'src/testing/fault-tokenizer-worker.ts'
 ): string {
   const cached = built.get(entry)
 

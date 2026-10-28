@@ -2,11 +2,12 @@
 // by file with patches. Read-only: only `git diff`, `git status`, and friends.
 import fs from 'node:fs'
 import { join } from 'node:path'
+import { splitLines } from '../shared/diff-parse'
 import type { DiffCommit, DiffFile, WorkspaceDiff } from '../shared/protocol'
 import type { Project, Workspace } from '../shared/types'
 import type { ListedFile } from './comment-lines'
 import { badRequest } from './errors'
-import { git } from './workspaces'
+import { git, type GitOptions } from './workspaces'
 
 /** A patch longer than this many characters is reported as null. */
 export const MAX_PATCH_CHARS = 200_000
@@ -181,13 +182,6 @@ export function capPatch(patch: string): string | null {
   return patch.length > MAX_PATCH_CHARS ? null : patch
 }
 
-function countLines(text: string): number {
-  if (text.length === 0) return 0
-  const newlines = text.split('\n').length - 1
-
-  return text.endsWith('\n') ? newlines : newlines + 1
-}
-
 /** `origin/<default>` when it exists, else the local default branch, else the workspace's base. */
 function chooseBase(ws: Workspace, project: Project, refs: readonly string[]): string {
   const def = project.defaultBranch
@@ -225,8 +219,59 @@ export interface DiffOptions {
 export type Run = (...args: string[]) => ReturnType<typeof git>
 
 /** git in the worktree, paths printed as they are (no octal quoting), with diff's timeout. */
-export function gitRunner(ws: Workspace): Run {
-  return (...args) => git(ws.path, ['-c', 'core.quotepath=off', ...args], GIT_TIMEOUT_MS)
+export function gitRunner(ws: Workspace, opts: GitOptions = {}): Run {
+  return (...args) => git(ws.path, ['-c', 'core.quotepath=off', ...args], GIT_TIMEOUT_MS, opts)
+}
+
+/** One file of `git diff --raw --no-abbrev -M`: its blob ids (null for none or not hashed yet). */
+export interface RawEntry {
+  path: string
+  from: string | null
+  status: DiffFile['status']
+  oldId: string | null
+  newId: string | null
+}
+
+const ZERO_ID = /^0+$/
+
+/**
+ * Parses `git diff --raw --no-abbrev -M` output, keyed by new path. An id of
+ * all zeros (no such side, or a working-tree file git has not hashed) is null.
+ */
+export function parseRawDiff(out: string): Map<string, RawEntry> {
+  const map = new Map<string, RawEntry>()
+
+  for (const line of out.split('\n')) {
+    const m = /^:\d+ \d+ ([0-9a-f]+) ([0-9a-f]+) ([A-Z])\d*\t([^\t]+)(?:\t(.+))?$/.exec(line)
+
+    if (!m) continue
+    const [, oldSha = '', newSha = '', code = '', first = '', second] = m
+    const renamed = (code === 'R' || code === 'C') && second !== undefined
+    const path = renamed ? second : first
+
+    map.set(path, {
+      path,
+      from: renamed ? first : null,
+      status: renamed ? 'renamed' : code === 'A' ? 'added' : code === 'D' ? 'deleted' : 'modified',
+      oldId: ZERO_ID.test(oldSha) ? null : oldSha,
+      newId: ZERO_ID.test(newSha) ? null : newSha
+    })
+  }
+
+  return map
+}
+
+/** Parses `git cat-file --batch-check` output into object id → size; missing objects are left out. */
+export function parseBatchCheck(out: string): Map<string, number> {
+  const sizes = new Map<string, number>()
+
+  for (const line of out.split('\n')) {
+    const m = /^([0-9a-f]+) \S+ (\d+)$/.exec(line.trim())
+
+    if (m?.[1] && m[2]) sizes.set(m[1], Number(m[2]))
+  }
+
+  return sizes
 }
 
 /** What a diff compares, resolved from the caller's options. */
@@ -423,7 +468,7 @@ export async function workspaceDiff(
           path,
           from: null,
           status: 'untracked',
-          additions: text === null ? 0 : countLines(text),
+          additions: text === null ? 0 : splitLines(text).length,
           deletions: 0,
           dirty: true,
           patch: null

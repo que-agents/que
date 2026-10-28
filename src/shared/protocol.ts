@@ -254,6 +254,11 @@ export interface DiffLine {
   comment?: true
 }
 
+/** A line's text: its tokens' texts joined. */
+export function lineText(tokens: readonly DiffToken[]): string {
+  return tokens.map((t) => t.text).join('')
+}
+
 export interface DiffHunk {
   oldStart: number
   oldLines: number

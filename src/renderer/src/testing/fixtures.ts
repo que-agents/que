@@ -17,6 +17,7 @@ import type {
   WorkspaceFile
 } from '../../../preload/index.d'
 import { configDefaults } from '../../../shared/config-defaults'
+import { parseHunks } from '../../../shared/diff-parse'
 
 export {
   makeBackgroundTask,
@@ -401,41 +402,16 @@ export function diffFileFromPatch(
   file: DiffFile,
   overrides: Partial<WorkspaceDiffFile> = {}
 ): WorkspaceDiffFile {
-  const hunks: DiffHunk[] = []
-  let o = 0
-  let n = 0
-
-  for (const text of (file.patch ?? '').replace(/\n$/, '').split('\n')) {
-    const head = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@ ?(.*)$/.exec(text)
-
-    if (head) {
-      o = Number(head[1])
-      n = Number(head[3])
-      hunks.push({
-        oldStart: o,
-        oldLines: Number(head[2] ?? 1),
-        newStart: n,
-        newLines: Number(head[4] ?? 1),
-        label: head[5],
-        lines: []
-      })
-      continue
-    }
-
-    const hunk = hunks.at(-1)
-
-    if (!hunk || /^(diff --git|--- |\+\+\+ |\\)/.test(text)) continue
-    // A changed line that is a `//` comment is one token of that kind, flagged as the daemon would.
-    const note = /^[+-]\s*\/\//.test(text)
-    const tokens = [tok(text.slice(1), note ? 'comment' : 'plain')]
-    const flag = note ? { comment: true as const } : {}
-
-    if (text.startsWith('+'))
-      hunk.lines.push({ kind: 'added', old: null, new: n++, tokens, ...flag })
-    else if (text.startsWith('-'))
-      hunk.lines.push({ kind: 'removed', old: o++, new: null, tokens, ...flag })
-    else hunk.lines.push({ kind: 'context', old: o++, new: n++, tokens })
-  }
+  // The daemon's own parser, so the fake's hunks and numbers cannot drift from the real ones.
+  const hunks: DiffHunk[] = parseHunks(file.patch ?? '').map(({ lines, ...hunk }) => ({
+    ...hunk,
+    // A changed `//` line is one comment token, flagged as a comment line as the daemon would.
+    lines: lines.map(({ text, ...line }) =>
+      line.kind !== 'context' && /^\s*\/\//.test(text)
+        ? { ...line, tokens: [tok(text, 'comment')], comment: true as const }
+        : { ...line, tokens: [tok(text, 'plain')] }
+    )
+  }))
 
   return makeWorkspaceDiffFile({
     path: file.path,

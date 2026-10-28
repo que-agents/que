@@ -52,12 +52,16 @@ import type { RemovalFailure } from '../../shared/types'
 import {
   decodeDiffBases,
   decodeDiffComments,
+  type DiffMode,
+  type DiffWhitespace,
+  decodeDiffMode,
+  decodeDiffWhitespace,
   decodeReview,
   readStored,
   writeStored
 } from './persisted.decode'
 import { newestAt } from './pr-list'
-import type { CommentMode, Reveals } from './diff-rows'
+import type { DiffComments, Reveals } from './diff-rows'
 
 const DEFAULT_COLS = 80
 const DEFAULT_ROWS = 24
@@ -93,6 +97,8 @@ export {
 } from './layout'
 
 export type { DiffAgainst, PaneLayout } from './layout'
+
+export type { DiffMode, DiffWhitespace } from './persisted.decode'
 
 export { keyOf } from './keys'
 
@@ -211,27 +217,15 @@ function rememberDiffBase(id: string, base: string | null): void {
   writeStored(DIFF_BASES_KEY, Object.keys(bases).length > 0 ? JSON.stringify(bases) : null)
 }
 
-/** How a diff tab lays its lines out: one column, or old and new side by side. */
-export type DiffMode = 'unified' | 'split'
-
-/** Whether a diff tab compares whitespace ('ignore': `git diff -w`). */
-export type DiffWhitespace = 'show' | 'ignore'
-
 const DIFF_MODE_KEY = 'que.diffMode'
 const DIFF_WHITESPACE_KEY = 'que.diffWhitespace'
 
 function loadDiffMode(): DiffMode {
-  return readStored(DIFF_MODE_KEY, (raw) => (raw === 'split' ? 'split' : 'unified'), 'unified')
+  return readStored(DIFF_MODE_KEY, decodeDiffMode, 'unified')
 }
 
 function loadDiffWhitespace(): DiffWhitespace {
-  return readStored(DIFF_WHITESPACE_KEY, (raw) => (raw === 'ignore' ? 'ignore' : 'show'), 'show')
-}
-
-/** How a project's diff tabs treat changed comment lines: the mode, and under Fold whether removed ones stay. */
-export interface DiffComments {
-  mode: CommentMode
-  keepRemoved: boolean
+  return readStored(DIFF_WHITESPACE_KEY, decodeDiffWhitespace, 'show')
 }
 
 export const DEFAULT_DIFF_COMMENTS: DiffComments = { mode: 'dim', keepRemoved: true }
@@ -782,8 +776,7 @@ export class QueStore {
 
       if (pr && shown.has(pr.number)) {
         void this.fetchPrThread(ws.id, pr.number)
-        void this.fetchDiff(ws.id, prAgainst(pr))
-        void this.fetchDiffTabs(ws.id, prAgainst(pr))
+        void this.refreshDiff(ws.id, prAgainst(pr))
       } else {
         if (this.state.prThreads[thread]?.data !== undefined) this.forget('prThreads', thread)
         const files = diffKey(ws.id, prAgainst(old))
@@ -887,7 +880,7 @@ export class QueStore {
   }
 
   /** Drops a resource's value (keeping its error), so the next look fetches it. */
-  private forget(name: 'prThreads' | 'diffs', key: string): void {
+  private forget(name: 'prThreads' | 'diffs' | 'diffFiles', key: string): void {
     this.setWith((s) => withEntry(s, name, key, { error: s[name][key]?.error ?? null }))
   }
 
@@ -1020,7 +1013,7 @@ export class QueStore {
     const fileTabs = views.some((v) => filePathOf(v) !== null)
 
     if (!open && views.length === 0) return Promise.resolve()
-    const loads = [this.fetchDiff(key)]
+    const loads = [this.refreshDiff(key)]
 
     if ((open && place.view === 'files') || fileTabs) loads.push(this.reloadFiles(key))
 
@@ -1029,11 +1022,9 @@ export class QueStore {
       const against = prAgainst(pr)
 
       if (this.diffFor.get(diffKey(key, against)) !== pr.updatedAt) {
-        loads.push(this.fetchDiff(key, against), this.fetchDiffTabs(key, against))
+        loads.push(this.refreshDiff(key, against))
       }
     }
-
-    loads.push(this.fetchDiffTabs(key))
 
     return Promise.all(loads).then(() => undefined)
   }
@@ -1281,7 +1272,7 @@ export class QueStore {
     rememberDiffBase(key, base)
     this.setWith((s) => ({ diffScopes: { ...s.diffScopes, [key]: { base, commit: null } } }))
 
-    return Promise.all([this.fetchDiff(key), this.fetchDiffTabs(key)]).then(() => undefined)
+    return this.refreshDiff(key)
   }
 
   /** Narrows a workspace's diff to one commit's own changes (null: every commit). Not remembered. */
@@ -1290,7 +1281,7 @@ export class QueStore {
       diffScopes: { ...s.diffScopes, [key]: { ...(s.diffScopes[key] ?? NO_SCOPE), commit } }
     }))
 
-    return Promise.all([this.fetchDiff(key), this.fetchDiffTabs(key)]).then(() => undefined)
+    return this.refreshDiff(key)
   }
 
   /** Fetches the diff unless it is loaded or on its way. */
@@ -1333,23 +1324,50 @@ export class QueStore {
   }
 
   /**
-   * Fetches again the file of each open diff tab of a workspace against one thing: its
-   * worktree (no `against`), or a branch and base. `every`: all of them, whatever they are against.
+   * Fetches a workspace's diff again (its worktree's, or a branch's against a base) and the
+   * lines of its diff tabs that show the same thing.
    */
-  private fetchDiffTabs(key: string, against?: DiffAgainst | 'every'): Promise<void> {
-    const same = (a: DiffAgainst | undefined): boolean =>
-      against === 'every' ||
-      (a === undefined || against === undefined
-        ? a === against
-        : a.head === against.head && a.base === against.base)
+  private refreshDiff(key: string, against?: DiffAgainst): Promise<void> {
+    const same = diffKey(key, against)
 
-    const tabs = this.layout(key)
-      .views.map(diffOf)
-      .filter((t): t is DiffTab => t !== null && same(t.against))
+    return Promise.all([
+      this.fetchDiff(key, against),
+      this.fetchDiffTabs(key, (tab) => diffKey(key, tab.against) === same)
+    ]).then(() => undefined)
+  }
 
-    return Promise.all(tabs.map((t) => this.fetchDiffFile(key, t.path, t.against))).then(
-      () => undefined
-    )
+  /**
+   * The lines of a workspace's open diff tabs that `filter` keeps: a tab on screen (the active
+   * tab of a pane while the workspace is shown) is fetched again; the rest are forgotten, with
+   * both whitespace options, so each is fetched when it is next selected.
+   */
+  private fetchDiffTabs(key: string, filter: (tab: DiffTab) => boolean): Promise<void> {
+    const l = this.layout(key)
+    const shown = this.currentKey() === key
+    const current = this.state.diffWhitespace
+
+    const onScreen = new Set([
+      this.paneActiveId(key, 0),
+      l.split ? this.paneActiveId(key, 1) : null
+    ])
+
+    const loads: Array<Promise<void>> = []
+
+    for (const id of l.views) {
+      const tab = diffOf(id)
+
+      if (!tab || !filter(tab)) continue
+      const visible = shown && onScreen.has(id)
+
+      for (const ws of ['show', 'ignore'] as const) {
+        const k = diffFileKey(key, tab.path, tab.against, ws)
+
+        if (ws === current && visible) loads.push(this.fetchDiffFile(key, tab.path, tab.against))
+        else if (this.state.diffFiles[k]?.data !== undefined) this.forget('diffFiles', k)
+      }
+    }
+
+    return Promise.all(loads).then(() => undefined)
   }
 
   /** Lays every diff tab out in one column or side by side; remembered. */
@@ -1358,13 +1376,13 @@ export class QueStore {
     this.set({ diffMode: mode })
   }
 
-  /** Has every diff tab show or ignore whitespace, fetching the shown workspace's open ones again; remembered. */
+  /**
+   * Has every diff tab show or ignore whitespace; remembered. A tab on screen fetches its lines
+   * with the option it lacks, and every refresh forgets the other option's, so none is stale.
+   */
   setDiffWhitespace(whitespace: DiffWhitespace): void {
     writeStored(DIFF_WHITESPACE_KEY, whitespace)
     this.set({ diffWhitespace: whitespace })
-    const key = this.currentKey()
-
-    if (key !== null && key !== SCRATCH) void this.fetchDiffTabs(key, 'every')
   }
 
   /** Has a project's diff tabs dim, show or fold changed comment lines; remembered per project. */

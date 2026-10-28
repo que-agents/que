@@ -1,7 +1,8 @@
 // The small pieces the review pane's views share: a status dot, `+a −d` in the diff tones,
 // a head's totals, and one changed file's row.
 import type { DiffFile, PullRequest } from '../../../preload/index.d'
-import { GLYPH } from '../diff'
+import { plural } from '../../../shared/format'
+import { GLYPH, sumLines } from '../diff'
 import { prDot, type PrDot } from '../format'
 
 /** A 5px dot in a tone, or a hollow ring. */
@@ -40,12 +41,11 @@ export function CommentOnlyLine({
   files: readonly DiffFile[]
   testId: string
 }): React.JSX.Element {
-  const adds = files.reduce((n, f) => n + f.additions, 0)
-  const dels = files.reduce((n, f) => n + f.deletions, 0)
+  const { adds, dels } = sumLines(files)
 
   return (
     <div className="changes-comment-only" role="presentation" data-testid={testId}>
-      comments only · {files.length} {files.length === 1 ? 'file' : 'files'} · +{adds} −{dels}
+      comments only · {plural(files.length, 'file')} · +{adds} −{dels}
     </div>
   )
 }
@@ -58,8 +58,7 @@ export function DiffTotals({
   files: readonly DiffFile[]
   noun?: boolean
 }): React.JSX.Element {
-  const adds = files.reduce((n, f) => n + f.additions, 0)
-  const dels = files.reduce((n, f) => n + f.deletions, 0)
+  const { adds, dels } = sumLines(files)
   const unit = noun ? (files.length === 1 ? ' file' : ' files') : ''
 
   return (

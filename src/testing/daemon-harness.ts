@@ -69,8 +69,8 @@ export interface TestDaemonOptions {
   randomWorkspaceName?: () => string
   /** How long tokenizing one file may take before it is answered plain. The daemon's default (5 s). */
   tokenizeTimeoutMs?: number
-  /** How long workspace.diff waits for its comment split. The daemon's default (300 ms). */
-  classifyBudgetMs?: number
+  /** Run the test-only fault tokenizer (src/testing/fault-tokenizer-worker.ts) instead of the real one. */
+  faultyTokenizer?: boolean
 }
 
 export async function startTestDaemon(opts: TestDaemonOptions = {}): Promise<TestDaemon> {
@@ -95,9 +95,12 @@ export async function startTestDaemon(opts: TestDaemonOptions = {}): Promise<Tes
     quietTickMs: opts.quietTickMs ?? 200,
     now: opts.now,
     randomWorkspaceName: opts.randomWorkspaceName,
-    tokenizerWorker: bundleEntry('src/daemon/highlight-worker.ts'),
-    tokenizeTimeoutMs: opts.tokenizeTimeoutMs,
-    classifyBudgetMs: opts.classifyBudgetMs
+    tokenizerWorker: bundleEntry(
+      opts.faultyTokenizer
+        ? 'src/testing/fault-tokenizer-worker.ts'
+        : 'src/daemon/highlight-worker.ts'
+    ),
+    tokenizeTimeoutMs: opts.tokenizeTimeoutMs
   })
 
   await server.listen(paths.socket)

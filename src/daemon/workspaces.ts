@@ -47,14 +47,31 @@ interface GitResult {
   stderr: string
 }
 
+export interface GitOptions {
+  /** Trim stdout and stderr (default true); file contents and patches keep their edge whitespace with false. */
+  trim?: boolean
+  /** Bytes of output before the run is killed. Default 16 MB. */
+  maxBuffer?: number
+  /** Written to git's stdin (e.g. object ids for `cat-file --batch-check`). */
+  input?: string
+}
+
 /** Runs git in `cwd`; never throws. */
-export async function git(cwd: string, args: string[], timeoutMs = 60_000): Promise<GitResult> {
+export async function git(
+  cwd: string,
+  args: string[],
+  timeoutMs = 60_000,
+  opts: GitOptions = {}
+): Promise<GitResult> {
   const r = await run('git', args, {
     cwd,
     timeoutMs,
-    maxBuffer: 16 * 1024 * 1024,
+    maxBuffer: opts.maxBuffer ?? 16 * 1024 * 1024,
+    input: opts.input,
     env: { ...process.env, GIT_TERMINAL_PROMPT: '0' }
   })
+
+  if (opts.trim === false) return { ok: r.ok, stdout: r.stdout, stderr: r.stderr }
 
   return { ok: r.ok, stdout: r.stdout.trim(), stderr: r.stderr.trim() }
 }

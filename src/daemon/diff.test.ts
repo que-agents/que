@@ -5,8 +5,10 @@ import {
   MAX_BASES,
   mergeListings,
   orderBases,
+  parseBatchCheck,
   parseLog,
   parseNameStatus,
+  parseRawDiff,
   parseNumstat,
   parsePorcelainPaths,
   parseRenamePath,
@@ -208,5 +210,43 @@ describe('splitPatches', () => {
 
   it('is empty when git printed no diff', () => {
     expect(splitPatches('')).toEqual([])
+  })
+})
+
+describe('parseRawDiff', () => {
+  const OLD = 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678'
+  const NEW = 'b2c3d4e5f60718293a4b5c6d7e8f901234567890'
+  const ZERO = '0000000000000000000000000000000000000000'
+
+  it('reads each file with its status and blob ids, a rename under its new path', () => {
+    const out = [
+      `:100644 100644 ${OLD} ${ZERO} M\tsrc/upload/put.ts`,
+      `:000000 100644 ${ZERO} ${NEW} A\tsrc/upload/retry.ts`,
+      `:100644 000000 ${OLD} ${ZERO} D\tlegacy.ts`,
+      `:100644 100644 ${OLD} ${NEW} R087\tsrc/old name.ts\tsrc/new name.ts`
+    ].join('\n')
+
+    expect([...parseRawDiff(out).values()]).toEqual([
+      { path: 'src/upload/put.ts', from: null, status: 'modified', oldId: OLD, newId: null },
+      { path: 'src/upload/retry.ts', from: null, status: 'added', oldId: null, newId: NEW },
+      { path: 'legacy.ts', from: null, status: 'deleted', oldId: OLD, newId: null },
+      {
+        path: 'src/new name.ts',
+        from: 'src/old name.ts',
+        status: 'renamed',
+        oldId: OLD,
+        newId: NEW
+      }
+    ])
+  })
+})
+
+describe('parseBatchCheck', () => {
+  it('maps each found object to its size and leaves out missing ones', () => {
+    const out = 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678 blob 2048\nffff missing\n'
+
+    expect(parseBatchCheck(out)).toEqual(
+      new Map([['a1b2c3d4e5f60718293a4b5c6d7e8f9012345678', 2048]])
+    )
   })
 })
