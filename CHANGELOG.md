@@ -117,7 +117,7 @@ All notable changes to que are recorded here. The format follows
 
 ## [0.1.0] - 2026-10-14
 
-The first release.
+Built and used locally; never published.
 
 ### Added
 
@@ -142,5 +142,5 @@ The first release.
   node-pty outside the asar, an "Install 'que' command in PATH" menu item, and
   a daily check for a newer release.
 
-[Unreleased]: https://github.com/rquellh/que/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/rquellh/que/releases/tag/v0.1.0
+[Unreleased]: https://github.com/rquellh/que/compare/afc5c9f345c965a15703283dc36e1fd7256ff010...HEAD
+[0.1.0]: https://github.com/rquellh/que/tree/afc5c9f345c965a15703283dc36e1fd7256ff010
