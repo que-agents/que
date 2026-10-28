@@ -1,9 +1,9 @@
 // workspace.diff's split of each file's changed lines into code and comment
 // lines, and workspace.diffFile's per-line comment flags, against real
-// worktrees on a temp repo with a bare origin. The daemon here gives the split
-// no time inside the answer, so every split misses the first answer and the
-// order is fixed: an all-code answer, workspace.changed, then the split from
-// the cache. Which lines are comment lines is covered by the logic tests.
+// worktrees on a temp repo with a bare origin. workspace.diff never waits for
+// the split: a file not split yet counts as code, and workspace.diffSettled
+// says when asking again gives the split. Which lines are comment lines is
+// covered by the logic tests.
 import fs from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -14,10 +14,10 @@ import { addBareOrigin, gitIn, makeTempRepo } from '../../src/testing/temp-repo'
 
 let daemon: TestDaemon
 let ws: Workspace
-let changed: string[]
+let settled: string[]
 
 beforeEach(async () => {
-  daemon = await startTestDaemon({ classifyBudgetMs: 0 })
+  daemon = await startTestDaemon()
   const repo = makeTempRepo(daemon.home)
   addBareOrigin(repo)
   const project = await daemon.client.request('project.add', { path: repo })
@@ -33,8 +33,8 @@ beforeEach(async () => {
     })
     .not.toBe('preparing')
   ws = await daemon.client.request('workspace.get', { id: created.id })
-  changed = []
-  daemon.client.on('workspace.changed', ({ id }) => changed.push(id))
+  settled = []
+  daemon.client.on('workspace.diffSettled', ({ id }) => settled.push(id))
 }, 30_000)
 
 afterEach(async () => {
@@ -58,8 +58,17 @@ function baseline(files: Record<string, string>): void {
 
 const lineText = (l: DiffLine): string => l.tokens.map((t) => t.text).join('')
 
-/** A unique tag per test: splits are cached by content, so no test sees another's. */
+/** A unique tag per test: tokenized sides are cached by content, so no test sees another's. */
 const tag = (): string => Math.random().toString(36).slice(2)
+
+/** workspace.diff once the split it started has settled. */
+async function settledDiff(): Promise<WorkspaceDiff> {
+  const before = settled.length
+  await diff()
+  await expect.poll(() => settled.length, { timeout: 10_000 }).toBe(before + 1)
+
+  return diff()
+}
 
 describe('comment split', () => {
   it('reports a comment-only file and a code file with their split counts', async () => {
@@ -101,12 +110,7 @@ describe('comment split', () => {
     )
     commitAll('Document the backoff, retry three times')
 
-    await expect
-      .poll(async () => (await diff()).files.find((f) => f.path === 'backoff.ts')?.commentOnly, {
-        timeout: 10_000
-      })
-      .toBe(true)
-    const d = await diff()
+    const d = await settledDiff()
 
     expect(d.files.find((f) => f.path === 'backoff.ts')).toMatchObject({
       commentOnly: true,
@@ -150,19 +154,32 @@ describe('comment split', () => {
     )
     fs.writeFileSync(join(ws.path, 'notes.py'), `# Upload notes ${id}\n# Retry with backoff.\n`)
 
-    await expect
-      .poll(
-        async () =>
-          (await diff()).files.map((f) => [f.path, f.status, f.commentOnly, f.commentAdditions]),
-        { timeout: 10_000 }
-      )
-      .toEqual([
-        ['notes.py', 'untracked', true, 2],
-        ['retry.ts', 'modified', true, 1]
-      ])
+    const d = await settledDiff()
+
+    expect(d.files.map((f) => [f.path, f.status, f.commentOnly, f.commentAdditions])).toEqual([
+      ['notes.py', 'untracked', true, 2],
+      ['retry.ts', 'modified', true, 1]
+    ])
   })
 
-  it('answers all code at first and sends workspace.changed once the split is ready', async () => {
+  it('splits a working-tree file again once it changes', async () => {
+    const id = tag()
+    baseline({ 'retry.ts': 'export const retries = 1\n' })
+    fs.writeFileSync(join(ws.path, 'retry.ts'), `// Fixed for ${id}.\nexport const retries = 1\n`)
+    expect((await settledDiff()).files[0]?.commentOnly).toBe(true)
+
+    fs.writeFileSync(join(ws.path, 'retry.ts'), `// Fixed for ${id}.\nexport const retries = 3\n`)
+
+    expect((await diff()).files[0]).toMatchObject({ commentOnly: false, codeAdditions: 2 })
+    expect((await settledDiff()).files[0]).toMatchObject({
+      commentOnly: false,
+      codeAdditions: 1,
+      commentAdditions: 1,
+      codeDeletions: 1
+    })
+  })
+
+  it('answers all code at first and sends workspace.diffSettled once the split is ready', async () => {
     const id = tag()
     baseline({ 'retry.ts': 'export const retries = 1\n' })
     fs.writeFileSync(join(ws.path, 'retry.ts'), `// Fixed for ${id}.\nexport const retries = 1\n`)
@@ -177,10 +194,13 @@ describe('comment split', () => {
         commentAdditions: 0
       })
     ])
-    await expect.poll(() => changed, { timeout: 10_000 }).toEqual([ws.id])
+    await expect.poll(() => settled, { timeout: 10_000 }).toEqual([ws.id])
     expect((await diff()).files).toEqual([
       expect.objectContaining({ commentOnly: true, codeAdditions: 0, commentAdditions: 1 })
     ])
+
+    // Answered from the cache, so nothing new is queued and nothing more is sent.
+    expect(settled).toEqual([ws.id])
   })
 
   it('counts a file in a language without a grammar as code', async () => {
@@ -191,6 +211,6 @@ describe('comment split', () => {
     expect((await diff()).files).toEqual([
       expect.objectContaining({ path: 'retry.conf', commentOnly: false, codeAdditions: 1 })
     ])
-    expect(changed).toEqual([])
+    expect(settled).toEqual([])
   })
 })

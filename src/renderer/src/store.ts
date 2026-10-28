@@ -728,6 +728,7 @@ export class QueStore {
         if (prev !== ws.status) this.maybeChime({ state: ws.status, prev })
       }),
       workspace.on('workspace.changed', ({ id }) => this.followChange(id)),
+      workspace.on('workspace.diffSettled', ({ id }) => this.followDiffSettled(id)),
       workspace.on('workspace.removed', ({ id, failed }) => {
         if (id in this.state.diffScopes) rememberDiffBase(id, null)
 
@@ -1004,6 +1005,19 @@ export class QueStore {
 
       if (this.followAgain.delete(id)) this.followChange(id)
     })
+  }
+
+  /**
+   * The daemon's comment split for a workspace settled: the diffs on screen (its own and its
+   * shown pull requests') and their diff tabs on screen are fetched again, nothing else.
+   */
+  private followDiffSettled(id: string): void {
+    if (id !== this.currentKey() || this.locked()) return
+
+    if (!this.state.review.open && this.layout(id).views.length === 0) return
+    void this.refreshDiff(id)
+
+    for (const pr of this.shownPrs(id)) void this.refreshDiff(id, prAgainst(pr))
   }
 
   private refetchShown(key: string): Promise<void> {

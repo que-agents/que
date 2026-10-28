@@ -538,6 +538,22 @@ describe('ChangesList', () => {
       expect(fakeBridge.diffCalls().at(-1)).toEqual({ id: retry.id, base: null, commit: null })
     })
 
+    it('fetches only the diff again when the comment split settles', async () => {
+      const user = userEvent.setup()
+      seed([put])
+      await openChanges(user)
+      await screen.findByTestId('changes-file-0')
+      const before = fakeBridge.diffCalls().length
+      const filesBefore = fakeBridge.filesCalls().length
+
+      fakeBridge.seedDiff(makeWorkspaceDiff({ workspaceId: retry.id, files: [put, readme] }))
+      fakeBridge.settleDiff(retry.id)
+
+      expect(await screen.findByTestId('changes-file-1')).toHaveAttribute('data-path', 'README.md')
+      expect(fakeBridge.diffCalls()).toHaveLength(before + 1)
+      expect(fakeBridge.filesCalls()).toHaveLength(filesBefore)
+    })
+
     it('keeps the commit the diff is narrowed to', async () => {
       const user = userEvent.setup()
       seed()

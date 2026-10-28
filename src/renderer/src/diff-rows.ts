@@ -343,11 +343,7 @@ function commentRow(
  * whatever `reveals` uncovered; without it, each gap before or between hunks is a count. Under
  * the Fold comment mode, runs of comment lines fold too (see `plan`).
  */
-export function diffRows(
-  file: WorkspaceDiffFile,
-  reveals: Reveals,
-  view: CommentView
-): DiffRow[] {
+export function diffRows(file: WorkspaceDiffFile, reveals: Reveals, view: CommentView): DiffRow[] {
   const p = plan(file, reveals, view)
   const { lines } = p
   const rows: DiffRow[] = []

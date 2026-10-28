@@ -190,7 +190,12 @@ function CommentRunBar({
 }
 
 /** Whether a changed comment line is drawn dimmed, and whether it carries the removed tag. */
-function commentLook(line: DiffLine, prefs: DiffComments): { dimmed: boolean; kept: boolean } {
+interface CommentLook {
+  dimmed: boolean
+  kept: boolean
+}
+
+function commentLook(line: DiffLine, prefs: DiffComments): CommentLook {
   const dimmed = line.comment === true && line.kind !== 'context' && prefs.mode !== 'show'
 
   return {

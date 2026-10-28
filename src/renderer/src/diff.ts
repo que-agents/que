@@ -19,10 +19,10 @@ export interface LineTotals {
 
 /** Sums the files' added and removed lines. */
 export function sumLines(files: readonly DiffFile[]): LineTotals {
-  return files.reduce(
-    (t, f) => ({ adds: t.adds + f.additions, dels: t.dels + f.deletions }),
-    { adds: 0, dels: 0 }
-  )
+  return files.reduce((t, f) => ({ adds: t.adds + f.additions, dels: t.dels + f.deletions }), {
+    adds: 0,
+    dels: 0
+  })
 }
 
 /** A list's files split in two: those that changed code, and those where only comments changed. */

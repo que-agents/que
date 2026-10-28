@@ -689,6 +689,23 @@ describe('DiffView', () => {
   })
 
   describe('status updates', () => {
+    it('fetches the lines of the diff tab on screen again when the comment split settles', async () => {
+      const user = userEvent.setup()
+      seed()
+      await openPatch(user)
+
+      const calls = (): number =>
+        fakeBridge.diffFileCalls().filter((c) => c.path === 'src/upload/retry.ts').length
+
+      const before = calls()
+
+      fakeBridge.settleDiff(retry.id)
+
+      await waitFor(() => {
+        expect(calls()).toBe(before + 1)
+      })
+    })
+
     it('fetches the lines of the diff tab on screen when the worktree changes, and a background one when it is selected', async () => {
       const user = userEvent.setup()
       seed()

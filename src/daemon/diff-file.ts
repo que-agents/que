@@ -1,7 +1,8 @@
 // One file's diff as hunks of tokenized lines (workspace.diffFile), in the same
 // scopes as workspace.diff. Both sides are read whole and tokenized whole, so
 // a line's colours come from the file, not from the patch fragment; the diff
-// itself carries the whole file as context when it is small enough.
+// itself carries the whole file as context when it is small enough. The
+// comment split (comment-split.ts) shares the tokenized sides.
 import { createHash } from 'node:crypto'
 import fs from 'node:fs'
 import { join } from 'node:path'
@@ -23,6 +24,7 @@ import {
   resolveScope,
   scopeRange
 } from './diff'
+import { markCommentLines } from './comment-lines'
 import { badRequest, notFound } from './errors'
 import { insideWorktree } from './files'
 import { languageFor, type TokenizedFile } from './syntax'
@@ -122,7 +124,8 @@ export function cachedSideTokens(id: string, language: string | null): Tokenized
   return sides.get(sideKey(id, language))
 }
 
-async function tokenizeSide(
+/** One side's tokens, from the shared cache when it has them; a result that is not degraded is kept. */
+export async function tokenizeSide(
   tokenizer: Tokenizer,
   id: string | null,
   text: string,
@@ -185,7 +188,7 @@ export function tokenizeHunkLines(
   })
 }
 
-/** The structured hunks of a patch, tokens laid on and word marks set (within one budget for the file). */
+/** The structured hunks of a patch, tokens laid on, comment lines flagged, and word marks set (within one budget for the file). */
 export function buildHunks(
   patch: string,
   before: readonly DiffToken[][],
@@ -199,12 +202,12 @@ export function buildHunks(
     newStart: h.newStart,
     newLines: h.newLines,
     label: h.label,
-    lines: markChangeBlocks(tokenizeHunkLines(h.lines, before, after), budget)
+    lines: markCommentLines(markChangeBlocks(tokenizeHunkLines(h.lines, before, after), budget))
   }))
 }
 
 /** A working-tree file: its content id, size, and text (null when over the cap or not a file). */
-async function readWorktreeFile(
+export async function readWorktreeFile(
   ws: Workspace,
   path: string
 ): Promise<{ id: string | null; size: number; text: string } | null> {
