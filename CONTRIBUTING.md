@@ -95,6 +95,11 @@ request. `npm run release -- --dry-run` prints every step and writes nothing;
 `npm run release -- minor --ci` skips the questions. Nothing is tagged
 locally.
 
+A beta for testers goes the same way from `release/0.2.0-beta.1`:
+`npm run release -- minor --preRelease=beta` makes `0.2.0-beta.1` (run again,
+`--preRelease` alone makes `beta.2`), and the release is drafted as a GitHub
+prerelease, which the app's update check never offers.
+
 Review the pull request (the changelog section is the release notes) and merge
 it. The release workflow then builds que.app and drafts the GitHub release;
 check the notes and the DMG on the release page and publish the draft, which

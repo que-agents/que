@@ -58,6 +58,14 @@ extraResources:
       - build/Release/spawn-helper
       - prebuilds/darwin-${arch}/**
 
+# Where releases live. With a publish target electron-builder writes the update
+# manifest (release/latest-mac.yml) beside the zip; it never uploads anything
+# itself (the package scripts pass --publish never), the release workflow does.
+publish:
+  provider: github
+  owner: rquellh
+  repo: que
+
 # Restores the execute bit on node-pty's spawn-helper (and the CLI launcher).
 afterPack: scripts/after-pack.cjs
 
