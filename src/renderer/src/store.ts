@@ -669,6 +669,7 @@ export class QueStore {
         if (prev !== ws.status) this.maybeChime({ state: ws.status, prev })
       }),
       workspace.on('workspace.changed', ({ id }) => this.followChange(id)),
+      workspace.on('workspace.diffSettled', ({ id }) => this.followDiffSettled(id)),
       workspace.on('workspace.removed', ({ id, failed }) => {
         if (id in this.state.diffScopes) rememberDiffBase(id, null)
 
@@ -930,6 +931,19 @@ export class QueStore {
    * those fetches are refused. One change at a time: a change arriving
    * while one is followed is followed once more after it lands.
    */
+  /**
+   * The daemon's comment split for a workspace settled: the diffs on screen (its own and its
+   * shown pull requests') are fetched again, nothing else.
+   */
+  private followDiffSettled(id: string): void {
+    if (id !== this.currentKey() || this.locked()) return
+
+    if (!this.state.review.open && this.layout(id).views.length === 0) return
+    void this.fetchDiff(id)
+
+    for (const pr of this.shownPrs(id)) void this.fetchDiff(id, prAgainst(pr))
+  }
+
   private followChange(id: string): void {
     if (id !== this.currentKey() || this.locked()) return
 

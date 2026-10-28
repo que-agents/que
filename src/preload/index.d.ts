@@ -190,6 +190,7 @@ export type WorkspaceEventName =
   | 'workspace.updated'
   | 'workspace.removed'
   | 'workspace.changed'
+  | 'workspace.diffSettled'
 
 export type WorkspaceEvents = Pick<Events, WorkspaceEventName>
 

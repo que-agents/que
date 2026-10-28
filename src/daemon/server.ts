@@ -52,8 +52,9 @@ import { LiveSessions, storedLiveSessions } from './live-sessions'
 import { StatusService } from './status'
 import { TicketService } from './tickets'
 import { Store } from './store'
-import { workspaceDiff } from './diff'
-import { classifyComments, workspaceDiffFile } from './diff-file'
+import { CommentClassifier } from './comment-split'
+import { workspaceDiffFile } from './diff-file'
+import { workspaceDiff } from './workspace-diff'
 import { Tokenizer } from './tokenizer'
 import { tokenizerWorkerFrom } from '../shared/packaged'
 import { readWorkspaceFile, workspaceFiles } from './files'
@@ -99,8 +100,6 @@ export interface ServerOptions {
   tokenizerWorker?: string
   /** How long tokenizing one file may take before it is answered plain. Default 5 s. */
   tokenizeTimeoutMs?: number
-  /** How long workspace.diff waits for its comment split. Default CLASSIFY_BUDGET_MS. */
-  classifyBudgetMs?: number
 }
 
 interface Subscription {
@@ -186,8 +185,10 @@ export class DaemonServer {
   readonly watcher = new WorktreeWatcher((id) => void this.worktreeChanged(id), {
     log: (m) => this.log(m)
   })
-  /** Tokenizes files for workspace.diffFile and workspace.diff's comment split on a worker thread, never this one. */
+  /** Tokenizes files for workspace.diffFile and the comment split on a worker thread, never this one. */
   private readonly tokenizer: Tokenizer
+  /** Splits workspace.diff's files into code and comment lines in the background. */
+  private readonly classifier: CommentClassifier
 
   constructor(private opts: ServerOptions) {
     this.startedAt = opts.startedAt ?? new Date().toISOString()
@@ -196,6 +197,9 @@ export class DaemonServer {
       timeoutMs: opts.tokenizeTimeoutMs,
       log: (m) => this.log(m)
     })
+    this.classifier = new CommentClassifier(this.tokenizer, (id) =>
+      this.bus.emit('workspace.diffSettled', { id })
+    )
     const { host } = opts
     this.paths = ensureDirs(opts.paths ?? quePaths())
     this.store = new Store(this.paths.db)
@@ -914,12 +918,7 @@ export class DaemonServer {
         this.workspaces.project(ws.projectId),
         Date.now,
         { base: p.base, head: p.head, commit: p.commit },
-        // Splits that miss the answer land in the cache: clients asking again get them.
-        (range, files) =>
-          classifyComments(ws, range, files, this.tokenizer, {
-            budgetMs: this.opts.classifyBudgetMs,
-            onLate: () => this.bus.emit('workspace.changed', { id: ws.id })
-          })
+        this.classifier
       )
     },
     'workspace.diffFile': ({ id, ...rest }) => {

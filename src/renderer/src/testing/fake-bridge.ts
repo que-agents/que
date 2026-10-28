@@ -820,6 +820,12 @@ class FakeBridge {
     this.emit('workspace.changed', { id })
   }
 
+  /** The daemon's comment split for the workspace settled: fires workspace.diffSettled. */
+  settleDiff(id: string): void {
+    this.workspace(id)
+    this.emit('workspace.diffSettled', { id })
+  }
+
   /** Updates a workspace's status and emits workspace.updated with the row, as the status engine would. */
   setStatus(id: string, status: WorkspaceStatus, reason?: string): void {
     const ws = this.workspace(id)

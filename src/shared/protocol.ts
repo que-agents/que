@@ -254,6 +254,11 @@ export interface DiffLine {
   comment?: true
 }
 
+/** A line's text: its tokens' texts joined. */
+export function lineText(tokens: readonly DiffToken[]): string {
+  return tokens.map((t) => t.text).join('')
+}
+
 export interface DiffHunk {
   oldStart: number
   oldLines: number
@@ -689,6 +694,11 @@ export interface Events {
   'workspace.removed': { id: string; failed?: RemovalFailure[] }
   /** Its worktree changed on disk (a write, a commit): the daemon computes nothing until asked. */
   'workspace.changed': { id: string }
+  /**
+   * workspace.diff's comment split, worked out in the background for this workspace, settled
+   * with something new: asking for its diff again gives it.
+   */
+  'workspace.diffSettled': { id: string }
   'project.added': Project
   'project.removed': { id: string }
   'quiet.changed': QuietState
@@ -722,6 +732,7 @@ export const EVENTS: { [E in EventName]: { renderer: boolean } } = {
   'workspace.updated': { renderer: true },
   'workspace.removed': { renderer: true },
   'workspace.changed': { renderer: true },
+  'workspace.diffSettled': { renderer: true },
   'project.added': { renderer: true },
   'project.removed': { renderer: true },
   'quiet.changed': { renderer: true },

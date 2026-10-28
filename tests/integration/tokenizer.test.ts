@@ -1,7 +1,9 @@
-// workspace.diffFile's tokenizer worker thread: results are coloured by the
-// worker bundle, and a worker that crashes or hangs on a file gives that file
-// plain tokens, never a failed request, and is replaced for the next one. The
-// faults come from the worker's test-only QUE_TEST_TOKENIZER_FAULT switch.
+// workspace.diffFile's tokenizer worker thread when it fails: a worker that
+// crashes or hangs on a file gives that file plain tokens, never a failed
+// request, and is replaced for the next one. The daemon runs the test-only
+// fault worker (src/testing/fault-tokenizer-worker.ts), switched by
+// QUE_TEST_TOKENIZER_FAULT; colouring through the real worker bundle is
+// covered by diff-file.test.ts.
 import fs from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -14,7 +16,7 @@ let daemon: TestDaemon
 let ws: Workspace
 
 beforeEach(async () => {
-  daemon = await startTestDaemon({ tokenizeTimeoutMs: 1_000 })
+  daemon = await startTestDaemon({ tokenizeTimeoutMs: 1_000, faultyTokenizer: true })
   const repo = makeTempRepo(daemon.home)
   const project = await daemon.client.request('project.add', { path: repo })
 
@@ -44,15 +46,6 @@ const tokensOf = (f: WorkspaceDiffFile): DiffLine['tokens'] =>
 const RETRY = 'export const retries = 3\n'
 
 describe('tokenizer worker', () => {
-  it('colours a file through the worker', async () => {
-    fs.writeFileSync(join(ws.path, 'retry.ts'), RETRY)
-
-    const f = await diffFile('retry.ts')
-
-    expect(f.language).toBe('typescript')
-    expect(tokensOf(f).find((t) => t.text === 'const')?.kind).toBe('decl')
-  })
-
   it('gives plain tokens for a file the worker crashes on, and colours the next file', async () => {
     vi.stubEnv('QUE_TEST_TOKENIZER_FAULT', 'throw:QUE_CRASH_4b2d')
     fs.writeFileSync(join(ws.path, 'crash.ts'), "export const marker = 'QUE_CRASH_4b2d'\n")

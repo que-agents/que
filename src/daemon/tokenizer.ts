@@ -6,7 +6,7 @@
 // worker is replaced on the next request.
 import { Worker } from 'node:worker_threads'
 import { plainFile, type TokenizedFile } from './syntax'
-import type { TokenizeRequest } from './highlight-worker'
+import type { TokenizeRequest, TokenizeResponse } from './highlight-worker'
 
 /** How long one file may take, queueing included, before it is answered plain. */
 export const TOKENIZE_TIMEOUT_MS = 5_000
@@ -88,7 +88,7 @@ export class Tokenizer {
     }
 
     worker.unref()
-    worker.on('message', (msg: { id: number; result: TokenizedFile }) => {
+    worker.on('message', (msg: TokenizeResponse) => {
       this.settle(msg.id, msg.result)
     })
     worker.on('error', (err) => this.opts.log?.(`tokenizer: worker error: ${err.message}`))
