@@ -3,7 +3,7 @@
 // daemon uses it directly; highlight.ts, run in the tokenizer worker, adds the
 // grammars, so the daemon bundle never carries them.
 import type { DiffToken, TokenKind } from '../shared/protocol'
-import { splitLines } from './diff-parse'
+import { splitLines } from '../shared/diff-parse'
 
 export interface TokenizedFile {
   /** The language used, null when none (every token is then plain). */

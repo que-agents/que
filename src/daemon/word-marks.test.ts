@@ -75,4 +75,33 @@ describe('markChangeBlocks', () => {
 
     expect(out.map(marked)).toEqual([[], [], []])
   })
+
+  it('keeps an unmarked line as the same object', () => {
+    const lines = [
+      plain('context', 'async function put() {', 1, 1),
+      plain('removed', '  const retries = 1', 2, null),
+      plain('added', '  const retries = 3', null, 2)
+    ]
+
+    const out = markChangeBlocks(lines)
+
+    expect(out[0]).toBe(lines[0])
+    expect(out[1]).not.toBe(lines[1])
+  })
+
+  it('stops marking once the budget for the file is spent', () => {
+    const budget = { chars: 1_000, pairs: 1 }
+
+    const out = markChangeBlocks(
+      [
+        plain('removed', '  const retries = 1', 1, null),
+        plain('removed', '  const timeout = 30', 2, null),
+        plain('added', '  const retries = 3', null, 1),
+        plain('added', '  const timeout = 60', null, 2)
+      ],
+      budget
+    )
+
+    expect(out.map(marked)).toEqual([['1'], [], ['3'], []])
+  })
 })
