@@ -164,6 +164,8 @@ class FakeBridge {
   private pushedBranches = new Set<string>()
   private quiet: QuietState = makeQuietState()
   private usageBook: Usage | null = null
+  /** Methods the daemon's build does not have yet (see withoutMethods). */
+  private unknownMethods = new Set<string>()
   private unlocks: QuietUnlock[] = []
   private unlockRequests: Array<{ minutes?: number; why?: string }> = []
   private configBook: ConfigGetResult = defaultConfigBook()
@@ -243,7 +245,11 @@ class FakeBridge {
         on: (event, cb) => this.subscribe(event, cb as Listener)
       },
       usage: {
-        get: async () => structuredClone(this.usageBook),
+        get: async () => {
+          this.refuseIfUnknown('usage.get')
+
+          return structuredClone(this.usageBook)
+        },
         on: (event, cb) => this.subscribe(event, cb as Listener)
       },
       config: {
@@ -383,6 +389,7 @@ class FakeBridge {
             buildId: this.daemonBook.expectedBuildId,
             stale: false
           }
+          this.unknownMethods.clear()
           this.reconnect()
 
           return { ...this.daemonBook }
@@ -428,7 +435,11 @@ class FakeBridge {
         on: (event, cb) => this.subscribe(event, cb as Listener)
       },
       tickets: {
-        list: async () => this.ticketsResult(),
+        list: async () => {
+          this.refuseIfUnknown('tickets.list')
+
+          return this.ticketsResult()
+        },
         sync: async () => {
           this.ticketSyncs += 1
           this.ticketsSync = { ...this.ticketsSync, lastSyncAt: new Date().toISOString() }
@@ -968,6 +979,19 @@ class FakeBridge {
     this.daemonBook = { ...this.daemonBook, ...state }
   }
 
+  /**
+   * The daemon runs a build from before these methods: they answer unknown_method,
+   * as the previous build does, until daemon.upgrade. Call before render() to seed.
+   */
+  withoutMethods(...methods: string[]): void {
+    for (const m of methods) this.unknownMethods.add(m)
+  }
+
+  private refuseIfUnknown(method: string): void {
+    if (this.unknownMethods.has(method))
+      throw rpcError('unknown_method', `unknown method ${method}`)
+  }
+
   /** Makes the next daemon.upgrade reject with `message`, as a failed handoff does. */
   refuseUpgrade(message: string): void {
     this.upgradeGate.refuse(message)
@@ -1185,6 +1209,7 @@ class FakeBridge {
     this.pushedBranches.clear()
     this.quiet = makeQuietState()
     this.usageBook = null
+    this.unknownMethods.clear()
     this.unlocks = []
     this.unlockRequests = []
     this.configBook = defaultConfigBook()
