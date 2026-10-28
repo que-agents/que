@@ -9,7 +9,7 @@ import { git } from './workspaces'
 
 /** A patch longer than this many characters is reported as null. */
 export const MAX_PATCH_CHARS = 200_000
-const GIT_TIMEOUT_MS = 15_000
+export const GIT_TIMEOUT_MS = 15_000
 
 /** At most this many commits are listed. */
 export const MAX_COMMITS = 200
@@ -221,31 +221,38 @@ export interface DiffOptions {
   commit?: string
 }
 
-type Run = (...args: string[]) => ReturnType<typeof git>
+export type Run = (...args: string[]) => ReturnType<typeof git>
 
-export async function workspaceDiff(
+/** git in the worktree, paths printed as they are (no octal quoting), with diff's timeout. */
+export function gitRunner(ws: Workspace): Run {
+  return (...args) => git(ws.path, ['-c', 'core.quotepath=off', ...args], GIT_TIMEOUT_MS)
+}
+
+/** What a diff compares, resolved from the caller's options. */
+export interface DiffScope {
+  /** The ref compared against. */
+  base: string
+  /** The asked-for base when it was not a commit (`base` is then the default); else null. */
+  rejectedBase: string | null
+  /** What is compared: `HEAD` (with the working tree), or the resolved `head` ref. */
+  tip: string
+  /** The commit narrowed to, as a full sha, or null. */
+  commit: string | null
+  /** The short names of the local and origin branches. */
+  refs: string[]
+}
+
+/**
+ * Resolves the options to a scope. A head or commit that is not on this
+ * branch is a bad request; a base that is not a commit falls back to the
+ * default and is reported as rejected.
+ */
+export async function resolveScope(
+  run: Run,
   ws: Workspace,
   project: Project,
-  now: () => number,
-  opts: DiffOptions = {}
-): Promise<WorkspaceDiff> {
-  const run: Run = (...args) => git(ws.path, ['-c', 'core.quotepath=off', ...args], GIT_TIMEOUT_MS)
-
-  const empty = (base: string): WorkspaceDiff => ({
-    workspaceId: ws.id,
-    base,
-    head: opts.head ?? ws.branch,
-    commitsAhead: 0,
-    commits: [],
-    bases: [base],
-    commit: null,
-    files: [],
-    rejectedBase: null,
-    generatedAt: new Date(now()).toISOString()
-  })
-
-  if (!fs.existsSync(ws.path)) return empty(ws.baseRef)
-
+  opts: DiffOptions
+): Promise<DiffScope> {
   // An asked-for commit is checked, so a bad one is an error rather than an empty diff.
   const resolveCommit = async (ref: string): Promise<string | null> => {
     if (ref.startsWith('-')) return null
@@ -273,16 +280,16 @@ export async function workspaceDiff(
     return (await resolveCommit(base)) === null ? null : base
   }
 
-  const [tip, requested, refs] = await Promise.all([
+  const [tip, requested, listed] = await Promise.all([
     opts.head === undefined ? 'HEAD' : resolveRef(opts.head),
     opts.base === undefined ? null : resolveBase(opts.base),
     run('for-each-ref', '--format=%(refname)', 'refs/heads', 'refs/remotes/origin')
   ])
 
   if (tip === null) throw badRequest(`head ${opts.head} is not a branch here or on origin`)
-  const allRefs = parseRefs(refs.stdout)
+  const refs = parseRefs(listed.stdout)
 
-  const base = requested ?? chooseBase(ws, project, allRefs)
+  const base = requested ?? chooseBase(ws, project, refs)
   const rejectedBase = requested === null && opts.base !== undefined ? opts.base : null
   let commit: string | null = null
 
@@ -301,6 +308,58 @@ export async function workspaceDiff(
     commit = sha
   }
 
+  return { base, rejectedBase, tip, commit, refs }
+}
+
+/**
+ * The two sides a scope's files are compared between: a commit's parent (the
+ * empty tree for a root commit) and the commit; else the merge base and the
+ * head, where a null `to` is the working tree.
+ */
+export async function scopeRange(
+  run: Run,
+  scope: DiffScope,
+  opts: DiffOptions
+): Promise<{ from: string; to: string | null }> {
+  if (scope.commit) {
+    const hasParent = (await run('rev-parse', '--verify', '--quiet', `${scope.commit}^`)).ok
+
+    return { from: hasParent ? `${scope.commit}^` : EMPTY_TREE, to: scope.commit }
+  }
+
+  const mb = await run('merge-base', scope.base, scope.tip)
+  const mergeBase = mb.ok && mb.stdout ? mb.stdout : scope.base
+
+  // Another branch's own changes: committed only, the worktree has nothing to do with it.
+  return { from: mergeBase, to: opts.head === undefined ? null : scope.tip }
+}
+
+export async function workspaceDiff(
+  ws: Workspace,
+  project: Project,
+  now: () => number,
+  opts: DiffOptions = {}
+): Promise<WorkspaceDiff> {
+  const run = gitRunner(ws)
+
+  const empty = (base: string): WorkspaceDiff => ({
+    workspaceId: ws.id,
+    base,
+    head: opts.head ?? ws.branch,
+    commitsAhead: 0,
+    commits: [],
+    bases: [base],
+    commit: null,
+    files: [],
+    rejectedBase: null,
+    generatedAt: new Date(now()).toISOString()
+  })
+
+  if (!fs.existsSync(ws.path)) return empty(ws.baseRef)
+
+  const scope = await resolveScope(run, ws, project, opts)
+  const { base, tip, commit } = scope
+
   try {
     const [counted, log] = await Promise.all([
       run('rev-list', '--count', `${base}..${tip}`),
@@ -308,11 +367,11 @@ export async function workspaceDiff(
     ])
 
     // Never the branch being compared: comparing it against itself shows nothing.
-    const refNames = allRefs.filter((r) => r !== ws.branch && r !== opts.head)
+    const refNames = scope.refs.filter((r) => r !== ws.branch && r !== opts.head)
 
     const result = (files: DiffFile[]): WorkspaceDiff => ({
       ...empty(base),
-      rejectedBase,
+      rejectedBase: scope.rejectedBase,
       commitsAhead:
         counted.ok && Number.isInteger(Number(counted.stdout)) ? Number(counted.stdout) : 0,
       commits: log.ok ? parseLog(log.stdout) : [],
@@ -321,25 +380,16 @@ export async function workspaceDiff(
       files: files.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))
     })
 
-    if (commit) {
-      // That commit's own changes; a root commit is compared with the empty tree.
-      const hasParent = (await run('rev-parse', '--verify', '--quiet', `${commit}^`)).ok
+    const range = await scopeRange(run, scope, opts)
 
-      return result(await listFiles(run, [hasParent ? `${commit}^` : EMPTY_TREE, commit]))
-    }
-
-    const mb = await run('merge-base', base, tip)
-    const mergeBase = mb.ok && mb.stdout ? mb.stdout : base
-
-    // Another branch's own changes: committed only, the worktree has nothing to do with it.
-    if (opts.head !== undefined) return result(await listFiles(run, [mergeBase, tip]))
+    if (range.to !== null) return result(await listFiles(run, [range.from, range.to]))
 
     const [status, others] = await Promise.all([
       run('status', '--porcelain'),
       run('ls-files', '--others', '--exclude-standard')
     ])
 
-    const files = await listFiles(run, [mergeBase], parsePorcelainPaths(status.stdout))
+    const files = await listFiles(run, [range.from], parsePorcelainPaths(status.stdout))
 
     const seen = new Set(files.map((f) => f.path))
     const untracked = others.stdout.split('\n').filter((p) => p && !seen.has(p))
