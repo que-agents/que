@@ -113,4 +113,16 @@ describe('Lru', () => {
 
     expect([lru.get('a'), lru.get('b'), lru.get('c')]).toEqual([1, undefined, 3])
   })
+
+  it('bounds the summed weight of its entries and keeps none heavier than the bound', () => {
+    const lru = new Lru<string>(10, (v) => v.length)
+    lru.set('put.ts', 'xxxxxx')
+    lru.set('retry.ts', 'yyyy')
+    lru.set('backoff.ts', 'zzz')
+    lru.set('huge.ts', 'w'.repeat(11))
+
+    const kept = ['put.ts', 'retry.ts', 'backoff.ts', 'huge.ts'].map((k) => lru.get(k))
+
+    expect(kept).toEqual([undefined, 'yyyy', 'zzz', undefined])
+  })
 })

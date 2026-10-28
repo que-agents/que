@@ -5,8 +5,8 @@
 import { createHash } from 'node:crypto'
 import fs from 'node:fs'
 import { join } from 'node:path'
+import { isBinaryPatch, parseHunks, type RawLine, splitLines } from '../shared/diff-parse'
 import type {
-  DiffFile,
   DiffHunk,
   DiffLine,
   DiffToken,
@@ -14,22 +14,20 @@ import type {
   WorkspaceDiffFileParams
 } from '../shared/protocol'
 import type { Project, Workspace } from '../shared/types'
-import { run as exec } from '../shared/exec'
 import {
   type DiffOptions,
-  GIT_TIMEOUT_MS,
   gitRunner,
-  parseNameStatus,
+  parseBatchCheck,
   parseNumstat,
+  parseRawDiff,
   resolveScope,
   scopeRange
 } from './diff'
-import { isBinaryPatch, parseHunks, type RawLine, splitLines } from './diff-parse'
 import { badRequest, notFound } from './errors'
 import { insideWorktree } from './files'
-import { languageFor } from './syntax'
-import type { Tokenizer } from './tokenizer'
-import { markChangeBlocks } from './word-marks'
+import { languageFor, type TokenizedFile } from './syntax'
+import type { Tokenizer, TokenizeResult } from './tokenizer'
+import { markBudget, markChangeBlocks } from './word-marks'
 
 /** Both sides at most this many lines (and FULL_CONTEXT_CHARS) get whole-file context. */
 export const FULL_CONTEXT_LINES = 5_000
@@ -38,65 +36,109 @@ export const FULL_CONTEXT_CHARS = 400_000
 /** Either side larger than this many bytes is not diffed at all. */
 export const MAX_FILE_BYTES = 2 * 1024 * 1024
 
-/** Results kept for unchanged files. */
-const CACHE_ENTRIES = 200
+/** Results kept for unchanged files, bounded by their lines in all. */
+const RESULT_CACHE_LINES = 250_000
 
-/** The file-level part of a result: everything but the scope it was asked in. */
-type FileDiff = Pick<
-  WorkspaceDiffFile,
-  | 'path'
-  | 'from'
-  | 'status'
-  | 'whitespace'
-  | 'fullContext'
-  | 'language'
-  | 'skipped'
-  | 'additions'
-  | 'deletions'
-  | 'hunks'
+/** Tokenized sides kept, bounded by their lines in all. */
+const SIDE_CACHE_LINES = 250_000
+
+/** The file-level part of a result: everything but the scope it was asked in. Shared by the cache: never changed. */
+type FileDiff = Readonly<
+  Pick<
+    WorkspaceDiffFile,
+    | 'path'
+    | 'from'
+    | 'status'
+    | 'whitespace'
+    | 'fullContext'
+    | 'language'
+    | 'skipped'
+    | 'additions'
+    | 'deletions'
+    | 'hunks'
+  >
 >
 
-/** A small least-recently-used map. */
+/** A least-recently-used map bounded by the summed weight of its entries. */
 export class Lru<V> {
-  private readonly map = new Map<string, V>()
+  private readonly map = new Map<string, { value: V; weight: number }>()
+  private total = 0
 
-  constructor(private readonly limit: number) {}
+  constructor(
+    private readonly maxWeight: number,
+    private readonly weigh: (value: V) => number = () => 1
+  ) {}
 
   get(key: string): V | undefined {
-    const v = this.map.get(key)
+    const entry = this.map.get(key)
 
-    if (v === undefined) return undefined
+    if (entry === undefined) return undefined
     this.map.delete(key)
-    this.map.set(key, v)
+    this.map.set(key, entry)
 
-    return v
+    return entry.value
   }
 
-  set(key: string, v: V): void {
-    this.map.delete(key)
-    this.map.set(key, v)
+  /** Keeps `value`, dropping the least recently used entries past the bound; one heavier than the bound is not kept. */
+  set(key: string, value: V): void {
+    this.drop(key)
+    const weight = Math.max(1, this.weigh(value))
 
-    while (this.map.size > this.limit) {
+    if (weight > this.maxWeight) return
+    this.map.set(key, { value, weight })
+    this.total += weight
+
+    while (this.total > this.maxWeight) {
       const oldest = this.map.keys().next()
 
       if (oldest.done) break
-      this.map.delete(oldest.value)
+      this.drop(oldest.value)
     }
+  }
+
+  private drop(key: string): void {
+    const entry = this.map.get(key)
+
+    if (!entry) return
+    this.map.delete(key)
+    this.total -= entry.weight
   }
 }
 
-const cache = new Lru<FileDiff>(CACHE_ENTRIES)
+const results = new Lru<FileDiff>(RESULT_CACHE_LINES, (f) =>
+  f.hunks.reduce((n, h) => n + h.lines.length, 0)
+)
 
-/** git without trimming its output: file contents and diffs keep their edge whitespace. */
-async function gitRaw(ws: Workspace, args: string[]): Promise<{ ok: boolean; stdout: string }> {
-  const r = await exec('git', ['-c', 'core.quotepath=off', ...args], {
-    cwd: ws.path,
-    timeoutMs: GIT_TIMEOUT_MS,
-    maxBuffer: 4 * MAX_FILE_BYTES,
-    env: { ...process.env, GIT_TERMINAL_PROMPT: '0' }
-  })
+const sides = new Lru<TokenizedFile>(SIDE_CACHE_LINES, (t) => t.lines.length)
 
-  return { ok: r.ok, stdout: r.stdout }
+const sideKey = (id: string, language: string | null): string => `${id}\0${language ?? ''}`
+
+/**
+ * A file side tokenized earlier for workspace.diffFile, by its id (a git blob
+ * id, or `worktree:<sha1 of the content>` for a working-tree file) and
+ * language; undefined when it is not cached. Shared: never change it.
+ */
+export function cachedSideTokens(id: string, language: string | null): TokenizedFile | undefined {
+  return sides.get(sideKey(id, language))
+}
+
+async function tokenizeSide(
+  tokenizer: Tokenizer,
+  id: string | null,
+  text: string,
+  language: string | null
+): Promise<TokenizeResult> {
+  const key = id === null ? null : sideKey(id, language)
+  const hit = key === null ? undefined : sides.get(key)
+
+  if (hit) return { ...hit, degraded: false }
+  const result = await tokenizer.tokenizeFile(text, language)
+
+  if (key !== null && !result.degraded) {
+    sides.set(key, { language: result.language, lines: result.lines })
+  }
+
+  return result
 }
 
 /** Whole-file context fits when both sides are small. */
@@ -106,96 +148,83 @@ export function fitsFullContext(before: string, after: string): boolean {
   )
 }
 
-/** Lays each raw line's tokens on from the tokenized sides; a line they disagree with is plain. */
+/** True when the tokens spell exactly `text`. */
+function spells(tokens: readonly DiffToken[], text: string): boolean {
+  let at = 0
+
+  for (const t of tokens) {
+    if (!text.startsWith(t.text, at)) return false
+    at += t.text.length
+  }
+
+  return at === text.length
+}
+
+/**
+ * Lays each raw line's tokens on from the tokenized sides, sharing their token
+ * arrays; a line neither side spells is one plain token.
+ */
 export function tokenizeHunkLines(
   lines: readonly RawLine[],
   before: readonly DiffToken[][],
   after: readonly DiffToken[][]
 ): DiffLine[] {
-  const fits = (tokens: readonly DiffToken[] | undefined, text: string): boolean =>
-    tokens !== undefined && tokens.map((t) => t.text).join('') === text
-
   return lines.map((l) => {
     const fromNew = l.new === null ? undefined : after[l.new - 1]
     const fromOld = l.old === null ? undefined : before[l.old - 1]
     // A context line under -w may differ in whitespace from one side: whichever matches.
     const preferred = l.kind === 'removed' ? [fromOld] : [fromNew, fromOld]
-    const tokens = preferred.find((t) => fits(t, l.text))
+    const tokens = preferred.find((t) => t !== undefined && spells(t, l.text))
 
     return {
       kind: l.kind,
       old: l.old,
       new: l.new,
-      tokens: tokens
-        ? tokens.map((t) => ({ ...t }))
-        : l.text === ''
-          ? []
-          : [{ text: l.text, kind: 'plain' as const }]
+      tokens: tokens ?? (l.text === '' ? [] : [{ text: l.text, kind: 'plain' }])
     }
   })
 }
 
-/** The structured hunks of a patch, tokens laid on and word marks set. */
+/** The structured hunks of a patch, tokens laid on and word marks set (within one budget for the file). */
 export function buildHunks(
   patch: string,
   before: readonly DiffToken[][],
   after: readonly DiffToken[][]
 ): DiffHunk[] {
+  const budget = markBudget()
+
   return parseHunks(patch).map((h) => ({
     oldStart: h.oldStart,
     oldLines: h.oldLines,
     newStart: h.newStart,
     newLines: h.newLines,
     label: h.label,
-    lines: markChangeBlocks(tokenizeHunkLines(h.lines, before, after))
+    lines: markChangeBlocks(tokenizeHunkLines(h.lines, before, after), budget)
   }))
 }
 
-interface Side {
-  /** A git blob id, or a content hash for a worktree file; null when the side is absent. */
-  id: string | null
-  size: number
-  /** Reads the content; only called once the size is known to be under the cap. */
-  read: () => Promise<string>
-}
-
-const ABSENT: Side = { id: null, size: 0, read: async () => '' }
-
-async function blobSide(ws: Workspace, rev: string, path: string): Promise<Side> {
-  const run = gitRunner(ws)
-  const id = await run('rev-parse', '--verify', '--quiet', `${rev}:${path}`)
-
-  if (!id.ok || !id.stdout) return ABSENT
-  const size = await run('cat-file', '-s', id.stdout)
-
-  return {
-    id: id.stdout,
-    size: Number(size.stdout) || 0,
-    read: async () => (await gitRaw(ws, ['cat-file', 'blob', id.stdout])).stdout
-  }
-}
-
-async function worktreeSide(ws: Workspace, path: string): Promise<Side> {
+/** A working-tree file: its content id, size, and text (null when over the cap or not a file). */
+async function readWorktreeFile(
+  ws: Workspace,
+  path: string
+): Promise<{ id: string | null; size: number; text: string } | null> {
   const file = join(ws.path, path)
-  let size: number
 
   try {
     const stat = await fs.promises.stat(file)
 
-    if (!stat.isFile()) return ABSENT
-    size = stat.size
+    if (!stat.isFile()) return null
+
+    if (stat.size > MAX_FILE_BYTES) return { id: null, size: stat.size, text: '' }
+    const buf = await fs.promises.readFile(file)
+
+    return {
+      id: `worktree:${createHash('sha1').update(buf).digest('hex')}`,
+      size: buf.length,
+      text: buf.toString('utf8')
+    }
   } catch {
-    return ABSENT
-  }
-
-  if (size > MAX_FILE_BYTES) return { id: null, size, read: async () => '' }
-  const buf = await fs.promises.readFile(file)
-  const text = buf.toString('utf8')
-
-  return {
-    id: `worktree:${createHash('sha1').update(buf).digest('hex')}`,
-    size: buf.length,
-    read: async () => text
+    return null
   }
 }
 
@@ -214,71 +243,73 @@ export async function workspaceDiffFile(
   const whitespace = params.whitespace ?? 'show'
   const opts: DiffOptions = { base: params.base, head: params.head, commit: params.commit }
   const run = gitRunner(ws)
+  const raw = gitRunner(ws, { trim: false, maxBuffer: 4 * MAX_FILE_BYTES })
   const scope = await resolveScope(run, ws, project, opts)
   const range = await scopeRange(run, scope, opts)
   const revs = range.to === null ? [range.from] : [range.from, range.to]
+  const inWorktree = range.to === null
 
-  const names = parseNameStatus((await run('diff', '--name-status', '-M', ...revs)).stdout)
-  let entry: { status: DiffFile['status']; from: string | null } | undefined = names.get(path)
+  // Every changed file's status and blob ids at once; the working-tree file is read meanwhile.
+  const [listing, worktreeFile] = await Promise.all([
+    run('diff', '--raw', '--no-abbrev', '-M', ...revs),
+    inWorktree ? readWorktreeFile(ws, path) : null
+  ])
 
-  if (!entry && range.to === null) {
+  let entry = parseRawDiff(listing.stdout).get(path)
+
+  if (!entry && inWorktree) {
     const others = await run('ls-files', '--others', '--exclude-standard', '--', path)
 
-    if (others.stdout.split('\n').includes(path)) entry = { status: 'untracked', from: null }
+    if (others.stdout.split('\n').includes(path)) {
+      entry = { path, from: null, status: 'untracked', oldId: null, newId: null }
+    }
   }
 
   if (!entry) throw notFound(`${path} has no changes in this diff`)
   const { status, from } = entry
-  const oldPath = from ?? path
-  const isNew = status === 'added' || status === 'untracked'
+  const oldId = entry.oldId
+  const present = status !== 'deleted'
+  const newId = present ? (inWorktree ? (worktreeFile?.id ?? null) : entry.newId) : null
+  const blobs = [oldId, inWorktree ? null : newId].filter((id): id is string => id !== null)
 
-  const [before, after] = await Promise.all([
-    isNew ? ABSENT : blobSide(ws, range.from, oldPath),
-    status === 'deleted'
-      ? ABSENT
-      : range.to === null
-        ? worktreeSide(ws, path)
-        : blobSide(ws, range.to, path)
-  ])
+  const sizes =
+    blobs.length === 0
+      ? new Map<string, number>()
+      : parseBatchCheck(
+          (await gitRunner(ws, { input: `${blobs.join('\n')}\n` })('cat-file', '--batch-check'))
+            .stdout
+        )
 
+  const sizeOf = (id: string | null): number => (id === null ? 0 : (sizes.get(id) ?? 0))
+  const newSize = inWorktree ? (present ? (worktreeFile?.size ?? 0) : 0) : sizeOf(newId)
   const flags = whitespace === 'ignore' ? ['-w'] : []
 
   const diffArgs = (extra: string[]): string[] =>
     status === 'untracked'
-      ? [
-          'diff',
-          '--no-index',
-          '--no-color',
-          '--no-ext-diff',
-          ...flags,
-          ...extra,
+      ? ['diff', '--no-index', '--no-color', '--no-ext-diff', ...flags, ...extra].concat([
           '--',
           '/dev/null',
           path
-        ]
-      : [
-          'diff',
-          '--no-color',
-          '--no-ext-diff',
-          '-M',
-          ...flags,
-          ...extra,
-          ...revs,
-          '--',
-          ...(from ? [from] : []),
-          path
-        ]
+        ])
+      : ['diff', '--no-color', '--no-ext-diff', '-M', ...flags, ...extra, ...revs, '--'].concat(
+          from ? [from, path] : [path]
+        )
 
+  // The cached object is shared, never changed: the scope goes on top of it.
   const scoped = (file: FileDiff): WorkspaceDiffFile => ({
+    ...file,
     workspaceId: ws.id,
     base: scope.base,
     head: params.head ?? ws.branch,
-    commit: scope.commit,
-    ...structuredClone(file)
+    commit: scope.commit
   })
 
   const skippedResult = async (skipped: 'binary' | 'too-large'): Promise<WorkspaceDiffFile> => {
-    const counted = parseNumstat((await gitRaw(ws, diffArgs(['--numstat']))).stdout)[0]
+    // A binary file has no line counts; a too-large one still has git's.
+    const counted =
+      skipped === 'too-large'
+        ? parseNumstat((await raw(...diffArgs(['--numstat']))).stdout)[0]
+        : undefined
 
     return scoped({
       path,
@@ -288,22 +319,26 @@ export async function workspaceDiffFile(
       fullContext: false,
       language: null,
       skipped,
-      additions: skipped === 'binary' ? 0 : (counted?.additions ?? 0),
-      deletions: skipped === 'binary' ? 0 : (counted?.deletions ?? 0),
+      additions: counted?.additions ?? 0,
+      deletions: counted?.deletions ?? 0,
       hunks: []
     })
   }
 
-  if (before.size > MAX_FILE_BYTES || after.size > MAX_FILE_BYTES) {
-    return skippedResult('too-large')
-  }
+  if (sizeOf(oldId) > MAX_FILE_BYTES || newSize > MAX_FILE_BYTES) return skippedResult('too-large')
 
-  const key = JSON.stringify([before.id, after.id, path, from, whitespace])
-  const hit = cache.get(key)
+  const key = JSON.stringify([oldId, newId, path, from, whitespace])
+  const hit = results.get(key)
 
   if (hit) return scoped(hit)
 
-  const [oldText, newText] = await Promise.all([before.read(), after.read()])
+  const readBlob = async (id: string | null): Promise<string> =>
+    id === null ? '' : (await raw('cat-file', 'blob', id)).stdout
+
+  const [oldText, newText] = await Promise.all([
+    readBlob(oldId),
+    inWorktree ? (present ? (worktreeFile?.text ?? '') : '') : readBlob(newId)
+  ])
 
   if (oldText.includes('\0') || newText.includes('\0')) return skippedResult('binary')
   const fullContext = fitsFullContext(oldText, newText)
@@ -312,18 +347,25 @@ export async function workspaceDiffFile(
     ? [`-U${Math.max(splitLines(oldText).length, splitLines(newText).length, 1)}`]
     : []
 
-  const patch = (await gitRaw(ws, diffArgs(context))).stdout
-
-  if (isBinaryPatch(patch)) return skippedResult('binary')
   const language = languageFor(path)
 
-  const [oldTokens, newTokens] = await Promise.all([
-    tokenizer.tokenizeFile(oldText, language),
-    tokenizer.tokenizeFile(newText, language)
+  const [patch, oldTokens, newTokens] = await Promise.all([
+    raw(...diffArgs(context)).then((r) => r.stdout),
+    tokenizeSide(tokenizer, oldId, oldText, language),
+    tokenizeSide(tokenizer, newId, newText, language)
   ])
 
+  if (isBinaryPatch(patch)) return skippedResult('binary')
   const hunks = buildHunks(patch, oldTokens.lines, newTokens.lines)
-  const lines = hunks.flatMap((h) => h.lines)
+  let additions = 0
+  let deletions = 0
+
+  for (const h of hunks) {
+    for (const l of h.lines) {
+      if (l.kind === 'added') additions += 1
+      else if (l.kind === 'removed') deletions += 1
+    }
+  }
 
   const file: FileDiff = {
     path,
@@ -333,13 +375,13 @@ export async function workspaceDiffFile(
     fullContext,
     language: newTokens.language ?? oldTokens.language,
     skipped: null,
-    additions: lines.filter((l) => l.kind === 'added').length,
-    deletions: lines.filter((l) => l.kind === 'removed').length,
+    additions,
+    deletions,
     hunks
   }
 
   // A result coloured plain because the tokenizer failed is not kept: the next ask tries again.
-  if (!oldTokens.degraded && !newTokens.degraded) cache.set(key, file)
+  if (!oldTokens.degraded && !newTokens.degraded) results.set(key, file)
 
   return scoped(file)
 }
