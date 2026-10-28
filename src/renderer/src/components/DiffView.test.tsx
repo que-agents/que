@@ -31,7 +31,7 @@ function seed(files = [retryTs, readme]): void {
 async function openFirstDiff(user: ReturnType<typeof userEvent.setup>): Promise<HTMLElement> {
   render(<App />)
   await openWorkspace(user, retry.id)
-  await user.click(screen.getByTestId('topbar-review'))
+  await user.click(screen.getByRole('button', { name: 'Show review' }))
   await user.click(await screen.findByTestId('changes-file-0'))
 
   return within(screen.getByTestId('pane-0')).findByTestId('diff-view')
@@ -343,7 +343,7 @@ describe('DiffView', () => {
       seed()
       const first = render(<App />)
       await openWorkspace(user, retry.id)
-      await user.click(screen.getByTestId('topbar-review'))
+      await user.click(screen.getByRole('button', { name: 'Show review' }))
       await user.click(await screen.findByTestId('changes-file-0'))
       await user.click(await screen.findByRole('button', { name: 'Split' }))
 
@@ -361,7 +361,7 @@ describe('DiffView', () => {
       seed()
       const first = render(<App />)
       await openWorkspace(user, retry.id)
-      await user.click(screen.getByTestId('topbar-review'))
+      await user.click(screen.getByRole('button', { name: 'Show review' }))
       await user.click(await screen.findByTestId('changes-file-0'))
       await screen.findByTestId('diff-patch')
       expect(fakeBridge.diffFileCalls().at(-1)).toMatchObject({ whitespace: 'show' })
@@ -584,7 +584,7 @@ describe('DiffView', () => {
       seedComments(invoices)
       const first = render(<App />)
       await openWorkspace(user, retry.id)
-      await user.click(screen.getByTestId('topbar-review'))
+      await user.click(screen.getByRole('button', { name: 'Show review' }))
       await user.click(await screen.findByTestId('changes-file-0'))
       const patch = await screen.findByTestId('diff-patch')
 

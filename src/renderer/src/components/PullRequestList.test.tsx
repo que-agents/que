@@ -91,7 +91,7 @@ function seed(prs: PullRequest[] = stack): void {
 async function openList(user: ReturnType<typeof userEvent.setup>): Promise<HTMLElement> {
   render(<App />)
   await openWorkspace(user, ID)
-  await user.click(screen.getByRole('button', { name: 'Review pane' }))
+  await user.click(screen.getByRole('button', { name: 'Show review' }))
   await user.click(screen.getByRole('tab', { name: 'Pull requests' }))
 
   return screen.findByTestId('pr-list')

@@ -42,7 +42,7 @@ function seed(files = [put, readme]): void {
 async function openChanges(user: ReturnType<typeof userEvent.setup>): Promise<string> {
   render(<App now={now} />)
   const termId = await openWorkspace(user, retry.id)
-  await user.click(screen.getByRole('button', { name: 'Review pane' }))
+  await user.click(screen.getByRole('button', { name: 'Show review' }))
 
   return termId
 }
@@ -595,7 +595,7 @@ describe('ChangesList', () => {
       await openChanges(user)
       await user.click(await screen.findByTestId('changes-file-1'))
       const view = within(screen.getByTestId('pane-0')).getByTestId('diff-view')
-      await user.click(screen.getByRole('button', { name: 'Review pane' }))
+      await user.click(screen.getByRole('button', { name: 'Hide review' }))
       await waitFor(() => {
         expect(screen.queryByTestId('changes-file-0')).not.toBeInTheDocument()
       })
@@ -661,7 +661,7 @@ describe('ChangesList', () => {
       fakeBridge.changeWorkspace(retry.id)
 
       expect(fakeBridge.diffCalls()).toHaveLength(0)
-      await user.click(screen.getByRole('button', { name: 'Review pane' }))
+      await user.click(screen.getByRole('button', { name: 'Show review' }))
       expect(await screen.findByTestId('changes-file-0')).toHaveAttribute(
         'data-path',
         'src/upload/put.ts'

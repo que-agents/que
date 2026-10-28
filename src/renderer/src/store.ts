@@ -70,6 +70,11 @@ const DEFAULT_ROWS = 24
 /** The loose terminals (not in any workspace) share this key. */
 export const SCRATCH = ''
 
+/** The key is a workspace's (not the loose sessions', nor one gone from the list). */
+export function isWorkspace(s: QueState, key: string | null): boolean {
+  return key !== null && key !== SCRATCH && key in s.workspaces
+}
+
 export interface TermTab {
   id: string
   name: string
@@ -958,6 +963,15 @@ export class QueStore {
   openPullRequest(key: string, number: number): void {
     this.setPlace(key, { view: 'prs', pr: number })
     this.ensureReview(key)
+  }
+
+  /**
+   * Opens the pane on a view for a workspace; on the view it was last on, an open pull request
+   * stays in place.
+   */
+  showReview(key: string, view: ReviewView): void {
+    if (this.reviewPlace(key).view !== view) this.setReviewView(key, view)
+    this.openReview()
   }
 
   /** Back from a pull request to the list. */

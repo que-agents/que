@@ -176,7 +176,7 @@ function seedNotes(): void {
 async function openDetail(user: ReturnType<typeof userEvent.setup>): Promise<HTMLElement> {
   render(<App now={() => NOW} />)
   await openWorkspace(user, ID)
-  await user.click(screen.getByRole('button', { name: 'Review pane' }))
+  await user.click(screen.getByRole('button', { name: 'Show review' }))
   await user.click(screen.getByRole('tab', { name: 'Pull requests' }))
   await user.click(await screen.findByTestId('pr-row-188'))
 

@@ -1,6 +1,7 @@
 // The review pane, a full-height column at the right of the window: its 40px strip (three view
 // icons with their counts, or a pull request's back link; the view's own buttons at its right
-// end), the resizer on its left edge, and its state from the test hook.
+// end, then the hide chevron), the resizer on its left edge, and its state from the test hook.
+// Folded, it is a 40px rail: the show chevron at its top, the view icons stacked under it.
 import type { Locator, Page } from '@playwright/test'
 
 export interface ReviewState {
@@ -24,6 +25,10 @@ export class ReviewPage {
   back: Locator
   resizer: Locator
   empty: Locator
+  hide: Locator
+  rail: Locator
+  show: Locator
+  railChanges: Locator
 
   constructor(page: Page) {
     this.page = page
@@ -37,6 +42,10 @@ export class ReviewPage {
     this.back = page.getByTestId('review-back')
     this.resizer = page.getByTestId('review-resizer')
     this.empty = page.getByTestId('review-empty')
+    this.hide = page.getByTestId('review-hide')
+    this.rail = page.getByTestId('review-rail')
+    this.show = page.getByTestId('review-show')
+    this.railChanges = page.getByTestId('review-rail-changes')
   }
 
   // The pane as the renderer's test hook reports it.

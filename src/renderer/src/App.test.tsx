@@ -102,18 +102,18 @@ describe('App', () => {
       fakeBridge.seedWorkspace(retry)
       render(<App />)
       await user.click(await screen.findByTestId(`sidebar-workspace-${retry.id}-open`))
-      const toggle = await screen.findByRole('button', { name: 'Review pane' })
+      expect(await screen.findByTestId('review-rail')).toBeInTheDocument()
 
       await user.keyboard('{Meta>}b{/Meta}')
 
       expect(screen.getByTestId('review-pane')).toHaveAttribute('data-view', 'changes')
-      expect(toggle).toHaveAttribute('aria-pressed', 'true')
+      expect(screen.queryByTestId('review-rail')).not.toBeInTheDocument()
       await user.click(screen.getByRole('tab', { name: 'Pull requests' }))
 
       await user.keyboard('{Meta>}b{/Meta}')
 
       expect(screen.queryByTestId('review-pane')).not.toBeInTheDocument()
-      expect(toggle).toHaveAttribute('aria-pressed', 'false')
+      expect(screen.getByTestId('review-rail')).toBeInTheDocument()
 
       await user.keyboard('{Meta>}b{/Meta}')
 
@@ -127,7 +127,7 @@ describe('App', () => {
       fakeBridge.seedWorkspace(retry)
       render(<App />)
       await user.click(await screen.findByTestId(`sidebar-workspace-${retry.id}-open`))
-      await user.click(await screen.findByRole('button', { name: 'Review pane' }))
+      await user.click(await screen.findByRole('button', { name: 'Show review' }))
       await user.click(screen.getByRole('button', { name: 'New workspace in uploader' }))
       expect(screen.getByRole('dialog')).toBeInTheDocument()
 
@@ -302,7 +302,7 @@ describe('App', () => {
       fakeBridge.seedWorkspace(retry)
       render(<App />)
       await user.click(await screen.findByTestId(`sidebar-workspace-${retry.id}-open`))
-      await user.click(await screen.findByRole('button', { name: 'Review pane' }))
+      await user.click(await screen.findByRole('button', { name: 'Show review' }))
       expect(await screen.findByRole('button', { name: 'Open in editor' })).toBeEnabled()
 
       fakeBridge.disconnect()
@@ -312,7 +312,6 @@ describe('App', () => {
       })
 
       for (const name of [
-        'Review pane',
         'Refresh',
         'New terminal',
         'Split beside',

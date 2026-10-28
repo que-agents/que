@@ -48,7 +48,7 @@ async function openFiles(user: ReturnType<typeof userEvent.setup>): Promise<stri
   await waitFor(() => {
     expect(pane.dataset.activeTerm).not.toBe('')
   })
-  await user.click(screen.getByTestId('topbar-review'))
+  await user.click(screen.getByRole('button', { name: 'Show review' }))
   await user.click(screen.getByTestId('review-view-files'))
   await screen.findByTestId('files-row-8')
 
@@ -377,7 +377,7 @@ describe('FilesTree', () => {
       await openFiles(user)
       await user.click(row('package.json'))
       expect(await screen.findByTestId('file-text')).toHaveTextContent('"name": "uploader"')
-      await user.click(screen.getByTestId('topbar-review'))
+      await user.click(screen.getByRole('button', { name: 'Hide review' }))
       await waitFor(() => {
         expect(screen.queryByTestId('files-tree')).not.toBeInTheDocument()
       })
