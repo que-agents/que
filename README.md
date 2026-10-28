@@ -2,7 +2,7 @@
 
 **Focus when you need it. Your agents keep working.**
 
-![que going quiet: the sessions keep running, the window shows only whether they are running and not stuck, and looking closer takes a reason](docs/images/quiet-mode.gif)
+![que going quiet: the sessions keep running, the window shows only whether they are running and not stuck, and looking closer is a time-boxed unlock](docs/images/quiet-mode.gif)
 
 Coding agents made the work faster, and every tool built around them gives you
 more: more sessions, more parallel tasks, more panes, more pings. None of them
@@ -15,8 +15,8 @@ puts a boundary around them. Choose your hours, or start a quiet hour before a
 meeting, and que goes quiet. Your sessions keep running in their own branches.
 The window shrinks to the one question that matters while you're away: **is it
 running, and is it stuck?** Terminals, diffs and reports stay hidden until the
-quiet ends. You can still look: unlocking takes a reason, lasts a few minutes,
-and shows up in the morning report.
+quiet ends. You can still look: an unlock lasts a few minutes, then quiet comes
+back on its own, and every unlock shows up in the morning report.
 
 It works like putting your phone in a box by the door. Nothing is out of reach;
 reaching for it is a decision now, not a reflex.
@@ -39,9 +39,10 @@ badge and no sound. The daemon enforces it: terminal contents, reports and new
 work are refused to every client, the `que` CLI included, so there is no side
 door.
 
-**When you really need to look.** Click Unlock (or run `que unlock 15 --why
-"deploy check"`). You give a reason, everything comes back for a while (20
-minutes by default), and then it goes quiet again. `que lock` ends it early.
+**When you really need to look.** Click Unlock on the board, or run
+`que unlock 15 --why "deploy check"` to note why. Everything comes back for a
+while (20 minutes by default), then it goes quiet again by itself. `que lock`
+ends it early.
 
 **In the morning.** The report says what the night did: each session's time
 working, the questions it asked, its commits and pull request, what is waiting
@@ -59,7 +60,7 @@ where things are, not scrolling back through terminals to find out.
 - **Review without leaving**: diffs, the workspace's files, and its pull request
   with checks and conversation, side by side with the terminals.
 - **Quiet hours and on-demand quiet**: enforced by the daemon, with a board that
-  shows counts and dots only, and unlocks that take a reason and are logged.
+  shows counts and dots only, and unlocks that are time-boxed and logged.
 - **A morning report**, in the app or with `que report`.
 - **A CLI** for everything the app does, and a menu-bar title (`● 3 ▸ 1 ✕ 0`).
 - **Local**: no account and no server. The terminals, the state and the logs
