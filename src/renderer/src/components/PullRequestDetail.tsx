@@ -227,7 +227,7 @@ export default function PullRequestDetail({
         </header>
         <Fold
           section="files"
-          label="Files"
+          label="Changes"
           right={
             <span data-testid="pr-files-summary">
               {diffEntry?.data ? (

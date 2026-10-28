@@ -118,8 +118,8 @@ remove. The quiet board uses the same tones on a dot or a word, never a badge.
 - A row opens its pull request in place; the strip's left end becomes `‹ #188`, the
   back link. The title at 14px 600, then in mono `● open · #188 ↗ · into <base>` (the
   number is the link, in `--accent`). Three sections follow in this order, each folding at
-  its head (a chevron and `[ FILES ]`, the fold kept for every pull request this session), dashed rules
-  between: `[ FILES ]` with `+a −d · n · vs <base>`, the pull request's own committed
+  its head (a chevron and `[ CHANGES ]`, the fold kept for every pull request this session), dashed rules
+  between: `[ CHANGES ]` with `+a −d · n · vs <base>`, the pull request's own committed
   files against its base, rows like Changes; `[ CHECKS ]` with `k failing · m passing`,
   the failing runs first (dot, name, source dim, duration, a link on hover), then the
   running and skipped ones, the passing ones folded into one mono line (`n passing · their
