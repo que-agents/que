@@ -412,7 +412,7 @@ describe('DiffView', () => {
       seed()
       const first = render(<App />)
       await openWorkspace(user, retry.id)
-      await user.click(screen.getByTestId('topbar-review'))
+      await user.click(screen.getByRole('button', { name: 'Show review' }))
       await user.click(await screen.findByTestId('changes-file-0'))
       await user.click(await screen.findByRole('button', { name: 'Wrap' }))
 
