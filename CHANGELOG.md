@@ -8,6 +8,8 @@ All notable changes to que are recorded here. The format follows
 
 ## [0.2.0] - 2026-10-28
 
+The first published release of que: Claude Code sessions in git worktrees, terminals that outlive the app, and quiet hours that keep you out of them when you need focus. Builds are unsigned for now; the README has the first-launch steps. 0.1.0 was only built locally, so everything since it is listed here.
+
 ### Added
 
 - Refresh on the review pane's Pull requests list checks each pull request with GitHub at once instead of waiting for the next poll; inside a pull request it also fetches the conversation and files again. The icon turns while it works, a failed check shows gh's message under the list's head, and refreshes started together from the app and the CLI share one check. `que ws pr <workspace> --refresh` checks with GitHub too.
@@ -146,4 +148,4 @@ Built and used locally; never published.
 
 [Unreleased]: https://github.com/rquellh/que/compare/v0.2.0...HEAD
 [0.1.0]: https://github.com/rquellh/que/tree/afc5c9f345c965a15703283dc36e1fd7256ff010
-[0.2.0]: https://github.com/rquellh/que/releases/tag/v0.2.0
+[0.2.0]: https://github.com/rquellh/que/compare/afc5c9f345c965a15703283dc36e1fd7256ff010...v0.2.0
