@@ -182,6 +182,8 @@ export default function PullRequestDetail({
   const against = pr && prAgainst(pr)
   const threadEntry = useQueSelector((s) => s.prThreads[keyOf(termKey, number)])
   const checkError = useQueSelector((s) => s.prCheckErrors[termKey])
+  // One line for the pull request: why its conversation failed, else why its check did.
+  const error = threadEntry?.error ?? checkError
 
   const diffEntry = useQueSelector((s) =>
     against ? s.diffs[diffKey(termKey, against)] : undefined
@@ -207,15 +209,9 @@ export default function PullRequestDetail({
 
   return (
     <section className="pr" data-testid="pr-view" data-pr={number} aria-label={`#${number}`}>
-      {threadEntry?.error && (
+      {error && (
         <p className="pr-error form-error" role="alert" data-testid="pr-error">
-          {threadEntry.error}
-        </p>
-      )}
-      {/* A check that failed for the same reason as the conversation says nothing new. */}
-      {checkError && checkError !== threadEntry?.error && (
-        <p className="pr-error form-error" role="alert" data-testid="prs-check-error">
-          {checkError}
+          {error}
         </p>
       )}
       <div className="pr-body">

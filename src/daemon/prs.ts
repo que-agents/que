@@ -141,6 +141,9 @@ function inner<V>(outer: ByWorkspace<V>, id: string): Map<number, V> {
   return map
 }
 
+/** One head's pull requests, or gh's message when listing them failed (logged). */
+type Listing = { prs: GhPullRequest[] } | { error: string }
+
 /** One listing of a project's pull requests, grouped by head branch; `full` when it hit LIST_LIMIT. */
 interface ProjectListing {
   byBranch: Map<string, GhPullRequest[]>
@@ -155,6 +158,8 @@ export class PrService {
   /** Each pull request's last fetched conversation, valid while its updatedAt holds. */
   private threads: ByWorkspace<CachedThread> = new Map()
   private threadFetches: ByWorkspace<Promise<PrThread>> = new Map()
+  /** Each workspace's checkNow while it runs, so callers at the same time share one check. */
+  private checking = new Map<string, Promise<string | null>>()
   /** Each project's origin repository by project path, looked up once (until a lookup fails). */
   private origins = new Map<string, Promise<Repo | null>>()
   /** Conversations waiting to be fetched in the background, and the same as `<workspace id>:<number>`. */
@@ -224,7 +229,14 @@ export class PrService {
    * when a call failed; what the check did settle is stored anyway.
    */
   async checkNow(id: string): Promise<Workspace> {
-    const error = await this.refresh(id)
+    let running = this.checking.get(id)
+
+    if (!running) {
+      running = this.refresh(id).finally(() => this.checking.delete(id))
+      this.checking.set(id, running)
+    }
+
+    const error = await running
 
     if (error !== null) throw ghFailed(error)
 
@@ -378,13 +390,7 @@ export class PrService {
 
   /** Checks a workspace's heads and linked pull requests; the first gh failure's message, else null. */
   private check(ws: Workspace): Promise<string | null> {
-    const errors: string[] = []
-
-    return this.poller.track(
-      this.checkHeads(ws, true, (head) => this.list(ws, head, errors)).then(
-        (error) => errors[0] ?? error
-      )
-    )
+    return this.poller.track(this.checkHeads(ws, true, (head) => this.list(ws, head)))
   }
 
   /**
@@ -416,7 +422,7 @@ export class PrService {
     for (const ws of list) {
       if (this.stopped) return
       await this.checkHeads(ws, due, (head) =>
-        byBranch.has(head) || !full ? (byBranch.get(head) ?? []) : this.list(ws, head)
+        byBranch.has(head) || !full ? { prs: byBranch.get(head) ?? [] } : this.list(ws, head)
       )
     }
   }
@@ -455,42 +461,37 @@ export class PrService {
 
   /**
    * Settles a workspace with the pull requests `listed` finds on each of its heads; none when one
-   * listing failed. Answers the message of a failed lookup of a created pull request, else null.
+   * listing failed. Answers the first gh failure's message, else null.
    */
   private async checkHeads(
     ws: Workspace,
     due: boolean,
-    listed: (head: string) => GhPullRequest[] | Promise<GhPullRequest[] | null>
+    listed: (head: string) => Listing | Promise<Listing | null>
   ): Promise<string | null> {
     const lists = await Promise.all(this.heads(ws).map(async (head) => listed(head)))
     const raw: GhPullRequest[] = []
 
-    for (const prs of lists) {
-      if (prs === null) return null
-      raw.push(...prs)
+    for (const listing of lists) {
+      if (listing === null) return null
+
+      if ('error' in listing) return listing.error
+      raw.push(...listing.prs)
     }
 
     return this.stopped ? null : this.settle(ws, raw, due)
   }
 
-  /**
-   * The pull requests whose head is `branch`; null when gh failed (logged, its message added to
-   * `errors`) or the service stopped.
-   */
-  private async list(
-    ws: Workspace,
-    branch: string,
-    errors: string[] = []
-  ): Promise<GhPullRequest[] | null> {
+  /** The pull requests whose head is `branch`, or why gh failed (logged); null when the service stopped. */
+  private async list(ws: Workspace, branch: string): Promise<Listing | null> {
     try {
       const items = await ghPrList(branch, ws.path, this.poller.signal)
 
-      return this.stopped ? null : decodePullRequests(items)
+      return this.stopped ? null : { prs: decodePullRequests(items) }
     } catch (err) {
-      errors.push(errorMessage(err))
-      this.failed(ws, errorMessage(err))
+      const error = errorMessage(err)
+      this.failed(ws, error)
 
-      return null
+      return { error }
     }
   }
 
