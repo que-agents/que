@@ -2,6 +2,7 @@
   "preReleaseBase": "1",
   "hooks": {
     "after:git:init": "npm run verify",
+    "after:bump": "npm run docs",
     "after:release": "gh pr create --base main --title \"Release v${version}\" --body \"Merging this releases v${version}: the release workflow builds que.app and drafts the release. Publishing the draft creates the tag.\""
   },
   "git": {
