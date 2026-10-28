@@ -104,7 +104,9 @@ Each token is a span with a class per kind (`tok-decl`, `tok-str`, …), a brack
   `components/icons.tsx`, drawn in the current text colour: faint in a ghost
   button, bright on hover. The button carries the accessible name. No icon
   font or library. `button.icon` is 22px square; `button.icon.sm` is the 18px one
-  for a row's own controls.
+  for a row's own controls. A refresh icon turns, bright, while its work runs (one
+  turn in 0.8s) and finishes the turn it is on when the work ends; under reduced
+  motion it holds bright instead.
 - Two panes are divided by a 7px track like the sidebar's: invisible until hover,
   focus or drag, then a 1px accent line. The focused pane's tab strip carries a
   1px accent line at its top; with one pane there is none.
@@ -128,8 +130,9 @@ Each token is a span with a class per kind (`tok-decl`, `tok-str`, …), a brack
   icon (the open and draft pull requests; the changed files); never a dot, since a
   failure shows inside the pane and in the workspace popout. Each icon's name is its
   tooltip and accessible name. The current one reads `--fg` with a 1px `--fg` line under
-  it, the others `--fg-faint`. The view's own buttons (refresh, open in editor) sit at
-  the strip's right end, then the hide chevron. The pane remembers its view per workspace. Each view opens with
+  it, the others `--fg-faint`. The view's own buttons sit at the strip's right end, then
+  the hide chevron: refresh on every view (on Pull requests it checks them with GitHub
+  now) and open in editor. The pane remembers its view per workspace. Each view opens with
   a head: its `[ LABEL ]` at the left, its counts in mono `--fg-faint` at the right.
 - Pull requests lists every pull request the session opened (#192): `[ PULL REQUESTS ]`
   with `n open · k failing` (only `k failing` in `--tone-bad`), then one two-line row
