@@ -163,7 +163,7 @@ describe('PullRequestDetail', () => {
         .filter((b) => b.classList.contains('review-fold'))
 
       expect(heads.map((h) => h.textContent)).toEqual([
-        expect.stringMatching(/^ \[ Files \]/),
+        expect.stringMatching(/^ \[ Changes \]/),
         expect.stringMatching(/^ \[ Checks \]/),
         expect.stringMatching(/^ \[ Comments \]/)
       ])
