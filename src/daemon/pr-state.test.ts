@@ -240,6 +240,114 @@ describe('checkRunsOf', () => {
     expect(pr?.checkRuns.map((c) => c.name)).toEqual(['deploy/preview', 'build'])
   })
 
+  describe('a check that ran again', () => {
+    const names = ['build', 'unit', 'e2e']
+
+    const cancelled = names.map((name) =>
+      run({ name, workflowName: 'CI', conclusion: 'CANCELLED', startedAt: '2026-10-14T15:14:17Z' })
+    )
+
+    const rerun = names.map((name) =>
+      run({ name, workflowName: 'CI', conclusion: 'SUCCESS', startedAt: '2026-10-14T15:20:00Z' })
+    )
+
+    it('keeps only the newest run, so a cancelled run no longer reads failing', () => {
+      const runs = runsOf([...cancelled, ...rerun])
+
+      expect(runs).toHaveLength(3)
+      expect(runs.map((c) => [c.state, c.startedAt])).toEqual(
+        names.map(() => ['passing', '2026-10-14T15:20:00Z'])
+      )
+    })
+
+    it('keeps the newest run wherever it sits in the rollup', () => {
+      expect(runsOf([...rerun, ...cancelled]).map((c) => c.state)).toEqual(
+        names.map(() => 'passing')
+      )
+    })
+
+    it('reads failing when the re-run failed after an earlier success', () => {
+      const pr = parse({
+        statusCheckRollup: [
+          run({ name: 'build', conclusion: 'SUCCESS', startedAt: '2026-10-14T15:14:17Z' }),
+          run({ name: 'build', conclusion: 'FAILURE', startedAt: '2026-10-14T15:20:00Z' })
+        ]
+      })
+
+      expect(pr?.checks).toBe('failing')
+      expect(pr?.checkRuns).toHaveLength(1)
+    })
+
+    it('keeps the same job name under two workflows as two checks', () => {
+      const runs = runsOf([
+        run({ name: 'test', workflowName: 'CI', startedAt: '2026-10-14T15:14:17Z' }),
+        run({ name: 'test', workflowName: 'E2E', startedAt: '2026-10-14T15:20:00Z' }),
+        run({ name: 'test', workflowName: null, startedAt: '2026-10-14T15:21:00Z' })
+      ])
+
+      expect(runs.map((c) => c.source).sort()).toEqual(['CI', 'E2E', null])
+    })
+
+    it('keeps the newest of commit statuses with the same context', () => {
+      const runs = runsOf([
+        ctx({ state: 'SUCCESS', createdAt: '2026-10-14T15:20:00Z' }),
+        ctx({ state: 'FAILURE', createdAt: '2026-10-14T15:14:00Z' })
+      ])
+
+      expect(runs.map((c) => [c.state, c.completedAt])).toEqual([
+        ['passing', '2026-10-14T15:20:00Z']
+      ])
+    })
+
+    it('never mixes a commit status with a check run of the same name', () => {
+      const runs = runsOf([
+        run({ name: 'deploy/preview', startedAt: '2026-10-14T15:20:00Z' }),
+        ctx({ createdAt: '2026-10-14T15:14:00Z' })
+      ])
+
+      expect(runs).toHaveLength(2)
+    })
+
+    it('falls back to the completion time when a run has no start', () => {
+      const runs = runsOf([
+        run({ conclusion: 'SUCCESS', completedAt: '2026-10-14T15:20:00Z' }),
+        run({ conclusion: 'FAILURE', completedAt: '2026-10-14T15:14:00Z' })
+      ])
+
+      expect(runs.map((c) => c.state)).toEqual(['passing'])
+    })
+
+    it('lets the later entry win a tie, equal or both missing', () => {
+      const at = '2026-10-14T15:20:00Z'
+
+      expect(
+        runsOf([
+          run({ conclusion: 'FAILURE', startedAt: at }),
+          run({ conclusion: 'SUCCESS', startedAt: at })
+        ]).map((c) => c.state)
+      ).toEqual(['passing'])
+      expect(
+        runsOf([run({ conclusion: 'SUCCESS' }), run({ conclusion: 'FAILURE' })]).map((c) => c.state)
+      ).toEqual(['failing'])
+    })
+
+    it('lets an entry with a time beat one without, in either order', () => {
+      const timed = run({ conclusion: 'SUCCESS', startedAt: '2026-10-14T15:20:00Z' })
+      const untimed = run({ conclusion: 'FAILURE' })
+
+      expect(runsOf([timed, untimed]).map((c) => c.state)).toEqual(['passing'])
+      expect(runsOf([untimed, timed]).map((c) => c.state)).toEqual(['passing'])
+    })
+
+    it('feeds parsePullRequest a summary and runs of the newest only', () => {
+      const pr = parse({ state: 'OPEN', statusCheckRollup: [...cancelled, ...rerun] })
+
+      expect(pr?.checks).toBe('passing')
+      expect(pr?.checkRuns).toHaveLength(3)
+      expect(pr?.checkRuns.every((c) => c.state === 'passing')).toBe(true)
+    })
+  })
+
   it('summarises skipped-only runs as passing', () => {
     expect(parse({ statusCheckRollup: [run({ conclusion: 'SKIPPED' })] })?.checks).toBe('passing')
   })
