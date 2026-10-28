@@ -39,6 +39,10 @@ jobs:
     name: Check for a release
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    # GitHub shows draft releases only to a token that can write, so with `contents: read`
+    # this check never sees the draft a previous merge made and builds a duplicate.
+    permissions:
+      contents: write
     outputs:
       version: ${{ steps.check.outputs.version }}
       build: ${{ steps.check.outputs.build }}
@@ -47,7 +51,7 @@ jobs:
         with:
           persist-credentials: false
 
-      # `gh release view` finds drafts as well as published releases.
+      # `gh release view` finds drafts as well as published releases, given the write scope above.
       - name: Read the version and look for its release
         id: check
         env:
