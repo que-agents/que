@@ -7,6 +7,7 @@ import type {
   TermInfo,
   UserConfig,
   WorkspaceDiff,
+  WorkspaceDiffFile,
   DiffCommit,
   WorkspaceFiles,
   WorkspaceFile
@@ -93,6 +94,74 @@ export function makeDiffFile(overrides: Partial<DiffFile> = {}): DiffFile {
     dirty: false,
     patch:
       'diff --git a/src/upload/put.ts b/src/upload/put.ts\n--- a/src/upload/put.ts\n+++ b/src/upload/put.ts\n@@ -1,3 +1,4 @@\n-const retries = 1\n+const retries = 3\n+const backoffMs = 250\n export {}\n',
+    ...overrides
+  }
+}
+
+/** One changed file as workspace.diffFile reports it: one line changed, with its word marks. */
+export function makeWorkspaceDiffFile(
+  overrides: Partial<WorkspaceDiffFile> = {}
+): WorkspaceDiffFile {
+  return {
+    workspaceId: 'ws_01hzx3k9c2qf',
+    path: 'src/upload/put.ts',
+    from: null,
+    status: 'modified',
+    base: 'origin/main',
+    head: 'APP-1432-retry-logic',
+    commit: null,
+    whitespace: 'show',
+    fullContext: true,
+    language: 'typescript',
+    skipped: null,
+    additions: 1,
+    deletions: 1,
+    hunks: [
+      {
+        oldStart: 1,
+        oldLines: 2,
+        newStart: 1,
+        newLines: 2,
+        label: '',
+        lines: [
+          {
+            kind: 'removed',
+            old: 1,
+            new: null,
+            tokens: [
+              { text: 'const', kind: 'decl' },
+              { text: ' ', kind: 'plain' },
+              { text: 'retries', kind: 'var' },
+              { text: ' = ', kind: 'punct' },
+              { text: '1', kind: 'num', mark: true }
+            ]
+          },
+          {
+            kind: 'added',
+            old: null,
+            new: 1,
+            tokens: [
+              { text: 'const', kind: 'decl' },
+              { text: ' ', kind: 'plain' },
+              { text: 'retries', kind: 'var' },
+              { text: ' = ', kind: 'punct' },
+              { text: '3', kind: 'num', mark: true }
+            ]
+          },
+          {
+            kind: 'context',
+            old: 2,
+            new: 2,
+            tokens: [
+              { text: 'export', kind: 'ctrl' },
+              { text: ' ', kind: 'plain' },
+              { text: '{', kind: 'punct', depth: 0 },
+              { text: '}', kind: 'punct', depth: 0 }
+            ]
+          }
+        ]
+      }
+    ],
     ...overrides
   }
 }

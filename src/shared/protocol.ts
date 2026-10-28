@@ -204,6 +204,83 @@ export interface DiffFile {
   patch: string | null
 }
 
+/** What a piece of source text is, for colouring; the daemon maps the highlighter's scopes to these. */
+export type TokenKind =
+  | 'decl'
+  | 'ctrl'
+  | 'fn'
+  | 'type'
+  | 'str'
+  | 'num'
+  | 'var'
+  | 'prop'
+  | 'punct'
+  | 'comment'
+  | 'plain'
+
+/** A run of one line's text with one kind. */
+export interface DiffToken {
+  text: string
+  kind: TokenKind
+  /** Nesting depth of a bracket ()[]{} outside strings and comments, 0 = outermost; absent on other tokens. */
+  depth?: number
+  /** True on the part of a changed line that differs from its paired line (word-level). */
+  mark?: true
+}
+
+/** One line of a hunk; its tokens' texts joined are the line's text, without the newline. */
+export interface DiffLine {
+  kind: 'context' | 'added' | 'removed'
+  /** Line number in the old file, null on an added line. */
+  old: number | null
+  /** Line number in the new file, null on a removed line. */
+  new: number | null
+  tokens: DiffToken[]
+}
+
+export interface DiffHunk {
+  oldStart: number
+  oldLines: number
+  newStart: number
+  newLines: number
+  /** git's function context after the @@, '' when none. */
+  label: string
+  lines: DiffLine[]
+}
+
+export interface WorkspaceDiffFileParams {
+  id: string
+  /** The file's path (its new path for a rename), relative to the worktree. */
+  path: string
+  /** Same meaning as workspace.diff's. */
+  base?: string
+  head?: string
+  commit?: string
+  /** 'ignore' compares ignoring whitespace (`git diff -w`); default 'show'. */
+  whitespace?: 'show' | 'ignore'
+}
+
+/** One file's diff as lines of tokens, in the same scopes as workspace.diff. */
+export interface WorkspaceDiffFile {
+  workspaceId: string
+  path: string
+  from: string | null
+  status: DiffFile['status']
+  base: string
+  head: string
+  commit: string | null
+  whitespace: 'show' | 'ignore'
+  /** True when hunks carry the whole file as context, so every unchanged line is present. */
+  fullContext: boolean
+  /** The highlighter language used, null when none matched (tokens are then 'plain'). */
+  language: string | null
+  /** Why there are no hunks: binary, or over the size cap; null otherwise. */
+  skipped: 'binary' | 'too-large' | null
+  additions: number
+  deletions: number
+  hunks: DiffHunk[]
+}
+
 /** One commit on the branch ahead of its base. */
 export interface DiffCommit {
   sha: string
@@ -411,6 +488,11 @@ export interface Methods {
     result: WorkspaceDiff
   }
   /**
+   * One file of workspace.diff's scope as hunks of tokenized lines: syntax kinds from the whole
+   * old and new files, bracket depth, word marks; whole-file context when it fits.
+   */
+  'workspace.diffFile': { params: WorkspaceDiffFileParams; result: WorkspaceDiffFile }
+  /**
    * A pull request's conversation (comments, reviews, line comments): the workspace's pull
    * request `number`; null when it has no such pull request.
    */
@@ -516,6 +598,7 @@ export const METHODS: {
   },
   'workspace.seen': { renderer: true, quiet: false },
   'workspace.diff': { renderer: true, quiet: true },
+  'workspace.diffFile': { renderer: true, quiet: true },
   'workspace.prThread': {
     renderer: true,
     quiet: true

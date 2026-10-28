@@ -22,6 +22,8 @@ import type {
   UserConfig,
   Workspace,
   WorkspaceDiff,
+  WorkspaceDiffFile,
+  WorkspaceDiffFileParams,
   WorkspaceDigest,
   WorkspaceFile,
   WorkspaceFiles,
@@ -43,7 +45,7 @@ import {
 import { removalStep } from '../../../shared/removal'
 import { workspaceSlug } from '../../../shared/slug'
 import type { RemovalFailure, RemovalResult, RemovalStep, Usage } from '../../../shared/types'
-import { makeQuietState, makeUserConfig } from './fixtures'
+import { makeQuietState, makeUserConfig, makeWorkspaceDiffFile } from './fixtures'
 
 export type FakeQueApi = QueApi
 
@@ -583,6 +585,24 @@ class FakeBridge {
 
           return structuredClone(seeded ?? this.defaultDiff(ws))
         },
+        diffFile: async (params) => {
+          this.refuseIfQuiet('workspace.diffFile')
+          const ws = this.workspace(params.id)
+          this.diffFileCallLog.push(structuredClone(params))
+          const whitespace = params.whitespace ?? 'show'
+          const seeded = this.diffFiles.get(keyOf(ws.id, params.path))
+
+          return structuredClone(
+            seeded ??
+              makeWorkspaceDiffFile({
+                workspaceId: ws.id,
+                path: params.path,
+                head: params.head ?? ws.branch,
+                commit: params.commit ?? null,
+                whitespace
+              })
+          )
+        },
         files: async ({ id }) => {
           this.refuseIfQuiet('workspace.files')
           const ws = this.workspace(id)
@@ -1087,6 +1107,19 @@ class FakeBridge {
     return this.diffCallLog.map((c) => ({ ...c }))
   }
 
+  private diffFiles = new Map<string, WorkspaceDiffFile>()
+  private diffFileCallLog: WorkspaceDiffFileParams[] = []
+
+  /** What workspace.diffFile answers for one path of a workspace, in any scope; unseeded paths get a one-line change. */
+  seedDiffFile(file: WorkspaceDiffFile): void {
+    this.diffFiles.set(keyOf(file.workspaceId, file.path), structuredClone(file))
+  }
+
+  /** Every workspace.diffFile call, in order. */
+  diffFileCalls(): WorkspaceDiffFileParams[] {
+    return structuredClone(this.diffFileCallLog)
+  }
+
   private files = new Map<string, WorkspaceFiles>()
   private fileContents = new Map<string, WorkspaceFile>()
   private filesCallLog: string[] = []
@@ -1147,6 +1180,8 @@ class FakeBridge {
     this.headDiffs.clear()
     this.diffFailures.clear()
     this.diffCallLog = []
+    this.diffFiles.clear()
+    this.diffFileCallLog = []
     this.files.clear()
     this.fileContents.clear()
     this.filesCallLog = []

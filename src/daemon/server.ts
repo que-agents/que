@@ -53,6 +53,7 @@ import { StatusService } from './status'
 import { TicketService } from './tickets'
 import { Store } from './store'
 import { workspaceDiff } from './diff'
+import { workspaceDiffFile } from './diff-file'
 import { readWorkspaceFile, workspaceFiles } from './files'
 import {
   sessionEnv,
@@ -897,6 +898,11 @@ export class DaemonServer {
         head: p.head,
         commit: p.commit
       })
+    },
+    'workspace.diffFile': ({ id, ...rest }) => {
+      const ws = this.workspaces.get(id)
+
+      return workspaceDiffFile(ws, this.workspaces.project(ws.projectId), rest)
     },
     'workspace.prThread': (p) => {
       const ws = this.workspaces.get(p.id)
