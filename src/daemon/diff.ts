@@ -4,6 +4,7 @@ import fs from 'node:fs'
 import { join } from 'node:path'
 import type { DiffCommit, DiffFile, WorkspaceDiff } from '../shared/protocol'
 import type { Project, Workspace } from '../shared/types'
+import type { ListedFile } from './comment-lines'
 import { badRequest } from './errors'
 import { git } from './workspaces'
 
@@ -114,7 +115,7 @@ export function mergeListings(
   numstat: NumstatEntry[],
   names: Map<string, { status: DiffFile['status']; from: string | null }>,
   dirty: Set<string>
-): Omit<DiffFile, 'patch'>[] {
+): Omit<ListedFile, 'patch'>[] {
   return numstat.map((n) => {
     const named = names.get(n.path)
 
@@ -320,7 +321,7 @@ export async function scopeRange(
   run: Run,
   scope: DiffScope,
   opts: DiffOptions
-): Promise<{ from: string; to: string | null }> {
+): Promise<DiffRange> {
   if (scope.commit) {
     const hasParent = (await run('rev-parse', '--verify', '--quiet', `${scope.commit}^`)).ok
 
@@ -334,11 +335,22 @@ export async function scopeRange(
   return { from: mergeBase, to: opts.head === undefined ? null : scope.tip }
 }
 
+/** The two sides a scope compares (see scopeRange). */
+export interface DiffRange {
+  from: string
+  /** null: the working tree. */
+  to: string | null
+}
+
+/** Splits each listed file's changed lines into code and comments (diff-file.ts). */
+export type ClassifyFiles = (range: DiffRange, files: ListedFile[]) => Promise<DiffFile[]>
+
 export async function workspaceDiff(
   ws: Workspace,
   project: Project,
   now: () => number,
-  opts: DiffOptions = {}
+  opts: DiffOptions,
+  classify: ClassifyFiles
 ): Promise<WorkspaceDiff> {
   const run = gitRunner(ws)
 
@@ -382,7 +394,9 @@ export async function workspaceDiff(
 
     const range = await scopeRange(run, scope, opts)
 
-    if (range.to !== null) return result(await listFiles(run, [range.from, range.to]))
+    if (range.to !== null) {
+      return result(await classify(range, await listFiles(run, [range.from, range.to])))
+    }
 
     const [status, others] = await Promise.all([
       run('status', '--porcelain'),
@@ -395,7 +409,7 @@ export async function workspaceDiff(
     const untracked = others.stdout.split('\n').filter((p) => p && !seen.has(p))
 
     const extra = await Promise.all(
-      untracked.map(async (path): Promise<DiffFile> => {
+      untracked.map(async (path): Promise<ListedFile> => {
         let text: string | null = null
 
         try {
@@ -405,7 +419,7 @@ export async function workspaceDiff(
           text = null
         }
 
-        const file: DiffFile = {
+        const file: ListedFile = {
           path,
           from: null,
           status: 'untracked',
@@ -422,7 +436,7 @@ export async function workspaceDiff(
       })
     )
 
-    return result([...files, ...extra])
+    return result(await classify(range, [...files, ...extra]))
   } catch {
     return empty(ws.baseRef)
   }
@@ -438,7 +452,7 @@ async function listFiles(
   run: Run,
   range: string[],
   dirty = new Set<string>()
-): Promise<DiffFile[]> {
+): Promise<ListedFile[]> {
   const [numstat, names, full] = await Promise.all([
     run('diff', '--numstat', '-M', ...range),
     run('diff', '--name-status', '-M', ...range),
@@ -458,7 +472,7 @@ async function listFiles(
   }
 
   return Promise.all(
-    listed.map(async (f): Promise<DiffFile> => {
+    listed.map(async (f): Promise<ListedFile> => {
       if (binary.has(f.path)) return { ...f, patch: null }
 
       const args = f.from

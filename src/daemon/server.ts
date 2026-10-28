@@ -53,7 +53,7 @@ import { StatusService } from './status'
 import { TicketService } from './tickets'
 import { Store } from './store'
 import { workspaceDiff } from './diff'
-import { workspaceDiffFile } from './diff-file'
+import { classifyComments, workspaceDiffFile } from './diff-file'
 import { Tokenizer } from './tokenizer'
 import { tokenizerWorkerFrom } from '../shared/packaged'
 import { readWorkspaceFile, workspaceFiles } from './files'
@@ -99,6 +99,8 @@ export interface ServerOptions {
   tokenizerWorker?: string
   /** How long tokenizing one file may take before it is answered plain. Default 5 s. */
   tokenizeTimeoutMs?: number
+  /** How long workspace.diff waits for its comment split. Default CLASSIFY_BUDGET_MS. */
+  classifyBudgetMs?: number
 }
 
 interface Subscription {
@@ -184,7 +186,7 @@ export class DaemonServer {
   readonly watcher = new WorktreeWatcher((id) => void this.worktreeChanged(id), {
     log: (m) => this.log(m)
   })
-  /** Tokenizes files for workspace.diffFile on a worker thread, never this one. */
+  /** Tokenizes files for workspace.diffFile and workspace.diff's comment split on a worker thread, never this one. */
   private readonly tokenizer: Tokenizer
 
   constructor(private opts: ServerOptions) {
@@ -907,11 +909,18 @@ export class DaemonServer {
     'workspace.diff': (p) => {
       const ws = this.workspaces.get(p.id)
 
-      return workspaceDiff(ws, this.workspaces.project(ws.projectId), Date.now, {
-        base: p.base,
-        head: p.head,
-        commit: p.commit
-      })
+      return workspaceDiff(
+        ws,
+        this.workspaces.project(ws.projectId),
+        Date.now,
+        { base: p.base, head: p.head, commit: p.commit },
+        // Splits that miss the answer land in the cache: clients asking again get them.
+        (range, files) =>
+          classifyComments(ws, range, files, this.tokenizer, {
+            budgetMs: this.opts.classifyBudgetMs,
+            onLate: () => this.bus.emit('workspace.changed', { id: ws.id })
+          })
+      )
     },
     'workspace.diffFile': ({ id, ...rest }) => {
       const ws = this.workspaces.get(id)
