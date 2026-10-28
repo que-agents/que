@@ -221,6 +221,8 @@ export interface WorkspaceApi {
   diffFile(params: WorkspaceDiffFileParams): Promise<WorkspaceDiffFile>
   /** Pull request `number`'s conversation: comments, reviews, line comments. Null when the workspace has no such PR. Refused in quiet hours. */
   prThread(params: { id: string; number: number; refresh?: boolean }): Promise<PrThread | null>
+  /** Check the workspace's pull requests with GitHub now; workspace.updated carries what changed. Rejects with gh's message when it fails. Refused in quiet hours. */
+  checkPrs(params: { id: string }): Promise<Workspace>
   /** Every tracked and untracked file of the worktree, sorted; never the ignored ones. Refused in quiet hours. */
   files(params: { id: string }): Promise<WorkspaceFiles>
   /** One file of the worktree for the file view; the path is relative and must stay inside the worktree. Refused in quiet hours. */

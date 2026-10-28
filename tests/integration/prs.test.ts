@@ -10,6 +10,7 @@ import type { HookEvent } from '@shared/protocol'
 import { recordEvents, startTestDaemon, type TestDaemon } from '../../src/testing/daemon-harness'
 import {
   addFakePullRequest,
+  fakeCheckRun,
   readFakeLog,
   readFakePullRequests,
   setFakePullRequest
@@ -337,6 +338,78 @@ describe('pull request tracking', () => {
       // The draft's arrival shows a check ran after the detach.
       await expect.poll(async () => (await prOf(ws.id))?.state, opts).toBe('draft')
       expect((await client.request('workspace.get', { id: ws.id })).branch).toBe(ws.branch)
+    }, 30_000)
+  })
+})
+
+describe('workspace.checkPrs', () => {
+  // The poll is slowed to an hour, so only a check asked for can update a pull request.
+  beforeEach(async () => {
+    await daemon.close()
+    daemon = await startTestDaemon({ config: 'pr_poll_seconds = 3600\n' })
+    client = daemon.client
+  })
+
+  afterEach(() => {
+    vi.unstubAllEnvs()
+  })
+
+  it('checks the pull requests with GitHub now and announces what changed', async () => {
+    const ws = await workspace()
+    const pending = [fakeCheckRun({ name: 'unit tests', status: 'IN_PROGRESS' })]
+    setFakePullRequest(daemon.ghPrs, ws.branch, { isDraft: false, statusCheckRollup: pending })
+    const first = await client.request('workspace.checkPrs', { id: ws.id })
+    expect(first.prs[0]?.checks).toBe('pending')
+
+    const updates = recordEvents(client, 'workspace.updated')
+    setFakePullRequest(daemon.ghPrs, ws.branch, {
+      statusCheckRollup: [fakeCheckRun({ name: 'unit tests', conclusion: 'SUCCESS' })]
+    })
+    const checked = await client.request('workspace.checkPrs', { id: ws.id })
+
+    expect(checked.prs[0]?.checks).toBe('passing')
+    await expect
+      .poll(() => updates.some((w) => w.id === ws.id && w.prs[0]?.checks === 'passing'), opts)
+      .toBe(true)
+  }, 30_000)
+
+  it('shares one check between callers asking at the same time', async () => {
+    const headLists = () =>
+      readFakeLog(daemon.ghLog).filter((c) => c.argv[1] === 'list' && c.argv.includes('--head'))
+        .length
+
+    const ws = await workspace()
+    setFakePullRequest(daemon.ghPrs, ws.branch, { isDraft: false })
+    await client.request('workspace.checkPrs', { id: ws.id })
+
+    const before = headLists()
+
+    const [a, b] = await Promise.all([
+      client.request('workspace.checkPrs', { id: ws.id }),
+      client.request('workspace.checkPrs', { id: ws.id })
+    ])
+
+    expect(a.prs[0]?.number).toBe(1)
+    expect(b.prs[0]?.number).toBe(1)
+    expect(headLists() - before).toBe(1)
+  }, 30_000)
+
+  describe('errors', () => {
+    it('fails with the gh message and leaves the stored pull requests as they were', async () => {
+      const ws = await workspace()
+      setFakePullRequest(daemon.ghPrs, ws.branch, { isDraft: true })
+      await client.request('workspace.checkPrs', { id: ws.id })
+      expect(await prNumbersOf(ws.id)).toEqual([1])
+
+      vi.stubEnv('QUE_FAKE_GH_FAIL', '1')
+      setFakePullRequest(daemon.ghPrs, ws.branch, { state: 'MERGED' })
+
+      await expect(client.request('workspace.checkPrs', { id: ws.id })).rejects.toMatchObject({
+        code: 'gh_failed',
+        message: 'gh: failed (fake)'
+      })
+      expect(await prNumbersOf(ws.id)).toEqual([1])
+      expect((await prOf(ws.id))?.state).toBe('draft')
     }, 30_000)
   })
 })

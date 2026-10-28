@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { fakeBridge } from '@renderer/testing/fake-bridge'
 import { openWorkspace } from '@renderer/testing/helpers'
@@ -267,13 +267,117 @@ describe('PullRequestList', () => {
         [ID]: { 188: at }
       })
     })
+  })
 
-    it('shows no Refresh on the list: the daemon keeps it fresh', async () => {
+  describe('refreshing', () => {
+    // #189 is running 1/2 in the book; GitHub has it passing 2/2 by now.
+    const passed: PullRequest[] = stack.map((pr) =>
+      pr.number === 189
+        ? {
+            ...pr,
+            checks: 'passing',
+            checkRuns: [makePrCheck({ name: 'lint' }), makePrCheck({ name: 'e2e' })],
+            updatedAt: '2026-10-14T03:30:00.000Z'
+          }
+        : pr
+    )
+
+    it('checks the pull requests with GitHub once, busy until the answer, and shows the new checks', async () => {
       const user = userEvent.setup()
-      seed(stack.slice(1, 3))
+      seed()
+      fakeBridge.setUpstreamPrs(ID, passed)
+      fakeBridge.holdCheckPrs()
+      await openList(user)
+      expect(screen.getByTestId('pr-row-189-checks')).toHaveTextContent('running 1/2')
+      const refresh = screen.getByRole('button', { name: 'Refresh' })
+      expect(refresh).toHaveAttribute('data-testid', 'pr-refresh')
+
+      await user.click(refresh)
+      await user.click(refresh)
+
+      expect(refresh).toHaveAttribute('aria-busy', 'true')
+      expect(fakeBridge.checkPrsCalls()).toEqual([ID])
+
+      fakeBridge.releaseCheckPrs()
+
+      await waitFor(() => {
+        expect(refresh).toHaveAttribute('aria-busy', 'false')
+      })
+      expect(screen.getByTestId('pr-row-189-checks')).toHaveTextContent('✓ 2/2')
+      expect(screen.getByTestId('pr-row-189-checks')).toHaveClass('tone-good')
+      expect(fakeBridge.checkPrsCalls()).toEqual([ID])
+    })
+
+    it('turns its icon while the check runs and stops it only at the end of a turn after', async () => {
+      const user = userEvent.setup()
+      seed()
+      fakeBridge.holdCheckPrs()
+      await openList(user)
+      const refresh = screen.getByTestId('pr-refresh')
+      const icon = screen.getByTestId('pr-refresh-icon')
+      expect(icon).toHaveAttribute('data-turning', 'false')
+
+      await user.click(refresh)
+
+      expect(icon).toHaveAttribute('data-turning', 'true')
+      expect(icon).toHaveClass('turning')
+      // userEvent has no animation events: a turn ending is dispatched as the browser does.
+      fireEvent.animationIteration(icon)
+      expect(icon).toHaveAttribute('data-turning', 'true')
+
+      fakeBridge.releaseCheckPrs()
+      await waitFor(() => {
+        expect(refresh).toHaveAttribute('aria-busy', 'false')
+      })
+
+      // Done, but mid-turn: it finishes the turn before it stops.
+      expect(icon).toHaveAttribute('data-turning', 'true')
+      fireEvent.animationIteration(icon)
+      expect(icon).toHaveAttribute('data-turning', 'false')
+      expect(icon).not.toHaveClass('turning')
+    })
+
+    it('shows why the check failed under the head, gone when the next check starts', async () => {
+      const user = userEvent.setup()
+      seed()
+      fakeBridge.refuseCheckPrs('gh: HTTP 502: Bad Gateway (https://api.github.com/graphql)')
+      await openList(user)
+      const refresh = screen.getByTestId('pr-refresh')
+
+      await user.click(refresh)
+
+      const alert = await screen.findByTestId('prs-check-error')
+      expect(alert).toHaveAttribute('role', 'alert')
+      expect(alert).toHaveTextContent('gh: HTTP 502: Bad Gateway')
+      expect(
+        screen.getByRole('heading', { name: '[ Pull requests ]' }).parentElement?.nextElementSibling
+      ).toBe(alert)
+      expect(screen.getByTestId('pr-row-189')).toBeInTheDocument()
+
+      fakeBridge.holdCheckPrs()
+      await user.click(refresh)
+
+      expect(screen.queryByTestId('prs-check-error')).not.toBeInTheDocument()
+
+      fakeBridge.releaseCheckPrs()
+      await waitFor(() => {
+        expect(refresh).toHaveAttribute('aria-busy', 'false')
+      })
+      expect(screen.queryByTestId('prs-check-error')).not.toBeInTheDocument()
+    })
+
+    it('shows why the check failed while the session has none listed', async () => {
+      const user = userEvent.setup()
+      seed([])
+      fakeBridge.refuseCheckPrs('gh: could not resolve to a Repository')
       await openList(user)
 
-      expect(screen.queryByTestId('pr-refresh')).toBeNull()
+      await user.click(screen.getByTestId('pr-refresh'))
+
+      expect(await screen.findByTestId('prs-check-error')).toHaveTextContent(
+        'gh: could not resolve to a Repository'
+      )
+      expect(screen.getByTestId('pr-empty')).toBeInTheDocument()
     })
   })
 

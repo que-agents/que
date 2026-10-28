@@ -124,6 +124,35 @@ describe('fake claude', () => {
         'SessionEnd'
       ])
     }, 20_000)
+
+    it('with QUE_FAKE_CLAUDE_STREAM, keeps a turn working until SIGUSR2 asks and SIGUSR1 ends one', async () => {
+      const { proc, out } = start(['--settings', settings], { QUE_FAKE_CLAUDE_STREAM: '50' })
+      await expect.poll(() => out.join(''), { timeout: 10_000 }).toContain('> ')
+
+      proc.stdin?.write('Add retry with backoff\n')
+      await expect
+        .poll(() => hookNames().filter((n) => n === 'PostToolUse').length, { timeout: 10_000 })
+        .toBeGreaterThanOrEqual(3)
+      expect(hookNames()).not.toContain('Stop')
+      expect(out.join('')).toMatch(/● (Read|Grep|Edit|Bash)\(/)
+
+      proc.kill('SIGUSR2')
+      await expect.poll(hookNames, { timeout: 10_000 }).toContain('Notification')
+      await expect.poll(() => out.join(''), { timeout: 10_000 }).toContain('Allow? (y/n)')
+      expect(hookNames()).not.toContain('Stop')
+      proc.stdin?.write('y\n')
+      await expect.poll(hookNames, { timeout: 10_000 }).toContain('Stop')
+
+      proc.stdin?.write('Document config keys\n')
+      await expect
+        .poll(() => hookNames().filter((n) => n === 'UserPromptSubmit').length, { timeout: 10_000 })
+        .toBe(2)
+      proc.kill('SIGUSR1')
+      await expect
+        .poll(() => hookNames().filter((n) => n === 'Stop').length, { timeout: 10_000 })
+        .toBe(2)
+      expect(out.join('')).toContain('● Done. The change is in and the tests pass.')
+    }, 20_000)
   })
 
   describe('cli surface', () => {

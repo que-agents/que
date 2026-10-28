@@ -221,7 +221,7 @@ describe('ReviewPane', () => {
 
       expect(pane).toHaveAttribute('data-view', 'prs')
       expect(await screen.findByTestId('pr-list')).toBeInTheDocument()
-      expect(screen.queryByTestId('pr-refresh')).toBeNull()
+      expect(within(screen.getByTestId('review-bar')).getByTestId('pr-refresh')).toBeVisible()
       expect(screen.getByTestId('pr-open-editor')).toBeVisible()
     })
 

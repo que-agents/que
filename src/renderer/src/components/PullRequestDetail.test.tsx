@@ -421,9 +421,10 @@ describe('PullRequestDetail', () => {
       expect(within(patch).getByTestId('diff-comment-removed')).toBeInTheDocument()
     })
 
-    it('Refresh fetches its conversation again', async () => {
+    it('Refresh checks the pull requests with GitHub and fetches its conversation again', async () => {
       const user = userEvent.setup()
       seed()
+      fakeBridge.setUpstreamPrs(ID, [{ ...app, checks: 'passing', checkRuns: [] }, base])
       await openDetail(user)
 
       await user.click(screen.getByTestId('pr-refresh'))
@@ -431,6 +432,8 @@ describe('PullRequestDetail', () => {
       await waitFor(() => {
         expect(fakeBridge.prThreadCalls()).toContainEqual({ id: ID, number: 188, refresh: true })
       })
+      expect(fakeBridge.checkPrsCalls()).toEqual([ID])
+      expect(await screen.findByTestId('pr-checks-empty')).toHaveTextContent('No checks')
     })
   })
 
@@ -502,6 +505,45 @@ describe('PullRequestDetail', () => {
 
       expect(await screen.findByTestId('pr-error')).toHaveTextContent('quiet hours')
       expect(await screen.findByTestId('pr-files-error')).toHaveTextContent('quiet hours')
+    })
+
+    it('shows why a check with GitHub failed above the pull request', async () => {
+      const user = userEvent.setup()
+      seed()
+      fakeBridge.refuseCheckPrs('gh: HTTP 502: Bad Gateway (https://api.github.com/graphql)')
+      await openDetail(user)
+
+      await user.click(screen.getByTestId('pr-refresh'))
+
+      expect(await screen.findByTestId('pr-error')).toHaveTextContent('gh: HTTP 502: Bad Gateway')
+      expect(screen.getByTestId('pr-error')).toHaveAttribute('role', 'alert')
+    })
+
+    it('says a refusal once when the check and the conversation are refused alike', async () => {
+      const user = userEvent.setup()
+      seed()
+      fakeBridge.setQuietState({ inQuietHours: true, unlockedUntil: null })
+      const store = new QueStore(window.que)
+      store.start()
+      store.openPullRequest(ID, 188)
+      render(
+        <StoreContext.Provider value={store}>
+          <ReviewPane termKey={ID} />
+        </StoreContext.Provider>
+      )
+      await screen.findByTestId('pr-error')
+      const refresh = screen.getByTestId('pr-refresh')
+
+      await user.click(refresh)
+
+      await waitFor(() => {
+        expect(refresh).toHaveAttribute('aria-busy', 'false')
+      })
+      expect(screen.getAllByRole('alert').map((a) => a.dataset.testid)).toEqual([
+        'pr-error',
+        'pr-files-error'
+      ])
+      expect(screen.getByTestId('pr-error')).toHaveTextContent('quiet hours')
     })
   })
 })

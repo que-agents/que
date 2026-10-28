@@ -7,7 +7,7 @@ import { errorMessage } from '../../../shared/errors.decode'
 import { statusBadge, type Tone } from '../format'
 import { useQue, useStore } from '../store'
 import CountLine from './CountLine'
-import { RefreshIcon } from './icons'
+import RefreshButton from './RefreshButton'
 
 /** A row's state word and the one tone it may take (none stays faint). */
 interface StateWord {
@@ -125,17 +125,7 @@ export default function ReportView(): React.JSX.Element {
           {report ? formatSince(Date.parse(report.since), store.now()) : ''}
         </span>
         <div className="actions">
-          <button
-            type="button"
-            className="ghost icon"
-            aria-label="Refresh"
-            title="Refresh"
-            data-testid="report-refresh"
-            disabled={!connected}
-            onClick={() => void load()}
-          >
-            <RefreshIcon />
-          </button>
+          <RefreshButton testId="report-refresh" disabled={!connected} onRefresh={load} />
         </div>
       </header>
       <div className="report-body">

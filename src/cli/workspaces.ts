@@ -431,12 +431,18 @@ export function registerWorkspaceCommands(program: Command): void {
   ws.command('pr <workspace>')
     .description("a workspace's pull request: its checks and its conversation")
     .option('--json', 'print JSON ({ pr, thread })')
-    .option('--refresh', 'fetch the conversation again instead of using the cached one')
+    .option('--refresh', 'check the pull request with GitHub and fetch its conversation again')
     .action((ref: string, opts: { json?: boolean; refresh?: boolean }) =>
       withClient(async (c) => {
         await assertNotQuiet(c)
         const w = await findWorkspace(c, ref)
-        const pr = (await c.request('workspace.get', { id: w.id })).pr
+
+        const fresh =
+          opts.refresh === true
+            ? await c.request('workspace.checkPrs', { id: w.id })
+            : await c.request('workspace.get', { id: w.id })
+
+        const pr = fresh.pr
 
         const thread = pr
           ? await c.request('workspace.prThread', {

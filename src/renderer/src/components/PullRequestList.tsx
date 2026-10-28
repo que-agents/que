@@ -69,12 +69,24 @@ function Row({
   )
 }
 
+/** Why the last check of the session's pull requests with GitHub failed, while it stands. */
+function CheckError({ error }: { error: string | undefined }): React.JSX.Element | null {
+  if (!error) return null
+
+  return (
+    <p className="form-error changes-error" role="alert" data-testid="prs-check-error">
+      {error}
+    </p>
+  )
+}
+
 /**
  * The session's pull requests, in the review pane: open and draft first, newest first, then
  * the merged and closed ones under a dashed rule. A row opens its pull request in place.
  */
 export default function PullRequestList({ termKey }: { termKey: string }): React.JSX.Element {
   const ws = useQueSelector((s) => s.workspaces[termKey])
+  const checkError = useQueSelector((s) => s.prCheckErrors[termKey])
   const prs = ws?.prs ?? []
   const { active, settled } = orderPrs(prs)
   const { open, failing } = prCounts(prs)
@@ -82,6 +94,7 @@ export default function PullRequestList({ termKey }: { termKey: string }): React
   if (!ws || prs.length === 0) {
     return (
       <section className="pr-list" data-testid="pr-list" aria-label="Pull requests">
+        <CheckError error={checkError} />
         <p className="review-empty-note" data-testid="pr-empty">
           No pull requests from this session yet.
         </p>
@@ -103,6 +116,7 @@ export default function PullRequestList({ termKey }: { termKey: string }): React
           )}
         </span>
       </header>
+      <CheckError error={checkError} />
       <ul className="pr-rows" data-testid="pr-rows-active">
         {active.map((pr) => (
           <Row key={pr.number} ws={ws} pr={pr} settled={false} />

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { fakeBridge } from '@renderer/testing/fake-bridge'
 import {
@@ -243,6 +243,34 @@ describe('ReportView', () => {
         expect(screen.getByTestId('report-totals')).toHaveTextContent(/^2 sessions · 1 stuck · /)
       })
       expect(screen.getByTestId(`report-workspace-${stuck.id}`)).toBeInTheDocument()
+    })
+
+    it('is busy and turns while the report loads, ignoring clicks, and stops at the end of a turn', async () => {
+      const user = userEvent.setup()
+      fakeBridge.seedDigest(quietOne)
+      await openReport(user)
+      await screen.findByTestId(`report-workspace-${quietOne.id}`)
+      fakeBridge.seedDigest(stuck)
+      fakeBridge.holdReports()
+      const refresh = screen.getByRole('button', { name: 'Refresh' })
+      const icon = screen.getByTestId('report-refresh-icon')
+
+      await user.click(refresh)
+      await user.click(refresh)
+
+      expect(refresh).toHaveAttribute('aria-busy', 'true')
+      expect(icon).toHaveAttribute('data-turning', 'true')
+
+      fakeBridge.releaseReports()
+
+      await waitFor(() => {
+        expect(refresh).toHaveAttribute('aria-busy', 'false')
+      })
+      expect(screen.getByTestId(`report-workspace-${stuck.id}`)).toBeInTheDocument()
+      expect(icon).toHaveAttribute('data-turning', 'true')
+      // userEvent has no animation events: a turn ending is dispatched as the browser does.
+      fireEvent.animationIteration(icon)
+      expect(icon).toHaveAttribute('data-turning', 'false')
     })
   })
 })

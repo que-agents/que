@@ -365,6 +365,23 @@ describe('que ws pr', () => {
     expect(views()).toHaveLength(2)
   }, 30_000)
 
+  it('checks the pull request with GitHub first when run with --refresh', async () => {
+    await daemon.close()
+    daemon = await startTestDaemon({ config: 'pr_poll_seconds = 3600\n' })
+    client = daemon.client
+    const again = await workspace('app-1521-refresh')
+    setFakePullRequest(daemon.ghPrs, again.branch, {
+      number: 43,
+      url: 'https://github.com/rquellh/que/pull/43',
+      isDraft: false,
+      statusCheckRollup: [fakeCheckRun({ name: 'unit tests', conclusion: 'SUCCESS' })]
+    })
+
+    const r = await runCli('ws', 'pr', again.name, '--refresh')
+
+    expect(r.stdout).toContain('passing  unit tests (CI)')
+  }, 30_000)
+
   it('says no pull request and exits 0 when there is none', async () => {
     const ws = await workspace()
 

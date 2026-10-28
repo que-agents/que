@@ -193,6 +193,7 @@ const QUIET_POLICY: Record<MethodName, 'refused' | 'allowed'> = {
   'workspace.diff': 'refused',
   'workspace.diffFile': 'refused',
   'workspace.prThread': 'refused',
+  'workspace.checkPrs': 'refused',
   'workspace.files': 'refused',
   'workspace.readFile': 'refused',
   'report.get': 'refused',
