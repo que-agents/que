@@ -132,7 +132,7 @@ function Counts({
 /**
  * The toolbar under the tab strip: the path and its counts (for a pull request's diff, what it
  * is against) at the left; the Comments menu (only when there are comment lines), Unified |
- * Split and Whitespace at the right, dropping under the path when they do not fit beside it.
+ * Split, Wrap and Whitespace at the right, dropping under the path when they do not fit beside it.
  */
 function DiffToolbar({
   path,
@@ -157,6 +157,7 @@ function DiffToolbar({
   const store = useStore()
   const mode = useQueSelector((s) => s.diffMode)
   const whitespace = useQueSelector((s) => s.diffWhitespace)
+  const wrap = useQueSelector((s) => s.diffWrap)
   const [menu, setMenu] = useState(false)
   const closeMenu = useCallback(() => setMenu(false), [])
   const button = useRef<HTMLButtonElement>(null)
@@ -241,6 +242,16 @@ function DiffToolbar({
         <button
           type="button"
           className="diff-tool"
+          data-testid="diff-wrap"
+          title="Wrap long lines"
+          aria-pressed={wrap}
+          onClick={() => store.setDiffWrap(!wrap)}
+        >
+          Wrap
+        </button>
+        <button
+          type="button"
+          className="diff-tool"
           data-testid="diff-whitespace"
           title="Ignore whitespace"
           aria-pressed={whitespace === 'ignore'}
@@ -275,6 +286,7 @@ export default function DiffView({
   const ws = useQueSelector((s) => s.workspaces[termKey])
   const mode = useQueSelector((s) => s.diffMode)
   const whitespace = useQueSelector((s) => s.diffWhitespace)
+  const wrap = useQueSelector((s) => s.diffWrap)
   const lines = useQueSelector((s) => s.diffFiles[diffFileKey(termKey, path, against, whitespace)])
   const project = ws?.projectId ?? termKey
   const prefs = useQueSelector((s) => s.diffComments[project]) ?? DEFAULT_DIFF_COMMENTS
@@ -423,6 +435,7 @@ export default function DiffView({
                 className="diff-patch"
                 data-testid="diff-patch"
                 data-mode={mode}
+                data-wrap={wrap || undefined}
                 data-comments={prefs.mode}
                 data-language={detail.language ?? 'plain'}
                 ref={codeRef}

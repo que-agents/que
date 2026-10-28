@@ -84,7 +84,7 @@ const FOLD = '6:34'
 
 describe('DiffView', () => {
   describe('rendering', () => {
-    it('heads the lines with a toolbar: the path, its counts, and the layout and whitespace choices', async () => {
+    it('heads the lines with a toolbar: the path, its counts, and the layout, wrap and whitespace choices', async () => {
       const user = userEvent.setup()
       seed()
 
@@ -102,6 +102,10 @@ describe('DiffView', () => {
       expect(within(header).getByRole('button', { name: 'Split' })).toHaveAttribute(
         'aria-pressed',
         'false'
+      )
+      expect(within(header).getByRole('button', { name: 'Wrap' })).toHaveAttribute(
+        'aria-pressed',
+        'true'
       )
       expect(within(header).getByRole('button', { name: 'Whitespace' })).toHaveAttribute(
         'aria-pressed',
@@ -383,6 +387,42 @@ describe('DiffView', () => {
         'true'
       )
       expect(fakeBridge.diffFileCalls().at(-1)).toMatchObject({ whitespace: 'ignore' })
+    })
+
+    it('wraps long lines by default, and turns it off and on in either layout', async () => {
+      const user = userEvent.setup()
+      seed()
+      const patch = await openPatch(user)
+      expect(patch).toHaveAttribute('data-wrap', 'true')
+
+      await user.click(screen.getByRole('button', { name: 'Wrap' }))
+
+      expect(screen.getByRole('button', { name: 'Wrap' })).toHaveAttribute('aria-pressed', 'false')
+      expect(screen.getByTestId('diff-patch')).not.toHaveAttribute('data-wrap')
+
+      await user.click(screen.getByRole('button', { name: 'Split' }))
+      await user.click(screen.getByRole('button', { name: 'Wrap' }))
+
+      expect(screen.getByTestId('diff-patch')).toHaveAttribute('data-mode', 'split')
+      expect(screen.getByTestId('diff-patch')).toHaveAttribute('data-wrap', 'true')
+    })
+
+    it('remembers Wrap across a restart', async () => {
+      const user = userEvent.setup()
+      seed()
+      const first = render(<App />)
+      await openWorkspace(user, retry.id)
+      await user.click(screen.getByTestId('topbar-review'))
+      await user.click(await screen.findByTestId('changes-file-0'))
+      await user.click(await screen.findByRole('button', { name: 'Wrap' }))
+
+      const view = await reopen(user, first)
+
+      expect(within(view).getByRole('button', { name: 'Wrap' })).toHaveAttribute(
+        'aria-pressed',
+        'false'
+      )
+      expect(within(view).getByTestId('diff-patch')).not.toHaveAttribute('data-wrap')
     })
 
     it('unfolds and marks the line it is asked for', async () => {

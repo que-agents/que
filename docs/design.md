@@ -175,14 +175,18 @@ Each token is a span with a class per kind (`tok-decl`, `tok-str`, …), a brack
   cut from their start with an ellipsis so the file's name stays whole, the full path its
   tooltip), `+a` in `--tone-good`,
   `−d` in `--tone-bad`, and for a pull request's diff `#188 vs <base>`; at its right a
-  segmented `Unified | Split` and a `Whitespace` toggle (on: whitespace is ignored).
+  segmented `Unified | Split`, a `Wrap` toggle (on by default) and a `Whitespace` toggle
+  (on: whitespace is ignored).
   These are mono 11px buttons behind a 1px `--border` at a 2px radius, the chosen one
-  `--fg` on `--bg-raised`; both choices are remembered for every tab. When the pane is too
+  `--fg` on `--bg-raised`; every choice is remembered for every tab. When the pane is too
   narrow for both, the controls drop to a second line of the toolbar rather than clip
   the path. The lines are mono
   12px/18px on `--bg-input`, never a raw diff header: the old line number and the new
   one (44px each, right-aligned, `--fg-faint`), the sign (18px, `+` or `−`), then the
-  code in its syntax colours, and the whole area scrolls both ways. An added line takes
+  code in its syntax colours. With Wrap on, a long line wraps inside its own column, its
+  continuation lines under its code and its number and sign on its first line, so the area
+  scrolls only up and down (a split row is as tall as its taller side); with it off, the
+  whole area scrolls both ways. An added line takes
   `--tone-good` at 12% behind it, a removed one `--tone-bad`, its numbers and sign tinted
   toward the tone; within a changed pair the words that changed carry the tone at 30%
   with a 2px radius. When the diff carries the whole file, a run of more than 8
