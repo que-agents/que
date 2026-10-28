@@ -41,7 +41,9 @@ hand; run `npm run docs` after changing a command.
 | `que config get [options]`                  | print the config file path and the parsed config                                                                                                                                           |
 | `que config set [options] <assignments...>` | set keys (dotted, e.g. quiet_hours.default=19:00,07:00) and reload the daemon                                                                                                              |
 | `que report [options]`                      | the morning report: what the sessions did                                                                                                                                                  |
+| `que usage [options]`                       | Claude plan usage: the five-hour and weekly windows, from the sessions' status line                                                                                                        |
 | `que hook [options]`                        | report a Claude Code hook event (stdin JSON) to the daemon; used by hooks.json                                                                                                             |
+| `que statusline [options]`                  | report Claude plan usage (status line JSON on stdin) to the daemon, then run your own status line; used by hooks.json                                                                      |
 | `que doctor [options]`                      | check the daemon, claude, gh, git, node, config, and the hooks wrapper                                                                                                                     |
 
 ## Details
@@ -493,12 +495,37 @@ Options:
   -h, --help      display help for command
 ```
 
+### que usage
+
+```text
+Usage: que usage [options]
+
+Claude plan usage: the five-hour and weekly windows, from the sessions' status
+line
+
+Options:
+  --json      print JSON (null before the first reading)
+  -h, --help  display help for command
+```
+
 ### que hook
 
 ```text
 Usage: que hook [options]
 
 report a Claude Code hook event (stdin JSON) to the daemon; used by hooks.json
+
+Options:
+  -h, --help  display help for command
+```
+
+### que statusline
+
+```text
+Usage: que statusline [options]
+
+report Claude plan usage (status line JSON on stdin) to the daemon, then run
+your own status line; used by hooks.json
 
 Options:
   -h, --help  display help for command

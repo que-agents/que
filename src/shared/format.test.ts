@@ -7,6 +7,7 @@ import {
   formatSince,
   formatSpan,
   formatStepDuration,
+  formatWeekdayClock,
   hhmm,
   plural,
   removalStepLabel
@@ -70,6 +71,11 @@ describe('clock times', () => {
     expect(formatMinSec(303_000)).toBe('05:03')
     expect(formatMinSec(75 * 60_000)).toBe('75:00')
     expect(formatMinSec(-1)).toBe('00:00')
+  })
+
+  it('names the short weekday with the local clock', () => {
+    expect(formatWeekdayClock(new Date(2026, 9, 2, 21, 45).getTime())).toBe('Fri 21:45')
+    expect(formatWeekdayClock(new Date(2026, 10, 2, 9, 0).getTime())).toBe('Mon 09:00')
   })
 })
 

@@ -168,6 +168,20 @@ That directory holds two small scripts the daemon writes at startup:
 `hooks.json` registers `que hook` for every hook event, so each event a session
 fires arrives at the daemon as JSON on stdin, tagged with the workspace it ran in.
 
+It also sets the session's status line to `que statusline`. Claude Code runs it
+after each reply with the session JSON on stdin; on a plan account that carries
+`rate_limits`, the five-hour and weekly windows (percent used, reset time).
+`que statusline` sends them to the daemon (`usage.report`, a one-second budget,
+never failing the line), then runs the user's own status line, the first
+`statusLine` command in the project's `.claude/settings.local.json`, its
+`.claude/settings.json`, then `~/.claude/settings.json` (read only, que's own
+command skipped), with the same stdin, and passes its output and exit status
+through; with none it prints nothing. The daemon keeps the newest reading from
+any session (the numbers are account-wide), ignores an older one arriving late,
+drops a window once it resets, keeps the reading in `<QUE_HOME>/usage.json`
+across restarts, and announces each change as `usage.changed` (`usage.get`
+reads it).
+
 Removing a workspace (`workspace.remove`) marks it `removing` and answers at
 once; the removal runs in the background. `Workspace.removal` holds its plan,
 the steps done with their durations and failures (the step running now is the

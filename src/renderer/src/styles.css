@@ -253,7 +253,7 @@ h2 {
 .report-body h2::before,
 .settings legend::before,
 .quiet-board-label::before,
-.workspace-popout .label::before {
+.floating-card .label::before {
   content: '[ ';
 }
 
@@ -261,7 +261,7 @@ h2 {
 .report-body h2::after,
 .settings legend::after,
 .quiet-board-label::after,
-.workspace-popout .label::after {
+.floating-card .label::after {
   content: ' ]';
 }
 
@@ -301,13 +301,16 @@ h2 {
   overflow-y: auto;
 }
 
-/* Quiet, Report, Tickets and Settings stay at the window's bottom edge, above a solid hairline. */
+/* The Quiet row and the icon strip stay at the window's bottom edge, above a solid hairline.
+ * Sticky makes it a layer of its own: it sits over the main area's layers (the resizers, the
+ * pane dividers), so the usage card it opens draws over them; menus and dialogs stay above. */
 .sidebar-bottom {
   position: sticky;
   bottom: 0;
+  z-index: 8;
   flex: none;
   margin-top: auto;
-  padding: 6px 0 10px;
+  padding: 6px 0 0;
   border-top: 1px solid var(--border);
   background: var(--bg-side);
 }
@@ -708,20 +711,17 @@ h2 {
   visibility: hidden;
 }
 
-/* The foot: Quiet, Report, Tickets, Settings; above them, during an unlock, its countdown. */
-.sidebar-bottom .row-button {
-  color: var(--fg-muted);
-}
-
-.sidebar-bottom .row-button:hover:not(:disabled) {
-  color: var(--fg);
-}
-
-/* Settings and, while the background service runs an older build, Update at its right. */
-.settings-row {
+/* The foot's first row: Quiet (or, during an unlock, its countdown), and Update at the right
+ * end. With nothing in it (a quiet window, no update waiting) it is not drawn. */
+.foot-row {
   display: flex;
   align-items: center;
   gap: 4px;
+  height: 26px;
+}
+
+.foot-row:empty {
+  display: none;
 }
 
 /* A dot and a word in the foot's muted voice; the dot is the only colour on the row. The
@@ -732,6 +732,7 @@ h2 {
   align-items: center;
   gap: 6px;
   height: 20px;
+  margin-left: auto;
   margin-right: 2px;
   padding: 0 8px;
   background: none;
@@ -745,6 +746,8 @@ h2 {
 }
 
 .unlock-row {
+  flex: 1;
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -775,15 +778,15 @@ h2 {
   color: var(--fg-muted);
 }
 
-/* Outside a quiet window: a foot row whose word starts an hour, and three lengths at its
- * right in the unlock row's voice. The word is a button filling the row up to the lengths,
- * so the row reads and behaves like Report: the whole row takes the hover surface and
- * the word brightens with it. */
+/* Outside a quiet window: the word starts an hour, and the three lengths right after it in
+ * the unlock row's voice. The group is as wide as its four buttons and takes the hover
+ * surface as a whole; the word brightens with it. */
 .quiet-row {
   box-sizing: border-box;
   display: flex;
   align-items: stretch;
   height: 26px;
+  padding-right: 8px;
   border-radius: var(--radius);
 }
 
@@ -799,9 +802,7 @@ h2 {
 }
 
 .quiet-row .quiet-word {
-  flex: 1;
-  min-width: 0;
-  padding: 0 8px;
+  padding: 0 6px 0 8px;
   text-align: left;
   font-weight: 400;
 }
@@ -814,7 +815,6 @@ h2 {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding-right: 8px;
   font: 11px var(--mono);
   font-variant-numeric: tabular-nums;
 }
@@ -833,6 +833,154 @@ h2 {
   color: var(--fg);
 }
 
+/* The foot's icon strip: Report, Tickets (its count beside it) and Settings, faint, the open
+ * view at full strength with a 1px line under it, like the review pane's strip. Its right end
+ * is kept for usage. */
+.foot-strip {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 36px;
+  padding: 0 5px;
+}
+
+/* A view in an icon strip (the sidebar foot, the review pane), its count beside it: faint, no
+ * hover fill, the open one (`aria-current`, or `aria-selected` in a tablist) at full strength
+ * with a 1px line under it. Each strip sets its own padding. */
+button.ghost.icon.strip-view {
+  width: auto;
+  gap: 4px;
+  border-radius: 0;
+}
+
+button.ghost.icon.strip-view:hover:not(:disabled) {
+  background: none;
+}
+
+button.ghost.icon.strip-view:is([aria-current='page'], [aria-selected='true']) {
+  color: var(--fg);
+  box-shadow: inset 0 -1px 0 var(--fg);
+}
+
+button.ghost.icon.foot-view {
+  min-width: 22px;
+  padding: 0 3px;
+}
+
+.foot-view-count,
+.foot-view-mark {
+  font: 11px var(--mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-faint);
+}
+
+.foot-view-mark {
+  color: var(--tone-attention);
+}
+
+/* Claude plan usage at the strip's right end: `5h 42%  wk 18%`, the labels faint and the
+ * numbers muted, both a step brighter under the pointer and while the card is open. A number
+ * takes its tone at 80% and 100%. docs/design.md "Sidebar". */
+button.usage-button {
+  --usage-label: var(--fg-faint);
+  --usage-num: var(--fg-muted);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 22px;
+  margin-left: auto;
+  padding: 0 4px;
+  background: none;
+  border: none;
+  border-radius: 2px;
+  font: 400 11px var(--mono);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+button.usage-button.no-reading {
+  --usage-num: var(--fg-faint);
+}
+
+button.usage-button:hover,
+button.usage-button[aria-expanded='true'] {
+  --usage-label: var(--fg-muted);
+  --usage-num: var(--fg);
+  background: var(--bg-hover);
+}
+
+.usage-button .usage-label {
+  color: var(--usage-label);
+}
+
+.usage-button .usage-num {
+  color: var(--usage-num);
+}
+
+.usage-button .usage-until {
+  color: var(--fg-faint);
+}
+
+/* The card the usage button opens beside the sidebar, its bottom level with the strip: a line
+ * and a 2px meter per window, a hairline, and when and where the reading was taken. */
+.usage-card {
+  font: 11px / 16px var(--mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-faint);
+}
+
+.usage-card .usage-window {
+  display: grid;
+  grid-template-columns: 64px auto 1fr;
+  row-gap: 4px;
+  align-items: baseline;
+}
+
+.usage-card .usage-window-pct {
+  color: var(--fg);
+}
+
+.usage-card .usage-window-resets {
+  justify-self: end;
+  white-space: nowrap;
+}
+
+/* The meter lines up with the percent: the track the rest of the line's width. */
+.usage-card .usage-meter {
+  grid-column: 2 / -1;
+  height: 2px;
+  background: var(--border);
+}
+
+.usage-card .usage-meter-fill {
+  display: block;
+  height: 100%;
+  background: var(--fg-muted);
+}
+
+.usage-card .usage-workspace {
+  color: var(--fg-muted);
+}
+
+/* A window at 80% (attention) or 100% (bad): its number, and in the card its meter, in that
+ * tone. */
+:is(.usage-num, .usage-window-pct, .usage-meter-fill)[data-tone='attention'] {
+  --tone: var(--tone-attention);
+}
+
+:is(.usage-num, .usage-window-pct, .usage-meter-fill)[data-tone='bad'] {
+  --tone: var(--tone-bad);
+}
+
+.usage-button .usage-num[data-tone],
+.usage-card .usage-window-pct[data-tone] {
+  color: var(--tone);
+}
+
+.usage-card .usage-meter-fill[data-tone] {
+  background: var(--tone);
+}
+
 .menu {
   position: absolute;
   right: 0;
@@ -844,9 +992,9 @@ h2 {
   padding: 4px;
 }
 
-/* The raised surface a menu and the workspace card share. */
+/* The raised surface a menu and the floating cards share. */
 .menu,
-.workspace-popout {
+.floating-card {
   background: var(--bg-raised);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius);
@@ -941,10 +1089,6 @@ h2 {
 
 .dot.on {
   background: var(--tone-good);
-}
-
-.report-entry {
-  border-radius: var(--radius);
 }
 
 /* ---- the divider ------------------------------------------------------- */
@@ -1698,26 +1842,6 @@ body.resizing {
 
 /* ---- tickets ------------------------------------------------------------ */
 
-.tickets-entry {
-  gap: 6px;
-}
-
-.tickets-entry .count {
-  margin-left: auto;
-  font: 10px var(--mono);
-  color: var(--fg-faint);
-}
-
-.tickets-entry .tickets-mark {
-  margin-left: auto;
-  font: 10px var(--mono);
-  color: var(--tone-attention);
-}
-
-.tickets-entry .tickets-mark + .count {
-  margin-left: 0;
-}
-
 .key {
   font: 11px var(--mono);
   color: var(--accent);
@@ -1854,26 +1978,15 @@ body.resizing .pane-divider::after {
   min-width: 0;
 }
 
-/* A view icon, with its count beside it in mono: faint, the current one at full strength with
- * a 1px line under it. */
+/* A review view (a .strip-view) runs the bar's full height, its line on the bar's border. */
 button.ghost.icon.review-view {
-  width: auto;
   height: auto;
-  gap: 4px;
   margin-bottom: -1px;
   padding: 0 8px;
-  border-radius: 0;
-  color: var(--fg-faint);
 }
 
 button.ghost.icon.review-view:hover:not(:disabled) {
-  background: none;
   color: var(--fg-secondary);
-}
-
-button.ghost.icon.review-view.active {
-  color: var(--fg);
-  box-shadow: inset 0 -1px 0 var(--fg);
 }
 
 .review-view-count {
@@ -2832,12 +2945,12 @@ button.pr-row.settled .pr-row-number {
   color: var(--fg-faint);
 }
 
-/* ---- workspace popout --------------------------------------------------- */
+/* ---- floating cards ----------------------------------------------------- */
 
-/* The card beside a sidebar workspace row, over the main area: the name, the worktree and
- * its branch, the status, and the pull requests. A fixed layer, so the sidebar's overflow
- * does not clip it. docs/design.md "Sidebar". */
-.workspace-popout {
+/* A card standing beside the sidebar over the main area (a workspace's, Claude usage's),
+ * placed by useFloatingPlace. A fixed layer, so the sidebar's overflow does not clip it; its
+ * surface is the menu's. */
+.floating-card {
   position: fixed;
   z-index: 20;
   box-sizing: border-box;
@@ -2846,8 +2959,21 @@ button.pr-row.settled .pr-row-number {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  white-space: normal;
   cursor: default;
+}
+
+.floating-card hr {
+  margin: 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+}
+
+/* ---- workspace popout --------------------------------------------------- */
+
+/* The card beside a sidebar workspace row: the name, the worktree and its branch, the
+ * status, and the pull requests. docs/design.md "Sidebar". */
+.workspace-popout {
+  white-space: normal;
 }
 
 .workspace-popout .popout-name {
@@ -3019,12 +3145,6 @@ button.pr-row.settled .pr-row-number {
 
 .workspace-popout .removal-step.failed .removal-right {
   color: var(--tone-bad);
-}
-
-.workspace-popout hr {
-  margin: 0;
-  border: 0;
-  border-top: 1px solid var(--border);
 }
 
 .workspace-popout .popout-empty {

@@ -26,7 +26,7 @@ Surfaces step up by one token per layer: the sidebar is darker than the main
 area, raised things (menus, dialogs) sit one step above it. Regions are divided
 by a 1px hairline; the tab row uses the dashed
 guide (`--dash`, 6px on, 6px off) instead, so the eye reads them as sections of
-one drawing rather than separate panels. The sidebar's bottom group (Report, Tickets, Settings) is pinned to
+one drawing rather than separate panels. The sidebar's foot (the Quiet row and the icon strip) is pinned to
 the window's bottom edge above a solid hairline.
 
 ## Text
@@ -52,8 +52,8 @@ so the DOM keeps the plain word.
 | `--accent-hover`   | `#6adcc7` | The accent under the pointer.                                                                                                                      |
 | `--inverse`        | `#e6e6e6` | The one primary button on a screen, light on dark.                                                                                                 |
 | `--tone-busy`      | `#4f8cf5` | working, preparing, as a still dot or badge: status badges, the popout, the report. The sidebar and the quiet board draw the working mark instead. |
-| `--tone-attention` | `#f99c00` | needs input.                                                                                                                                       |
-| `--tone-bad`       | `#fb2c36` | stuck, exited badly; the danger button.                                                                                                            |
+| `--tone-attention` | `#f99c00` | needs input; a Claude usage window at 80% and over.                                                                                                |
+| `--tone-bad`       | `#fb2c36` | stuck, exited badly; the danger button; a Claude usage window at 100%.                                                                             |
 | `--tone-good`      | `#34c26b` | idle after work: a sidebar row that finished since you last looked at it.                                                                          |
 | `--tone-neutral`   | `#7a7a7a` | idle; the working mark while a workspace is being removed (sidebar and card).                                                                      |
 | `--tone-muted`     | `#5a5a5a` | exited.                                                                                                                                            |
@@ -272,20 +272,44 @@ only under the pointer.
   and each pull request's link in its 18px column always show, the link `--accent` under
   the pointer. Every action sits on the line it belongs to, and the card never holds a
   destructive one: Remove… stays in the ⋯ menu.
-- **The foot.** Quiet, Report, Tickets and Settings are 26px rows in `--fg-muted`, `--fg`
-  under the pointer. The Quiet row, at the top, starts a manual quiet: its word starts an
-  hour, and at its right end, always visible, `30m`, `1h` and `2h` in mono 11px tabular
-  pick a length, `1h` in `--fg-muted` as the default and the other two in `--fg-faint`,
-  each `--fg` under the pointer. The row is a `role="group"` of four buttons; the word fills the row up to
-  the lengths, so the row takes `--bg-hover` as a whole and the word brightens with it; it is absent while a quiet window is in progress. While the background service runs an older build than the app, a
-  20px control sits at the right end of the Settings row: the 5px status dot in `--accent`
-  and the word Update in 11px `--fg-muted`, hairline-bordered, `--fg` under the pointer,
-  its tooltip saying why it is there. It reads Updating… at 0.4 opacity while the update
-  runs, and is absent otherwise; a failed update goes to the error line above the tab
-  strip. During an unlock a row above them carries the open lock at 12px
-  and `m:ss left` in mono 11px `--accent`, and `lock now` in mono 11px `--fg-faint` at
-  its right end (`--fg-muted` under the pointer), always visible: locking again is the
-  behaviour we want. The row is a `role="status"` region.
+- **The foot.** Above a solid hairline, two rows: the Quiet row, then a 36px icon strip.
+  The Quiet row starts a manual quiet: the word Quiet in `--fg-muted` starts an hour, and
+  right after it (6px on) `30m`, `1h` and `2h` in mono 11px tabular pick a length, `1h` in
+  `--fg-muted` as the default and the other two in `--fg-faint`, each `--fg` under the
+  pointer. The four are a `role="group"` of buttons, as wide as they are, so the group
+  takes `--bg-hover` as a whole and the word brightens with it; it is absent while a quiet
+  window is in progress. While the background service runs an older build than the app, a
+  20px control sits at the Quiet row's right end, so it never pushes the icons around: the
+  5px status dot in `--accent` and the word Update in 11px `--fg-muted`, hairline-bordered,
+  `--fg` under the pointer, its tooltip saying why it is there. It reads Updating… at 0.4
+  opacity while the update runs, and is absent otherwise; a failed update goes to the error
+  line above the tab strip. During an unlock the unlock row takes the Quiet row's place: the
+  open lock at 12px and `m:ss left` in mono 11px `--accent`, and `lock now` in mono 11px
+  `--fg-faint` at its right end (`--fg-muted` under the pointer), always visible: locking
+  again is the behaviour we want. The row is a `role="status"` region, and Update, when one
+  is waiting, sits after `lock now`. The strip holds three `button.ghost.icon`s: Report (a
+  page with lines), Tickets (a ticket outline, the open tickets counted beside it in mono
+  11px `--fg-faint`) and Settings (a gear), in `--fg-faint`, `--fg` under the pointer. Each
+  icon's name is its tooltip and accessible name. The view open in the main area reads
+  `--fg` with a 1px `--fg` line under it, like the review pane's strip. The strip's right
+  end shows the Claude plan's usage, one button reading `5h 42%  wk 18%` in mono 11px
+  tabular, the labels `--fg-faint` and the numbers `--fg-muted`, 10px between the pairs;
+  under the pointer and while its card is open the numbers read `--fg` and the labels
+  `--fg-muted` on `--bg-hover` (2px radius). A number takes `--tone-attention` at 80% and
+  `--tone-bad` at 100%, where it is followed by the time until that window resets in
+  `--fg-faint` (`5h 100% · 38m`). A window without a reading shows `—`; before any reading
+  it reads `5h —  wk —` in `--fg-faint`, its tooltip saying it fills in after a session's
+  first reply, on plans with usage limits. Its accessible name reads the numbers out
+  (`Claude usage: 5-hour 42%, weekly 18%`). A click opens the usage card just right of the
+  sidebar, its bottom edge level with the strip's, drawn like the workspace card (340px,
+  `--bg-raised`, 1px `--border-strong`, `--radius`, the menu's shadow), in mono 11px:
+  `[ CLAUDE USAGE ]`; a line per window, `5-hour` and `weekly` in a 64px `--fg-faint`
+  column, the percent in `--fg` (or its tone), and at the right in `--fg-faint`
+  `resets 16:20 · in 2h 10m` (ticking each minute) or `resets Mon 09:00`, with a 2px meter
+  under it lined up with the percent (track `--border`, fill `--fg-muted` or the tone, as
+  wide as the percent, up to full); a hairline; and `as of 14:08 · <workspace>`, the name in
+  `--fg-muted` when it is known. It closes on Escape, a press elsewhere, or a second click.
+  Usage is not in the tray and not on the quiet board.
 
 ## Quiet board
 

@@ -213,6 +213,36 @@ export function FileIcon(): React.JSX.Element {
   )
 }
 
+/** A page with three lines of text, the last one short: the report. */
+export function ReportIcon(): React.JSX.Element {
+  return (
+    <svg {...base} aria-hidden="true">
+      <rect x="3" y="1.75" width="10" height="12.5" rx="1" />
+      <path d="M5.5 5.25h5M5.5 8h5M5.5 10.75h3" />
+    </svg>
+  )
+}
+
+/** A ticket: a card with a notch out of each side and a perforation near its right end. */
+export function TicketIcon(): React.JSX.Element {
+  return (
+    <svg {...base} aria-hidden="true">
+      <path d="M1.75 3.75h12.5v2.75a1.5 1.5 0 0 0 0 3v2.75H1.75V9.5a1.5 1.5 0 0 0 0-3z" />
+      <path d="M10.5 6v.25M10.5 7.875v.25M10.5 9.75V10" />
+    </svg>
+  )
+}
+
+/** A cog: six square teeth around a ring, and the hole at its centre: settings. */
+export function GearIcon(): React.JSX.Element {
+  return (
+    <svg {...base} aria-hidden="true">
+      <path d="M6.38 3.54L6.6 1.4A6.75 6.75 0 0 1 9.4 1.4L9.62 3.54A4.75 4.75 0 0 1 11.05 4.36L13.02 3.48A6.75 6.75 0 0 1 14.42 5.91L12.68 7.18A4.75 4.75 0 0 1 12.68 8.82L14.42 10.09A6.75 6.75 0 0 1 13.02 12.52L11.05 11.64A4.75 4.75 0 0 1 9.62 12.46L9.4 14.6A6.75 6.75 0 0 1 6.6 14.6L6.38 12.46A4.75 4.75 0 0 1 4.95 11.64L2.98 12.52A6.75 6.75 0 0 1 1.58 10.09L3.32 8.82A4.75 4.75 0 0 1 3.32 7.18L1.58 5.91A6.75 6.75 0 0 1 2.98 3.48L4.95 4.36A4.75 4.75 0 0 1 6.38 3.54Z" />
+      <circle cx="8" cy="8" r="2" />
+    </svg>
+  )
+}
+
 /** An open padlock, its shackle lifted off the right side: unlocked during quiet hours. */
 export function UnlockIcon(): React.JSX.Element {
   return (

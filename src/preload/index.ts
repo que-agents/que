@@ -74,6 +74,10 @@ const api: QueApi = {
     log: (p) => call('quiet.log', p),
     on: (event, cb) => subscribe(event, cb as (data: unknown) => void)
   },
+  usage: {
+    get: () => call('usage.get'),
+    on: (event, cb) => subscribe(event, cb as (data: unknown) => void)
+  },
   config: {
     get: () => call('config.get'),
     set: (p) => call('config.set', p),

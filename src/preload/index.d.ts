@@ -51,6 +51,8 @@ import type {
   QuietState,
   QuietUnlock,
   UpdateInfo,
+  Usage,
+  UsageWindow,
   UserConfig,
   Weekday,
   Workspace,
@@ -70,6 +72,8 @@ export type {
   QuietHoursConfig,
   QuietState,
   QuietUnlock,
+  Usage,
+  UsageWindow,
   UserConfig,
   Weekday,
   Report,
@@ -232,6 +236,13 @@ export interface QuietApi {
   on(event: 'quiet.changed', cb: (data: QuietState) => void): () => void
 }
 
+/** Mirrors the daemon's usage.get and the usage.changed event: Claude plan usage. */
+export interface UsageApi {
+  /** The newest reading without the windows that have reset; null before the first or once none is left. */
+  get(): Promise<Usage | null>
+  on(event: 'usage.changed', cb: (data: Usage | null) => void): () => void
+}
+
 /** Mirrors the daemon's config.* methods and the config.changed event. */
 export interface ConfigApi {
   get(): Promise<ConfigGetResult>
@@ -257,6 +268,7 @@ export interface TicketsApi {
 
 export interface QueApi {
   quiet: QuietApi
+  usage: UsageApi
   config: ConfigApi
   instructions: InstructionsApi
   term: TermApi

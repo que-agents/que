@@ -42,7 +42,7 @@ import {
 } from '../../../shared/protocol'
 import { removalStep } from '../../../shared/removal'
 import { workspaceSlug } from '../../../shared/slug'
-import type { RemovalFailure, RemovalResult, RemovalStep } from '../../../shared/types'
+import type { RemovalFailure, RemovalResult, RemovalStep, Usage } from '../../../shared/types'
 import { makeQuietState, makeUserConfig } from './fixtures'
 
 export type FakeQueApi = QueApi
@@ -163,6 +163,7 @@ class FakeBridge {
   private seenCallLog: string[] = []
   private pushedBranches = new Set<string>()
   private quiet: QuietState = makeQuietState()
+  private usageBook: Usage | null = null
   private unlocks: QuietUnlock[] = []
   private unlockRequests: Array<{ minutes?: number; why?: string }> = []
   private configBook: ConfigGetResult = defaultConfigBook()
@@ -239,6 +240,10 @@ class FakeBridge {
           return { ...this.quiet }
         },
         log: async () => this.unlocks.map((u) => ({ ...u })),
+        on: (event, cb) => this.subscribe(event, cb as Listener)
+      },
+      usage: {
+        get: async () => structuredClone(this.usageBook),
         on: (event, cb) => this.subscribe(event, cb as Listener)
       },
       config: {
@@ -688,6 +693,12 @@ class FakeBridge {
     if (!('kind' in q)) next.kind = next.inQuietHours ? (next.kind ?? 'scheduled') : null
     this.quiet = next
     this.emit('quiet.changed', { ...this.quiet })
+  }
+
+  /** Replaces the Claude plan usage reading and emits usage.changed, as the daemon would. */
+  setUsage(u: Usage | null): void {
+    this.usageBook = structuredClone(u)
+    this.emit('usage.changed', structuredClone(u))
   }
 
   /** Every quiet.unlock call's params, in order. */
@@ -1173,6 +1184,7 @@ class FakeBridge {
     this.seenCallLog = []
     this.pushedBranches.clear()
     this.quiet = makeQuietState()
+    this.usageBook = null
     this.unlocks = []
     this.unlockRequests = []
     this.configBook = defaultConfigBook()

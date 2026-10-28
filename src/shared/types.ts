@@ -424,3 +424,24 @@ export type ConfigPatch = Patch<Omit<UserConfig, 'repos' | 'quietHours' | 'jira'
     projects?: Record<string, string | null>
   }
 }
+
+/** One Claude plan usage window: how much of it is used, and when it starts over. */
+export interface UsageWindow {
+  /** Percent used, 0–100. */
+  pct: number
+  /** When the window resets, epoch ms. */
+  resetsAt: number
+}
+
+/**
+ * The newest Claude plan usage reading, from any session's status line: the
+ * numbers are account-wide. A window is absent before the plan reports it and
+ * after it resets. `at` is when the reading was taken (epoch ms);
+ * `workspaceId` is the workspace whose session reported it.
+ */
+export interface Usage {
+  fiveHour?: UsageWindow
+  sevenDay?: UsageWindow
+  at: number
+  workspaceId?: string
+}

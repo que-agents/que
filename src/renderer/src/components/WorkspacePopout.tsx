@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { PullRequest, Workspace } from '../../../preload/index.d'
 import {
   formatAge,
@@ -11,6 +11,7 @@ import { prBadge, statusBadge } from '../format'
 import { useStore } from '../store'
 import { NOW_SECONDS_INTERVAL_MS, useNow } from '../useNow'
 import { useDismiss } from '../useDismiss'
+import { useFloatingPlace } from '../useFloatingPlace'
 import { firstFailingCheck, removalLines, tildePath } from '../workspace-popout'
 import { CopyIcon, EditorIcon, ExternalLinkIcon } from './icons'
 import { LineCounts } from './ReviewParts'
@@ -116,12 +117,8 @@ export function usePopout(enabled: boolean): Popout {
   return { open, enter, leave, press: cancelOpen, show, close }
 }
 
-/** The card's distance from the row's right edge, and how far its top sits above the row's. */
-const GAP = 10
-const RISE = 10
-
-/** The least room kept between the card and the window's top and bottom edges. */
-const MARGIN = 8
+/** Beside the row, 10px right of it, its top 10px above the row's. */
+const PLACEMENT = { gap: 10, align: 'top', rise: 10 } as const
 
 function PullRequestRow({ ws, pr }: { ws: Workspace; pr: PullRequest }): React.JSX.Element {
   const { tone, text } = prBadge(pr)
@@ -233,7 +230,9 @@ export default function WorkspacePopout({
   const [home, setHome] = useState<string | null>(null)
 
   const rowRef = useMemo(() => ({ current: row }), [row])
-  const [place, setPlace] = useState<{ left: number; top: number } | null>(null)
+  // Placed before paint, kept inside the window: a row near the bottom lifts the card until
+  // it fits.
+  const place = useFloatingPlace(ref, rowRef, PLACEMENT, [ws])
 
   useEffect(() => {
     let live = true
@@ -247,15 +246,6 @@ export default function WorkspacePopout({
     }
   }, [store])
 
-  // Placed before paint, kept inside the window: a row near the bottom lifts the card until
-  // it fits.
-  useLayoutEffect(() => {
-    const height = ref.current?.offsetHeight ?? 0
-    const r = row.getBoundingClientRect()
-    const top = Math.max(MARGIN, Math.min(r.top - RISE, window.innerHeight - height - MARGIN))
-    setPlace({ left: r.right + GAP, top })
-  }, [row, ws])
-
   useDismiss(onClose, ref, rowRef)
 
   const id = `sidebar-workspace-${ws.id}-popout`
@@ -265,7 +255,7 @@ export default function WorkspacePopout({
   return (
     <section
       ref={ref}
-      className="workspace-popout"
+      className="floating-card workspace-popout"
       aria-label={ws.title ?? ws.name}
       data-testid={id}
       style={place ?? undefined}
