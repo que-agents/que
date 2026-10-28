@@ -11,14 +11,16 @@
 // drops a deleted file, and its filter narrows the tree and opens a match; the pane
 // drags wider; the pull requests view shows none, then the worktree checks out a
 // second branch and each branch gets a pull request (through the fake GitHub CLI),
-// the second stacked on the first: both rows show, the first opens in place with
-// its checks and conversation, Refresh picks up a new comment, and the second's
-// file opens as a middle tab beside the session tab, against the first; the app
-// quits and relaunches on the same home and the pane, its view, its width, the
-// chosen base, the diff tab and the file tab come back; ⌘W closes the diff tab and
-// the file tab, the pane closes and opens again on the view it was left on, and the
-// list follows a pull request to merged; last, a file of comments alone lists under
-// `comments only` after the others and its diff opens with its lines dimmed.
+// the second stacked on the first: Refresh on the list checks them with GitHub and
+// both rows show, the first opens in place with its checks and conversation, Refresh
+// picks up a new comment, and the second's file opens as a middle tab beside the
+// session tab, against the first; a failing check passes on GitHub and Refresh on
+// the list shows it, with the tracker's poll an hour away; the app quits and
+// relaunches on the same home and the pane, its view, its width, the chosen base,
+// the diff tab and the file tab come back; ⌘W closes the diff tab and the file tab,
+// the pane closes and opens again on the view it was left on, and Refresh follows a
+// pull request to merged; last, a file of comments alone lists under `comments
+// only` after the others and its diff opens with its lines dimmed.
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { expect, test } from '@playwright/test'
@@ -53,8 +55,9 @@ test.afterEach(async () => {
 test('The review pane lists the changes beside the terminals, opens diffs as tabs, and survives a relaunch', async () => {
   const repo = makeTempRepo(tempDir('que-e2e-repo-'))
   addBareOrigin(repo)
-  // The tracker polls every second here, so a pull request shows up right after it is seeded.
-  const queHome = newQueHome('pr_poll_seconds = 1\n[quiet_hours]\nenabled = false\n')
+  // The tracker's poll is an hour away here: what the list learns from GitHub, it learns
+  // from its Refresh.
+  const queHome = newQueHome('pr_poll_seconds = 3600\n[quiet_hours]\nenabled = false\n')
   const prsFile = join(queHome, 'fake-gh-prs.json')
   let project: Project
   let workspace: Workspace
@@ -408,7 +411,7 @@ test('The review pane lists the changes beside the terminals, opens diffs as tab
     await expect(diff.tab('README.md')).toBeVisible()
   })
 
-  await test.step('The worktree checks out a second branch; a pull request on each: both rows show', async () => {
+  await test.step('The worktree checks out a second branch; a pull request on each: Refresh on the list shows both rows', async () => {
     // A second branch with its own commit, checked out long enough for the daemon to keep it.
     gitIn(workspace.path, 'checkout', '--quiet', '-b', capBranch)
     writeFileSync(join(workspace.path, 'CAP.md'), '# cap\n\nThirty seconds at most.\n')
@@ -479,6 +482,8 @@ test('The review pane lists the changes beside the terminals, opens diffs as tab
       deletions: 0,
       statusCheckRollup: [fakeCheckRun({ name: 'build' })]
     })
+    await expect(pr.empty).toBeVisible()
+    await pr.refresh.click()
     await expect(pr.activeRows).toHaveCount(2, { timeout: 15_000 })
     // Newest first, aligned; the second is stacked on the first.
     await expect(pr.activeRows.nth(0)).toHaveAttribute('data-testid', 'pr-row-8')
@@ -579,6 +584,20 @@ test('The review pane lists the changes beside the terminals, opens diffs as tab
     await expect(pr.list).toBeVisible()
   })
 
+  await test.step("#7's lint passes on a rerun; Refresh on the list checks GitHub and the row shows it", async () => {
+    await expect(pr.rowMeta(7)).toHaveText('into main✗ lint · 1/2+4 −0')
+    setFakePullRequest(prsFile, workspace.branch, {
+      number: 7,
+      statusCheckRollup: [fakeCheckRun({ name: 'build' }), fakeCheckRun({ name: 'lint' })]
+    })
+    await pr.refresh.click()
+    await expect(pr.rowMeta(7)).toHaveText('into main✓ 2/2+4 −0')
+    await expect(pr.listSummary).toHaveText('2 open')
+    await expect(pr.refresh).toHaveAttribute('aria-busy', 'false')
+    await expect(pr.checkError).toHaveCount(0)
+    await launched.window.screenshot({ path: 'test-results/review-prs-refreshed.png' })
+  })
+
   await test.step('Back on the Files view with the diff tab selected, before the quit', async () => {
     await review.viewFiles.click()
     await expect(review.root).toHaveAttribute('data-view', 'files')
@@ -677,7 +696,7 @@ test('The review pane lists the changes beside the terminals, opens diffs as tab
     expect(await review.state()).toEqual({ open: true, view: 'changes', pr: null, width: widened })
   })
 
-  await test.step('The list follows #7 to merged, under the rule', async () => {
+  await test.step('Refresh follows #7 to merged, under the rule', async () => {
     await review.viewPrs.click()
     await expect(pr.activeRows).toHaveCount(2)
     setFakePullRequest(prsFile, workspace.branch, {
@@ -686,6 +705,7 @@ test('The review pane lists the changes beside the terminals, opens diffs as tab
       mergedAt: '2026-10-14T03:30:00Z',
       updatedAt: '2026-10-14T03:30:00Z'
     })
+    await pr.refresh.click()
     await expect(pr.row(7)).toHaveAttribute('data-state', 'merged', { timeout: 15_000 })
     await expect(pr.settledLabel).toHaveText('[ merged · closed ]')
     await expect(pr.settledRows).toHaveCount(1)

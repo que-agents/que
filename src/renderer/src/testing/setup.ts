@@ -1,5 +1,7 @@
 // Renderer test setup: jest-dom matchers, the fake bridge as window.que, and a
 // clean slate after every test.
+// First: React DOM reads it as it loads (see the file).
+import './animation-event'
 import '@testing-library/jest-dom/vitest'
 import { cleanup } from '@testing-library/react'
 import { afterEach } from 'vitest'

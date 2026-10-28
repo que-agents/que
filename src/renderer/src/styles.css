@@ -180,6 +180,37 @@ button.icon.sm {
   border-radius: 2px;
 }
 
+/* A Refresh's icon (RefreshButton) turns while its work runs, bright as under the pointer.
+ * The component ends it at the end of a turn once the work is done, so it never snaps back
+ * mid-turn. Under reduced motion it holds bright for the same beats, which end it the same way. */
+.refresh-turn {
+  display: inline-flex;
+}
+
+.refresh-turn.turning {
+  color: var(--fg);
+  animation: refresh-turn 0.8s linear infinite;
+}
+
+@keyframes refresh-turn {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes refresh-hold {
+  from,
+  to {
+    color: var(--fg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .refresh-turn.turning {
+    animation-name: refresh-hold;
+  }
+}
+
 button.primary {
   background: var(--inverse);
   border-color: var(--inverse);

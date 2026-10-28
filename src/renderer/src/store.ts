@@ -333,6 +333,8 @@ export interface QueState extends ResourceTables {
   diffScopes: Record<string, DiffScope>
   /** Per workspace: the Files tree's open directories, for the session; none until its files first load. */
   filesExpanded: Record<string, ReadonlySet<string>>
+  /** Per workspace: why the last check of its pull requests with GitHub failed; dropped when the next one starts. */
+  prCheckErrors: Record<string, string>
   /** The review pane: open or not, how wide, its view per workspace, and the conversations seen. Remembered. */
   review: ReviewState
   /** Which sections inside a pull request are open, for the session. */
@@ -450,6 +452,7 @@ export class QueStore {
     fileLists: {},
     fileContents: {},
     filesExpanded: {},
+    prCheckErrors: {},
     review: loadReview(),
     prFolds: { files: true, checks: true, comments: true },
     diffTargets: {},
@@ -772,6 +775,7 @@ export class QueStore {
         this.setWith((s) => ({
           workspaces: without(s.workspaces, id),
           diffScopes: without(s.diffScopes, id),
+          prCheckErrors: without(s.prCheckErrors, id),
           view: viewWithout(s.view, [id])
         }))
       })
@@ -1235,19 +1239,42 @@ export class QueStore {
   }
 
   /**
-   * The pane's Refresh inside a pull request: its conversation and its files. The list has
-   * nothing of its own to fetch; the daemon keeps the pull requests and their counts fresh.
+   * The pane's Refresh on the pull requests: checks them with GitHub now, and inside a pull
+   * request also fetches its conversation and its files again, all at once. Settles when all
+   * of it has landed; a failure is kept for the view, never thrown.
    */
   refreshPrs(key: string): Promise<void> {
     const { pr: number } = this.reviewPlace(key)
     const pr = this.state.workspaces[key]?.prs.find((p) => p.number === number)
+    const loads = [this.checkPrs(key)]
 
-    if (!pr) return Promise.resolve()
+    if (pr) loads.push(this.fetchPrThread(key, pr.number, true), this.fetchDiff(key, prAgainst(pr)))
 
-    return Promise.all([
-      this.fetchPrThread(key, pr.number, true),
-      this.fetchDiff(key, prAgainst(pr))
-    ]).then(() => undefined)
+    return Promise.all(loads).then(() => undefined)
+  }
+
+  /**
+   * Asks the daemon to check a workspace's pull requests with GitHub now and keeps the
+   * workspace it answers (workspace.updated brings the same). Why it failed is kept for the
+   * view until the next check starts.
+   */
+  private async checkPrs(key: string): Promise<void> {
+    if (!this.state.workspaces[key]) return
+
+    if (key in this.state.prCheckErrors) {
+      this.setWith((s) => ({ prCheckErrors: without(s.prCheckErrors, key) }))
+    }
+
+    try {
+      const ws = await this.api.workspace.checkPrs({ id: key })
+
+      // One removed while it was checked stays gone.
+      if (this.state.workspaces[key]) this.upsertWorkspace(ws)
+    } catch (err) {
+      const error = errorMessage(err)
+
+      this.setWith((s) => ({ prCheckErrors: { ...s.prCheckErrors, [key]: error } }))
+    }
   }
 
   /** The base and commit a workspace's diff is narrowed to. */
