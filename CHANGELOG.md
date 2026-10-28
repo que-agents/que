@@ -8,6 +8,7 @@ All notable changes to que are recorded here. The format follows
 
 ### Added
 
+- `npm run demo:gif` records the README's quiet-mode GIF (`docs/images/quiet-mode.gif`) from the built app with fake sessions; the fake `claude` gains `QUE_FAKE_CLAUDE_STREAM`, a turn that keeps working until a signal ends it or makes it ask.
 - `teardown_timeout_seconds` (default 60): how long a repo's teardown hook may run when a workspace is removed before it is killed and recorded as timed out.
 - While a workspace is being removed, its card lists the removal's steps under `[ REMOVING ]`: each finished step with how long it took or why it failed, the one running now with a clock that ticks each second, and those still to come.
 - The daemon watches the worktree of every workspace a window shows (`workspace.watch`, `workspace.unwatch`) or has an attached terminal in, and sends `workspace.changed` when its files, index or commits change, at most once per 300 ms.
