@@ -34,6 +34,17 @@ export function daemonScriptFrom(dir: string): string {
   return res ? join(res, 'daemon', 'index.js') : join(dir, '..', 'daemon', 'index.js')
 }
 
+/**
+ * The daemon's tokenizer worker bundle, beside the daemon bundle:
+ * Resources/daemon/highlight-worker.js when packaged, else out/daemon/highlight-worker.js.
+ * `dir` is the daemon bundle's own directory.
+ */
+export function tokenizerWorkerFrom(dir: string): string {
+  const res = packagedResourcesDir(dir)
+
+  return res ? join(res, 'daemon', 'highlight-worker.js') : join(dir, 'highlight-worker.js')
+}
+
 /** The CLI bundle: Resources/cli/index.js when packaged, else a sibling in out/. */
 export function cliScriptFrom(dir: string): string {
   const res = packagedResourcesDir(dir)

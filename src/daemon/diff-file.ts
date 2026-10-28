@@ -27,7 +27,8 @@ import {
 import { isBinaryPatch, parseHunks, type RawLine, splitLines } from './diff-parse'
 import { badRequest, notFound } from './errors'
 import { insideWorktree } from './files'
-import { languageFor, tokenizeFile } from './highlight'
+import { languageFor } from './syntax'
+import type { Tokenizer } from './tokenizer'
 import { markChangeBlocks } from './word-marks'
 
 /** Both sides at most this many lines (and FULL_CONTEXT_CHARS) get whole-file context. */
@@ -202,7 +203,8 @@ async function worktreeSide(ws: Workspace, path: string): Promise<Side> {
 export async function workspaceDiffFile(
   ws: Workspace,
   project: Project,
-  params: Omit<WorkspaceDiffFileParams, 'id'>
+  params: Omit<WorkspaceDiffFileParams, 'id'>,
+  tokenizer: Tokenizer
 ): Promise<WorkspaceDiffFile> {
   const path = insideWorktree(ws.path, params.path)
 
@@ -314,8 +316,12 @@ export async function workspaceDiffFile(
 
   if (isBinaryPatch(patch)) return skippedResult('binary')
   const language = languageFor(path)
-  const oldTokens = tokenizeFile(oldText, language)
-  const newTokens = tokenizeFile(newText, language)
+
+  const [oldTokens, newTokens] = await Promise.all([
+    tokenizer.tokenizeFile(oldText, language),
+    tokenizer.tokenizeFile(newText, language)
+  ])
+
   const hunks = buildHunks(patch, oldTokens.lines, newTokens.lines)
   const lines = hunks.flatMap((h) => h.lines)
 
@@ -332,7 +338,8 @@ export async function workspaceDiffFile(
     hunks
   }
 
-  cache.set(key, file)
+  // A result coloured plain because the tokenizer failed is not kept: the next ask tries again.
+  if (!oldTokens.degraded && !newTokens.degraded) cache.set(key, file)
 
   return scoped(file)
 }

@@ -5,7 +5,8 @@ import {
   cliScriptFrom,
   daemonScriptFrom,
   packagedResourcesDir,
-  runtimeFrom
+  runtimeFrom,
+  tokenizerWorkerFrom
 } from './packaged'
 import { quePaths } from './paths'
 
@@ -41,12 +42,14 @@ describe('packaged paths', () => {
       expect(daemonScriptFrom(`${RES}/app.asar/out/main`)).toBe(`${RES}/daemon/index.js`)
       expect(daemonScriptFrom(`${RES}/cli`)).toBe(`${RES}/daemon/index.js`)
       expect(cliScriptFrom(`${RES}/daemon`)).toBe(`${RES}/cli/index.js`)
+      expect(tokenizerWorkerFrom(`${RES}/daemon`)).toBe(`${RES}/daemon/highlight-worker.js`)
       expect(appExecutable(RES)).toBe(`${APP}/Contents/MacOS/que`)
     })
 
     it('uses the sibling bundles in out/ in development', () => {
       expect(daemonScriptFrom(`${DEV}/main`)).toBe(`${DEV}/daemon/index.js`)
       expect(cliScriptFrom(`${DEV}/daemon`)).toBe(`${DEV}/cli/index.js`)
+      expect(tokenizerWorkerFrom(`${DEV}/daemon`)).toBe(`${DEV}/daemon/highlight-worker.js`)
     })
   })
 

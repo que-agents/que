@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { DiffToken } from '../shared/protocol'
-import { kindOf, languageFor, tokenizeFile, withBracketDepth } from './highlight'
+import { tokenizeFile } from './highlight'
+import { kindOf, languageFor, withBracketDepth } from './syntax'
 
 const text = (tokens: readonly DiffToken[] | undefined): string =>
   (tokens ?? []).map((t) => t.text).join('')
