@@ -56,6 +56,7 @@ import {
   type DiffWhitespace,
   decodeDiffMode,
   decodeDiffWhitespace,
+  decodeDiffWrap,
   decodeReview,
   readStored,
   writeStored
@@ -219,6 +220,7 @@ function rememberDiffBase(id: string, base: string | null): void {
 
 const DIFF_MODE_KEY = 'que.diffMode'
 const DIFF_WHITESPACE_KEY = 'que.diffWhitespace'
+const DIFF_WRAP_KEY = 'que.diffWrap'
 
 function loadDiffMode(): DiffMode {
   return readStored(DIFF_MODE_KEY, decodeDiffMode, 'unified')
@@ -226,6 +228,10 @@ function loadDiffMode(): DiffMode {
 
 function loadDiffWhitespace(): DiffWhitespace {
   return readStored(DIFF_WHITESPACE_KEY, decodeDiffWhitespace, 'show')
+}
+
+function loadDiffWrap(): boolean {
+  return readStored(DIFF_WRAP_KEY, decodeDiffWrap, true)
 }
 
 export const DEFAULT_DIFF_COMMENTS: DiffComments = { mode: 'dim', keepRemoved: true }
@@ -334,6 +340,8 @@ export interface QueState extends ResourceTables {
   diffMode: DiffMode
   /** Whether diff tabs ignore whitespace; remembered. */
   diffWhitespace: DiffWhitespace
+  /** Whether diff tabs wrap long lines in their column; remembered, on by default. */
+  diffWrap: boolean
   /** Per project id: how its diff tabs treat changed comment lines (none: the default); remembered. */
   diffComments: Record<string, DiffComments>
   dialog: DialogState | null
@@ -443,6 +451,7 @@ export class QueStore {
     diffReveals: {},
     diffMode: loadDiffMode(),
     diffWhitespace: loadDiffWhitespace(),
+    diffWrap: loadDiffWrap(),
     diffComments: loadDiffComments(),
     diffFiles: {},
     dialog: null,
@@ -1407,6 +1416,12 @@ export class QueStore {
   setDiffWhitespace(whitespace: DiffWhitespace): void {
     writeStored(DIFF_WHITESPACE_KEY, whitespace)
     this.set({ diffWhitespace: whitespace })
+  }
+
+  /** Has every diff tab wrap long lines in their column, or scroll sideways; remembered. */
+  setDiffWrap(wrap: boolean): void {
+    writeStored(DIFF_WRAP_KEY, wrap ? 'on' : 'off')
+    this.set({ diffWrap: wrap })
   }
 
   /** Has a project's diff tabs dim, show or fold changed comment lines; remembered per project. */

@@ -126,6 +126,11 @@ export function decodeDiffWhitespace(raw: string): DiffWhitespace {
   return raw === 'ignore' ? 'ignore' : 'show'
 }
 
+/** Whether `que.diffWrap` has diff tabs wrap long lines: on unless it says off. */
+export function decodeDiffWrap(raw: string): boolean {
+  return raw !== 'off'
+}
+
 /**
  * What `key` holds, read through `decode`; the fallback when nothing (or an empty string) is
  * stored, when storage is unavailable, or when `decode` throws on what it finds.

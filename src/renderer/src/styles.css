@@ -2367,7 +2367,7 @@ button.diff-tool[aria-pressed='true'] {
   font: 12px var(--mono);
 }
 
-/* The lines: the whole area scrolls both ways, every row as wide as the widest. */
+/* The lines: the whole area scrolls both ways, every row as wide as the widest (unless Wrap). */
 .diff-patch {
   flex: 1;
   min-height: 0;
@@ -2550,6 +2550,34 @@ button.diff-comment-toggle:hover:not(:disabled) {
     var(--bg-raised) 4px,
     var(--bg-raised) 5px
   );
+}
+
+/* Wrap: a line's text wraps inside its own column, continuing under its code with the number
+   and sign on its first line; rows are as wide as the area, so nothing scrolls sideways, and a
+   split row is as tall as its taller side. */
+.diff-patch[data-wrap] .diff-lines {
+  width: auto;
+}
+
+.diff-patch[data-wrap] .diff-row {
+  grid-template-columns: 44px 44px 18px minmax(0, 1fr);
+}
+
+.diff-patch[data-wrap] .diff-row[data-kept] {
+  grid-template-columns: 44px 44px 18px minmax(0, 1fr) auto;
+}
+
+.diff-patch[data-wrap] .diff-side {
+  grid-template-columns: 44px 16px minmax(0, 1fr);
+}
+
+.diff-patch[data-wrap] .diff-side[data-kept] {
+  grid-template-columns: 44px 16px minmax(0, 1fr) auto;
+}
+
+.diff-patch[data-wrap] .diff-code {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 /* Unchanged lines folded away, across both sides; its words stay in view when scrolled. */

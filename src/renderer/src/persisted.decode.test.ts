@@ -4,6 +4,7 @@ import {
   decodeDiffComments,
   decodeDiffMode,
   decodeDiffWhitespace,
+  decodeDiffWrap,
   decodeLayout,
   decodeReview,
   readStored,
@@ -103,6 +104,14 @@ describe('decodeDiffWhitespace', () => {
     expect(decodeDiffWhitespace('ignore')).toBe('ignore')
     expect(decodeDiffWhitespace('show')).toBe('show')
     expect(decodeDiffWhitespace('true')).toBe('show')
+  })
+})
+
+describe('decodeDiffWrap', () => {
+  it('reads off, and on for anything else', () => {
+    expect(decodeDiffWrap('off')).toBe(false)
+    expect(decodeDiffWrap('on')).toBe(true)
+    expect(decodeDiffWrap('false')).toBe(true)
   })
 })
 
