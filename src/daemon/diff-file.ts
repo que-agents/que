@@ -459,14 +459,19 @@ async function blobIds(ws: Workspace, range: DiffRange): Promise<Map<string, Blo
   return ids
 }
 
-/** How many of one listed file's changed lines are comments; null when it cannot be classified. */
-async function splitOf(
+/**
+ * One listed file's split as far as the cache knows it: `known` (a split, or null when the file
+ * cannot be classified), or `work` that works it out, caches it, and resolves null on failure.
+ */
+type SplitLookup = { known: CommentSplit | null } | { work: () => Promise<CommentSplit | null> }
+
+async function lookupSplit(
   ws: Workspace,
   range: DiffRange,
   file: ListedFile & { patch: string },
   ids: BlobIds | undefined,
   tokenizer: Tokenizer
-): Promise<CommentSplit | null> {
+): Promise<SplitLookup> {
   const isNew = file.status === 'added' || file.status === 'untracked'
   const isGone = file.status === 'deleted'
 
@@ -474,58 +479,66 @@ async function splitOf(
   const worktree =
     range.to === null && !isGone ? await limitReads(() => worktreeSide(ws, file.path)) : null
 
-  if (worktree && worktree.size > FULL_CONTEXT_CHARS) return null
+  if (worktree && worktree.size > FULL_CONTEXT_CHARS) return { known: null }
   const beforeId = isNew ? null : (ids?.before ?? null)
   const afterId = worktree ? worktree.id : isGone ? null : (ids?.after ?? null)
 
   // A side git could not name is not guessed at.
-  if ((!isNew && beforeId === null) || (!isGone && afterId === null)) return null
+  if ((!isNew && beforeId === null) || (!isGone && afterId === null)) return { known: null }
   const key = splitKey(beforeId, afterId, file.path, file.from)
   const hit = splits.get(key)
 
-  if (hit !== undefined) return hit === 'skip' ? null : hit
-  const running = inflight.get(key)
+  if (hit !== undefined) return { known: hit === 'skip' ? null : hit }
 
-  if (running) return running
+  const work = (): Promise<CommentSplit | null> => {
+    const running = inflight.get(key)
 
-  const work = limit(async (): Promise<CommentSplit | null> => {
-    const [before, after] = await Promise.all([
-      beforeId === null ? ABSENT : blobById(ws, beforeId),
-      worktree ?? (afterId === null ? ABSENT : blobById(ws, afterId))
-    ])
+    if (running) return running
 
-    if (before.size > FULL_CONTEXT_CHARS || after.size > FULL_CONTEXT_CHARS) {
-      splits.set(key, 'skip')
+    const started = compute()
+      .catch(() => null)
+      .finally(() => inflight.delete(key))
 
-      return null
-    }
+    inflight.set(key, started)
 
-    const [oldText, newText] = await Promise.all([before.read(), after.read()])
+    return started
+  }
 
-    if (oldText.includes('\0') || newText.includes('\0') || !fitsFullContext(oldText, newText)) {
-      splits.set(key, 'skip')
+  const compute = (): Promise<CommentSplit | null> =>
+    limit(async () => {
+      const [before, after] = await Promise.all([
+        beforeId === null ? ABSENT : blobById(ws, beforeId),
+        worktree ?? (afterId === null ? ABSENT : blobById(ws, afterId))
+      ])
 
-      return null
-    }
+      if (before.size > FULL_CONTEXT_CHARS || after.size > FULL_CONTEXT_CHARS) {
+        splits.set(key, 'skip')
 
-    const sides = await tokenizeSides(file.path, oldText, newText, tokenizer)
+        return null
+      }
 
-    // A file the tokenizer failed on counts as code now and is tried again next time.
-    if (sides.degraded) return null
+      const [oldText, newText] = await Promise.all([before.read(), after.read()])
 
-    // The list's own patch (git's default context, whitespace shown) gives the changed lines.
-    const hunks = buildHunks(file.patch, sides.before.lines, sides.after.lines, false)
-    const split = countCommentLines(hunks.flatMap((h) => h.lines))
-    splits.set(key, split)
+      if (oldText.includes('\0') || newText.includes('\0') || !fitsFullContext(oldText, newText)) {
+        splits.set(key, 'skip')
 
-    return split
-  })
-    .catch(() => null)
-    .finally(() => inflight.delete(key))
+        return null
+      }
 
-  inflight.set(key, work)
+      const sides = await tokenizeSides(file.path, oldText, newText, tokenizer)
 
-  return work
+      // A file the tokenizer failed on counts as code now and is tried again next time.
+      if (sides.degraded) return null
+
+      // The list's own patch (git's default context, whitespace shown) gives the changed lines.
+      const hunks = buildHunks(file.patch, sides.before.lines, sides.after.lines, false)
+      const split = countCommentLines(hunks.flatMap((h) => h.lines))
+      splits.set(key, split)
+
+      return split
+    })
+
+  return { work }
 }
 
 export interface ClassifyOptions {
@@ -537,9 +550,10 @@ export interface ClassifyOptions {
 
 /**
  * workspace.diff's files with their changed lines split into code and comment lines. Cached
- * splits cost nothing; the rest are worked out a few at a time on the tokenizer worker, and the
- * answer waits at most the budget for them: a file not done by then counts as code in this answer,
- * and once the rest are done `onLate` says the next answer would differ. Binary files and files
+ * splits are always in the answer; the rest are worked out a few at a time on the tokenizer
+ * worker, and the answer waits at most the budget for them (not at all for 0): a file not done by
+ * then counts as code in this answer, and once the rest are done `onLate` says the next answer
+ * would differ. Binary files and files
  * whose patch was too large (no patch), languages without a grammar, files over the whole-file
  * context limits, and every file of a diff listing more than MAX_CLASSIFIED_FILES count as code.
  * Never rejects.
@@ -568,28 +582,53 @@ export async function classifyComments(
   try {
     const ids = await blobIds(ws, range)
 
-    const all = Promise.all(
-      candidates.map(async (f) => {
-        const split = await splitOf(ws, range, f, ids.get(f.path), tokenizer).catch(() => null)
-
-        if (!split) return
-
-        if (answered) late = true
-        else found.set(f, split)
-      })
+    // Looking up is not budgeted: what the cache knows is always in the answer.
+    const lookups = await Promise.all(
+      candidates.map((f) =>
+        lookupSplit(ws, range, f, ids.get(f.path), tokenizer).catch((): SplitLookup => ({
+          known: null
+        }))
+      )
     )
+
+    const misses: Promise<void>[] = []
+
+    lookups.forEach((l, i) => {
+      const f = candidates[i]
+
+      if (!f) return
+
+      if ('known' in l) {
+        if (l.known) found.set(f, l.known)
+
+        return
+      }
+
+      misses.push(
+        l.work().then((split) => {
+          if (!split) return
+
+          if (answered) late = true
+          else found.set(f, split)
+        })
+      )
+    })
+
+    const all = Promise.all(misses)
 
     // Only a split that landed (a plain fallback is not cached) can change the next answer.
     void all.then(() => {
       if (late) onLate?.()
     })
 
-    const budget = new Promise<void>((resolve) => {
-      timer = setTimeout(resolve, budgetMs)
-      timer.unref()
-    })
+    if (misses.length > 0 && budgetMs > 0) {
+      const budget = new Promise<void>((resolve) => {
+        timer = setTimeout(resolve, budgetMs)
+        timer.unref()
+      })
 
-    await Promise.race([all, budget])
+      await Promise.race([all, budget])
+    }
   } catch {
     // Files not classified count as code.
   } finally {
