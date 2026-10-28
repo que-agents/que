@@ -36,6 +36,20 @@
   --tone-good: #34c26b;
   --tone-muted: #5a5a5a;
 
+  /* syntax in the diff tabs: a familiar dark editor palette (docs/design.md, Syntax) */
+  --syn-decl: #569cd6;
+  --syn-ctrl: #c586c0;
+  --syn-fn: #dcdcaa;
+  --syn-type: #4ec9b0;
+  --syn-str: #ce9178;
+  --syn-num: #b5cea8;
+  --syn-var: #9cdcfe;
+  --syn-comment: #6a9955;
+  --syn-text: #d4d4d4;
+  --syn-bracket-1: #ffd700;
+  --syn-bracket-2: #da70d6;
+  --syn-bracket-3: #179fff;
+
   --sans: -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, 'Helvetica Neue', sans-serif;
   --mono: ui-monospace, 'SF Mono', Menlo, Monaco, monospace;
   --radius: 4px;
@@ -2176,34 +2190,264 @@ button.changes-pick {
   flex-direction: column;
 }
 
+/* The toolbar under the tab strip: the path and its counts at the left, the layout and
+   whitespace choices at the right. */
 .diff-header {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 8px 16px;
+  gap: 8px;
+  height: 36px;
+  box-sizing: border-box;
+  padding: 0 12px 0 16px;
   border-bottom: 1px solid var(--border);
   flex: none;
+  font: 11px var(--mono);
+  color: var(--fg-faint);
 }
 
 .diff-path {
-  flex: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font: 11px var(--mono);
-  color: var(--fg-secondary);
+  color: var(--fg);
 }
 
-.diff-status {
+.diff-count {
   flex: none;
-  font: 11px var(--mono);
   color: var(--tone);
 }
 
+.diff-against {
+  flex: none;
+}
+
+.diff-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  margin-left: auto;
+}
+
+.diff-segmented {
+  display: flex;
+}
+
+button.diff-tool {
+  padding: 2px 8px;
+  font: 11px var(--mono);
+  color: var(--fg-faint);
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+}
+
+.diff-segmented button.diff-tool:first-child {
+  border-radius: 2px 0 0 2px;
+}
+
+.diff-segmented button.diff-tool + button.diff-tool {
+  margin-left: -1px;
+  border-radius: 0 2px 2px 0;
+}
+
+button.diff-tool:hover:not(:disabled) {
+  color: var(--fg);
+  background: var(--bg-hover);
+  border-color: var(--border);
+}
+
+button.diff-tool[aria-pressed='true'] {
+  color: var(--fg);
+  background: var(--bg-raised);
+}
+
+/* The lines: the whole area scrolls both ways, every row as wide as the widest. */
 .diff-patch {
   flex: 1;
   min-height: 0;
+  overflow: auto;
+  font: 12px / 18px var(--mono);
+  color: var(--syn-text);
+  background: var(--bg-input);
+  tab-size: 4;
+}
+
+.diff-lines {
+  box-sizing: border-box;
+  width: max-content;
+  min-width: 100%;
+  padding: 4px 0 8px;
+}
+
+.diff-row {
+  display: grid;
+  grid-template-columns: 44px 44px 18px 1fr;
+  min-height: 18px;
+}
+
+.diff-num {
+  padding-right: 8px;
+  text-align: right;
+  color: var(--fg-faint);
+  user-select: none;
+}
+
+.diff-sign {
+  text-align: center;
+  color: var(--fg-faint);
+  user-select: none;
+}
+
+.diff-code {
+  padding-right: 16px;
+  white-space: pre;
+}
+
+.diff-row[data-kind='added'],
+.diff-side[data-kind='added'] {
+  background: color-mix(in srgb, var(--tone-good) 12%, transparent);
+}
+
+.diff-row[data-kind='removed'],
+.diff-side[data-kind='removed'] {
+  background: color-mix(in srgb, var(--tone-bad) 12%, transparent);
+}
+
+[data-kind='added'] > :is(.diff-num, .diff-sign) {
+  color: color-mix(in srgb, var(--tone-good) 70%, var(--fg-faint));
+}
+
+[data-kind='removed'] > :is(.diff-num, .diff-sign) {
+  color: color-mix(in srgb, var(--tone-bad) 70%, var(--fg-faint));
+}
+
+/* The words a changed line changed against its pair. */
+[data-kind='added'] .tok-mark {
+  background: color-mix(in srgb, var(--tone-good) 30%, transparent);
+  border-radius: 2px;
+}
+
+[data-kind='removed'] .tok-mark {
+  background: color-mix(in srgb, var(--tone-bad) 30%, transparent);
+  border-radius: 2px;
+}
+
+/* Side by side: old at the left, new at the right, as wide as each other. */
+.diff-split-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  min-height: 18px;
+}
+
+.diff-side {
+  display: grid;
+  grid-template-columns: 44px 16px minmax(var(--code-ch, 0), 1fr);
+}
+
+.diff-side + .diff-side {
+  border-left: 1px solid var(--border);
+}
+
+/* Nothing on this side of the pair. */
+.diff-side[data-kind='filler'] {
+  background: repeating-linear-gradient(
+    135deg,
+    transparent 0,
+    transparent 4px,
+    var(--bg-raised) 4px,
+    var(--bg-raised) 5px
+  );
+}
+
+/* Unchanged lines folded away, across both sides; its words stay in view when scrolled. */
+.diff-fold {
+  display: flex;
+  align-items: center;
+  height: 26px;
+  box-sizing: border-box;
+  background: var(--bg-side);
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  font: 11px var(--mono);
+  color: var(--fg-faint);
+}
+
+.diff-fold-inner {
+  position: sticky;
+  left: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 16px 0 12px;
+}
+
+button.diff-fold-step,
+button.diff-fold-all {
+  padding: 0 2px;
+  font: inherit;
+  color: var(--fg-muted);
+  background: none;
+  border: none;
+}
+
+button.diff-fold-all {
+  color: var(--fg-faint);
+}
+
+button.diff-fold-step:hover:not(:disabled),
+button.diff-fold-all:hover:not(:disabled) {
+  color: var(--fg);
+  background: none;
+}
+
+.diff-fold-label {
+  max-width: 480px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fg-muted);
+}
+
+/* Syntax: a token's kind, a bracket's depth. */
+.tok-decl {
+  color: var(--syn-decl);
+}
+.tok-ctrl {
+  color: var(--syn-ctrl);
+}
+.tok-fn {
+  color: var(--syn-fn);
+}
+.tok-type {
+  color: var(--syn-type);
+}
+.tok-str {
+  color: var(--syn-str);
+}
+.tok-num {
+  color: var(--syn-num);
+}
+.tok-var,
+.tok-prop {
+  color: var(--syn-var);
+}
+.tok-comment {
+  color: var(--syn-comment);
+}
+.tok-plain,
+.tok-punct {
+  color: var(--syn-text);
+}
+.tok-b1 {
+  color: var(--syn-bracket-1);
+}
+.tok-b2 {
+  color: var(--syn-bracket-2);
+}
+.tok-b3 {
+  color: var(--syn-bracket-3);
 }
 
 .changes-file {
@@ -2242,34 +2486,6 @@ button.changes-pick {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.changes-patch {
-  margin: 0;
-  padding: 8px 0;
-  overflow: auto;
-  font: 12px / 18px var(--mono);
-  color: var(--fg-secondary);
-  background: var(--bg-input);
-}
-
-.changes-patch .line {
-  display: block;
-  padding: 0 16px;
-  white-space: pre;
-}
-
-.changes-patch .line[data-kind='added'] {
-  background: color-mix(in srgb, var(--tone-good) 12%, transparent);
-}
-
-.changes-patch .line[data-kind='removed'] {
-  background: color-mix(in srgb, var(--tone-bad) 12%, transparent);
-}
-
-.changes-patch .line[data-kind='hunk'],
-.changes-patch .line[data-kind='header'] {
-  color: var(--fg-faint);
 }
 
 .changes-note {
@@ -2834,26 +3050,20 @@ button.pr-row.settled .pr-row-number {
 
 /* ---- a pull request's diff tab ------------------------------------------- */
 
-.diff-against {
-  flex: none;
-  font: 11px var(--mono);
-  color: var(--fg-faint);
-}
-
-.changes-patch .line-group {
-  display: block;
-}
-
 /* The line a line comment asked for, marked at its left edge. */
-.changes-patch .line[data-target] {
+.diff-patch [data-target] {
   box-shadow: inset 2px 0 0 var(--accent);
 }
 
-/* A line comment under its line, in the reading font. */
-.changes-patch .line-comment {
+/* A line comment under its line, in the reading font, kept in view when scrolled sideways. */
+.diff-patch .line-comment {
+  position: sticky;
+  left: 0;
+  box-sizing: border-box;
   display: grid;
   gap: 4px;
-  margin: 6px 16px 10px 48px;
+  max-width: 640px;
+  margin: 6px 16px 10px 106px;
   padding: 8px 10px;
   white-space: normal;
   font: 12px / 1.45 var(--sans);
@@ -2861,6 +3071,10 @@ button.pr-row.settled .pr-row-number {
   background: var(--bg-side);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius);
+}
+
+.diff-lines.split .line-comment {
+  margin-left: 60px;
 }
 
 .line-comment-who {

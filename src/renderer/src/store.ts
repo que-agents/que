@@ -21,6 +21,7 @@ import type {
   Usage,
   Workspace,
   WorkspaceDiff,
+  WorkspaceDiffFile,
   WorkspaceFile,
   WorkspaceFiles
 } from '../../preload/index.d'
@@ -35,6 +36,7 @@ import {
   RATIO_DEFAULT,
   reconcileLayout,
   type DiffAgainst,
+  type DiffTab,
   diffId,
   diffOf,
   fileId,
@@ -49,6 +51,7 @@ import { removalStepLabel } from '../../shared/format'
 import type { RemovalFailure } from '../../shared/types'
 import { decodeDiffBases, decodeReview, readStored, writeStored } from './persisted.decode'
 import { newestAt } from './pr-list'
+import type { Reveals } from './diff-rows'
 
 const DEFAULT_COLS = 80
 const DEFAULT_ROWS = 24
@@ -202,6 +205,33 @@ function rememberDiffBase(id: string, base: string | null): void {
   writeStored(DIFF_BASES_KEY, Object.keys(bases).length > 0 ? JSON.stringify(bases) : null)
 }
 
+/** How a diff tab lays its lines out: one column, or old and new side by side. */
+export type DiffMode = 'unified' | 'split'
+
+/** Whether a diff tab compares whitespace ('ignore': `git diff -w`). */
+export type DiffWhitespace = 'show' | 'ignore'
+
+const DIFF_MODE_KEY = 'que.diffMode'
+const DIFF_WHITESPACE_KEY = 'que.diffWhitespace'
+
+function loadDiffMode(): DiffMode {
+  return readStored(DIFF_MODE_KEY, (raw) => (raw === 'split' ? 'split' : 'unified'), 'unified')
+}
+
+function loadDiffWhitespace(): DiffWhitespace {
+  return readStored(DIFF_WHITESPACE_KEY, (raw) => (raw === 'ignore' ? 'ignore' : 'show'), 'show')
+}
+
+/** The diffFiles key of a diff tab's file: the workspace, the tab, and the whitespace option. */
+export function diffFileKey(
+  key: string,
+  path: string,
+  against: DiffAgainst | undefined,
+  whitespace: DiffWhitespace
+): string {
+  return keyOf(key, diffId(path, against), whitespace)
+}
+
 function initialDiffScopes(): Record<string, DiffScope> {
   return Object.fromEntries(
     Object.entries(loadDiffBases()).map(([id, base]) => [id, { base, commit: null }])
@@ -237,6 +267,8 @@ interface Resources {
    * against a base (a pull request's).
    */
   diffs: WorkspaceDiff
+  /** Per diffFileKey: one diff tab's file as lines of tokens, in its tab's scope. */
+  diffFiles: WorkspaceDiffFile
   /** Per workspace: its worktree's files as listed. */
   fileLists: WorkspaceFiles
   /** Per fileKey(workspace, path): a file as read for its file tab; null when the path is gone. */
@@ -282,6 +314,12 @@ export interface QueState extends ResourceTables {
   prFolds: Record<PrSection, boolean>
   /** Per keyOf(workspace, diff tab id): the line the tab was last asked to show. */
   diffTargets: Record<string, { line: number; nonce: number }>
+  /** Per keyOf(workspace, diff tab id): the folds opened in it, while the tab is open. */
+  diffReveals: Record<string, Reveals>
+  /** How diff tabs lay out their lines; remembered. */
+  diffMode: DiffMode
+  /** Whether diff tabs ignore whitespace; remembered. */
+  diffWhitespace: DiffWhitespace
   dialog: DialogState | null
   /** The daemon's quiet-hours state; null until loaded. */
   quiet: QuietState | null
@@ -381,6 +419,10 @@ export class QueStore {
     review: loadReview(),
     prFolds: { files: true, checks: true, comments: true },
     diffTargets: {},
+    diffReveals: {},
+    diffMode: loadDiffMode(),
+    diffWhitespace: loadDiffWhitespace(),
+    diffFiles: {},
     dialog: null,
     quiet: null,
     usage: null,
@@ -718,6 +760,7 @@ export class QueStore {
       if (pr && shown.has(pr.number)) {
         void this.fetchPrThread(ws.id, pr.number)
         void this.fetchDiff(ws.id, prAgainst(pr))
+        void this.fetchDiffTabs(ws.id, prAgainst(pr))
       } else {
         if (this.state.prThreads[thread]?.data !== undefined) this.forget('prThreads', thread)
         const files = diffKey(ws.id, prAgainst(old))
@@ -963,9 +1006,11 @@ export class QueStore {
       const against = prAgainst(pr)
 
       if (this.diffFor.get(diffKey(key, against)) !== pr.updatedAt) {
-        loads.push(this.fetchDiff(key, against))
+        loads.push(this.fetchDiff(key, against), this.fetchDiffTabs(key, against))
       }
     }
+
+    loads.push(this.fetchDiffTabs(key))
 
     return Promise.all(loads).then(() => undefined)
   }
@@ -1034,6 +1079,11 @@ export class QueStore {
 
     const tabIds = this.tabs(key).map((t) => t.id)
     this.setLayout(key, reconcileLayout(next, new Set(tabIds), tabIds))
+    const reveals = keyOf(key, id)
+
+    if (reveals in this.state.diffReveals) {
+      this.setWith((s) => ({ diffReveals: without(s.diffReveals, reveals) }))
+    }
   }
 
   /** Closes the focused pane's active tab: a view tab (a diff or a file), or a terminal (which is killed). */
@@ -1208,7 +1258,7 @@ export class QueStore {
     rememberDiffBase(key, base)
     this.setWith((s) => ({ diffScopes: { ...s.diffScopes, [key]: { base, commit: null } } }))
 
-    return this.fetchDiff(key)
+    return Promise.all([this.fetchDiff(key), this.fetchDiffTabs(key)]).then(() => undefined)
   }
 
   /** Narrows a workspace's diff to one commit's own changes (null: every commit). Not remembered. */
@@ -1217,12 +1267,87 @@ export class QueStore {
       diffScopes: { ...s.diffScopes, [key]: { ...(s.diffScopes[key] ?? NO_SCOPE), commit } }
     }))
 
-    return this.fetchDiff(key)
+    return Promise.all([this.fetchDiff(key), this.fetchDiffTabs(key)]).then(() => undefined)
   }
 
   /** Fetches the diff unless it is loaded or on its way. */
   ensureDiff(key: string, against?: DiffAgainst): Promise<void> {
     return this.ensure('diffs', diffKey(key, against), () => this.fetchDiff(key, against))
+  }
+
+  /**
+   * Fetches one diff tab's file as lines of tokens, in the tab's scope (the workspace's base and
+   * commit, or the branch and base it is against) and with the whitespace option; a failure
+   * (quiet hours too) is kept for the tab. Only the latest fetch per tab and option lands.
+   */
+  fetchDiffFile(key: string, path: string, against?: DiffAgainst): Promise<void> {
+    const whitespace = this.state.diffWhitespace
+
+    return this.fetchInto(
+      'diffFiles',
+      diffFileKey(key, path, against, whitespace),
+      () => {
+        if (against?.head === '') throw new Error('The branch of this pull request is unknown.')
+        const { base, commit } = this.diffScope(key)
+
+        const scope = against
+          ? { head: against.head, base: against.base || undefined }
+          : { base: base ?? undefined, commit: commit ?? undefined }
+
+        return this.api.workspace.diffFile({ id: key, path, ...scope, whitespace })
+      },
+      { latestOnly: true, keepOnError: false }
+    )
+  }
+
+  /** Fetches the tab's file unless it is loaded or on its way. */
+  ensureDiffFile(key: string, path: string, against?: DiffAgainst): Promise<void> {
+    return this.ensure(
+      'diffFiles',
+      diffFileKey(key, path, against, this.state.diffWhitespace),
+      () => this.fetchDiffFile(key, path, against)
+    )
+  }
+
+  /**
+   * Fetches again the file of each open diff tab of a workspace against one thing: its
+   * worktree (no `against`), or a branch and base. `every`: all of them, whatever they are against.
+   */
+  private fetchDiffTabs(key: string, against?: DiffAgainst | 'every'): Promise<void> {
+    const same = (a: DiffAgainst | undefined): boolean =>
+      against === 'every' ||
+      (a === undefined || against === undefined
+        ? a === against
+        : a.head === against.head && a.base === against.base)
+
+    const tabs = this.layout(key)
+      .views.map(diffOf)
+      .filter((t): t is DiffTab => t !== null && same(t.against))
+
+    return Promise.all(tabs.map((t) => this.fetchDiffFile(key, t.path, t.against))).then(
+      () => undefined
+    )
+  }
+
+  /** Lays every diff tab out in one column or side by side; remembered. */
+  setDiffMode(mode: DiffMode): void {
+    writeStored(DIFF_MODE_KEY, mode)
+    this.set({ diffMode: mode })
+  }
+
+  /** Has every diff tab show or ignore whitespace, fetching the shown workspace's open ones again; remembered. */
+  setDiffWhitespace(whitespace: DiffWhitespace): void {
+    writeStored(DIFF_WHITESPACE_KEY, whitespace)
+    this.set({ diffWhitespace: whitespace })
+    const key = this.currentKey()
+
+    if (key !== null && key !== SCRATCH) void this.fetchDiffTabs(key, 'every')
+  }
+
+  /** Keeps the folds opened in a diff tab while it is open. */
+  setDiffReveals(key: string, id: string, reveals: Reveals): void {
+    const k = keyOf(key, id)
+    this.setWith((s) => ({ diffReveals: { ...s.diffReveals, [k]: reveals } }))
   }
 
   // ---- the Files tab and file tabs -------------------------------------------

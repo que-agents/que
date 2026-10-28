@@ -2,9 +2,13 @@
 // come from the fs-free src/testing/entities.ts; the rest are renderer-only.
 import type {
   DiffFile,
+  DiffHunk,
+  DiffLine,
+  DiffToken,
   Project,
   QuietState,
   TermInfo,
+  TokenKind,
   UserConfig,
   WorkspaceDiff,
   WorkspaceDiffFile,
@@ -164,6 +168,190 @@ export function makeWorkspaceDiffFile(
     ],
     ...overrides
   }
+}
+
+/** A token of a fixture line. */
+function tok(text: string, kind: TokenKind, extra: Partial<DiffToken> = {}): DiffToken {
+  return { text, kind, ...extra }
+}
+
+/**
+ * A whole TypeScript file's diff with whole-file context: a comment, a changed constant whose
+ * number is marked on both sides, an added line with nothing beside it, then a 28-line
+ * unchanged run inside `withRetry` (it folds; new line 20 is hidden in it), brackets four
+ * deep, and a last change that marks an inserted `await `.
+ */
+export function makeRetryDiffFile(overrides: Partial<WorkspaceDiffFile> = {}): WorkspaceDiffFile {
+  const lines: DiffLine[] = []
+  let o = 1
+  let n = 1
+
+  const ctx = (tokens: DiffToken[]): void => {
+    lines.push({ kind: 'context', old: o++, new: n++, tokens })
+  }
+
+  const del = (tokens: DiffToken[]): void => {
+    lines.push({ kind: 'removed', old: o++, new: null, tokens })
+  }
+
+  const add = (tokens: DiffToken[]): void => {
+    lines.push({ kind: 'added', old: null, new: n++, tokens })
+  }
+
+  const max = (value: string): DiffToken[] => [
+    tok('const', 'decl'),
+    tok(' ', 'plain'),
+    tok('MAX_RETRIES', 'var'),
+    tok(' = ', 'punct'),
+    tok(value, 'num', { mark: true })
+  ]
+
+  ctx([tok('// Retries a failed upload with exponential backoff.', 'comment')])
+  ctx([
+    tok('import', 'ctrl'),
+    tok(' ', 'plain'),
+    tok('{', 'punct', { depth: 0 }),
+    tok(' sleep ', 'var'),
+    tok('}', 'punct', { depth: 0 }),
+    tok(' ', 'plain'),
+    tok('from', 'ctrl'),
+    tok(' ', 'plain'),
+    tok("'./sleep'", 'str')
+  ])
+  ctx([])
+  del(max('1'))
+  add(max('3'))
+  add([
+    tok('const', 'decl'),
+    tok(' ', 'plain'),
+    tok('BACKOFF_MS', 'var'),
+    tok(' = ', 'punct'),
+    tok('250', 'num')
+  ])
+  ctx([])
+  ctx([
+    tok('export', 'ctrl'),
+    tok(' ', 'plain'),
+    tok('async', 'decl'),
+    tok(' ', 'plain'),
+    tok('function', 'decl'),
+    tok(' ', 'plain'),
+    tok('withRetry', 'fn'),
+    tok('(', 'punct', { depth: 0 }),
+    tok('run', 'var'),
+    tok(': ', 'punct'),
+    tok('Upload', 'type'),
+    tok(')', 'punct', { depth: 0 }),
+    tok(' ', 'plain'),
+    tok('{', 'punct', { depth: 0 })
+  ])
+  ctx([
+    tok('  ', 'plain'),
+    tok('await', 'ctrl'),
+    tok(' ', 'plain'),
+    tok('step', 'fn'),
+    tok('(', 'punct', { depth: 1 }),
+    tok('{', 'punct', { depth: 2 }),
+    tok(' ', 'plain'),
+    tok('at', 'prop'),
+    tok(': ', 'punct'),
+    tok('[', 'punct', { depth: 3 }),
+    tok('0', 'num'),
+    tok(']', 'punct', { depth: 3 }),
+    tok(' ', 'plain'),
+    tok('}', 'punct', { depth: 2 }),
+    tok(')', 'punct', { depth: 1 })
+  ])
+
+  for (let i = 2; i <= 26; i++) {
+    ctx([
+      tok('  ', 'plain'),
+      tok('await', 'ctrl'),
+      tok(' ', 'plain'),
+      tok('step', 'fn'),
+      tok('(', 'punct', { depth: 1 }),
+      tok(String(i), 'num'),
+      tok(')', 'punct', { depth: 1 })
+    ])
+  }
+
+  del([
+    tok('  ', 'plain'),
+    tok('return', 'ctrl'),
+    tok(' ', 'plain'),
+    tok('run', 'fn'),
+    tok('()', 'punct')
+  ])
+  add([
+    tok('  ', 'plain'),
+    tok('return', 'ctrl'),
+    tok(' ', 'plain'),
+    tok('await ', 'ctrl', { mark: true }),
+    tok('run', 'fn'),
+    tok('()', 'punct')
+  ])
+  ctx([tok('}', 'punct', { depth: 0 })])
+
+  return makeWorkspaceDiffFile({
+    path: 'src/upload/retry.ts',
+    additions: 3,
+    deletions: 2,
+    hunks: [{ oldStart: 1, oldLines: o - 1, newStart: 1, newLines: n - 1, label: '', lines }],
+    ...overrides
+  })
+}
+
+/**
+ * What workspace.diffFile would say of a file workspace.diff lists, read off its patch: its
+ * hunks with their labels, each line one plain token; binary when it has no patch.
+ */
+export function diffFileFromPatch(
+  file: DiffFile,
+  overrides: Partial<WorkspaceDiffFile> = {}
+): WorkspaceDiffFile {
+  const hunks: DiffHunk[] = []
+  let o = 0
+  let n = 0
+
+  for (const text of (file.patch ?? '').replace(/\n$/, '').split('\n')) {
+    const head = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@ ?(.*)$/.exec(text)
+
+    if (head) {
+      o = Number(head[1])
+      n = Number(head[3])
+      hunks.push({
+        oldStart: o,
+        oldLines: Number(head[2] ?? 1),
+        newStart: n,
+        newLines: Number(head[4] ?? 1),
+        label: head[5],
+        lines: []
+      })
+      continue
+    }
+
+    const hunk = hunks.at(-1)
+
+    if (!hunk || /^(diff --git|--- |\+\+\+ |\\)/.test(text)) continue
+    const tokens = [tok(text.slice(1), 'plain')]
+
+    if (text.startsWith('+')) hunk.lines.push({ kind: 'added', old: null, new: n++, tokens })
+    else if (text.startsWith('-')) hunk.lines.push({ kind: 'removed', old: o++, new: null, tokens })
+    else hunk.lines.push({ kind: 'context', old: o++, new: n++, tokens })
+  }
+
+  return makeWorkspaceDiffFile({
+    path: file.path,
+    from: file.from,
+    status: file.status,
+    additions: file.additions,
+    deletions: file.deletions,
+    fullContext: false,
+    language: null,
+    skipped: file.patch === null ? 'binary' : null,
+    hunks,
+    ...overrides
+  })
 }
 
 /** One commit ahead of the base. */

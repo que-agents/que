@@ -545,11 +545,10 @@ describe('ChangesList', () => {
       )
       fakeBridge.changeWorkspace(retry.id)
 
-      expect(await within(view).findByText('+Retries with backoff.')).toHaveAttribute(
-        'data-kind',
-        'added'
-      )
-      expect(within(view).getByTestId('diff-header')).toHaveTextContent('README.md · +2 −0')
+      const line = await within(view).findByText('Retries with backoff.')
+      expect(line.closest('[data-testid="diff-line"]')).toHaveAttribute('data-kind', 'added')
+      expect(within(view).getByTestId('diff-additions')).toHaveTextContent('+2')
+      expect(within(view).getByTestId('diff-deletions')).toHaveTextContent('−0')
     })
 
     it('fetches nothing for a change while quiet hours are locked', async () => {

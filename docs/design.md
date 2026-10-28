@@ -69,6 +69,31 @@ badge (`.status.tone-*`) is a 5px dot and a mono word, tinted at 12% with a
 the story, and a wall of filled pills is exactly the noise que exists to
 remove. The quiet board uses the same tones on a dot or a word, never a badge.
 
+## Syntax
+
+The diff tabs colour code by what each piece is (the daemon names the kind of every
+token). The palette deliberately matches a familiar dark editor's, so code reads the
+way it does where it was written; that it overlaps the accent and the diff tones is
+intended, and these tokens are used for code and nothing else.
+
+| Token             | Value     | Use                                                     |
+| ----------------- | --------- | ------------------------------------------------------- |
+| `--syn-decl`      | `#569cd6` | Declarations: `const`, `function`, `class`, `async`.    |
+| `--syn-ctrl`      | `#c586c0` | Control keywords: `if`, `return`, `await`, `import`.    |
+| `--syn-fn`        | `#dcdcaa` | Function names.                                         |
+| `--syn-type`      | `#4ec9b0` | Types and classes.                                      |
+| `--syn-str`       | `#ce9178` | Strings.                                                |
+| `--syn-num`       | `#b5cea8` | Numbers.                                                |
+| `--syn-var`       | `#9cdcfe` | Variables and properties.                               |
+| `--syn-comment`   | `#6a9955` | Comments.                                               |
+| `--syn-text`      | `#d4d4d4` | Plain text and punctuation; a file with no language.    |
+| `--syn-bracket-1` | `#ffd700` | Brackets by depth: the outermost, then every third one. |
+| `--syn-bracket-2` | `#da70d6` | One level in.                                           |
+| `--syn-bracket-3` | `#179fff` | Two levels in; the fourth level is gold again.          |
+
+Each token is a span with a class per kind (`tok-decl`, `tok-str`, …), a bracket
+`tok-b1`/`tok-b2`/`tok-b3`.
+
 ## Shapes
 
 - Corners are nearly square: 2px on buttons, inputs, dialogs and fieldsets; 4px
@@ -140,7 +165,29 @@ remove. The quiet board uses the same tones on a dot or a word, never a badge.
   same way as a tab of its own (its id carries the branch and base, so it never collides
   with the Changes diff of the path), headed `#188 vs #187`, the pull request's line comments
   under their lines on `--bg-side` behind a `--border-strong` hairline; the line a
-  comment asked for carries a 2px `--accent` edge.
+  comment asked for carries a 2px `--accent` edge, and a fold that hid it opens.
+- A diff tab opens with a 36px toolbar above a `--border` hairline, mono 11px
+  `--fg-faint`: the path in `--fg` (`from → path` for a rename), `+a` in `--tone-good`,
+  `−d` in `--tone-bad`, and for a pull request's diff `#188 vs <base>`; at its right a
+  segmented `Unified | Split` and a `Whitespace` toggle (on: whitespace is ignored).
+  These are mono 11px buttons behind a 1px `--border` at a 2px radius, the chosen one
+  `--fg` on `--bg-raised`; both choices are remembered for every tab. The lines are mono
+  12px/18px on `--bg-input`, never a raw diff header: the old line number and the new
+  one (44px each, right-aligned, `--fg-faint`), the sign (18px, `+` or `−`), then the
+  code in its syntax colours, and the whole area scrolls both ways. An added line takes
+  `--tone-good` at 12% behind it, a removed one `--tone-bad`, its numbers and sign tinted
+  toward the tone; within a changed pair the words that changed carry the tone at 30%
+  with a 2px radius. When the diff carries the whole file, a run of more than 8
+  unchanged lines folds, leaving 3 lines beside each change: a 26px row on `--bg-side`
+  between hairlines, mono 11px `--fg-faint`, with `↑ 20` and `↓ 20` (`--fg-muted`, only
+  the sides that touch a change) and `n unchanged lines`, which opens the whole run, then
+  the enclosing function in `--fg-muted` when there is one. Without the whole file, the
+  lines between hunks are the same row without buttons. What a tab unfolds stays unfolded
+  while it is open. Split puts old at the left and new at the right in two equal columns
+  divided by a `--border` hairline (number 44px, sign 16px, code): a removed line beside
+  the added line it became, a hatch of `--bg-raised` where a side has nothing, context on
+  both; folds and comments span both. A binary file reads `Binary file.`, one over the
+  size cap `Too large to show.`
 - Files is `[ FILES ]` with `n · m changed`, then a filter field: mono 12px on
   `--bg-input` behind a 1px `--border`, `--accent` on focus, ⌘F while the pane has focus.
   It narrows the tree to the matching paths with their folders open, `n matches · ⏎

@@ -308,7 +308,27 @@ describe('PullRequestDetail', () => {
       const comment = screen.getByTestId(`diff-comment-${lineComment.id}`)
       expect(comment).toHaveTextContent('rquellh · 2h ago')
       expect(comment).toHaveTextContent('If done is empty this reads "moving aside" too early.')
-      expect(target?.parentElement).toContainElement(comment)
+      expect(target?.nextElementSibling).toBe(comment)
+      expect(screen.getByTestId('diff-header')).toHaveTextContent('#188 vs #187')
+    })
+
+    it('keeps the comment under its line in the split view, across both sides', async () => {
+      const user = userEvent.setup()
+      seed()
+      localStorage.setItem('que.diffMode', 'split')
+      await openDetail(user)
+
+      await user.click(await screen.findByTestId('pr-comment-1-path'))
+
+      const patch = await screen.findByTestId('diff-patch')
+      const target = patch.querySelector<HTMLElement>('[data-target]')
+      expect(target).toHaveAttribute('data-testid', 'diff-split-row')
+      expect(target).toHaveAttribute('data-line', '40')
+      expect(within(target as HTMLElement).getByTestId('diff-split-old')).toHaveAttribute(
+        'data-kind',
+        'filler'
+      )
+      expect(target?.nextElementSibling).toBe(screen.getByTestId(`diff-comment-${lineComment.id}`))
     })
 
     it('Refresh fetches its conversation again', async () => {

@@ -1,14 +1,24 @@
 // A file's diff tab in a pane's tab strip, beside the session tabs, and the
-// diff it shows. Tabs are keyed by the file's path (the diff has no other id); a
-// pull request's own diff of a file is keyed by its number too (`prTab`), and its
-// header says what it is against (`#8 vs #7`).
+// diff it shows: a toolbar (the path, its counts, Unified | Split, Whitespace) over
+// numbered, syntax-coloured lines. Tabs are keyed by the file's path (the diff has
+// no other id); a pull request's own diff of a file is keyed by its number too
+// (`prTab`), and its toolbar says what it is against (`#8 vs #7`).
 import type { Locator, Page } from '@playwright/test'
 
 export class DiffPage {
   page: Page
   root: Locator
   header: Locator
+  additions: Locator
+  deletions: Locator
+  modeUnified: Locator
+  modeSplit: Locator
+  whitespace: Locator
   patch: Locator
+  // Each drawn line's number in the new file (blank on a removed line), in order.
+  lineNumbers: Locator
+  // A token of the code with exactly this text, wherever it is drawn.
+  token: (text: string) => Locator
   empty: Locator
   error: Locator
   against: Locator
@@ -26,7 +36,15 @@ export class DiffPage {
     this.page = page
     this.root = page.getByTestId('diff-view')
     this.header = page.getByTestId('diff-header')
+    this.additions = page.getByTestId('diff-additions')
+    this.deletions = page.getByTestId('diff-deletions')
+    this.modeUnified = page.getByTestId('diff-mode-unified')
+    this.modeSplit = page.getByTestId('diff-mode-split')
+    this.whitespace = page.getByTestId('diff-whitespace')
     this.patch = page.getByTestId('diff-patch')
+    this.lineNumbers = this.patch.getByTestId('diff-line-new')
+    this.token = (text) =>
+      this.patch.getByTestId('diff-line-code').locator('span').getByText(text, { exact: true })
     this.empty = page.getByTestId('diff-empty')
     this.error = page.getByTestId('diff-error')
     this.against = page.getByTestId('diff-against')
