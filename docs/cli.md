@@ -295,7 +295,8 @@ a workspace's pull request: its checks and its conversation
 
 Options:
   --json      print JSON ({ pr, thread })
-  --refresh   fetch the conversation again instead of using the cached one
+  --refresh   check the pull request with GitHub and fetch its conversation
+              again
   -h, --help  display help for command
 ```
 

@@ -181,6 +181,7 @@ export default function PullRequestDetail({
   const pr = ws?.prs.find((p) => p.number === number)
   const against = pr && prAgainst(pr)
   const threadEntry = useQueSelector((s) => s.prThreads[keyOf(termKey, number)])
+  const checkError = useQueSelector((s) => s.prCheckErrors[termKey])
 
   const diffEntry = useQueSelector((s) =>
     against ? s.diffs[diffKey(termKey, against)] : undefined
@@ -209,6 +210,12 @@ export default function PullRequestDetail({
       {threadEntry?.error && (
         <p className="pr-error form-error" role="alert" data-testid="pr-error">
           {threadEntry.error}
+        </p>
+      )}
+      {/* A check that failed for the same reason as the conversation says nothing new. */}
+      {checkError && checkError !== threadEntry?.error && (
+        <p className="pr-error form-error" role="alert" data-testid="prs-check-error">
+          {checkError}
         </p>
       )}
       <div className="pr-body">

@@ -141,6 +141,7 @@ export const decoders: { [M in MethodName]: (p: Params) => ParamsOf<M> } = {
     number: num(p, 'number'),
     refresh: optBool(p, 'refresh')
   }),
+  'workspace.checkPrs': idOnly,
   'workspace.files': idOnly,
   'workspace.readFile': (p) => ({ id: str(p, 'id'), path: str(p, 'path') }),
   'workspace.watch': idOnly,

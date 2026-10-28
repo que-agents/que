@@ -9,6 +9,7 @@
 // the open and draft pull requests whose conversation is not cached for their
 // updatedAt are fetched in the background (a few at a time), so each pull
 // request carries its comment count and newest comment time.
+// And workspace.checkPrs: one workspace checked now, failing with gh's message when a call fails.
 import type { UserConfig } from '../shared/config'
 import { firstLine, run } from '../shared/exec'
 import type { HookEvent } from '../shared/protocol'
@@ -210,12 +211,24 @@ export class PrService {
     }
   }
 
-  /** Checks one workspace now. */
-  private async refresh(id: string): Promise<void> {
-    if (this.stopped) return
+  /** Checks one workspace now; the first gh failure's message (already logged), else null. */
+  private async refresh(id: string): Promise<string | null> {
+    if (this.stopped) return null
     const ws = this.opts.store.getWorkspace(id)
 
-    if (ws && !ws.archivedAt) await this.check(await this.sync(ws))
+    return ws && !ws.archivedAt ? this.check(await this.sync(ws)) : null
+  }
+
+  /**
+   * Checks one workspace now and answers it as stored after the check. Fails with gh's message
+   * when a call failed; what the check did settle is stored anyway.
+   */
+  async checkNow(id: string): Promise<Workspace> {
+    const error = await this.refresh(id)
+
+    if (error !== null) throw ghFailed(error)
+
+    return this.opts.workspaces.get(id)
   }
 
   /**
@@ -363,8 +376,15 @@ export class PrService {
     return this.poller.track(this.opts.workspaces.syncBranch(ws.id).catch(() => ws))
   }
 
-  private check(ws: Workspace): Promise<void> {
-    return this.poller.track(this.checkHeads(ws, true, (head) => this.list(ws, head)))
+  /** Checks a workspace's heads and linked pull requests; the first gh failure's message, else null. */
+  private check(ws: Workspace): Promise<string | null> {
+    const errors: string[] = []
+
+    return this.poller.track(
+      this.checkHeads(ws, true, (head) => this.list(ws, head, errors)).then(
+        (error) => errors[0] ?? error
+      )
+    )
   }
 
   /**
@@ -433,30 +453,41 @@ export class PrService {
     return { byBranch, full: items.length >= LIST_LIMIT }
   }
 
-  /** Settles a workspace with the pull requests `listed` finds on each of its heads; none when one listing failed. */
+  /**
+   * Settles a workspace with the pull requests `listed` finds on each of its heads; none when one
+   * listing failed. Answers the message of a failed lookup of a created pull request, else null.
+   */
   private async checkHeads(
     ws: Workspace,
     due: boolean,
     listed: (head: string) => GhPullRequest[] | Promise<GhPullRequest[] | null>
-  ): Promise<void> {
+  ): Promise<string | null> {
     const lists = await Promise.all(this.heads(ws).map(async (head) => listed(head)))
     const raw: GhPullRequest[] = []
 
     for (const prs of lists) {
-      if (prs === null) return
+      if (prs === null) return null
       raw.push(...prs)
     }
 
-    if (!this.stopped) await this.settle(ws, raw, due)
+    return this.stopped ? null : this.settle(ws, raw, due)
   }
 
-  /** The pull requests whose head is `branch`; null when gh failed (logged) or the service stopped. */
-  private async list(ws: Workspace, branch: string): Promise<GhPullRequest[] | null> {
+  /**
+   * The pull requests whose head is `branch`; null when gh failed (logged, its message added to
+   * `errors`) or the service stopped.
+   */
+  private async list(
+    ws: Workspace,
+    branch: string,
+    errors: string[] = []
+  ): Promise<GhPullRequest[] | null> {
     try {
       const items = await ghPrList(branch, ws.path, this.poller.signal)
 
       return this.stopped ? null : decodePullRequests(items)
     } catch (err) {
+      errors.push(errorMessage(err))
       this.failed(ws, errorMessage(err))
 
       return null
@@ -522,18 +553,18 @@ export class PrService {
    * branches, joined with those the session created elsewhere and those stored
    * before, and the current one among them.
    */
-  private async settle(ws: Workspace, raw: GhPullRequest[], due: boolean): Promise<void> {
+  private async settle(ws: Workspace, raw: GhPullRequest[], due: boolean): Promise<string | null> {
     const checkedAt = new Date().toISOString()
     const onBranch = raw.map((r) => parsePullRequest(r, checkedAt))
     const extra = await this.linked(ws, onBranch, due, checkedAt)
 
-    if (this.stopped) return
+    if (this.stopped) return null
 
     if (extra.error !== null) this.failed(ws, extra.error)
     else if (this.failing.delete(ws.id)) this.opts.log?.(`pr check recovered for ${ws.id}`)
     const current = this.opts.store.getWorkspace(ws.id)
 
-    if (!current || current.archivedAt) return
+    if (!current || current.archivedAt) return null
 
     const prs = pullRequestList([...onBranch, ...extra.prs], current.prs).map((pr) =>
       this.withCounts(ws.id, pr, current.prs)
@@ -548,6 +579,8 @@ export class PrService {
 
     // After storing, so each fetch sees the updatedAt it caches the conversation for.
     this.prefetch(ws.id, prs)
+
+    return extra.error
   }
 
   /**

@@ -9,11 +9,11 @@ import {
   ChevronsRightIcon,
   EditorIcon,
   FolderIcon,
-  PullRequestIcon,
-  RefreshIcon
+  PullRequestIcon
 } from './icons'
 import PullRequestDetail from './PullRequestDetail'
 import PullRequestList from './PullRequestList'
+import RefreshButton from './RefreshButton'
 
 const VIEWS: ReadonlyArray<{ view: ReviewView; name: string; Icon: () => React.JSX.Element }> = [
   { view: 'prs', name: 'Pull requests', Icon: PullRequestIcon },
@@ -136,11 +136,12 @@ export default function ReviewPane({ termKey }: { termKey: string }): React.JSX.
     store.ensureReview(termKey)
   }, [store, termKey, place.view, place.pr, numbers])
 
-  const refresh = (): void => {
-    if (place.view === 'changes') void store.fetchDiff(termKey)
-    else if (place.view === 'files') void store.refreshFiles(termKey)
-    else void store.refreshPrs(termKey)
-  }
+  const refresh = (): Promise<void> =>
+    place.view === 'changes'
+      ? store.fetchDiff(termKey)
+      : place.view === 'files'
+        ? store.refreshFiles(termKey)
+        : store.refreshPrs(termKey)
 
   // ⌘F while the pane has focus: the Files view's filter.
   const onKeyDown = (e: React.KeyboardEvent): void => {
@@ -196,20 +197,13 @@ export default function ReviewPane({ termKey }: { termKey: string }): React.JSX.
         <div className="review-actions">
           {ws && (
             <>
-              {/* The list has nothing of its own to fetch: the daemon keeps it fresh. */}
-              {!(place.view === 'prs' && !pr) && (
-                <button
-                  type="button"
-                  className="ghost icon"
-                  aria-label="Refresh"
-                  title="Refresh"
-                  data-testid={`${testId}-refresh`}
-                  disabled={!connected}
-                  onClick={refresh}
-                >
-                  <RefreshIcon />
-                </button>
-              )}
+              {/* Each view and each pull request turns its own Refresh. */}
+              <RefreshButton
+                key={`${termKey}:${place.view}:${pr?.number ?? ''}`}
+                testId={`${testId}-refresh`}
+                disabled={!connected}
+                onRefresh={refresh}
+              />
               <button
                 type="button"
                 className="ghost icon"
