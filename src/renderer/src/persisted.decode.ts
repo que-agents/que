@@ -3,6 +3,7 @@
 // once and returns plain typed fields; the store and layout apply the domain
 // rules (clamping, known tab names, view ids) to the result.
 import { isObj, strings } from '../../shared/json.decode'
+import { COMMENT_MODES, type DiffComments } from './diff-rows'
 
 /** A remembered review pane, as stored. Fields that are missing or of the wrong type are null. */
 export interface PersistedReview {
@@ -74,6 +75,19 @@ export function decodeDiffBases(v: unknown): Record<string, string> {
   return entriesOf(v, nonEmpty)
 }
 
+/**
+ * The per-project comment choices `que.diffComments` holds; an entry without a known mode is
+ * dropped, and `keepRemoved` is on unless it is stored as false.
+ */
+export function decodeDiffComments(v: unknown): Record<string, DiffComments> {
+  return entriesOf(v, (_, entry) => {
+    if (!isObj(entry)) return null
+    const mode = COMMENT_MODES.find((m) => m === entry.mode)
+
+    return mode ? { mode, keepRemoved: entry.keepRemoved !== false } : null
+  })
+}
+
 /** A layout `que.layout.<key>` holds, or null when it is not an object. */
 export function decodeLayout(v: unknown): PersistedLayout | null {
   if (!isObj(v)) return null
@@ -94,6 +108,22 @@ export function decodeLayout(v: unknown): PersistedLayout | null {
     focused: v.focused === 1 ? 1 : 0,
     views: strings(v.views)
   }
+}
+
+/** How a diff tab lays its lines out: one column, or old and new side by side. */
+export type DiffMode = 'unified' | 'split'
+
+/** Whether a diff tab compares whitespace ('ignore': whitespace changes are not differences). */
+export type DiffWhitespace = 'show' | 'ignore'
+
+/** The diff layout `que.diffMode` holds: split only when it says so, else unified. */
+export function decodeDiffMode(raw: string): DiffMode {
+  return raw === 'split' ? 'split' : 'unified'
+}
+
+/** The whitespace option `que.diffWhitespace` holds: ignore only when it says so, else show. */
+export function decodeDiffWhitespace(raw: string): DiffWhitespace {
+  return raw === 'ignore' ? 'ignore' : 'show'
 }
 
 /**

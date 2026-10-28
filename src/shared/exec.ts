@@ -12,6 +12,8 @@ export interface RunOptions {
   signal?: AbortSignal
   /** Bytes of stdout or stderr before the run is killed; execFile's default otherwise. */
   maxBuffer?: number
+  /** Written to stdin, which is then closed; by default stdin is closed empty. */
+  input?: string
 }
 
 export interface RunResult {
@@ -47,7 +49,7 @@ export function run(file: string, args: readonly string[], o: RunOptions = {}): 
         code: errorCode(err),
         error: err ? err.message : ''
       })
-    ).stdin?.end()
+    ).stdin?.end(o.input)
   })
 }
 

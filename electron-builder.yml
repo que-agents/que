@@ -30,6 +30,7 @@ npmRebuild: false
 #   daemon/index.js, cli/index.js, client/index.js   (esbuild bundles; only node-pty is external)
 #   cli/que                                           (the POSIX launcher for PATH)
 #   daemon/node_modules/node-pty                      (so the daemon's require('node-pty') resolves)
+#   daemon/highlight-worker.js                        (the daemon's tokenizer worker thread, beside it)
 extraResources:
   - from: out/daemon
     to: daemon

@@ -6,7 +6,8 @@
 // committed, the commits menu narrows the list to one commit and back, and the
 // base menu compares against another branch; the Files view shows the worktree as
 // a tree with an untracked file under a folded directory, opens an unchanged file
-// as a read-only tab and a changed one as its diff, collapses a directory, Refresh
+// as a read-only tab and a changed one as its diff (a source file numbered, its
+// keywords in their syntax colour), collapses a directory, Refresh
 // drops a deleted file, and its filter narrows the tree and opens a match; the pane
 // drags wider; the pull requests view shows none, then the worktree checks out a
 // second branch and each branch gets a pull request (through the fake GitHub CLI),
@@ -16,7 +17,8 @@
 // quits and relaunches on the same home and the pane, its view, its width, the
 // chosen base, the diff tab and the file tab come back; ⌘W closes the diff tab and
 // the file tab, the pane closes and opens again on the view it was left on, and the
-// list follows a pull request to merged.
+// list follows a pull request to merged; last, a file of comments alone lists under
+// `comments only` after the others and its diff opens with its lines dimmed.
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { expect, test } from '@playwright/test'
@@ -175,7 +177,11 @@ test('The review pane lists the changes beside the terminals, opens diffs as tab
     await expect(terminal.pane(0).diffTabs).toHaveCount(1)
     await expect(terminal.tab(termId)).toBeVisible()
     await expect(diff.root).toHaveAttribute('data-path', 'README.md')
-    await expect(diff.header).toContainText('README.md · +2')
+    await expect(diff.header).toContainText('README.md')
+    await expect(diff.additions).toHaveText('+2')
+    await expect(diff.deletions).toHaveText('−0')
+    // The whole file, numbered: the old first line, then the two added under it.
+    await expect(diff.lineNumbers).toHaveText(['1', '2', '3'])
     await expect(diff.patch).toContainText('+Retries with backoff.')
     await expect(changes.file(0)).toHaveAttribute('data-active', 'true')
     await expect
@@ -320,6 +326,19 @@ test('The review pane lists the changes beside the terminals, opens diffs as tab
     await expect(fileView.tab('que.toml')).toHaveAttribute('data-active', 'true')
     await expect(fileView.text).toHaveText('1setup = "true"')
     await launched.window.screenshot({ path: 'test-results/files-tab.png' })
+  })
+
+  await test.step('A changed source file opens numbered, its keywords in their syntax colour', async () => {
+    await files.rowByPath('src/upload/retry.ts').click()
+    await expect(diff.tab('src/upload/retry.ts')).toHaveAttribute('data-active', 'true')
+    await expect(diff.lineNumbers).toHaveText(['1'])
+    // `const` is a declaration: --syn-decl, #569cd6.
+    await expect(diff.token('const')).toHaveCSS('color', 'rgb(86, 156, 214)')
+    await expect(diff.token('3')).toHaveCSS('color', 'rgb(181, 206, 168)')
+    await launched.window.screenshot({ path: 'test-results/diff-syntax.png' })
+    await diff.tabClose('src/upload/retry.ts').click()
+    await expect(diff.tabs).toHaveCount(1)
+    await expect(fileView.tab('que.toml')).toHaveAttribute('data-active', 'true')
   })
 
   await test.step('A directory row collapses and opens again', async () => {
@@ -550,7 +569,8 @@ test('The review pane lists the changes beside the terminals, opens diffs as tab
     await expect(terminal.tab(termId)).toBeVisible()
     await expect(diff.tab('README.md')).toBeVisible()
     await expect(diff.against).toHaveText('#8 vs #7')
-    await expect(diff.header).toContainText('CAP.md · +3')
+    await expect(diff.header).toContainText('CAP.md')
+    await expect(diff.additions).toHaveText('+3')
     await expect(diff.patch).toContainText('+Thirty seconds at most.')
     await expect(pr.file(0)).toHaveAttribute('data-active', 'true')
     await launched.window.screenshot({ path: 'test-results/review-pr-diff.png' })
@@ -659,5 +679,26 @@ test('The review pane lists the changes beside the terminals, opens diffs as tab
     await expect(pr.settledRows).toHaveCount(1)
     await expect(pr.activeRows).toHaveCount(1)
     await expect(pr.listSummary).toHaveText('1 open')
+  })
+
+  await test.step('A file of comments alone lists last under comments only, and its diff opens dimmed', async () => {
+    writeFileSync(
+      join(workspace.path, 'backoff.ts'),
+      '// Backoff doubles from 250ms.\n// It caps at thirty seconds.\n'
+    )
+    await review.viewChanges.click()
+    // The daemon lists the file as code first, then again once it has read its comments.
+    await expect(changes.commentOnly).toHaveText('comments only · 1 file · +2 −0')
+    await expect(changes.commentOnly.locator('+ [data-testid^="changes-file-"]')).toHaveAttribute(
+      'data-path',
+      'backoff.ts'
+    )
+    await changes.fileByPath('backoff.ts').click()
+    await expect(diff.tab('backoff.ts')).toHaveAttribute('data-active', 'true')
+    await expect(diff.commentsButton).toHaveText('Comments dimmed ▾')
+    await expect(diff.commentCounts).toHaveText(/^\+2\s*comments$/)
+    await expect(diff.additions).toHaveCount(0)
+    await expect(diff.commentLines).toHaveCount(2)
+    await launched.window.screenshot({ path: 'test-results/diff-comments-dimmed.png' })
   })
 })

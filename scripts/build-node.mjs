@@ -29,6 +29,13 @@ await Promise.all([
     entryPoints: [resolve(root, 'src/daemon/index.ts')],
     outfile: resolve(root, 'out/daemon/index.js')
   }),
+  // The daemon's tokenizer worker thread, beside the daemon bundle (and in the app's
+  // Resources/daemon with it); the syntax grammars live only here.
+  build({
+    ...common,
+    entryPoints: [resolve(root, 'src/daemon/highlight-worker.ts')],
+    outfile: resolve(root, 'out/daemon/highlight-worker.js')
+  }),
   build({
     ...common,
     entryPoints: [resolve(root, 'src/cli/index.ts')],

@@ -100,6 +100,61 @@ describe('ChangesList', () => {
       expect(screen.getByTestId('changes-file-1')).toHaveTextContent('src/old.ts → src/new.ts')
     })
 
+    it('lists the files where only comments changed last, under one faint line of their totals', async () => {
+      const user = userEvent.setup()
+
+      const docs = makeDiffFile({
+        path: 'src/upload/docs.ts',
+        additions: 7,
+        deletions: 2,
+        commentOnly: true,
+        commentAdditions: 7,
+        commentDeletions: 2
+      })
+
+      const notes = makeDiffFile({
+        path: 'src/upload/notes.ts',
+        additions: 3,
+        deletions: 1,
+        commentOnly: true,
+        commentAdditions: 3,
+        commentDeletions: 1
+      })
+
+      seed([docs, put, notes, readme])
+
+      await openChanges(user)
+
+      const list = await screen.findByTestId('changes-files')
+
+      const order = within(list)
+        .getAllByRole('option')
+        .map((o) => o.dataset.path)
+
+      expect(order).toEqual([put.path, readme.path, docs.path, notes.path])
+      const line = within(list).getByTestId('changes-comment-only')
+      expect(line).toHaveTextContent('comments only · 2 files · +10 −3')
+      expect(line.nextElementSibling).toBe(screen.getByTestId('changes-file-2'))
+      expect(screen.getByTestId('changes-totals')).toHaveTextContent('+26 −6 · 4 files')
+
+      await user.click(screen.getByTestId('changes-file-3'))
+
+      expect(within(screen.getByTestId('pane-0')).getByTestId('diff-view')).toHaveAttribute(
+        'data-path',
+        notes.path
+      )
+    })
+
+    it('draws no comments-only line when every file changed code', async () => {
+      const user = userEvent.setup()
+      seed()
+
+      await openChanges(user)
+
+      await screen.findByTestId('changes-file-1')
+      expect(screen.queryByTestId('changes-comment-only')).not.toBeInTheDocument()
+    })
+
     it('says so for an empty diff', async () => {
       const user = userEvent.setup()
       seed([])
@@ -483,6 +538,22 @@ describe('ChangesList', () => {
       expect(fakeBridge.diffCalls().at(-1)).toEqual({ id: retry.id, base: null, commit: null })
     })
 
+    it('fetches only the diff again when the comment split settles', async () => {
+      const user = userEvent.setup()
+      seed([put])
+      await openChanges(user)
+      await screen.findByTestId('changes-file-0')
+      const before = fakeBridge.diffCalls().length
+      const filesBefore = fakeBridge.filesCalls().length
+
+      fakeBridge.seedDiff(makeWorkspaceDiff({ workspaceId: retry.id, files: [put, readme] }))
+      fakeBridge.settleDiff(retry.id)
+
+      expect(await screen.findByTestId('changes-file-1')).toHaveAttribute('data-path', 'README.md')
+      expect(fakeBridge.diffCalls()).toHaveLength(before + 1)
+      expect(fakeBridge.filesCalls()).toHaveLength(filesBefore)
+    })
+
     it('keeps the commit the diff is narrowed to', async () => {
       const user = userEvent.setup()
       seed()
@@ -545,11 +616,10 @@ describe('ChangesList', () => {
       )
       fakeBridge.changeWorkspace(retry.id)
 
-      expect(await within(view).findByText('+Retries with backoff.')).toHaveAttribute(
-        'data-kind',
-        'added'
-      )
-      expect(within(view).getByTestId('diff-header')).toHaveTextContent('README.md · +2 −0')
+      const line = await within(view).findByText('Retries with backoff.')
+      expect(line.closest('[data-testid="diff-line"]')).toHaveAttribute('data-kind', 'added')
+      expect(within(view).getByTestId('diff-additions')).toHaveTextContent('+2')
+      expect(within(view).getByTestId('diff-deletions')).toHaveTextContent('−0')
     })
 
     it('fetches nothing for a change while quiet hours are locked', async () => {

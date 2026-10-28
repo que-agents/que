@@ -67,6 +67,10 @@ export interface TestDaemonOptions {
   pathPrefix?: string[]
   /** Draws the names of workspaces created without one (e.g. scripted, to force clashes). */
   randomWorkspaceName?: () => string
+  /** How long tokenizing one file may take before it is answered plain. The daemon's default (5 s). */
+  tokenizeTimeoutMs?: number
+  /** Run the test-only fault tokenizer (src/testing/fault-tokenizer-worker.ts) instead of the real one. */
+  faultyTokenizer?: boolean
 }
 
 export async function startTestDaemon(opts: TestDaemonOptions = {}): Promise<TestDaemon> {
@@ -90,7 +94,13 @@ export async function startTestDaemon(opts: TestDaemonOptions = {}): Promise<Tes
     statusTickMs: opts.statusTickMs ?? 200,
     quietTickMs: opts.quietTickMs ?? 200,
     now: opts.now,
-    randomWorkspaceName: opts.randomWorkspaceName
+    randomWorkspaceName: opts.randomWorkspaceName,
+    tokenizerWorker: bundleEntry(
+      opts.faultyTokenizer
+        ? 'src/testing/fault-tokenizer-worker.ts'
+        : 'src/daemon/highlight-worker.ts'
+    ),
+    tokenizeTimeoutMs: opts.tokenizeTimeoutMs
   })
 
   await server.listen(paths.socket)

@@ -1,15 +1,15 @@
-// What a workspace changed against its base, committed and uncommitted, file
-// by file with patches. Read-only: only `git diff`, `git status`, and friends.
-import fs from 'node:fs'
-import { join } from 'node:path'
-import type { DiffCommit, DiffFile, WorkspaceDiff } from '../shared/protocol'
+// The git side of a workspace's diff: resolving what a diff compares (scopes
+// and ranges) and parsing what `git diff`, `git log` and friends print. Used by
+// workspace.diff (workspace-diff.ts), workspace.diffFile, and the comment split.
+import type { DiffCommit, DiffFile } from '../shared/protocol'
 import type { Project, Workspace } from '../shared/types'
+import type { ListedFile } from './comment-lines'
 import { badRequest } from './errors'
-import { git } from './workspaces'
+import { git, type GitOptions } from './workspaces'
 
 /** A patch longer than this many characters is reported as null. */
 export const MAX_PATCH_CHARS = 200_000
-const GIT_TIMEOUT_MS = 15_000
+export const GIT_TIMEOUT_MS = 15_000
 
 /** At most this many commits are listed. */
 export const MAX_COMMITS = 200
@@ -114,7 +114,7 @@ export function mergeListings(
   numstat: NumstatEntry[],
   names: Map<string, { status: DiffFile['status']; from: string | null }>,
   dirty: Set<string>
-): Omit<DiffFile, 'patch'>[] {
+): Omit<ListedFile, 'patch'>[] {
   return numstat.map((n) => {
     const named = names.get(n.path)
 
@@ -180,13 +180,6 @@ export function capPatch(patch: string): string | null {
   return patch.length > MAX_PATCH_CHARS ? null : patch
 }
 
-function countLines(text: string): number {
-  if (text.length === 0) return 0
-  const newlines = text.split('\n').length - 1
-
-  return text.endsWith('\n') ? newlines : newlines + 1
-}
-
 /** `origin/<default>` when it exists, else the local default branch, else the workspace's base. */
 function chooseBase(ws: Workspace, project: Project, refs: readonly string[]): string {
   const def = project.defaultBranch
@@ -221,31 +214,89 @@ export interface DiffOptions {
   commit?: string
 }
 
-type Run = (...args: string[]) => ReturnType<typeof git>
+export type Run = (...args: string[]) => ReturnType<typeof git>
 
-export async function workspaceDiff(
+/** git in the worktree, paths printed as they are (no octal quoting), with diff's timeout. */
+export function gitRunner(ws: Workspace, opts: GitOptions = {}): Run {
+  return (...args) => git(ws.path, ['-c', 'core.quotepath=off', ...args], GIT_TIMEOUT_MS, opts)
+}
+
+/** One file of `git diff --raw --no-abbrev -M`: its blob ids (null for none or not hashed yet). */
+export interface RawEntry {
+  path: string
+  from: string | null
+  status: DiffFile['status']
+  oldId: string | null
+  newId: string | null
+}
+
+const ZERO_ID = /^0+$/
+
+/**
+ * Parses `git diff --raw --no-abbrev -M` output, keyed by new path. An id of
+ * all zeros (no such side, or a working-tree file git has not hashed) is null.
+ */
+export function parseRawDiff(out: string): Map<string, RawEntry> {
+  const map = new Map<string, RawEntry>()
+
+  for (const line of out.split('\n')) {
+    const m = /^:\d+ \d+ ([0-9a-f]+) ([0-9a-f]+) ([A-Z])\d*\t([^\t]+)(?:\t(.+))?$/.exec(line)
+
+    if (!m) continue
+    const [, oldSha = '', newSha = '', code = '', first = '', second] = m
+    const renamed = (code === 'R' || code === 'C') && second !== undefined
+    const path = renamed ? second : first
+
+    map.set(path, {
+      path,
+      from: renamed ? first : null,
+      status: renamed ? 'renamed' : code === 'A' ? 'added' : code === 'D' ? 'deleted' : 'modified',
+      oldId: ZERO_ID.test(oldSha) ? null : oldSha,
+      newId: ZERO_ID.test(newSha) ? null : newSha
+    })
+  }
+
+  return map
+}
+
+/** Parses `git cat-file --batch-check` output into object id → size; missing objects are left out. */
+export function parseBatchCheck(out: string): Map<string, number> {
+  const sizes = new Map<string, number>()
+
+  for (const line of out.split('\n')) {
+    const m = /^([0-9a-f]+) \S+ (\d+)$/.exec(line.trim())
+
+    if (m?.[1] && m[2]) sizes.set(m[1], Number(m[2]))
+  }
+
+  return sizes
+}
+
+/** What a diff compares, resolved from the caller's options. */
+export interface DiffScope {
+  /** The ref compared against. */
+  base: string
+  /** The asked-for base when it was not a commit (`base` is then the default); else null. */
+  rejectedBase: string | null
+  /** What is compared: `HEAD` (with the working tree), or the resolved `head` ref. */
+  tip: string
+  /** The commit narrowed to, as a full sha, or null. */
+  commit: string | null
+  /** The short names of the local and origin branches. */
+  refs: string[]
+}
+
+/**
+ * Resolves the options to a scope. A head or commit that is not on this
+ * branch is a bad request; a base that is not a commit falls back to the
+ * default and is reported as rejected.
+ */
+export async function resolveScope(
+  run: Run,
   ws: Workspace,
   project: Project,
-  now: () => number,
-  opts: DiffOptions = {}
-): Promise<WorkspaceDiff> {
-  const run: Run = (...args) => git(ws.path, ['-c', 'core.quotepath=off', ...args], GIT_TIMEOUT_MS)
-
-  const empty = (base: string): WorkspaceDiff => ({
-    workspaceId: ws.id,
-    base,
-    head: opts.head ?? ws.branch,
-    commitsAhead: 0,
-    commits: [],
-    bases: [base],
-    commit: null,
-    files: [],
-    rejectedBase: null,
-    generatedAt: new Date(now()).toISOString()
-  })
-
-  if (!fs.existsSync(ws.path)) return empty(ws.baseRef)
-
+  opts: DiffOptions
+): Promise<DiffScope> {
   // An asked-for commit is checked, so a bad one is an error rather than an empty diff.
   const resolveCommit = async (ref: string): Promise<string | null> => {
     if (ref.startsWith('-')) return null
@@ -273,16 +324,16 @@ export async function workspaceDiff(
     return (await resolveCommit(base)) === null ? null : base
   }
 
-  const [tip, requested, refs] = await Promise.all([
+  const [tip, requested, listed] = await Promise.all([
     opts.head === undefined ? 'HEAD' : resolveRef(opts.head),
     opts.base === undefined ? null : resolveBase(opts.base),
     run('for-each-ref', '--format=%(refname)', 'refs/heads', 'refs/remotes/origin')
   ])
 
   if (tip === null) throw badRequest(`head ${opts.head} is not a branch here or on origin`)
-  const allRefs = parseRefs(refs.stdout)
+  const refs = parseRefs(listed.stdout)
 
-  const base = requested ?? chooseBase(ws, project, allRefs)
+  const base = requested ?? chooseBase(ws, project, refs)
   const rejectedBase = requested === null && opts.base !== undefined ? opts.base : null
   let commit: string | null = null
 
@@ -301,123 +352,35 @@ export async function workspaceDiff(
     commit = sha
   }
 
-  try {
-    const [counted, log] = await Promise.all([
-      run('rev-list', '--count', `${base}..${tip}`),
-      run('log', '--format=%H%x00%s%x00%an%x00%aI', '-n', String(MAX_COMMITS), `${base}..${tip}`)
-    ])
-
-    // Never the branch being compared: comparing it against itself shows nothing.
-    const refNames = allRefs.filter((r) => r !== ws.branch && r !== opts.head)
-
-    const result = (files: DiffFile[]): WorkspaceDiff => ({
-      ...empty(base),
-      rejectedBase,
-      commitsAhead:
-        counted.ok && Number.isInteger(Number(counted.stdout)) ? Number(counted.stdout) : 0,
-      commits: log.ok ? parseLog(log.stdout) : [],
-      bases: orderBases(base, project.defaultBranch, refNames),
-      commit,
-      files: files.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))
-    })
-
-    if (commit) {
-      // That commit's own changes; a root commit is compared with the empty tree.
-      const hasParent = (await run('rev-parse', '--verify', '--quiet', `${commit}^`)).ok
-
-      return result(await listFiles(run, [hasParent ? `${commit}^` : EMPTY_TREE, commit]))
-    }
-
-    const mb = await run('merge-base', base, tip)
-    const mergeBase = mb.ok && mb.stdout ? mb.stdout : base
-
-    // Another branch's own changes: committed only, the worktree has nothing to do with it.
-    if (opts.head !== undefined) return result(await listFiles(run, [mergeBase, tip]))
-
-    const [status, others] = await Promise.all([
-      run('status', '--porcelain'),
-      run('ls-files', '--others', '--exclude-standard')
-    ])
-
-    const files = await listFiles(run, [mergeBase], parsePorcelainPaths(status.stdout))
-
-    const seen = new Set(files.map((f) => f.path))
-    const untracked = others.stdout.split('\n').filter((p) => p && !seen.has(p))
-
-    const extra = await Promise.all(
-      untracked.map(async (path): Promise<DiffFile> => {
-        let text: string | null = null
-
-        try {
-          const buf = await fs.promises.readFile(join(ws.path, path))
-          text = buf.includes(0) ? null : buf.toString('utf8')
-        } catch {
-          text = null
-        }
-
-        const file: DiffFile = {
-          path,
-          from: null,
-          status: 'untracked',
-          additions: text === null ? 0 : countLines(text),
-          deletions: 0,
-          dirty: true,
-          patch: null
-        }
-
-        if (text === null) return file
-        const p = await run('diff', '--no-index', '--', '/dev/null', path)
-
-        return { ...file, patch: capPatch(p.stdout) }
-      })
-    )
-
-    return result([...files, ...extra])
-  } catch {
-    return empty(ws.baseRef)
-  }
+  return { base, rejectedBase, tip, commit, refs }
 }
 
 /**
- * The tracked files changed across `range` (one rev: it against the working
- * tree; two: the first against the second), each with its patch. One
- * `git diff -M` gives every patch, in the order numstat lists the files; a
- * file's own `git diff` is the fallback when the two do not line up.
+ * The two sides a scope's files are compared between: a commit's parent (the
+ * empty tree for a root commit) and the commit; else the merge base and the
+ * head, where a null `to` is the working tree.
  */
-async function listFiles(
+export async function scopeRange(
   run: Run,
-  range: string[],
-  dirty = new Set<string>()
-): Promise<DiffFile[]> {
-  const [numstat, names, full] = await Promise.all([
-    run('diff', '--numstat', '-M', ...range),
-    run('diff', '--name-status', '-M', ...range),
-    run('diff', '-M', ...range)
-  ])
+  scope: DiffScope,
+  opts: DiffOptions
+): Promise<DiffRange> {
+  if (scope.commit) {
+    const hasParent = (await run('rev-parse', '--verify', '--quiet', `${scope.commit}^`)).ok
 
-  const entries = parseNumstat(numstat.stdout)
-  const binary = new Set(entries.filter((e) => e.binary).map((e) => e.path))
-  const listed = mergeListings(entries, parseNameStatus(names.stdout), dirty)
-  const patches = full.ok ? splitPatches(full.stdout) : []
-
-  if (patches.length === listed.length) {
-    return listed.map((f, i) => ({
-      ...f,
-      patch: binary.has(f.path) ? null : capPatch(patches[i] ?? '')
-    }))
+    return { from: hasParent ? `${scope.commit}^` : EMPTY_TREE, to: scope.commit }
   }
 
-  return Promise.all(
-    listed.map(async (f): Promise<DiffFile> => {
-      if (binary.has(f.path)) return { ...f, patch: null }
+  const mb = await run('merge-base', scope.base, scope.tip)
+  const mergeBase = mb.ok && mb.stdout ? mb.stdout : scope.base
 
-      const args = f.from
-        ? ['diff', '-M', ...range, '--', f.from, f.path]
-        : ['diff', ...range, '--', f.path]
+  // Another branch's own changes: committed only, the worktree has nothing to do with it.
+  return { from: mergeBase, to: opts.head === undefined ? null : scope.tip }
+}
 
-      const p = await run(...args)
-
-      return { ...f, patch: p.ok ? capPatch(p.stdout) : null }
-    })
-  )
+/** The two sides a scope compares (see scopeRange). */
+export interface DiffRange {
+  from: string
+  /** null: the working tree. */
+  to: string | null
 }

@@ -52,7 +52,11 @@ import { LiveSessions, storedLiveSessions } from './live-sessions'
 import { StatusService } from './status'
 import { TicketService } from './tickets'
 import { Store } from './store'
-import { workspaceDiff } from './diff'
+import { CommentClassifier } from './comment-split'
+import { workspaceDiffFile } from './diff-file'
+import { workspaceDiff } from './workspace-diff'
+import { Tokenizer } from './tokenizer'
+import { tokenizerWorkerFrom } from '../shared/packaged'
 import { readWorkspaceFile, workspaceFiles } from './files'
 import {
   sessionEnv,
@@ -92,6 +96,10 @@ export interface ServerOptions {
   now?: () => number
   /** Draws the name of a workspace created without one. Default randomWorkspaceName. */
   randomWorkspaceName?: () => string
+  /** The tokenizer worker bundle. Defaults to highlight-worker.js beside the daemon bundle. */
+  tokenizerWorker?: string
+  /** How long tokenizing one file may take before it is answered plain. Default 5 s. */
+  tokenizeTimeoutMs?: number
 }
 
 interface Subscription {
@@ -177,9 +185,21 @@ export class DaemonServer {
   readonly watcher = new WorktreeWatcher((id) => void this.worktreeChanged(id), {
     log: (m) => this.log(m)
   })
+  /** Tokenizes files for workspace.diffFile and the comment split on a worker thread, never this one. */
+  private readonly tokenizer: Tokenizer
+  /** Splits workspace.diff's files into code and comment lines in the background. */
+  private readonly classifier: CommentClassifier
 
   constructor(private opts: ServerOptions) {
     this.startedAt = opts.startedAt ?? new Date().toISOString()
+    this.tokenizer = new Tokenizer({
+      script: opts.tokenizerWorker ?? tokenizerWorkerFrom(__dirname),
+      timeoutMs: opts.tokenizeTimeoutMs,
+      log: (m) => this.log(m)
+    })
+    this.classifier = new CommentClassifier(this.tokenizer, (id) =>
+      this.bus.emit('workspace.diffSettled', { id })
+    )
     const { host } = opts
     this.paths = ensureDirs(opts.paths ?? quePaths())
     this.store = new Store(this.paths.db)
@@ -673,6 +693,7 @@ export class DaemonServer {
       this.watcher.close()
       this.workspaces.close()
       this.store.close()
+      await this.tokenizer.close()
     }
   }
 
@@ -892,11 +913,18 @@ export class DaemonServer {
     'workspace.diff': (p) => {
       const ws = this.workspaces.get(p.id)
 
-      return workspaceDiff(ws, this.workspaces.project(ws.projectId), Date.now, {
-        base: p.base,
-        head: p.head,
-        commit: p.commit
-      })
+      return workspaceDiff(
+        ws,
+        this.workspaces.project(ws.projectId),
+        Date.now,
+        { base: p.base, head: p.head, commit: p.commit },
+        this.classifier
+      )
+    },
+    'workspace.diffFile': ({ id, ...rest }) => {
+      const ws = this.workspaces.get(id)
+
+      return workspaceDiffFile(ws, this.workspaces.project(ws.projectId), rest, this.tokenizer)
     },
     'workspace.prThread': (p) => {
       const ws = this.workspaces.get(p.id)

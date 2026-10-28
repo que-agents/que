@@ -22,6 +22,8 @@ import type {
   UserConfig,
   Workspace,
   WorkspaceDiff,
+  WorkspaceDiffFile,
+  WorkspaceDiffFileParams,
   WorkspaceDigest,
   WorkspaceFile,
   WorkspaceFiles,
@@ -43,7 +45,12 @@ import {
 import { removalStep } from '../../../shared/removal'
 import { workspaceSlug } from '../../../shared/slug'
 import type { RemovalFailure, RemovalResult, RemovalStep, Usage } from '../../../shared/types'
-import { makeQuietState, makeUserConfig } from './fixtures'
+import {
+  diffFileFromPatch,
+  makeQuietState,
+  makeUserConfig,
+  makeWorkspaceDiffFile
+} from './fixtures'
 
 export type FakeQueApi = QueApi
 
@@ -594,6 +601,36 @@ class FakeBridge {
 
           return structuredClone(seeded ?? this.defaultDiff(ws))
         },
+        diffFile: async (params) => {
+          this.refuseIfQuiet('workspace.diffFile')
+          const ws = this.workspace(params.id)
+          this.diffFileCallLog.push(structuredClone(params))
+          const whitespace = params.whitespace ?? 'show'
+          const seeded = this.diffFiles.get(keyOf(ws.id, params.path))
+
+          const scope = {
+            workspaceId: ws.id,
+            path: params.path,
+            head: params.head ?? ws.branch,
+            commit: params.commit ?? null,
+            whitespace
+          }
+
+          if (seeded) return structuredClone({ ...seeded, ...scope })
+          // Unseeded: the lines of the file's patch in the listing of the same scope.
+          const { id, base, head, commit } = params
+
+          const listing =
+            head !== undefined
+              ? this.headDiffs.get(diffKey(id, base, head))
+              : (this.diffs.get(diffKey(id, base, commit)) ?? this.diffs.get(diffKey(id)))
+
+          const listed = listing?.files.find((f) => f.path === params.path)
+
+          return structuredClone(
+            listed ? diffFileFromPatch(listed, scope) : makeWorkspaceDiffFile(scope)
+          )
+        },
         files: async ({ id }) => {
           this.refuseIfQuiet('workspace.files')
           const ws = this.workspace(id)
@@ -809,6 +846,12 @@ class FakeBridge {
   changeWorkspace(id: string): void {
     this.workspace(id)
     this.emit('workspace.changed', { id })
+  }
+
+  /** The daemon's comment split for the workspace settled: fires workspace.diffSettled. */
+  settleDiff(id: string): void {
+    this.workspace(id)
+    this.emit('workspace.diffSettled', { id })
   }
 
   /** Updates a workspace's status and emits workspace.updated with the row, as the status engine would. */
@@ -1111,6 +1154,22 @@ class FakeBridge {
     return this.diffCallLog.map((c) => ({ ...c }))
   }
 
+  private diffFiles = new Map<string, WorkspaceDiffFile>()
+  private diffFileCallLog: WorkspaceDiffFileParams[] = []
+
+  /**
+   * What workspace.diffFile answers for one path of a workspace, in any scope (with the scope
+   * and whitespace asked for); an unseeded path gets its listed patch's lines, else a one-line change.
+   */
+  seedDiffFile(file: WorkspaceDiffFile): void {
+    this.diffFiles.set(keyOf(file.workspaceId, file.path), structuredClone(file))
+  }
+
+  /** Every workspace.diffFile call, in order. */
+  diffFileCalls(): WorkspaceDiffFileParams[] {
+    return structuredClone(this.diffFileCallLog)
+  }
+
   private files = new Map<string, WorkspaceFiles>()
   private fileContents = new Map<string, WorkspaceFile>()
   private filesCallLog: string[] = []
@@ -1171,6 +1230,8 @@ class FakeBridge {
     this.headDiffs.clear()
     this.diffFailures.clear()
     this.diffCallLog = []
+    this.diffFiles.clear()
+    this.diffFileCallLog = []
     this.files.clear()
     this.fileContents.clear()
     this.filesCallLog = []

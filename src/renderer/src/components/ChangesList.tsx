@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { formatAge } from '../../../shared/format'
+import { commentOnlyLast } from '../diff'
 import { diffId, usePanes, useQueSelector } from '../store'
 import { useNow } from '../useNow'
 import Menu, { type MenuItem } from './Menu'
-import { DiffTotals, FileRow } from './ReviewParts'
+import { CommentOnlyLine, DiffTotals, FileRow } from './ReviewParts'
 
 /**
  * A workspace's changed files against its base, in the review pane: `[ CHANGES ]` with the
@@ -17,7 +18,8 @@ export default function ChangesList({ termKey }: { termKey: string }): React.JSX
   const scope = useQueSelector((s) => s.diffScopes[termKey])
   const diff = entry?.data ?? null
   const error = entry?.error ?? null
-  const files = diff?.files ?? []
+  const groups = useMemo(() => commentOnlyLast(diff?.files ?? []), [diff])
+  const files = useMemo(() => [...groups.code, ...groups.commentOnly], [groups])
   const activeId = store.paneActiveId(termKey, store.focusedPane(termKey))
   const [cursor, setCursor] = useState(0)
   const [menu, setMenu] = useState<'commits' | 'base' | null>(null)
@@ -184,14 +186,18 @@ export default function ChangesList({ termKey }: { termKey: string }): React.JSX
           onKeyDown={onKeyDown}
         >
           {files.map((f, i) => (
-            <FileRow
-              key={f.path}
-              file={f}
-              testId={`changes-file-${i}`}
-              active={activeId === diffId(f.path)}
-              selected={i === at}
-              onOpen={() => open(i)}
-            />
+            <Fragment key={f.path}>
+              {i === groups.code.length && (
+                <CommentOnlyLine files={groups.commentOnly} testId="changes-comment-only" />
+              )}
+              <FileRow
+                file={f}
+                testId={`changes-file-${i}`}
+                active={activeId === diffId(f.path)}
+                selected={i === at}
+                onOpen={() => open(i)}
+              />
+            </Fragment>
           ))}
         </div>
       )}

@@ -31,6 +31,12 @@ import type {
   TermSnapshotResult,
   WorkspaceCreateParams,
   WorkspaceDiff,
+  WorkspaceDiffFile,
+  WorkspaceDiffFileParams,
+  DiffHunk,
+  DiffLine,
+  DiffToken,
+  TokenKind,
   DiffFile,
   DiffCommit,
   WorkspaceFiles,
@@ -92,6 +98,12 @@ export type {
   UpdateInfo,
   Workspace,
   WorkspaceDiff,
+  WorkspaceDiffFile,
+  WorkspaceDiffFileParams,
+  DiffHunk,
+  DiffLine,
+  DiffToken,
+  TokenKind,
   DiffFile,
   DiffCommit,
   WorkspaceFiles,
@@ -178,6 +190,7 @@ export type WorkspaceEventName =
   | 'workspace.updated'
   | 'workspace.removed'
   | 'workspace.changed'
+  | 'workspace.diffSettled'
 
 export type WorkspaceEvents = Pick<Events, WorkspaceEventName>
 
@@ -204,6 +217,8 @@ export interface WorkspaceApi {
     head?: string
     commit?: string
   }): Promise<WorkspaceDiff>
+  /** One file of diff()'s scope as hunks of tokenized lines (syntax kinds, bracket depth, word marks), whole-file context when it fits. Refused in quiet hours. */
+  diffFile(params: WorkspaceDiffFileParams): Promise<WorkspaceDiffFile>
   /** Pull request `number`'s conversation: comments, reviews, line comments. Null when the workspace has no such PR. Refused in quiet hours. */
   prThread(params: { id: string; number: number; refresh?: boolean }): Promise<PrThread | null>
   /** Every tracked and untracked file of the worktree, sorted; never the ignored ones. Refused in quiet hours. */

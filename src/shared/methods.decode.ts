@@ -119,6 +119,23 @@ export const decoders: { [M in MethodName]: (p: Params) => ParamsOf<M> } = {
     head: optString(p, 'head'),
     commit: optString(p, 'commit')
   }),
+  'workspace.diffFile': (p) => {
+    const asked = optString(p, 'whitespace')
+    const whitespace = asked === 'show' || asked === 'ignore' ? asked : undefined
+
+    if (asked !== undefined && whitespace === undefined) {
+      throw new ParamsError("whitespace must be 'show' or 'ignore'")
+    }
+
+    return {
+      id: str(p, 'id'),
+      path: str(p, 'path'),
+      base: optString(p, 'base'),
+      head: optString(p, 'head'),
+      commit: optString(p, 'commit'),
+      whitespace
+    }
+  },
   'workspace.prThread': (p) => ({
     id: str(p, 'id'),
     number: num(p, 'number'),

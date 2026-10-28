@@ -63,7 +63,9 @@
     "@xterm/addon-serialize": "^0.14.0",
     "@xterm/headless": "^6.0.0",
     "commander": "^15.0.0",
+    "diff": "9.0.0",
     "node-pty": "^1.1.0",
+    "shiki": "4.5.0",
     "smol-toml": "^1.9.1"
   },
   "devDependencies": {

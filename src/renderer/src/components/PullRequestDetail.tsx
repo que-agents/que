@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { Fragment, useState } from 'react'
 import type { PrCheck, PrThreadEntry } from '../../../preload/index.d'
 import { formatAge, formatSpan } from '../../../shared/format'
+import { commentOnlyLast } from '../diff'
 import { CHECK_TONE, REVIEW_TEXT, reviewBadge } from '../format'
 import { baseLabel, checkGroups, checksCount } from '../pr-list'
 import { splitFences } from '../pr-text'
@@ -16,7 +17,7 @@ import {
 } from '../store'
 import { useNow } from '../useNow'
 import { ChevronIcon, ExternalLinkIcon } from './icons'
-import { DiffTotals, Dot, FileRow, PrDotMark } from './ReviewParts'
+import { CommentOnlyLine, DiffTotals, Dot, FileRow, PrDotMark } from './ReviewParts'
 
 /** A comment body: text with its line breaks, fenced blocks in mono. */
 function Body({ body }: { body: string }): React.JSX.Element {
@@ -194,6 +195,7 @@ export default function PullRequestDetail({
   const thread = threadEntry?.data ?? null
   const entries: PrThreadEntry[] = thread?.entries ?? []
   const files = diffEntry?.data?.files ?? []
+  const groups = commentOnlyLast(files)
   const into = baseLabel(pr, ws.prs)
   const checks = pr.checkRuns
   const { listed, passing } = checkGroups(checks)
@@ -252,14 +254,18 @@ export default function PullRequestDetail({
           )}
           {files.length > 0 && (
             <div className="changes-files" role="listbox" aria-label={`Files of #${number}`}>
-              {files.map((f, i) => (
-                <FileRow
-                  key={f.path}
-                  file={f}
-                  testId={`pr-file-${i}`}
-                  active={activeId === diffId(f.path, against)}
-                  onOpen={() => openLine(f.path)}
-                />
+              {[...groups.code, ...groups.commentOnly].map((f, i) => (
+                <Fragment key={f.path}>
+                  {i === groups.code.length && (
+                    <CommentOnlyLine files={groups.commentOnly} testId="pr-files-comment-only" />
+                  )}
+                  <FileRow
+                    file={f}
+                    testId={`pr-file-${i}`}
+                    active={activeId === diffId(f.path, against)}
+                    onOpen={() => openLine(f.path)}
+                  />
+                </Fragment>
               ))}
             </div>
           )}

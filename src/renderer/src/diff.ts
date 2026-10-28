@@ -1,5 +1,5 @@
-// How a workspace's diff is drawn: a file's status glyph and tone, and the kind
-// of each patch line. Shared by the Changes list and the diff tabs.
+// How a workspace's changed files are drawn: a file's status glyph and tone. Shared by the
+// Changes list, the Files tree and a pull request's files.
 import type { DiffFile } from '../../preload/index.d'
 
 export const GLYPH: Record<DiffFile['status'], { glyph: string; tone: string; label: string }> = {
@@ -11,51 +11,38 @@ export const GLYPH: Record<DiffFile['status'], { glyph: string; tone: string; la
   untracked: { glyph: '?', tone: 'attention', label: 'untracked' }
 }
 
-export type LineKind = 'added' | 'removed' | 'hunk' | 'header' | 'context'
+/** The lines a set of files adds and removes. */
+export interface LineTotals {
+  adds: number
+  dels: number
+}
 
-export function lineKind(line: string): LineKind {
-  if (line.startsWith('@@')) return 'hunk'
+/** Sums the files' added and removed lines. */
+export function sumLines(files: readonly DiffFile[]): LineTotals {
+  return files.reduce((t, f) => ({ adds: t.adds + f.additions, dels: t.dels + f.deletions }), {
+    adds: 0,
+    dels: 0
+  })
+}
 
-  if (line.startsWith('diff --git') || line.startsWith('---') || line.startsWith('+++'))
-    return 'header'
+/** A list's files split in two: those that changed code, and those where only comments changed. */
+export interface FileGroups {
+  code: DiffFile[]
+  commentOnly: DiffFile[]
+}
 
-  if (line.startsWith('+')) return 'added'
-
-  if (line.startsWith('-')) return 'removed'
-
-  return 'context'
+/**
+ * A list's files in the order it draws them: those that changed code first, in their order,
+ * then those where only comments changed, which a list draws under one line of their own.
+ */
+export function commentOnlyLast(files: readonly DiffFile[]): FileGroups {
+  return {
+    code: files.filter((f) => !f.commentOnly),
+    commentOnly: files.filter((f) => f.commentOnly)
+  }
 }
 
 /** The last segment of a path: the file's name. */
 export function basename(path: string): string {
   return path.split('/').filter(Boolean).at(-1) ?? path
-}
-
-/**
- * The new file's line number of each patch line (the same split the diff view draws: the
- * patch without its last newline, on `\n`), or null for a line the new file does not have:
- * a header, a hunk head, a removed line, `\ No newline at end of file`.
- */
-export function newLineNumbers(patch: string): Array<number | null> {
-  let next: number | null = null
-
-  return patch
-    .replace(/\n$/, '')
-    .split('\n')
-    .map((line) => {
-      const kind = lineKind(line)
-
-      if (kind === 'hunk') {
-        const m = /^@@ -\d+(?:,\d+)? \+(\d+)/.exec(line)
-        next = m ? Number(m[1]) : null
-
-        return null
-      }
-
-      if (kind === 'header' || kind === 'removed' || next === null || line.startsWith('\\')) {
-        return null
-      }
-
-      return next++
-    })
 }

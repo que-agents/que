@@ -12,15 +12,22 @@ const OUT_DIR = join(REPO_ROOT, 'node_modules/.cache/que-test-bundles')
 const built = new Map<string, string>()
 
 /** Returns the path of a fresh CommonJS bundle of `entry`, built once per worker. */
-export function bundleEntry(entry: 'src/cli/index.ts' | 'src/daemon/index.ts'): string {
+export function bundleEntry(
+  entry:
+    | 'src/cli/index.ts'
+    | 'src/daemon/index.ts'
+    | 'src/daemon/highlight-worker.ts'
+    | 'src/testing/fault-tokenizer-worker.ts'
+): string {
   const cached = built.get(entry)
 
   if (cached) return cached
-  const name = entry.split('/')[1]
-  const outfile = join(OUT_DIR, name, 'index.js')
+  const [, dir = '', file = ''] = entry.split('/')
+  const name = file.replace(/\.ts$/, '')
+  const outfile = join(OUT_DIR, dir, `${name}.js`)
   // Parallel workers each build to their own file, then atomically rename it
   // into place; a process already running the old file keeps its copy.
-  const tmpfile = join(OUT_DIR, name, `index.${process.pid}.tmp.js`)
+  const tmpfile = join(OUT_DIR, dir, `${name}.${process.pid}.tmp.js`)
   buildSync({
     entryPoints: [resolve(REPO_ROOT, entry)],
     outfile: tmpfile,

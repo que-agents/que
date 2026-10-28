@@ -69,6 +69,31 @@ badge (`.status.tone-*`) is a 5px dot and a mono word, tinted at 12% with a
 the story, and a wall of filled pills is exactly the noise que exists to
 remove. The quiet board uses the same tones on a dot or a word, never a badge.
 
+## Syntax
+
+The diff tabs colour code by what each piece is (the daemon names the kind of every
+token). The palette deliberately matches a familiar dark editor's, so code reads the
+way it does where it was written; that it overlaps the accent and the diff tones is
+intended, and these tokens are used for code and nothing else.
+
+| Token             | Value     | Use                                                     |
+| ----------------- | --------- | ------------------------------------------------------- |
+| `--syn-decl`      | `#569cd6` | Declarations: `const`, `function`, `class`, `async`.    |
+| `--syn-ctrl`      | `#c586c0` | Control keywords: `if`, `return`, `await`, `import`.    |
+| `--syn-fn`        | `#dcdcaa` | Function names.                                         |
+| `--syn-type`      | `#4ec9b0` | Types and classes.                                      |
+| `--syn-str`       | `#ce9178` | Strings.                                                |
+| `--syn-num`       | `#b5cea8` | Numbers.                                                |
+| `--syn-var`       | `#9cdcfe` | Variables and properties.                               |
+| `--syn-comment`   | `#6a9955` | Comments.                                               |
+| `--syn-text`      | `#d4d4d4` | Plain text and punctuation; a file with no language.    |
+| `--syn-bracket-1` | `#ffd700` | Brackets by depth: the outermost, then every third one. |
+| `--syn-bracket-2` | `#da70d6` | One level in.                                           |
+| `--syn-bracket-3` | `#179fff` | Two levels in; the fourth level is gold again.          |
+
+Each token is a span with a class per kind (`tok-decl`, `tok-str`, …), a bracket
+`tok-b1`/`tok-b2`/`tok-b3`.
+
 ## Shapes
 
 - Corners are nearly square: 2px on buttons, inputs, dialogs and fieldsets; 4px
@@ -133,14 +158,71 @@ remove. The quiet board uses the same tones on a dot or a word, never a badge.
   `commit <sha>`, its subject in the tooltip), and `vs base` picks the ref to compare
   against, remembered per workspace; the current choice is marked with the active fill.
   A row is the glyph, the path, `+a −d` in the diff tones; an uncommitted file carries
-  a 5px `--tone-attention` dot after its name.
+  a 5px `--tone-attention` dot after its name. Files where only comments changed come
+  after the others, under one line in mono 11px `--fg-faint` lined up with the paths:
+  `comments only · 2 files · +10 −3` (their totals). It has no bracketed head, no dashed
+  rule and no hint, the head's totals stay whole, and the rows under it look like any
+  other; a pull request's files group the same way. Their diffs open dimmed.
 - Clicking a file in Changes opens that file's diff as a tab in the middle, in the
   focused pane's strip beside the session tabs: a line icon and the file's name, never a
   status dot, closed with ⌘W like a terminal tab. A file inside a pull request opens the
   same way as a tab of its own (its id carries the branch and base, so it never collides
   with the Changes diff of the path), headed `#188 vs #187`, the pull request's line comments
   under their lines on `--bg-side` behind a `--border-strong` hairline; the line a
-  comment asked for carries a 2px `--accent` edge.
+  comment asked for carries a 2px `--accent` edge, and a fold that hid it opens.
+- A diff tab opens with a 36px toolbar above a `--border` hairline, mono 11px
+  `--fg-faint`: the path in `--fg` (`from → path` for a rename; at least 120px, its folders
+  cut from their start with an ellipsis so the file's name stays whole, the full path its
+  tooltip), `+a` in `--tone-good`,
+  `−d` in `--tone-bad`, and for a pull request's diff `#188 vs <base>`; at its right a
+  segmented `Unified | Split` and a `Whitespace` toggle (on: whitespace is ignored).
+  These are mono 11px buttons behind a 1px `--border` at a 2px radius, the chosen one
+  `--fg` on `--bg-raised`; both choices are remembered for every tab. When the pane is too
+  narrow for both, the controls drop to a second line of the toolbar rather than clip
+  the path. The lines are mono
+  12px/18px on `--bg-input`, never a raw diff header: the old line number and the new
+  one (44px each, right-aligned, `--fg-faint`), the sign (18px, `+` or `−`), then the
+  code in its syntax colours, and the whole area scrolls both ways. An added line takes
+  `--tone-good` at 12% behind it, a removed one `--tone-bad`, its numbers and sign tinted
+  toward the tone; within a changed pair the words that changed carry the tone at 30%
+  with a 2px radius. When the diff carries the whole file, a run of more than 8
+  unchanged lines folds, leaving 3 lines beside each change: a 26px row on `--bg-side`
+  between hairlines, mono 11px `--fg-faint`, with `↑ 20` and `↓ 20` (`--fg-muted`, only
+  the sides that touch a change) and `n unchanged lines`, which opens the whole run, then
+  the enclosing function in `--fg-muted` when there is one. Without the whole file, the
+  lines between hunks are the same row without buttons. What a tab unfolds stays unfolded
+  while it is open. Split puts old at the left and new at the right in two equal columns
+  divided by a `--border` hairline (number 44px, sign 16px, code): a removed line beside
+  the added line it became, a hatch of `--bg-raised` where a side has nothing, context on
+  both; folds and comments span both. A binary file reads `Binary file.`, one over the
+  size cap `Too large to show.`
+- A changed line that is only a comment (the daemon marks it) is drawn dimmed by default,
+  so the code changes are what the eye lands on: no green or red behind it, its code in
+  its own syntax colours at 50% opacity, a 2px `--border-strong` edge at its left, its sign
+  and numbers leaning only 35% toward the tone, no word marks, and a removed one struck
+  through. When a file has comment lines, the toolbar splits its counts, `+2 −1 code · +7
+  −2 comments` (the code counts in the diff tones, the comment ones `--fg-faint`), leaving
+  out a part or a side that is zero (a file of comments alone reads `+2 comments`), and a
+  `Comments dimmed ▾` button (`shown`, `folded`) joins the tools, drawn like them and
+  pressed while its menu is open. The menu is the app's menu (`--bg-raised`, a 1px
+  `--border-strong`, the shadow, `--radius`) in mono 12px: a bracketed head, `[ COMMENT
+  CHANGES · 8 LINES ]`, then Dim (`default`), Show (`as code`) and Fold (`one row each`),
+  each hint in `--fg-faint` at the right and the current one on the active fill; a
+  hairline; and a checkbox item, **Always show removed comments** (a ✓ while on, which it
+  is by default). The choice is remembered per project. Show draws comment lines like
+  code. Fold turns each run of consecutive comment lines in a change into one 20px row with
+  the same faint left edge: its line range where the numbers go (the new file's, or the
+  old one's for removed lines) and, mono 11px `--fg-faint` lined up with the code, `▸ 3
+  comment lines added` (`removed`, or `changed` for a mix), which opens the run in place
+  (`▾`) and folds it again. A change made only of comment lines, between two unchanged
+  runs, folds into the unchanged-lines row around it, which then reads `18 unchanged lines
+  · ▸ comment-only change: 1 removed, 4 added`; the second part shows the change. While
+  Always show removed comments is on, removed comment lines never fold: they stay dimmed
+  and struck, tagged at their right end with `COMMENT REMOVED` in mono 10px
+  `--tone-attention`. In a pull request's diff a run holding a line a review comment points
+  at stays open, its row reading `▾ comment lines · opened for a review comment`, and a
+  `path:line →` link into a folded run opens it the same way. In Split a run's row spans
+  both sides.
 - Files is `[ FILES ]` with `n · m changed`, then a filter field: mono 12px on
   `--bg-input` behind a 1px `--border`, `--accent` on focus, ⌘F while the pane has focus.
   It narrows the tree to the matching paths with their folders open, `n matches · ⏎
