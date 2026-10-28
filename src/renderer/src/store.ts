@@ -347,6 +347,11 @@ function withFacts(tabs: TermTab[], info: TermInfo): TermTab[] {
   return tabs.map((t) => (t === tab ? { ...t, title: info.title, process: info.process } : t))
 }
 
+/** A load the board can do without: its fallback when the daemon cannot answer. */
+function optional<T>(call: Promise<T>, fallback: T): Promise<T> {
+  return call.catch(() => fallback)
+}
+
 function byId<T extends { id: string }>(items: readonly T[]): Record<string, T> {
   return Object.fromEntries(items.map((i) => [i.id, i]))
 }
@@ -572,17 +577,22 @@ export class QueStore {
   /**
    * Loads everything. On a reconnect (`again`) the daemon's answer wins over what the
    * store holds, and a tab whose terminal the daemon no longer has is marked exited.
+   * Usage and tickets are optional: the previous build may not know their methods
+   * (the app is updated before the daemon), and the board must still list every
+   * workspace so the update can be offered.
    */
   private async load(again = false): Promise<void> {
+    const { tickets: held, ticketsSync } = this.state
+
     try {
       const [projects, workspaces, terms, quiet, usage, config, tickets] = await Promise.all([
         this.api.project.list(),
         this.api.workspace.list(),
         this.api.term.list(),
         this.api.quiet.state(),
-        this.api.usage.get(),
+        optional(this.api.usage.get(), null),
         this.api.config.get(),
-        this.api.tickets.list()
+        optional(this.api.tickets.list(), { tickets: held, sync: ticketsSync })
       ])
 
       const live = terms.filter((t) => t.alive)

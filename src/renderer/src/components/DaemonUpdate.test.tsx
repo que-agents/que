@@ -27,6 +27,13 @@ const TITLE =
 /** A daemon still running the build before this app's. */
 const STALE = { buildId: '8c41e07d92aa', expectedBuildId: '3f9a2c71b0de', stale: true }
 
+/** A Claude plan usage reading, as `que statusline` reports it. */
+const USAGE = {
+  fiveHour: { pct: 42.4, resetsAt: Date.UTC(2026, 9, 27, 20, 20) },
+  sevenDay: { pct: 17.6, resetsAt: Date.UTC(2026, 10, 2, 14, 0) },
+  at: Date.UTC(2026, 9, 27, 18, 8)
+}
+
 /** As the main process words a failed hand-off (src/shared/upgrade.ts). */
 const REFUSED =
   'The handoff failed: the new daemon exited (code 3) while taking over the terminals. Nothing changed: the previous build keeps serving every terminal, and que daemon restart would end them and start this build'
@@ -86,6 +93,29 @@ describe('DaemonUpdate', () => {
         screen.getByTestId('sidebar-lock').compareDocumentPosition(update) &
           Node.DOCUMENT_POSITION_FOLLOWING
       ).toBeTruthy()
+    })
+  })
+
+  describe('a previous build without the newest methods', () => {
+    it('still lists every workspace and offers the update, then brings the usage reading in once updated', async () => {
+      const user = userEvent.setup()
+      seed()
+      fakeBridge.setUsage(USAGE)
+      fakeBridge.setDaemon(STALE)
+      // As the build before usage answers: unknown method usage.get.
+      fakeBridge.withoutMethods('usage.get', 'tickets.list')
+      render(<App />)
+
+      expect(await screen.findByTestId(`sidebar-workspace-${retry.id}`)).toBeInTheDocument()
+      expect(screen.getByTestId(`sidebar-workspace-${docs.id}`)).toBeInTheDocument()
+      expect(screen.getByTestId('sidebar-usage')).toHaveClass('no-reading')
+
+      await user.click(await screen.findByRole('button', { name: 'Update' }))
+
+      await waitFor(() => {
+        expect(screen.getByTestId('sidebar-usage')).not.toHaveClass('no-reading')
+      })
+      expect(screen.getByTestId(`sidebar-workspace-${retry.id}`)).toBeInTheDocument()
     })
   })
 
