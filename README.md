@@ -1,28 +1,80 @@
 # que
 
-que is a macOS app for running Claude Code sessions in git worktrees: every task
-gets its own branch and folder, and its terminals live in a background daemon,
-so they keep running when you close the window. A quiet mode, during the hours
-you choose, only tells you that things are running and not stuck, and hides
-everything else; in the morning a report says what your sessions did.
+**Focus when you need it. Your agents keep working.**
 
-## Features
+![que going quiet: the sessions keep running, the window shows only whether they are running and not stuck, and looking closer is a time-boxed unlock](docs/images/quiet-mode.gif)
 
-- **Workspaces**: one git worktree per task, with per-repo setup from `que.toml`.
-- **Terminals that outlive the app**: quit and relaunch, and every screen comes back.
-- **Live status** for each session (working, idle, needs input, stuck), from Claude
-  Code hooks that que passes per session; your own settings are never edited.
-- **A morning report**: what each session did while you were away, its commits,
-  its pull request, and what is waiting for you.
-- **Quiet mode**: quiet hours enforced by the daemon, a board with counts only,
-  and an unlock with a reason when you really need to look.
+Coding agents made the work faster, and every tool built around them gives you
+more: more sessions, more parallel tasks, more panes, more pings. None of them
+helps you stop looking. You start a session before dinner and check it from the
+couch. You run three during a meeting and watch them instead of the meeting. At
+one in the morning one of them asks a question, and you answer it.
+
+que is a macOS app for running Claude Code sessions in git worktrees that also
+puts a boundary around them. Choose your hours, or start a quiet hour before a
+meeting, and que goes quiet. Your sessions keep running in their own branches.
+The window shrinks to the one question that matters while you're away: **is it
+running, and is it stuck?** Terminals, diffs and reports stay hidden until the
+quiet ends. You can still look: an unlock lasts a few minutes, then quiet comes
+back on its own, and every unlock shows up in the morning report.
+
+It works like putting your phone in a box by the door. Nothing is out of reach;
+reaching for it is a decision now, not a reflex.
+
+## A day with que
+
+**At work.** Every task gets its own workspace: a git worktree on its own
+branch, with your repo's setup run inside it. Sessions live in a background
+daemon, so closing the window, or quitting the app, ends nothing. The sidebar
+shows each session as working, idle, needs input or stuck, and a chime tells you
+when one finishes. A review pane at the right shows what a workspace changed,
+its files, and its pull request with checks and comments.
+
+**When you go quiet.** At the hours you set (19:00 to 07:00 by default), or when
+you click **Quiet** for 30 minutes, an hour or two before a meeting or a shared
+screen, the terminals give way to the quiet board: a dim row per session and a
+count of what is running, waiting and stuck. Nothing on it asks for your
+attention. A session that needs an answer says `waiting` and waits, with no
+badge and no sound. The daemon enforces it: terminal contents, reports and new
+work are refused to every client, the `que` CLI included, so there is no side
+door.
+
+**When you really need to look.** Click Unlock on the board, or run
+`que unlock 15 --why "deploy check"` to note why. Everything comes back for a
+while (20 minutes by default), then it goes quiet again by itself. `que lock`
+ends it early.
+
+**In the morning.** The report says what the night did: each session's time
+working, the questions it asked, its commits and pull request, what is waiting
+for you, and every unlock with its time and length. You start the day knowing
+where things are, not scrolling back through terminals to find out.
+
+## What you get
+
+- **Workspaces**: one git worktree per task, with per-repo setup and teardown
+  from `que.toml`.
+- **Terminals that outlive the app**: quit and relaunch, and every screen comes
+  back; sessions even resume after the daemon itself restarts.
+- **Live status** for every session, from Claude Code hooks that que passes per
+  session. Your own settings are never edited.
+- **Review without leaving**: diffs, the workspace's files, and its pull request
+  with checks and conversation, side by side with the terminals.
+- **Quiet hours and on-demand quiet**: enforced by the daemon, with a board that
+  shows counts and dots only, and unlocks that are time-boxed and logged.
+- **A morning report**, in the app or with `que report`.
 - **A CLI** for everything the app does, and a menu-bar title (`● 3 ▸ 1 ✕ 0`).
+- **Local**: no account and no server. The terminals, the state and the logs
+  stay on your Mac.
 
 ## Install
 
-Download `que-<version>-arm64.dmg` from
-[Releases](https://github.com/rquellh/que/releases) and drag que to Applications.
-macOS on Apple Silicon is required.
+que is in early preview (0.x): used every day by its author, changing fast.
+
+Download the latest `que-<version>-arm64.dmg` from
+[Releases](https://github.com/rquellh/que/releases) and drag que to
+Applications. It needs macOS on Apple Silicon. Prereleases (`-beta.N`) appear on
+the same page for anyone who wants the newest build early; the app only offers
+you stable releases.
 
 Builds are not signed yet, so macOS blocks the first launch. Open it anyway from
 **System Settings → Privacy & Security → Open Anyway**, or clear the quarantine
@@ -35,8 +87,8 @@ xattr -dr com.apple.quarantine /Applications/que.app
 Then choose **que → Install 'que' command in PATH** to get the CLI. It links into
 `/usr/local/bin` when that is writable and `~/.local/bin` otherwise.
 
-You also need Claude Code (`claude`) and git on your PATH; `gh`, logged in, lets
-que show each workspace's pull request and open draft ones.
+You also need Claude Code (`claude`) and git on your PATH. With `gh` installed
+and logged in, que shows each workspace's pull request.
 
 ## First run
 
@@ -46,6 +98,13 @@ que project add ~/code/uploader
 que work "Add retry logic" -r ~/code/uploader --name app-142-retry   # a worktree on branch app-142-retry
 que attach app-142-retry       # or click it in the app's sidebar
 claude                         # in the workspace terminal; its status shows in the sidebar
+```
+
+Then set your hours, or keep the defaults:
+
+```sh
+que config set quiet_hours.default=19:00,07:00
+que quiet start 45             # or go quiet now, for 45 minutes
 ```
 
 ## Before bed
@@ -67,20 +126,24 @@ commits ahead, its pull request, and whether it is waiting for you.
 Sessions open their own pull requests with `gh pr create`; the app's review
 pane picks them up, with their checks and comments.
 
-## Quiet mode
+## Quiet mode, in detail
 
-From 19:00 to 07:00 by default, the app swaps its terminals for a quiet board:
+From 19:00 to 07:00 by default, the app swaps its terminals for the quiet board:
 a dim line of what is running, waiting, stuck and idle, a row for each, and
-nothing to click but Unlock. The daemon refuses terminal contents, reports and new work to every
-client during those hours, so the CLI cannot peek either. `que unlock 15 --why
-"deploy check"` (or the board's button) shows everything for a while; `que lock`
-ends it early. When the window ends, `que report` (or the app's report view)
-shows what the night did; `notifications.morning_summary` adds a notification.
+nothing to click but Unlock. The daemon refuses terminal contents, reports and
+new work to every client during those hours, so the CLI cannot peek either.
+`que unlock 15 --why "deploy check"` (or the board's button) shows everything for
+a while; `que lock` ends it early. When the window ends, `que report` (or the
+app's report view) shows what the night did, unlocks included;
+`notifications.morning_summary` adds a notification. Set different hours per day
+of the week, or none on a given night, in the configuration below.
 
-`que quiet start 45` goes quiet the same way for 45 minutes (default 60, at
-most 720), for a meeting or a shared screen, whether or not quiet hours are
-on; `que quiet end` ends it early. Unlocking inside it works as at night, and
-those daytime unlocks stay out of the night's unlock log.
+`que quiet start 45` goes quiet the same way for 45 minutes (default 60, at most
+720), for a meeting or a shared screen, whether or not quiet hours are on; the
+sidebar's **Quiet** row and the menu-bar menu do the same in a click, and
+`que quiet end` ends it early. Unlocking inside it works as at night, and those
+daytime unlocks stay out of the night's unlock log. A manual quiet never ends
+scheduled quiet hours early.
 
 ## Configuration
 

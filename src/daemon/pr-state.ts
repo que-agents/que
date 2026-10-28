@@ -58,9 +58,43 @@ function checkOf(c: GhCheck): PrCheck {
   }
 }
 
-/** The rollup's check runs and commit statuses, failing first, then pending, passing, skipped; by name within each. */
+/** The time a rollup entry ran: a run's start (else its completion), a status's creation. */
+function timeOf(c: GhCheck): string | null {
+  return c.kind === 'status' ? c.createdAt : (c.startedAt ?? c.completedAt)
+}
+
+/** What makes two rollup entries the same check: a run's workflow and name, a status's name. */
+function checkKey(c: GhCheck): string {
+  return c.kind === 'status' ? `status\0${c.name}` : `run\0${c.workflowName ?? ''}\0${c.name}`
+}
+
+/** Whether `next`, later in the rollup, replaces `kept`: the later time wins, a time beats none, a tie goes to `next`. */
+function supersedes(next: GhCheck, kept: GhCheck): boolean {
+  const a = timeOf(next)
+  const b = timeOf(kept)
+
+  if (a === null || b === null) return a !== null || b === null
+
+  return a >= b
+}
+
+/** The newest entry of each check, as the checks list shows it: a re-run replaces the run it repeats. */
+function newestChecks(rollup: GhCheck[]): GhCheck[] {
+  const newest = new Map<string, GhCheck>()
+
+  for (const c of rollup) {
+    const key = checkKey(c)
+    const kept = newest.get(key)
+
+    if (!kept || supersedes(c, kept)) newest.set(key, c)
+  }
+
+  return [...newest.values()]
+}
+
+/** The rollup's check runs and commit statuses, a re-run collapsed to its newest; failing first, then pending, passing, skipped; by name within each. */
 export function checkRunsOf(rollup: GhCheck[]): PrCheck[] {
-  return rollup
+  return newestChecks(rollup)
     .map(checkOf)
     .sort((a, b) => ORDER[a.state] - ORDER[b.state] || a.name.localeCompare(b.name))
 }

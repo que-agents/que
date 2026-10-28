@@ -143,6 +143,8 @@ class FakeBridge {
   private projects = new Map<string, Project>()
   private workspaces = new Map<string, Workspace>()
   private digests: WorkspaceDigest[] = []
+  /** A test's hold on report.get. */
+  private reportGate = new Gate()
   private terminals = new Map<string, FakeTerminal>()
   private listeners = new Map<string, Set<Listener>>()
   private disconnectListeners = new Set<() => void>()
@@ -490,6 +492,7 @@ class FakeBridge {
       report: {
         get: async (p) => {
           this.refuseIfQuiet('report.get')
+          await this.reportGate.pass()
 
           return this.report(p?.since)
         }
@@ -677,6 +680,24 @@ class FakeBridge {
 
           return seeded ? structuredClone(seeded) : null
         },
+        checkPrs: async ({ id }) => {
+          this.refuseIfQuiet('workspace.checkPrs')
+          this.workspace(id)
+          this.checkPrsCallLog.push(id)
+          const refusal = await this.checkPrsGate.pass()
+
+          // As gh's failure reaches the app: its message.
+          if (refusal !== null) throw rpcError(ErrorCodes.Internal, refusal)
+          const found = this.upstreamPrs.get(id)
+
+          // The check stores what it found and announces it before it answers, as the daemon does.
+          if (found) {
+            this.upstreamPrs.delete(id)
+            this.setWorkspacePrs(id, found)
+          }
+
+          return { ...this.workspace(id) }
+        },
         start: async ({ id, cols, rows }) => {
           this.refuseIfQuiet('workspace.start')
           const ws = this.workspace(id)
@@ -836,6 +857,16 @@ class FakeBridge {
   /** Adds a workspace line to the report. */
   seedDigest(d: WorkspaceDigest): void {
     this.digests.push({ ...d })
+  }
+
+  /** Holds every report.get until releaseReports(), as a slow daemon would. */
+  holdReports(): void {
+    this.reportGate.hold()
+  }
+
+  /** Lets the held report.get calls through, in the order they arrived, and stops holding. */
+  releaseReports(): void {
+    this.reportGate.release()
   }
 
   seedProject(project: Project): void {
@@ -1224,6 +1255,40 @@ class FakeBridge {
     return this.prThreadCallLog.map((c) => ({ ...c }))
   }
 
+  private checkPrsCallLog: string[] = []
+  /** A test's hold or refusal on workspace.checkPrs. */
+  private checkPrsGate = new Gate()
+  /** Per workspace: the pull requests GitHub has now, for the next workspace.checkPrs to find. */
+  private upstreamPrs = new Map<string, PullRequest[]>()
+
+  /**
+   * The pull requests GitHub has for a workspace now (the current one first). The fake never
+   * polls: the next workspace.checkPrs finds them, stores them and emits workspace.updated.
+   */
+  setUpstreamPrs(id: string, prs: PullRequest[]): void {
+    this.upstreamPrs.set(id, structuredClone(prs))
+  }
+
+  /** Holds every workspace.checkPrs until releaseCheckPrs(), as a slow gh would. */
+  holdCheckPrs(): void {
+    this.checkPrsGate.hold()
+  }
+
+  /** Lets the held workspace.checkPrs calls through, in the order they arrived, and stops holding. */
+  releaseCheckPrs(): void {
+    this.checkPrsGate.release()
+  }
+
+  /** Makes the next workspace.checkPrs fail with `message`, as when gh fails. */
+  refuseCheckPrs(message: string): void {
+    this.checkPrsGate.refuse(message)
+  }
+
+  /** The workspace id of every workspace.checkPrs call, in order. */
+  checkPrsCalls(): string[] {
+    return [...this.checkPrsCallLog]
+  }
+
   reset(): void {
     this.projects.clear()
     this.diffs.clear()
@@ -1240,12 +1305,16 @@ class FakeBridge {
     this.watchedIds.clear()
     this.prThreads.clear()
     this.prThreadCallLog = []
+    this.checkPrsCallLog = []
+    this.checkPrsGate.reset()
+    this.upstreamPrs.clear()
     this.tickets.clear()
     this.ticketProjects.clear()
     this.ticketsSync = { lastSyncAt: null, error: null, count: 0 }
     this.ticketSyncs = 0
     this.workspaces.clear()
     this.digests = []
+    this.reportGate.reset()
     this.terminals.clear()
     this.listeners.clear()
     this.disconnectListeners.clear()

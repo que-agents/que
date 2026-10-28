@@ -305,6 +305,10 @@ skipped), link and times, failing first. The `checks` summary is derived from
 them, and a run that changes counts as a change, so `workspace.updated` fires
 when a check finishes even though `updatedAt` stays put.
 
+`workspace.checkPrs` checks one workspace's pull requests now (the app's refresh,
+`que ws pr --refresh`) and fails with gh's message when a call fails; the poll and
+the hooks only log.
+
 `workspace.prThread` (`que ws pr`) answers the conversation: issue comments and
 reviews from `gh pr view <n> --json comments,reviews`, line comments from
 `gh api repos/{owner}/{repo}/pulls/<n>/comments --paginate`, parsed by
